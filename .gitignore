@@ -1,0 +1,13 @@
+# 环境变量（含 API key）——绝不提交
+.env
+.env.*
+!.env.example
+
+# 依赖
+node_modules/
+
+# 实验生成产物
+experiments/output/
+
+# macOS
+.DS_Store
