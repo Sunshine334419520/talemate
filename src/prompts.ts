@@ -4,7 +4,6 @@
  */
 
 export interface WriterInput {
-  criteria: string;
   caseTitle: string;
   ideaBook: string;
   outline: string;
@@ -12,75 +11,58 @@ export interface WriterInput {
   chapterBrief: string;
   previousDraft?: string;
   critique?: string;
-  /** 内置文风卡（experiments/styles/*.md），提供则【替换】默认风格纪律 */
+  /** 可选写作标准（判据）。不提供则不写入 prompt——写手自由发挥 */
+  criteria?: string;
+  /** 内置文风卡（experiments/styles/*.md），提供则写入 prompt；不提供则无文风要求 */
   styleCard?: string;
   /** 只写开篇 400-500 字（文风对比用） */
   openingOnly?: boolean;
 }
 
 export function writerPrompt(input: WriterInput): { system: string; user: string } {
-  // 文风：有文风卡用卡（声音目标），没有则默认风格纪律
-  const styleSection = input.styleCard
-    ? [
-        "【文风】（本次采用内置文风卡。文风卡规则【替换】默认风格纪律，逐条执行；范例是声音示范，模仿它的节奏与词汇，不要模仿它的内容）",
-        "==========",
-        input.styleCard,
-        "==========",
-      ].join("\n")
-    : [
-        "【风格纪律】",
-        "- 文风克制，不煽情不滥情；情绪用动作与物象承载，不直说。",
-        "- 对话有潜台词，真实意图藏在回避/停顿/答非所问里。",
-        "- 视角：信息必须有来源——人物的感知/推断，或合法的旁白（短且少）。",
-      ].join("\n");
-
-  const lengthLine = input.openingOnly
-    ? "- 只输出本章开篇正文（400-500 字），不要任何解释、标题或元信息。"
-    : "- 只输出章节正文本身（2000-3000 字），不要任何解释、标题或元信息。";
-
+  // 通用 system prompt：只定义角色与行为，不含任何写作规则或内容
   const system = [
-    '你是中文小说写手，专长"社会派悬疑"（中国现实题材），为一部悬疑小说撰写章节正文。',
+    "你是 talemate 的小说写手 agent。根据用户提供的材料，写出符合要求的章节正文。",
     "",
-    styleSection,
-    "",
-    "【三戒】（违反即废稿）",
-    "一、戒电报锤点：禁止'手机震了。''王强没了。''他一顿。'这类孤立裸短句。信息用带主语的完整句或逗号小句流（'他摸出手机，屏幕亮着，旧同事群，十七条未读'）。",
-    "二、戒无归属信息：群消息、别人的话必须带归属（'有人发：''群里浮上来一条：''程悦说：'），不许写成叙述者的裸宣告。",
-    "三、戒废话细节：每个细节必须能说出功能（立人设/埋伏笔/定氛围/推进剧情），说不出就删。",
-    "",
-    "【悬念纪律】",
-    "- 开篇 300 字内出现钩子（异常/案件/未解问题，有分量）。",
-    "- 信息按节奏释放：不泄底、不剧透、不提前打光后面的牌。",
-    "- 结尾断在悬念或情绪上，不断在总结上。",
-    "",
-    "【判据自检】评审会按这份标准打分，写的时候照此自检：",
-    "==========",
-    input.criteria,
-    "==========",
-    "",
-    "【输出要求】",
-    lengthLine,
+    "行为：",
+    "- 写作前通读材料；材料中的要求必须逐条遵守。",
+    "- 只输出正文本身，不输出标题、解释、思考过程或任何元信息。",
+    "- 拿不准时按最克制、最平常的写法。",
   ].join("\n");
+
+  // 可选块：写作标准（判据）+ 文风卡。都不提供时，写作要求只剩【输出要求】，写手自由发挥。
+  const optionalBlocks: string[] = [];
+  if (input.criteria) {
+    optionalBlocks.push("【写作标准】（必须逐条遵守）", "==========", input.criteria, "==========");
+  }
+  if (input.styleCard) {
+    optionalBlocks.push(
+      "",
+      "【文风】（文风卡。逐条执行；范例是声音示范，模仿节奏与词汇，不模仿内容）",
+      "==========",
+      input.styleCard,
+      "==========",
+    );
+  }
+
+  const lengthNote = input.openingOnly
+    ? "（本次只写本章开篇 400-500 字，到第一个悬念出现为止，用于文风对比）"
+    : `（本次写第 ${input.chapterNum} 章正文 2000-3000 字）`;
 
   const parts = [
     `【作品】${input.caseTitle}`,
     `【企划书】\n${input.ideaBook}`,
     `【前 3 章细纲】\n${input.outline}`,
     input.openingOnly
-      ? `【本章任务】只写本章开篇（前 400-500 字，到第一个悬念出现为止），用于文风对比，不要写完整章节：${input.chapterBrief}`
+      ? `【本章任务】只写本章开篇（前 400-500 字）：${input.chapterBrief}`
       : `【本章任务】写第 ${input.chapterNum} 章：${input.chapterBrief}`,
+    ...optionalBlocks,
+    `【输出要求】${lengthNote} 只输出正文，不要任何解释、标题或元信息。`,
   ];
   if (input.previousDraft) {
     parts.push(`【你正在重写】上一版稿：\n---\n${input.previousDraft}\n---`);
     parts.push(
       `【批评者报告】（只改其中优先级最高的问题，顺序：先结构→场景→句子，不要全盘推倒）：\n${input.critique}`,
-    );
-    parts.push(input.openingOnly ? "请输出修订后的开篇正文（400-500 字），只输出正文。" : "请输出修订后的完整正文（2000-3000 字），只输出正文。");
-  } else {
-    parts.push(
-      input.openingOnly
-        ? "请据此写出本章开篇正文（400-500 字），只输出正文。"
-        : `请据此写出第 ${input.chapterNum} 章正文（2000-3000 字），只输出正文。`,
     );
   }
 

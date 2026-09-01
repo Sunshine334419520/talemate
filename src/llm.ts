@@ -40,13 +40,20 @@ export function loadLLMConfig(env = process.env): LLMConfig {
 let anthropicClient: Anthropic | undefined;
 let openaiClient: OpenAI | undefined;
 
-/** 单次对话：system + user → 文本。写手/批评者/盲评共用。 */
-export async function chat(config: LLMConfig, system: string, user: string): Promise<string> {
+export interface ChatResult {
+  /** 最终可见文本 */
+  content: string;
+  /** 思考过程（reasoning_content）。DeepSeek 思考模式返回；Anthropic / 非思考模式下为空 */
+  reasoning?: string;
+}
+
+/** 单次对话：system + user → 文本 + 思考过程。写手/批评者/盲评共用。 */
+export async function chat(config: LLMConfig, system: string, user: string): Promise<ChatResult> {
   if (config.provider === "anthropic") return chatAnthropic(config, system, user);
   return chatOpenAI(config, system, user);
 }
 
-async function chatAnthropic(config: LLMConfig, system: string, user: string): Promise<string> {
+async function chatAnthropic(config: LLMConfig, system: string, user: string): Promise<ChatResult> {
   if (!anthropicClient) {
     anthropicClient = config.apiKey ? new Anthropic({ apiKey: config.apiKey }) : new Anthropic();
   }
@@ -59,13 +66,15 @@ async function chatAnthropic(config: LLMConfig, system: string, user: string): P
     messages: [{ role: "user", content: user }],
   });
   const message = await stream.finalMessage();
-  return message.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  return {
+    content: message.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join(""),
+  };
 }
 
-async function chatOpenAI(config: LLMConfig, system: string, user: string): Promise<string> {
+async function chatOpenAI(config: LLMConfig, system: string, user: string): Promise<ChatResult> {
   if (!openaiClient) {
     openaiClient = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
   }
@@ -88,6 +97,8 @@ async function chatOpenAI(config: LLMConfig, system: string, user: string): Prom
   });
   const choice = completion.choices?.[0];
   const content = choice?.message?.content ?? "";
+  // 思考过程：DeepSeek 思考模式把推理放在 message.reasoning_content（OpenAI 兼容字段）
+  const reasoning = (choice?.message as any)?.reasoning_content ?? undefined;
   // 截断检测：finish_reason=length 意味着输出被 max_tokens 掐断，绝不能静默当成完整稿
   if (choice?.finish_reason === "length") {
     throw new Error(
@@ -99,5 +110,5 @@ async function chatOpenAI(config: LLMConfig, system: string, user: string): Prom
         `. 若开启了思考请调大 TALEMATE_MAX_TOKENS，或设 TALEMATE_REASONING=off。`,
     );
   }
-  return content;
+  return { content, reasoning };
 }

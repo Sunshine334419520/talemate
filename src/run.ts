@@ -1,18 +1,18 @@
 /**
  * P1a 单章编辑循环 CLI。
  * 用法：
- *   bun run src/run.ts [caseId]     # 默认 case-01-shichang-zhichang
+ *   bun run src/run.ts [caseId]     # 默认 case-01-huangdao-qiusheng
  * 流程：写手起草 v0 → 批评者四件套 → 写手改写 v1/v2 → 每轮后【盲评并排】决定是否继续（新版不赢就停）→ 头条盲评 v0 vs 最佳稿。
  * 停止机制：主信号 = 盲评并排。绝对分数（合格线/优秀区）只做收敛曲线参考，不再作为停止条件——LLM 法官给绝对分天然偏高。
  * 产物：experiments/output/<caseId>/ 下各版本稿 + 批评报告 + 盲评。
  */
 import { loadLLMConfig, chat, type LLMConfig } from "./llm";
-import { loadCriteria, loadWriterCriteria } from "./criteria";
+import { loadCriteria } from "./criteria";
 import { loadCase, extractChapterBrief } from "./case";
 import { writerPrompt, criticPrompt, comparatorPrompt } from "./prompts";
 import { save } from "./storage";
 
-const DEFAULT_CASE = "case-01-shichang-zhichang";
+const DEFAULT_CASE = "case-01-huangdao-qiusheng";
 const MAX_ROUNDS = 3;
 const CHAPTER_NUM = 1;
 
@@ -42,7 +42,6 @@ async function main() {
   console.log("");
 
   const criteria = await loadCriteria(); // 完整判据（含检查协议），给批评者逐句执行
-  const writerCriteria = await loadWriterCriteria(); // 精简判据，写手自检用，不给写手加负担
   const novel = await loadCase(caseId);
   const chapterBrief = extractChapterBrief(novel.outline, CHAPTER_NUM);
 
@@ -56,7 +55,6 @@ async function main() {
     console.log(`── 第 ${round + 1} 轮：写手${round === 0 ? "起草" : "改写"} →`);
 
     const w = writerPrompt({
-      criteria: writerCriteria,
       caseTitle: novel.title,
       ideaBook: novel.ideaBook,
       outline: novel.outline,
@@ -65,7 +63,7 @@ async function main() {
       previousDraft: drafts[drafts.length - 1],
       critique: reports[reports.length - 1],
     });
-    const draft = await chat(config, w.system, w.user);
+    const draft = (await chat(config, w.system, w.user)).content;
     drafts.push(draft);
     await save(`${caseId}/draft_v${round}.md`, draft);
     console.log(`    v${round} 已保存（${draft.length} 字）`);
@@ -79,7 +77,7 @@ async function main() {
       chapterBrief,
       draft,
     });
-    const report = await chat(config, c.system, c.user);
+    const report = (await chat(config, c.system, c.user)).content;
     reports.push(report);
     await save(`${caseId}/critique_v${round}.md`, report);
 
@@ -137,7 +135,7 @@ async function blindCompare(
   bIdx: number,
 ): Promise<{ winner: Verdict }> {
   const comp = comparatorPrompt({ workA, workB });
-  const report = await chat(config, comp.system, comp.user);
+  const report = (await chat(config, comp.system, comp.user)).content;
   const winner = parseVerdict(report);
   await save(`${caseId}/blind_v${aIdx}_vs_v${bIdx}.md`, report);
   return { winner };

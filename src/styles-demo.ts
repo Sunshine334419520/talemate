@@ -2,13 +2,12 @@
  * 文风对比演示：同一用例、同一场景，用不同内置文风卡各写一遍开篇。
  * 用法：
  *   bun run src/styles-demo.ts [caseId] [styleId]
- *     caseId 默认 case-01-shichang-zhichang
+ *     caseId 默认 case-01-huangdao-qiusheng
  *     styleId 可选（如 style-02-noir）；不传则跑全部文风卡
  * 产物：experiments/output/styles/<styleId>.md
  */
 import { readFile, readdir } from "node:fs/promises";
 import { loadLLMConfig, chat } from "./llm";
-import { loadCriteria, loadWriterCriteria } from "./criteria";
 import { loadCase, extractChapterBrief } from "./case";
 import { writerPrompt } from "./prompts";
 import { save } from "./storage";
@@ -16,11 +15,10 @@ import { save } from "./storage";
 const STYLES_DIR = "experiments/styles";
 
 async function main() {
-  const caseId = process.argv[2] ?? "case-01-shichang-zhichang";
+  const caseId = process.argv[2] ?? "case-01-huangdao-qiusheng";
   const styleArg = process.argv[3];
   const config = loadLLMConfig();
 
-  const writerCriteria = await loadWriterCriteria();
   const novel = await loadCase(caseId);
   const chapterBrief = extractChapterBrief(novel.outline, 1);
 
@@ -43,7 +41,6 @@ async function main() {
     const styleId = file.replace(/\.md$/, "");
     console.log(`── 文风 ${styleId} →`);
     const w = writerPrompt({
-      criteria: writerCriteria,
       caseTitle: novel.title,
       ideaBook: novel.ideaBook,
       outline: novel.outline,
@@ -52,7 +49,7 @@ async function main() {
       styleCard,
       openingOnly: true,
     });
-    const draft = await chat(config, w.system, w.user);
+    const draft = (await chat(config, w.system, w.user)).content;
     await save(`styles/${styleId}.md`, draft);
     console.log(`    已保存（${draft.length} 字）`);
   }
