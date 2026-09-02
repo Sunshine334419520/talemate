@@ -1,6 +1,6 @@
 /**
- * 写手 / 批评者 / 盲评 三个角色的 prompt 构造器。
- * 独立上下文的保证：批评者只拿 稿子 + 判据 + 企划书，看不到写手如何构思。
+ * 写手 / 审判（三遍式：拆情节 → 逐情节深审 → 汇总）的 prompt 构造器。
+ * 独立上下文的保证：审判只拿 原文 + 判据 + 企划书 + 本章任务，看不到写手如何构思。
  */
 
 export interface WriterInput {
@@ -19,8 +19,19 @@ export interface WriterInput {
   openingOnly?: boolean;
 }
 
+/**
+ * 通用写作规范（跨题材恒定，写手 prompt 始终携带）。
+ * 只放"改写作价高、各题材都成立"的卫生规则；题材规则归体裁包/判据，声口归文风卡。
+ */
+const UNIVERSAL_STANDARDS = [
+  "【通用写作规范】",
+  "- 无 AI 腔：禁用套话黑名单（涌起、仿佛、一抹、嘴角勾起、心中闪过、眼中闪过一丝、空气仿佛凝固、内心五味杂陈……）。",
+  "- 不堆砌形容词和副词（缓缓、轻轻、冷冷、深深地）。",
+  "- 不重复信息：同一个判断或同一句话，不换着说法写两遍。",
+].join("\n");
+
 export function writerPrompt(input: WriterInput): { system: string; user: string } {
-  // 通用 system prompt：只定义角色与行为，不含任何写作规则或内容
+  // 通用 system prompt：只定义角色与行为 + 恒定通用写作规范，不含题材规则
   const system = [
     "你是 talemate 的小说写手 agent。根据用户提供的材料，写出符合要求的章节正文。",
     "",
@@ -28,6 +39,8 @@ export function writerPrompt(input: WriterInput): { system: string; user: string
     "- 写作前通读材料；材料中的要求必须逐条遵守。",
     "- 只输出正文本身，不输出标题、解释、思考过程或任何元信息。",
     "- 拿不准时按最克制、最平常的写法。",
+    "",
+    UNIVERSAL_STANDARDS,
   ].join("\n");
 
   // 可选块：写作标准（判据）+ 文风卡。都不提供时，写作要求只剩【输出要求】，写手自由发挥。
@@ -69,68 +82,115 @@ export function writerPrompt(input: WriterInput): { system: string; user: string
   return { system, user: parts.join("\n\n") };
 }
 
-export interface CriticInput {
+/** ─── 审判第一遍：拆情节 ─── */
+export interface SegmentInput {
+  caseTitle: string;
+  ideaBook: string;
+  chapterNum: number;
+  chapterBrief: string;
+  /** 已标段落号 [N] 的正文 */
+  draft: string;
+}
+
+export function segmentPrompt(input: SegmentInput): { system: string; user: string } {
+  const system = [
+    "你是资深小说编辑。下面是一章正文，每段已标号 [N]。请把它拆成一个个【情节单元】——每个单元是一个自足的场景/节拍，有明确功能，内部有状态变化。",
+    "",
+    "切分依据：",
+    "- 一个情节内部通常有变化：起于目标/问题 → 遇阻碍 → 出转折/决定 → 落到新状态。没变化的串段不该单独成情节。",
+    "- 功能标签自取（铺垫/突发/反应/转折/收尾/钩子 或自行概括），要能看出它在这章里干什么。",
+    "",
+    "【输出格式】（严格按此，除了这两段不要再写别的）",
+    "BEATS:",
+    "序号|起止段号|功能标签|一句话概括",
+    "…（每个情节一行，序号从 1 开始；起止段号用正文里 [N] 的编号）",
+  ].join("\n");
+  const user = [
+    `【作品】${input.caseTitle}`,
+    `【本章任务】第 ${input.chapterNum} 章：${input.chapterBrief}`,
+    `【企划书】（人物/设定，供切分参考）\n${input.ideaBook}`,
+    `【正文】\n${input.draft}`,
+  ].join("\n\n");
+  return { system, user };
+}
+
+/** ─── 审判第二遍：逐情节深审 ─── */
+export interface BeatReviewInput {
   criteria: string;
   caseTitle: string;
   ideaBook: string;
   chapterNum: number;
   chapterBrief: string;
-  draft: string;
+  beatIndex: number;
+  beatLabel: string;
+  /** 已标段落号 [N] 的本情节原文 */
+  beatText: string;
+  /** 前一情节末段（衔接） */
+  prevTail?: string;
+  /** 后一情节首段（衔接） */
+  nextHead?: string;
 }
 
-export function criticPrompt(input: CriticInput): { system: string; user: string } {
+export function beatReviewPrompt(input: BeatReviewInput): { system: string; user: string } {
   const system = [
-    '你是资深小说编辑与批评者，专长"社会派悬疑"评审。你只拿到稿子本身和判据，不知道写手如何构思——基于文本说话，不假设写手意图。',
+    "你是资深小说编辑，逐情节审查单章。你只拿到这一个情节的原文和它的上下文，不假设写手意图——基于文本说话。",
     "",
-    "【判据】（双档制：先查合格线硬伤，再评优秀区）",
+    "【判据】（两档：先看情节设计，再逐段查执行）",
     "==========",
     input.criteria,
     "==========",
     "",
-    "【执行要求】（必须先读判据包第四节『检查协议』，按协议逐句执行，禁止只背维度清单就打分）",
-    "- 每条 ✅/❌ 必须引用原文一句作证据；引用不出来的判断不算数。",
-    '- 视角纪律（合格线 4）逐句跑『视角检查协议』：信息溯源 → 旁白位置/功能 → 红牌。未发现违规就写明「逐句溯源未发现漂移」；发现就引用原句。',
-    "- 文风（合格线 6/9）逐句找病句/碎句/tell/套话/冗余，每处引用原句。",
-    "- 电报句扫描（文风专项）：全文找出所有①独立成句的裸动词短语（'手机震了。''他停了。'）②无归属的信息句（把群消息/他人话语写成叙述者宣告，如裸写'王强没了。'）③无感知者/行动者的完成态事件句（'手机在枕头底下震了'）。每处引用原句，判 ❌ 并给改法。",
-    '- 信息释放（合格线 2）对开篇前 300 字逐细节问「功能是什么」，答不出的引用原句判 ❌。',
-    "- 评分从严：合格线任何一条有真实硬伤就是 ❌。找不到硬伤 ≠ 稿子满分，是你没看够；宁可误伤，不可放水。",
-    "- 统计锚定（对抗分数通胀）：正常的 2000-3000 字开篇章，合格线平均只应通过 6-7 维；优秀区通常 2-4 条。9/9 + 6/6 是逐句无可挑剔的极少数。你打高分前，必须逐维自我举证为什么没有硬伤；正常情况下你应当能挑出至少 1-2 个合格线硬伤。宁可打低，不可放水。",
+    "【执行要求】",
+    "- 一、情节设计：按【情节标准】逐条判断，每条 ✅/❌ 必须引用原文一句作证据。",
+    "- 二、逐段执行：按【段落标准】对本情节的每一段（[N]）标 ✅/❌，每段引用原文作证据，❌ 给一句具体改法。",
+    "- 只评这个情节，不评价前后情节；引用不出来的判断不算数。",
+    "- 从严：找不到硬伤 ≠ 没问题，是你没看够；宁可误伤，不可放水。",
     "",
-    "【输出】（严格按此结构）",
-    "一、合格线（9 维）逐维：",
-    "  - [维度名]：✅/❌ + 证据（引用原文一句）+ 一句话问题",
-    "二、优秀区（6 条）逐条：",
-    "  - [维度名]：✅/❌ + 证据",
-    "三、改法（按优先级，先结构→场景→句子；每条给具体改法，不要空话）",
-    "四、一致性提示（本章设定与企划书/现实逻辑的出入；以及值得升级进企划书的新点子）",
-    "",
-    "【评分】最后单独一行（供程序解析）：",
-    'SCORES: {"pass": <合格线通过数0-9>, "excellent": <优秀区通过数0-6>, "total": <1-10总分>}',
+    "【输出】",
+    "一、情节设计（逐条）：[标准名]：✅/❌ + 证据 + 一句话问题",
+    "二、逐段：[段号]：✅/❌ + 证据（❌ 时给改法）",
   ].join("\n");
-
   const user = [
     `【作品】${input.caseTitle}`,
-    `【企划书】（供一致性提示参考）\n${input.ideaBook}`,
     `【本章任务】第 ${input.chapterNum} 章：${input.chapterBrief}`,
-    `【稿子】\n---\n${input.draft}\n---`,
-  ].join("\n\n");
-
+    `【本情节】第 ${input.beatIndex} 个（功能：${input.beatLabel}）`,
+    input.prevTail ? `【衔接·前一情节末段】\n${input.prevTail}` : "",
+    input.nextHead ? `【衔接·后一情节首段】\n${input.nextHead}` : "",
+    `【企划书】（人物/设定，判断逻辑与人物行为是否成立）\n${input.ideaBook}`,
+    `【本情节正文】\n${input.beatText}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   return { system, user };
 }
 
-export function comparatorPrompt(input: { workA: string; workB: string }): { system: string; user: string } {
+/** ─── 审判第三遍：汇总 + 停止信号 ─── */
+export interface SynthesizeInput {
+  caseTitle: string;
+  chapterNum: number;
+  chapterBrief: string;
+  /** 各情节的审查结果，顺序对应情节序号 */
+  reviews: string[];
+}
+
+export function synthesizePrompt(input: SynthesizeInput): { system: string; user: string } {
   const system = [
-    "你是资深小说编辑。下面两篇作品（A 和 B）是同一任务、同一设定下产出的两版稿子。请判断哪一篇更好，并说明为什么。",
-    "规则：",
-    "- 引用原文作为证据（每处结论都要有原文支撑）。",
-    "- 从 悬念结构、写实、文风克制、人物动机、情绪后劲 等维度对比。",
-    '- 明确说出哪篇更好（"作品A更好"或"作品B更好"或"不相上下"），并给出理由。',
-    "- 你只基于文本评判，不知道版本先后。",
-    "- 从严：只有新版确实更好时才判它更好；存疑就判不相上下。",
+    "你是总编。下面是一章拆成若干情节后的逐情节审查结果。请汇总成一份给写手的改稿报告。",
     "",
-    "【评分】最后单独一行（供程序解析）：",
-    "VERDICT: A | B | TIE   （A=作品A更好，B=作品B更好，TIE=不相上下）",
+    "【报告结构】",
+    "一、本章任务达成度：本章是否完成了【本章任务】？一句话说明。",
+    "二、必改问题清单：按 结构→场景→句子 排序，每条引用 段号+原句 并给具体改法，不要空话。",
+    "三、可保留的优点：简短，一句一个。",
+    "",
+    "【停止判定】最后单独一行（供程序解析，必须）：",
+    "JUDGE: NEEDS_FIX  （还有必须修的硬伤，写手需再改一轮）",
+    "JUDGE: CLEAN      （无必须修的硬伤，本章可定稿）",
+    "判定从严：只要还有影响结构或场景的硬伤就算 NEEDS_FIX；只有句级小瑕疵才可 CLEAN。",
   ].join("\n");
-  const user = `【作品A】\n---\n${input.workA}\n---\n\n【作品B】\n---\n${input.workB}\n---`;
+  const user = [
+    `【作品】${input.caseTitle}`,
+    `【本章任务】第 ${input.chapterNum} 章：${input.chapterBrief}`,
+    ...input.reviews.map((r, i) => `【情节 ${i + 1} 审查】\n${r}`),
+  ].join("\n\n");
   return { system, user };
 }

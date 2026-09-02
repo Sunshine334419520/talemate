@@ -47,20 +47,35 @@ export interface ChatResult {
   reasoning?: string;
 }
 
-/** 单次对话：system + user → 文本 + 思考过程。写手/批评者/盲评共用。 */
-export async function chat(config: LLMConfig, system: string, user: string): Promise<ChatResult> {
-  if (config.provider === "anthropic") return chatAnthropic(config, system, user);
-  return chatOpenAI(config, system, user);
+/** 单次调用的覆盖项（缺省取 config） */
+export interface ChatOptions {
+  /** 覆盖本次调用的推理强度（写作用 low 省预算，审判/盲评用 high 换深审） */
+  reasoning?: Reasoning;
+  /** 覆盖本次调用的输出预算（high 思考会大量吃预算，审判要给足防截断） */
+  maxTokens?: number;
 }
 
-async function chatAnthropic(config: LLMConfig, system: string, user: string): Promise<ChatResult> {
+/** 单次对话：system + user → 文本 + 思考过程。写手/批评者/盲评共用。 */
+export async function chat(
+  config: LLMConfig,
+  system: string,
+  user: string,
+  options?: ChatOptions,
+): Promise<ChatResult> {
+  const reasoning = options?.reasoning ?? config.reasoning;
+  const maxTokens = options?.maxTokens ?? config.maxTokens;
+  if (config.provider === "anthropic") return chatAnthropic(config, system, user, maxTokens);
+  return chatOpenAI(config, system, user, reasoning, maxTokens);
+}
+
+async function chatAnthropic(config: LLMConfig, system: string, user: string, maxTokens: number): Promise<ChatResult> {
   if (!anthropicClient) {
     anthropicClient = config.apiKey ? new Anthropic({ apiKey: config.apiKey }) : new Anthropic();
   }
   // 流式防止长输出超时；max_tokens 给足，让模型按提示自限 2000-3000 字
   const stream = anthropicClient.messages.stream({
     model: config.model,
-    max_tokens: config.maxTokens,
+    max_tokens: maxTokens,
     ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
     system,
     messages: [{ role: "user", content: user }],
@@ -74,20 +89,25 @@ async function chatAnthropic(config: LLMConfig, system: string, user: string): P
   };
 }
 
-async function chatOpenAI(config: LLMConfig, system: string, user: string): Promise<ChatResult> {
+async function chatOpenAI(
+  config: LLMConfig,
+  system: string,
+  user: string,
+  reasoning: Reasoning,
+  maxTokens: number,
+): Promise<ChatResult> {
   if (!openaiClient) {
     openaiClient = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
   }
-  // DeepSeek V4 默认开启思考（reasoning），会把 max_tokens 预算吃掉大半导致正文被截断。
-  // 默认 off：判据/纪律已写进 prompt，写作不需要额外推理。
+  // DeepSeek V4 的 thinking 会吃掉 max_tokens 预算：写作用 low 省预算，审判用 high 换深审。
   // 用 spread 注入 DeepSeek 私有字段 thinking（spread 不触发多余属性检查），reasoning_effort 是 SDK 原生字段。
   const thinkingBody: object =
-    config.reasoning === "off"
+    reasoning === "off"
       ? { thinking: { type: "disabled" } }
-      : { thinking: { type: "enabled" }, reasoning_effort: config.reasoning };
+      : { thinking: { type: "enabled" }, reasoning_effort: reasoning };
   const completion = await openaiClient.chat.completions.create({
     model: config.model,
-    max_tokens: config.maxTokens,
+    max_tokens: maxTokens,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
@@ -98,17 +118,17 @@ async function chatOpenAI(config: LLMConfig, system: string, user: string): Prom
   const choice = completion.choices?.[0];
   const content = choice?.message?.content ?? "";
   // 思考过程：DeepSeek 思考模式把推理放在 message.reasoning_content（OpenAI 兼容字段）
-  const reasoning = (choice?.message as any)?.reasoning_content ?? undefined;
+  const reasoningContent = (choice?.message as any)?.reasoning_content ?? undefined;
   // 截断检测：finish_reason=length 意味着输出被 max_tokens 掐断，绝不能静默当成完整稿
   if (choice?.finish_reason === "length") {
     throw new Error(
       `输出被 max_tokens 截断（finish_reason=length）。` +
-        `model=${config.model} max_tokens=${config.maxTokens} 实际=${completion.usage?.completion_tokens ?? "?"}` +
+        `model=${config.model} max_tokens=${maxTokens} 实际=${completion.usage?.completion_tokens ?? "?"}` +
         (completion.usage && "completion_tokens_details" in completion.usage
           ? ` (reasoning_tokens=${(completion.usage as any).completion_tokens_details?.reasoning_tokens ?? "?"})`
           : "") +
         `. 若开启了思考请调大 TALEMATE_MAX_TOKENS，或设 TALEMATE_REASONING=off。`,
     );
   }
-  return { content, reasoning };
+  return { content, reasoning: reasoningContent };
 }
