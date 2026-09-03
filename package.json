@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "experiment": "bun run src/run.ts",
+    "plan": "bun run src/gen-plan.ts",
+    "chapter": "bun run src/gen-chapter.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

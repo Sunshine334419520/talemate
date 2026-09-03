@@ -26,6 +26,14 @@ export function extractChapterBrief(outline: string, chapterNum: number): string
   return m?.[1]?.trim() ?? `写第 ${chapterNum} 章`;
 }
 
+/** 取出上一章（chapterNum-1）的结尾钩子（章末钩子回收规则的输入）；第 1 章无上章返回 undefined */
+export function extractPreviousHook(outline: string, chapterNum: number): string | undefined {
+  if (chapterNum <= 1) return undefined;
+  const re = new RegExp(`\\*\\*第\\s*${chapterNum - 1}\\s*章\\*\\*.*?结尾钩子[：:]\\s*(.+)`);
+  const m = outline.match(re);
+  return m?.[1]?.trim() || undefined;
+}
+
 /** 按 "## <标题>" 切分后取对应小节（自然处理末段到文件尾的情况） */
 function extractSection(text: string, heading: string): string | null {
   const chunks = text.split(/^## /m);
