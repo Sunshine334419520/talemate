@@ -10,7 +10,7 @@
  *     assistant(toolCalls) + 每条 completed tool 一条 role:"tool" 结果消息
  */
 import type { StoredMessage } from "../core/types";
-import type { NeutralMsg } from "../llm";
+import type { NeutralMsg } from "../llm/types";
 
 export function buildSystemPrompt(parts: {
   projectTitle: string;

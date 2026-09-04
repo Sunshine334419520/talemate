@@ -9,8 +9,9 @@
 import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openSession, type UserIO } from "./session";
-import * as store from "./storage";
+import { openSession, type UserIO } from "./session/session";
+import { createProject } from "./storage/project";
+import { loadMessages, listSessionIds, loadSessionMeta } from "./storage/session-store";
 import { loadModelConfig } from "./core/config";
 
 const HOME = await mkdtemp(join(tmpdir(), "talemate-smoke-"));
@@ -30,7 +31,7 @@ const io: UserIO = {
 
 try {
   // 1) 建项目
-  const meta = await store.createProject({ title: "冒烟测试书", genre: "都市" });
+  const meta = await createProject({ title: "冒烟测试书", genre: "都市" });
   const model = loadModelConfig();
   console.log(`[1] 项目已建：${meta.id}`);
 
@@ -40,7 +41,7 @@ try {
   console.log(`[2] editor post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
 
   // 3) 验证父会话消息链：user → assistant(task) → assistant(text)
-  const msgs = await store.loadMessages(meta.id, session.sessionId);
+  const msgs = await loadMessages(meta.id, session.sessionId);
   const roles = msgs.map((m) => m.role).join(" → ");
   console.log(`[3] 父会话消息链：${roles}`);
 
@@ -53,10 +54,10 @@ try {
   }
 
   // 4) 子会话已落盘（writer）
-  const subIds = await store.listSessionIds(meta.id);
+  const subIds = await listSessionIds(meta.id);
   console.log(`[5] 落盘会话数：${subIds.length}（应 ≥2：父+writer 子）`);
   const subMetas = [];
-  for (const sid of subIds) subMetas.push(await store.loadSessionMeta(meta.id, sid));
+  for (const sid of subIds) subMetas.push(await loadSessionMeta(meta.id, sid));
   const writerSession = subMetas.find((m) => m.title.startsWith("task:"));
   console.log(`    子会话：${subMetas.map((m) => `${m.title}(${m.id})`).join(", ")}`);
   if (!writerSession) throw new Error("writer 子会话未落盘");

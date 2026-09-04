@@ -1,7 +1,7 @@
 /**
  * 内置工具定义。execute 只用 ctx（ToolContext 由 session 注入实现），保持纯声明、可测。
  */
-import { defineTool, type RegisteredTool } from "./index";
+import { defineTool, type RegisteredTool } from "./define";
 
 /** read_doc：读 docs/ 下某文档（含 .md），不存在返回 undefined 提示 */
 export const readDocTool: RegisteredTool<{ name: string }> = defineTool<{ name: string }>({

@@ -10,13 +10,12 @@
  */
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { AgentRegistry } from "./agent";
 import { loadModelConfig, hasCredentials } from "./core/config";
 import type { LLMEvent } from "./core/types";
-import * as store from "./storage";
-import { ToolRegistry } from "./tool";
+import { createProject, listProjects, loadProjectMeta } from "./storage/project";
+import { listSessionIds, loadSessionMeta } from "./storage/session-store";
 import { BUILTIN_TOOLS } from "./tool/builtin";
-import { openSession, type UserIO } from "./session";
+import { openSession, type UserIO } from "./session/session";
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
@@ -27,14 +26,14 @@ async function main() {
       console.error("用法：bun run src/cli.ts novel create \"书名\" [题材]");
       process.exit(1);
     }
-    const meta = await store.createProject({ title, genre: rest[2] });
+    const meta = await createProject({ title, genre: rest[2] });
     console.log(`已创建小说项目：${meta.id}（${meta.title}）`);
     console.log(`进入主编会话：bun run src/cli.ts ${meta.id}`);
     return;
   }
 
   if (cmd === "ls") {
-    const projects = await store.listProjects();
+    const projects = await listProjects();
     if (!projects.length) {
       console.log("（还没有小说项目。用 novel create 创建）");
       return;
@@ -45,11 +44,11 @@ async function main() {
 
   if (cmd === "resume") {
     const projectId = rest[0];
-    const sessions = await store.listSessionIds(projectId);
+    const sessions = await listSessionIds(projectId);
     console.log(`项目 ${projectId} 的会话：`);
     for (const sid of sessions) {
       try {
-        const m = await store.loadSessionMeta(projectId, sid);
+        const m = await loadSessionMeta(projectId, sid);
         console.log(`  ${sid}\t${m.title}\t${new Date(m.time.created).toLocaleString()}`);
       } catch {
         console.log(`  ${sid}\t(损坏)`);
@@ -70,7 +69,7 @@ async function main() {
 
 /** REPL：用户输入一行 → 主编 post → 打印结果，循环 */
 async function repl(projectId: string): Promise<void> {
-  const meta = await store.loadProjectMeta(projectId);
+  const meta = await loadProjectMeta(projectId);
   const model = loadModelConfig();
   if (!hasCredentials(model)) {
     console.error("✗ 未找到 API key。mock 冒烟用：TALEMATE_PROVIDER=mock");

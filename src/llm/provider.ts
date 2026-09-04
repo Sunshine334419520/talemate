@@ -1,36 +1,16 @@
 /**
  * LLM 层：provider 无关的多轮 chat，支持流式 delta（回调）+ 工具调用循环。
  *
- * - 会话 runner 把历史转成 NeutralMsg 数组调 chat()；
+ * - 会话 runner（session/loop）把历史转成 NeutralMsg[] 调 chat()；
  * - chat() 返回聚合的 assistant turn（text/reasoning/toolCalls），期间通过 onText/onReasoning 实时吐 delta；
  * - runner 自己执行 toolCalls（工具注册表），再把结果作为 role:"tool" 消息续调 chat()——循环直到无工具调用。
  *
- * NeutralMsg（内部）：user/assistant/tool 三元。assistant.toolCalls 由后续 role:"tool" 结果承接。
  * provider 适配：anthropic 需把连续 tool 结果并成一条 tool_result user 消息；openai 用 role:"tool"。
  */
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { JsonSchema, ModelConfig, ToolCall } from "../core/types";
-
-/** 一次工具调用的 schema 描述（喂给模型选工具用） */
-export interface ToolSchema {
-  name: string;
-  description: string;
-  inputSchema: JsonSchema;
-}
-
-export type NeutralMsg =
-  | { role: "user"; text: string }
-  | { role: "assistant"; text?: string; toolCalls?: ToolCall[] }
-  | { role: "tool"; toolCallId: string; name: string; output: string };
-
-export interface AssistantTurn {
-  text: string;
-  reasoning?: string;
-  toolCalls: ToolCall[];
-  finish: "stop" | "tool_calls" | "error";
-  usage?: { input: number; output: number };
-}
+import type { AssistantTurn, NeutralMsg, ToolSchema } from "./types";
 
 export interface ChatOpts {
   model: ModelConfig;
@@ -203,7 +183,7 @@ async function chatOpenAI(opts: ChatOpts): Promise<AssistantTurn> {
 
   if (finish === "length") {
     throw new Error(
-      `[openai] 输出被 max_tokens 截断（finish_reason=length）。model=${cfg.model} max_tokens=${cfg.maxTokens}。` +
+      `[openai] 输出被 max_tokens 截断（finish_reason=length）。model=${cfg.model} max_tokens=${cfg.maxTokens}. ` +
         `若开启思考请调大 TALEMATE_MAX_TOKENS 或设 TALEMATE_REASONING=off。`,
     );
   }
@@ -304,3 +284,5 @@ function sampleArgs(schema: JsonSchema | undefined): Record<string, unknown> {
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
+
+export type { AssistantTurn, NeutralMsg, ToolSchema };

@@ -1,15 +1,14 @@
 /**
- * 文件系统存储层。
- * - 项目：<TALEMATE_HOME>/novels/<project-id>/（talemate.json 元信息 + docs/ + chapters/ + .talemate/）
- * - 会话：<project>/.talemate/sessions/<session-id>/{session.json,messages.jsonl}
- * - messages.jsonl 每行一条带 seq 的消息（append-only）；compaction 也是一条消息。
+ * 项目级存储：
+ * - 建/列/读/写项目元（talemate.json）
+ * - AGENTS.md（项目规则）、docs/（活文档）、chapters/（成品）
+ * 会话级存储见 session-store.ts。
  */
-import { mkdir, readFile, readdir, writeFile, access } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { talemateHome, paths, projectPaths, sessionPaths } from "../core/config";
-import type { ProjectMeta, SessionMeta, StoredMessage } from "../core/types";
-
-// ─── 项目 ───
+import { talemateHome, paths, projectPaths } from "../core/config";
+import type { ProjectMeta } from "../core/types";
+import { rand4, safeName, slugify } from "./util";
 
 export async function createProject(opts: { title: string; genre?: string }): Promise<ProjectMeta> {
   const home = talemateHome();
@@ -126,105 +125,4 @@ export async function saveChapter(projectId: string, filename: string, content: 
   const file = join(pp.chapters, safe);
   await writeFile(file, content, "utf-8");
   return file;
-}
-
-// ─── 会话 ───
-
-export async function createSession(
-  projectId: string,
-  meta: Omit<SessionMeta, "time">,
-): Promise<SessionMeta> {
-  const sp = sessionPaths(talemateHome(), projectId, meta.id);
-  await mkdir(sp.dir, { recursive: true });
-  const full: SessionMeta = { ...meta, time: { created: Date.now(), updated: Date.now() } };
-  await writeFile(sp.meta, JSON.stringify(full, null, 2), "utf-8");
-  await touch(sp.messages);
-  return full;
-}
-
-export async function loadSessionMeta(projectId: string, sessionId: string): Promise<SessionMeta> {
-  const sp = sessionPaths(talemateHome(), projectId, sessionId);
-  return JSON.parse(await readFile(sp.meta, "utf-8")) as SessionMeta;
-}
-
-export async function listSessionIds(projectId: string): Promise<string[]> {
-  const dir = projectPaths(talemateHome(), projectId).sessions;
-  try {
-    return (await readdir(dir, { withFileTypes: true }))
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name);
-  } catch {
-    return [];
-  }
-}
-
-/** 追加一条消息，返回带 seq 的完整消息。seq 单调：读当前尾 seq +1。 */
-export async function appendMessage(
-  projectId: string,
-  sessionId: string,
-  msg: Omit<StoredMessage, "seq" | "ts">,
-): Promise<StoredMessage> {
-  const sp = sessionPaths(talemateHome(), projectId, sessionId);
-  await mkdir(sp.dir, { recursive: true });
-  const nonEmpty = (await readLines(sp.messages)).filter((l) => l.trim());
-  const lastSeq = nonEmpty.length ? (JSON.parse(nonEmpty[nonEmpty.length - 1]) as StoredMessage).seq : 0;
-  const full: StoredMessage = { ...msg, seq: lastSeq + 1, ts: Date.now() };
-  await writeFile(
-    sp.messages,
-    (nonEmpty.length ? nonEmpty.join("\n") + "\n" : "") + JSON.stringify(full) + "\n",
-    "utf-8",
-  );
-  return full;
-}
-
-/** 读会话全部消息（保序）。无会话文件时返回 []。 */
-export async function loadMessages(projectId: string, sessionId: string): Promise<StoredMessage[]> {
-  const sp = sessionPaths(talemateHome(), projectId, sessionId);
-  const lines = await readLines(sp.messages);
-  return lines
-    .filter((l) => l.trim())
-    .map((l) => JSON.parse(l) as StoredMessage)
-    .sort((a, b) => a.seq - b.seq);
-}
-
-/** 供模型上下文：compaction 消息 + 其后的全部消息（§8：上下文=最新 compaction 之后的 seq） */
-export function loadModelWindow(messages: StoredMessage[]): StoredMessage[] {
-  let from = 0;
-  for (let i = 0; i < messages.length; i++) {
-    if (messages[i].role === "compaction") from = i;
-  }
-  return messages.slice(from);
-}
-
-function readLines(file: string): Promise<string[]> {
-  return readFile(file, "utf-8")
-    .then((t) => (t ? t.split("\n") : []))
-    .catch(() => [] as string[]);
-}
-
-async function touch(file: string): Promise<void> {
-  try {
-    await access(file);
-  } catch {
-    await writeFile(file, "", "utf-8");
-  }
-}
-
-function slugify(s: string): string {
-  const ascii = s
-    .normalize("NFKD")
-    .replace(/[^\x00-\x7F]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return ascii || "novel";
-}
-
-function rand4(): string {
-  return Math.random().toString(36).slice(2, 6);
-}
-
-function safeName(name: string): string | undefined {
-  const base = name.split(/[\\/]/).pop() ?? name; // 只取最后一段，防路径穿越
-  return /^[\w一-鿿.\-]+$/.test(base) ? base : undefined;
 }
