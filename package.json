@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "plan": "bun run src/gen-plan.ts",
-    "chapter": "bun run src/gen-chapter.ts",
+    "cli": "bun run src/cli.ts",
+    "smoke": "bun run src/smoke.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
