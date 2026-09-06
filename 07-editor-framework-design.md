@@ -39,7 +39,7 @@
 
 ### 1.3 阶段状态（不是第二 persona）
 
-editor 只有一个人格；进入空间**只展示四层现状卡片**（`src/framework/report.ts`：有/无、是否待完善），**干什么由用户决定**。每次请求 editor 都带 `<nvl-state>` 锚点（项目现状摘要）；**设计引导不自动注入**——用户点名要完善某层时，editor 调 `doc-spec` 工具（`src/framework/doc_spec.ts`）按需拿该层结构规范再成稿。
+editor 只有一个人格；进入空间**只展示四层现状卡片**（`src/framework/report.ts`：有/无、是否待完善），**干什么由用户决定**。每次请求 editor 都带 core/world 常驻设定（§5）；**设计引导不自动注入**——用户点名要完善某层时，editor 调 `doc-spec` 工具（`src/framework/doc_spec.ts`）按需拿该层结构规范再成稿。
 
 ---
 
@@ -49,43 +49,40 @@ editor 只有一个人格；进入空间**只展示四层现状卡片**（`src/f
 
 | 层 | 文件 | 变化 | 影响范围 | 注入方式 |
 |---|---|---|---|---|
-| 核心层 | `core.md` | 极少变 | 一改牵全身 | **常驻**：每轮 `<nvl-state>` 全文 |
-| 世界层 | `world.md` | 慢变、追加 | 世界相关切片 | 按需 read/search |
+| 核心层 | `core.md` | 极少变 | 一改牵全身 | **常驻**：每轮注入全文（§5） |
+| 世界层 | `world.md` | 慢变、追加 | 每场戏都在世界里 | **常驻**：每轮注入全文（随 core，§5） |
 | 人物层 | `characters.md` | 慢变、追加（每角色一格） | 本章角色切片 | 按需 read/search |
 | 情节层 | `outline.md` | 快变、最局部 | 当前卷/章 | 按需 read；细纲切片进 writer task prompt |
 
 ### 2.1 各层目标结构（doc_spec 数据定义；`（待定：…）` = 未填格）
 
 <details>
-<summary>core.md（核心层）</summary>
+<summary>core.md（核心层 = 小说介绍）</summary>
 
 ```markdown
-# core · 核心层（卖点与设定内核）
-> 全书最稳定的一层，所有层都长在它上面。改 core 常牵动其他层。
+# core · 核心层（小说介绍）
+> 写作方向不变量，所有层都长在它上面。改 core 常牵动其他层。
+> 判定（2026-09-06 收敛）：反着写就变另一本；每一章每一笔都对它。全文常驻。
 
-## 一句话卖点
 ## 题材 · 频道
-## 主角
-### 想要什么
-### 最怕什么
-### 为什么是他
-## 金手指 / 真实约束
-### 边界与代价
-## 爽感承诺
-## 目标读者
+## 一句话简介         谁（身份+处境）× 想达成什么 × 挡路的是什么
+## 金手指 / 超常设定   有→一句+硬边界；无→写「真实系」，边界=仍受什么约束
+## 基调 · 情绪         每章写作不许破坏的情绪（一句话）
 ```
+> 旧格去向：一句话卖点 → 并进「一句话简介」；主角 → 只留身份在简介前提句，内核（想要/最怕/为什么是他）下放 characters 主角卡（add-character）；爽感承诺 → 收敛为「基调 · 情绪」；目标读者 → 移出（非写作不变量）。世界观归属核心层与否待定，暂由 world.md 承载。
 </details>
 
 <details>
-<summary>world.md（世界层）</summary>
+<summary>world.md（世界层 = 空间 · 规则 · 术语）</summary>
 
 ```markdown
-# world · 世界层（舞台与秩序）
-## 世界观一句话
+# world · 世界层（舞台与规则）
+> 这本书"当下"的静态舞台与规则。2026-09-06 收敛：从六格收窄为三格。
+> 世界性质并入空间第一行；势力（=会"想要"的 actor）移出世界、归属待定（06 §8）；历史秘密拆分——
+> 仍生效的过去作成因/遗迹写进相关格，悬念归 outline「伏笔与回收登记」。
+
 ## 空间与舞台
 ## 规则与秩序
-## 势力与人物群像
-## 历史痕迹与秘密
 ## 术语表
 ```
 </details>
@@ -131,7 +128,7 @@ editor 只有一个人格；进入空间**只展示四层现状卡片**（`src/f
 flowchart TD
     A[用户进项目 / 说想写什么] --> B{editor: designActive?<br/>outline 还是骨架}
     B -- 否 --> Z[主编职责：按需读 docs 切片<br/>准备写作/回答案]
-    B -- 是 --> C[每轮注入: persona + 设计段协议 + nvl-state 锚点]
+    B -- 是 --> C[每轮注入: persona + 设计段协议 + core/world 常驻设定]
     C --> D[挑一层推进，依赖序 core→world/characters→outline]
     D --> E[层内循环：问→辩→定→记]
     E --> F{这一格能一句话讲清<br/>且用户认可?}
@@ -153,7 +150,7 @@ flowchart TD
 
 1. **先 core 后 outline**。core 决定一切；outline 最后且最易变，不在 core 立住前深聊。
 2. **聊定才写**：没写进 docs 的不算已定。每层循环"问→辩→定→记"，每次 `edit-doc`/`append-doc` 只动一格、confirm 拍板。
-3. **层告一段落报状态**：给用户"当前已定 + 还待定"，避免原地打转（可参考 `<nvl-state>` 索引）。
+3. **层告一段落报状态**：给用户"当前已定 + 还待定"，避免原地打转（材料清单用 list-docs）。
 4. **新点子即时归类**：当场判断归哪层，聊定落盘；推翻旧设定先用 `search-docs` 看影响面，小改自己 `edit-doc`，牵动多层的结构级改动派 planner（`task(planner)`，让它 read 全量 docs 产出一致的新版，editor 复核给用户）。
 5. **写作段由用户点单进入**：outline 有了方向后，editor 回到编排职责，设计协议自然退场。
 
@@ -166,33 +163,30 @@ flowchart TD
 - **寻址**：小节 = 文档里以 `##`+ 开头的标题。一格（如 `## 主角`）覆盖到下一个同级/更高标题前；`###` 子格可单独寻址。`src/framework/markdown.ts` 提供 getSection/replaceSection/removeSection/appendBlock/listHeadings。
 - **confirm**：`edit-doc`/`remove-doc-section`/`write-doc` 在 execute 内做（给旧→新摘要 / 引用命中），拒绝返回文案不落盘。
 - **删前查引用**：`remove-doc-section` 收到 `term`（实体名）→ 内置 `search-docs(term)`，命中列进 confirm 摘要——**强制点**，模型想跳也跳不过。
-- **锚点不用维护**：`<nvl-state>` 是组装时**派生**的（core 全文 + 写作进度 + 文档索引），永不过期，无写后刷新钩子。
+- **常驻设定不用维护**：core/world 由 `buildResidentDocs` 每轮**现读**注入，永不过期，无写后刷新钩子。
 
 各工具的执行语义与返回见 `src/tool/（按领域模块：doc_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`。
 
 ---
 
-## 5. 锚点与上下文组装
+## 5. 常驻设定与上下文组装
 
-editor（可见 primary）每次请求的 system = `env + persona + [设计段协议] + <nvl-state> + AGENTS.md + skill 目录`（`src/context/assemble.ts` / `src/session/session.ts`）：
+editor（可见 primary）每次请求的 system = `env + 角色 system + [设计段协议] + core/world 常驻设定 + AGENTS.md + skill 目录`（`src/context/assemble.ts` / `src/session/session.ts`）：
 
 ```markdown
-<nvl-state>
-作品：书名｜题材
-── 核心层 docs/core.md（最高优先依据，全文常驻）──
+2026-…  作品：〈书名〉 当前角色：主编        ← env 块
+〈editor persona〉
+[设计段协议（仅设计段）]
+【常驻设定 · docs/core.md】（每轮注入，写作不得违背）
 <core.md 全文>
-── 写作进度 ──
-已落章 N 篇 / plan 文件名…
-── 文档索引 ──
-core.md:
-  - 一句话卖点 …
-  - 主角 …
+【常驻设定 · docs/world.md】（每轮注入，写作不得违背）
+<world.md 全文>
+Instructions from: AGENTS.md
 …
-</nvl-state>
 ```
 
-- **core 全文常驻**：core 小、最稳、一切依赖它 → 放锚点；world/characters/outline 全文仍按需 read-doc（它们会长大，不能每轮全量）。
-- **subagent 不注入锚点**（省 token）：planner/writer 的上下文由 task prompt 带切片 + 自己 read-doc 补齐。
+- **core + world 常驻 = 设定全文，不带"状态"包装**：core（小说介绍）是写作方向不变量、world（舞台与规则）是场景规则，任何一章都得对它们 → `buildResidentDocs` 每轮现读注入（2026-09-06 追加：世界观随 core 一起常驻，见 06 §8）。原 `<nvl-state>` 块已删——它名义上是状态锚点、实际却搬运整份文档 + 进度 + 索引（名实不符）。写作进度/伏笔/待定等**状态**不属于静态基线：归 list-chapters / list-docs 工具（及未来的独立状态块），characters/outline 全文仍按需 read-doc。
+- **只给可见 primary（editor）注入**；subagent 不注入（省 token，靠 task prompt 切片 + 自己 read-doc 补齐）。
 
 ---
 
@@ -202,7 +196,7 @@ core.md:
 
 **用户**：想写个荒岛求生的故事，一个男人和一个空姐流落荒岛。
 
-`[editor: 每轮注入 persona + <nvl-state> 锚点。用户说『完善核心设定』→ editor 调 doc-spec(core) 拿结构，按小节把用户的话整理成稿]`
+`[editor: 每轮注入 persona + core/world 常驻设定。用户说『完善核心设定』→ editor 调 doc-spec(core) 拿结构，按小节把用户的话整理成稿]`
 
 **editor**（走依赖序 core）:好，先别急着定情节，把"核"聊清楚。先问：你脑子里最先浮起的画面是紧张求生，还是两个人之间的暧昧？
 
@@ -210,19 +204,18 @@ core.md:
 
 **editor**:那卖点大概是"两个人、一座岛、活下去"。我落进 core：
 ```
-# 一句话卖点  ← edit-doc(core.md, "一句话卖点", "空难后，他和她被困荒岛，没有系统没有外挂，只有脑子与自然你死我活。")
+# 一句话简介  ← edit-doc(core.md, "一句话简介", "空难后，习惯性扛责任的普通人沈越和空姐被困荒岛，没有系统没有外挂，只有脑子与自然你死我活——他想带她活着回去。")
 ```
-⚠️ **需要确认**：改写 docs/core.md › 一句话卖点（旧 8 字 → 新 42 字；其余小节不变） → 用户 y
+⚠️ **需要确认**：改写 docs/core.md › 一句话简介（旧 8 字 → 新 42 字；其余小节不变） → 用户 y
 
-**editor**:题材/频道和主角这格要你拍板：① 偏男频还是双频？② 男主"想要/最怕"？我的默认：双频；男主想要"活着回去"，最怕……给个软肋——习惯性把责任扛在自己身上？
+**editor**:题材这格你拍板：男频还是双频？我的默认：双频｜求生向。主角的"想要/最怕"我不写进 core——它是人物层的引擎，一会儿 add-character 给沈越立卡时再定；core 只留他一句身份。
 
 **用户**：就按你说的。
 
 **editor**（继续 core）：
 ```
 # edit-doc(core.md, "题材 · 频道", "双频｜求生向，感情为暗线")
-# append-doc(core.md, "## 目标读者\n（待定：先留）")   ← 例子：追加一格（非破坏不需 confirm）
-# edit-doc(core.md, "主角", "沈越——习惯性扛责任的普通人。\n\n### 想要什么\n活着回去。\n\n### 最怕什么\n把同行的人害死。")
+# edit-doc(core.md, "基调 · 情绪", "紧绷求生的紧张 + 相依为命的暖；每章兑现'又撑过一劫'的释放")
 ```
 ……core 几格填齐、用户认可后，editor 转 world：
 
@@ -232,8 +225,8 @@ core.md:
 
 **editor**:
 ```
-# edit-doc(core.md, "金手指 / 真实约束", "无超自然。靠知识/体力/协作求生。\n\n### 边界与代价\n（无金手指，越界=违背本书基调）")
-# append-doc(world.md, "## 历史痕迹与秘密\n（待定：岛上曾来过一批人，没走成——坑先埋着）")
+# edit-doc(core.md, "金手指 / 超常设定", "无超自然。靠知识/体力/协作求生。边界：仍受真实约束，越界=违背本书基调")
+# append-doc(world.md, "## 空间与舞台\n无人礁岛，亚热带，淡水溪+山洞。岛上前人没走成的遗迹——仍生效的过去作成因写这，悬念引爆归 outline 伏笔登记")
 ```
 
 **editor**（characters，卡必须带"说话方式"）:空姐先立卡。除了性格标签，我要能实操的三样：她**怎么说话**（口头禅/拐不拐弯）、**习惯动作**、**最怕什么**。
@@ -245,6 +238,8 @@ core.md:
 # append-doc(characters.md, "## 角色：林晚\n\n### 一句话定位\n空姐，与沈越困同一座岛。\n\n### 想要 · 最怕\n想要体面地活着回去；最怕成为拖累。\n\n### 说话方式\n嘴硬心软，关心总是反着说；口头禅式原话：\"你死了我可不会埋你\"。\n\n### 习惯动作\n紧张时数身边的东西够不够用。\n\n### 在故事中的功能\n沈越的对照与软肋，感情暗线。")
 ```
 ……
+
+**editor**（characters 收尾）:沈越也立主角卡——"想要活着回去 / 最怕把同行的人害死"这套引擎放他卡里（add-character），core 不重复。
 
 **editor**（outline 前的检查点）:core/world/characters 有底了。现在该把材料综合成整本结构——这活要读全量 docs，我派 planner，它自己读，不占我们的对话。
 

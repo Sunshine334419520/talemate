@@ -6,7 +6,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildAnchor, designActive } from "./src/framework/anchor";
+import { buildResidentDocs, designActive } from "./src/framework/anchor";
 import { createProject } from "./src/storage/project";
 import { loadMessages } from "./src/storage/session-store";
 import { openSession, type UserIO } from "./src/session/session";
@@ -106,8 +106,8 @@ console.log(`\n═══════════════ 项目已建：${me
 
 const designOn = await designActive(meta.id);
 console.log(`designActive=${designOn}（outline 仍为骨架 → 处于设计段，注入设计协议）`);
-console.log("\n───── <nvl-state> 锚点（editor 每轮常驻，派生自磁盘） ─────\n");
-console.log(await buildAnchor(meta.id));
+console.log("\n───── core/world 常驻设定（editor 每轮注入，现读自磁盘） ─────\n");
+console.log(await buildResidentDocs(meta.id));
 
 const session = await openSession({ projectId: meta.id, io, title: "演示会话" });
 let last = 0;

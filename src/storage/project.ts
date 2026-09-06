@@ -32,7 +32,7 @@ export async function createProject(opts: { title: string; genre?: string }): Pr
       `# ${opts.title} · 项目规则`,
       "",
       "这是本小说项目的操作规范（对 agent 常驻注入）。",
-      "- 企划文档按需建在 docs/：core.md（核心/卖点）、world.md（世界观）、characters.md（角色）、outline.md（大纲）。想完善哪层，先 doc-spec 拿该层该有哪些小节，再成稿落盘。",
+      "- 企划文档按需建在 docs/：core.md（核心/小说介绍）、world.md（世界观）、characters.md（角色）、outline.md（大纲）。想完善哪层，先 doc-spec 拿该层该有哪些小节，再成稿落盘。",
       "- 写作前先读对应 docs 取当前版本；不引用缓存旧设定。",
       "- 成品正文存 chapters/，命名 chapter_ch<N>_v<M>.md；规划存 plan_ch<N>.md。",
       "",

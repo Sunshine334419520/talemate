@@ -1,6 +1,6 @@
 Rewrite ONE section of a doc; the other sections stay untouched.
 
-name: the doc filename; section: the exact heading title to replace (e.g. 主角, 爽感承诺,
-角色：沈越); content: that section's new body, WITHOUT the heading line.
+name: the doc filename; section: the exact heading title to replace (e.g. 一句话简介,
+题材 · 频道, 角色：沈越); content: that section's new body, WITHOUT the heading line.
 
 Read the current version first (read-doc). Replacing that section triggers user confirmation.

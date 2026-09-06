@@ -35,8 +35,8 @@ export async function buildProjectStatus(projectId: string): Promise<string> {
     readDoc(projectId, "outline.md"),
   ]);
 
-  const sell = firstLine(core, "一句话卖点");
-  const worldOne = firstLine(world, "世界观一句话");
+  const intro = firstLine(core, "一句话简介");
+  const stage = firstLine(world, "空间与舞台");
   const mainLine = firstLine(outline, "一句话主线");
 
   const cardNames = characters ? listCardNames(characters) : [];
@@ -47,8 +47,8 @@ export async function buildProjectStatus(projectId: string): Promise<string> {
   const lines: string[] = [];
   lines.push(`作品：${meta?.title ?? projectId}${meta?.genre ? `（${meta.genre}）` : ""}`);
   lines.push("");
-  lines.push(`◇ 核心设定  ${core === undefined ? "（尚无 docs/core.md）" : `✓ ${briefOf(sell, "已有 core.md，核心格待完善")}`}`);
-  lines.push(`◇ 世界观    ${world === undefined ? "（尚无 docs/world.md）" : `✓ ${briefOf(worldOne, "已有 world.md，世界观待完善")}`}`);
+  lines.push(`◇ 核心设定  ${core === undefined ? "（尚无 docs/core.md）" : `✓ ${briefOf(intro, "已有 core.md，核心格待完善")}`}`);
+  lines.push(`◇ 世界观    ${world === undefined ? "（尚无 docs/world.md）" : `✓ ${briefOf(stage, "已有 world.md，世界格待完善")}`}`);
   lines.push(`◇ 角色现状  ${charBrief}`);
   lines.push(`◇ 大纲现状  ${mainLine ? `✓ ${mainLine}` : "无大纲"}`);
   lines.push("");

@@ -19,13 +19,13 @@ export const DOC_KINDS: DocKind[] = [
     id: "core",
     file: "core.md",
     title: "核心层",
-    blurb: "卖点/题材/主角内核/金手指边界/爽感承诺——最稳，一切层依赖它",
+    blurb: "小说介绍：题材·频道/一句话简介/金手指·边界/基调·情绪——写作方向不变量，常驻，一切层依赖它",
   },
   {
     id: "world",
     file: "world.md",
     title: "世界层",
-    blurb: "舞台与秩序/势力/秘密——慢变、追加为主",
+    blurb: "空间与舞台/规则与秩序/术语表——世界当下设定，慢变、追加为主",
   },
   {
     id: "characters",

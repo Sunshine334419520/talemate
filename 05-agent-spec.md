@@ -224,10 +224,10 @@ task { agent: "planner" | "writer" | …, prompt: string }
 本轮实现 = **框架设计闭环 + harness 深度规范化**，与 `06-framework-and-mode-notes.md` §6/§6.6 一致，详见 `07-editor-framework-design.md`（主编规范 + 框架设计流程 + 跑通示例）。
 
 **已落地**
-- framework 域层 `src/framework/`：`doc_spec`（每层结构规范，按需取）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `report`（四层现状卡片）· `anchor`（每轮派生 `<nvl-state>`）。
+- framework 域层 `src/framework/`：`doc_spec`（每层结构规范，按需取）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `report`（四层现状卡片）· `anchor`（core/world 常驻设定注入 `buildResidentDocs` + 设计段判定）。
 - **懒建**：createProject 不再播种四层（`src/storage/project.ts`）；docs 初始为空，用户要完善某层时 editor 调 `doc-spec` 拿形状再成稿；`add-character` 首次调用自建 characters.md。新增 `listChapters`。
 - 框架增删改查工具：`list-docs`（含小节索引）/ `read-doc`(带 section) / `search-docs` / `edit-doc` / `append-doc` / `remove-doc-section`（删除前内置引用检查进 confirm）（`src/tool/（按领域模块：doc_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`）。
-- editor 上下文：可见 primary 每轮派生注入 `<nvl-state>` 锚点（`src/context/assemble.ts` + `src/session/session.ts`）；设计引导不自动注入——用户点名某层时 editor 调 `doc-spec` 工具按需拿规范。锚点走"派生"，无写后刷新钩子、永不陈旧。
+- editor 上下文：可见 primary 每轮注入 core/world 常驻设定（`buildResidentDocs`，`src/context/assemble.ts` + `src/session/session.ts`）；设计引导不自动注入——用户点名某层时 editor 调 `doc-spec` 工具按需拿规范。常驻设定现读自磁盘，无写后刷新钩子、永不陈旧。（原 `<nvl-state>` 状态包装块已删，见 06 §8。）
 - 内部杂活 agent 化 + task 动态描述 + hidden 过滤（§5.2/5.3）。
 - 单测 `src/framework/framework.test.ts`（`bun test`，含懒建/doc-spec/角色卡）+ `bun run smoke`（断言 docs 懒建为空）+ `bun run typecheck` 全绿。
 

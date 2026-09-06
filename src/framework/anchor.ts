@@ -1,15 +1,16 @@
 /**
- * 派生锚点 + 设计段判定 + 文档索引。
+ * 常驻设定注入 + 设计段判定 + 文档索引。
  *
- * 锚点设计（06 §3.1 / 6.x）：框架"精髓常驻"但全文不常驻——
- * 组装上下文时**现读** core.md（小、最稳、一切依赖它）作为常驻块 + 写作进度 + 文档索引，
- * 而不是维护一个缓存文件（永不陈旧，天然替代"写后刷新锚点"钩子）。
+ * 常驻设定（06 §8，2026-09-06）：core.md（小说介绍）+ world.md（世界层）是每轮注入 editor
+ * 的固定基线——现读全文、**不带状态包装**。原 `<nvl-state>` 块已删除：它名义上是"状态锚点"，
+ * 实际却搬运整份文档 + 进度 + 索引（名实不符）。状态类信息（写作进度/伏笔/待定）不是静态基线，
+ * 归 list-chapters 等工具与未来的状态块；characters/outline 仍按需 read-doc，索引由 list-docs 给出。
  */
-import { readDoc, listDocs, listChapters, loadProjectMeta } from "../storage/project";
+import { readDoc, listDocs } from "../storage/project";
 import { listHeadings } from "./markdown";
 import { DOC_KINDS } from "./dockind";
 
-/** 每个文档的一级小节 + 是否仍带"待定"占位（用于列表一眼看出填充度）。 */
+/** 每个文档的一级小节（list-docs 工具返回；用于一眼看出有哪些材料与填充度）。 */
 export async function buildDocIndex(projectId: string): Promise<string> {
   const docs = await listDocs(projectId);
   const lines: string[] = ["docs/"];
@@ -31,40 +32,18 @@ export async function buildDocIndex(projectId: string): Promise<string> {
   return lines.join("\n");
 }
 
-/** 写作进度：chapters/ 下的 plan_/chapter_ 文件名（有则列出，无则提示）。 */
-export async function buildProgress(projectId: string): Promise<string> {
-  const names = await listChapters(projectId);
-  if (!names.length) return "（尚无正文/规划落盘）";
-  const plans = names.filter((n) => n.startsWith("plan_"));
-  const chapters = names.filter((n) => n.startsWith("chapter_"));
-  const lines: string[] = [];
-  if (chapters.length) lines.push(`已落章 ${chapters.length} 篇：${chapters.slice(-3).join("、")}${chapters.length > 3 ? " …" : ""}`);
-  if (plans.length) lines.push(`已有规划：${plans.join("、")}`);
-  if (!lines.length) lines.push(`chapters/：${names.join("、")}`);
-  return lines.join("\n");
-}
-
-/** 组装 <nvl-state> 常驻块。core.md 全文 + 进度 + 索引；core 缺失则给占位。 */
-export async function buildAnchor(projectId: string): Promise<string> {
-  const meta = await loadProjectMeta(projectId).catch(() => undefined);
-  const core = (await readDoc(projectId, "core.md")) ?? "（core.md 尚未建立）";
-  const progress = await buildProgress(projectId);
-  const index = await buildDocIndex(projectId);
-  const genre = meta?.genre ? `｜${meta.genre}` : "";
-  return [
-    "<nvl-state>",
-    `作品：${meta?.title ?? projectId}${genre}`,
-    "",
-    "── 核心层 docs/core.md（最高优先依据，全文常驻；其余层按需 read-doc/search-docs）──",
-    core,
-    "",
-    "── 写作进度 ──",
-    progress,
-    "",
-    "── 文档索引 ──",
-    index,
-    "</nvl-state>",
-  ].join("\n");
+/**
+ * core + world 常驻设定全文。editor 每轮注入；文件不存在（懒建未产出）则跳过该块。
+ * 只放设定全文——标题/题材在 env 块，进度/索引交给 list-chapters / list-docs 工具。
+ */
+export async function buildResidentDocs(projectId: string): Promise<string> {
+  const blocks: string[] = [];
+  for (const name of ["core.md", "world.md"] as const) {
+    const content = await readDoc(projectId, name);
+    if (content === undefined) continue;
+    blocks.push(`【常驻设定 · docs/${name}】（每轮注入，写作不得违背）\n${content}`);
+  }
+  return blocks.join("\n\n");
 }
 
 /** 设计段判定：outline.md 还是空骨架/仅占位 → 认为处于"框架设计"阶段（editor 注入设计协议）。 */

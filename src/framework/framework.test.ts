@@ -1,5 +1,5 @@
 /**
- * 离线测试（不打 LLM）：markdown 区块手术 / DocKind 骨架 / 播种 / 跨文档搜索 / 派生锚点与设计段判定。
+ * 离线测试（不打 LLM）：markdown 区块手术 / DocKind 骨架 / 播种 / 跨文档搜索 / 常驻设定与设计段判定。
  * 运行：bun test
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
@@ -11,7 +11,7 @@ import { appendBlock, getSection, listHeadings, removeSection, replaceSection } 
 import { DOC_FILES } from "./dockind";
 import { renderDocSpec } from "./doc_spec";
 import { renderHits, searchDocs } from "./search";
-import { buildAnchor, buildDocIndex, buildProgress, designActive } from "./anchor";
+import { buildResidentDocs, buildDocIndex, designActive } from "./anchor";
 import { addCharacterTool, removeCharacterTool, updateCharacterTool } from "../tool/character_tools";
 import type { ToolContext } from "../core/types";
 
@@ -32,54 +32,54 @@ afterAll(async () => {
 // ─── markdown 区块手术 ───
 
 const sample = [
-  "# core",
+  "# 任意文档",
   "",
-  "## 一句话卖点",
+  "## 第一节",
   "（待定）",
   "",
-  "## 主角",
+  "## 第二节",
   "（待定）",
   "",
-  "### 想要什么",
+  "### 子小节",
   "（待定）",
   "",
 ].join("\n");
 
 describe("markdown 区块手术", () => {
   test("getSection 命中一级与二级小节，找不到时给可用列表", () => {
-    const s1 = getSection(sample, "主角");
+    const s1 = getSection(sample, "第二节");
     expect(s1.found).toBe(true);
     expect(s1.body).toContain("（待定）");
-    expect(s1.block).toContain("## 主角");
+    expect(s1.block).toContain("## 第二节");
 
-    const s2 = getSection(sample, "想要什么");
+    const s2 = getSection(sample, "子小节");
     expect(s2.found).toBe(true);
-    expect(s2.block).toContain("### 想要什么");
+    expect(s2.block).toContain("### 子小节");
 
     const miss = getSection(sample, "不存在");
     expect(miss.found).toBe(false);
-    expect(miss.available).toContain("主角");
+    expect(miss.available).toContain("第二节");
   });
 
   test("replaceSection 只改一格，其余保留", () => {
-    const next = replaceSection(sample, "一句话卖点", "空难后被困荒岛，只有脑子与自然你死我活。");
+    const next = replaceSection(sample, "第一节", "空难后被困荒岛，只有脑子与自然你死我活。");
     expect(next).toContain("你死我活");
-    expect(next).not.toContain("（待定）\n\n## 主角");
-    expect(next).toContain("## 主角"); // 主角小节仍在
-    expect(getSection(next, "主角").found).toBe(true);
+    expect(next).not.toContain("（待定）\n\n## 第二节");
+    expect(next).toContain("## 第二节"); // 第二节小节仍在
+    expect(getSection(next, "第二节").found).toBe(true);
   });
 
   test("removeSection 删掉一格", () => {
-    const next = removeSection(sample, "主角");
-    expect(next).not.toContain("## 主角");
-    expect(next).toContain("## 一句话卖点");
+    const next = removeSection(sample, "第二节");
+    expect(next).not.toContain("## 第二节");
+    expect(next).toContain("## 第一节");
   });
 
   test("appendBlock 追加 + 小节索引", () => {
     const appended = appendBlock(sample, "## 角色：沈越\n\n（待定）");
     expect(appended).toContain("## 角色：沈越");
     const titles = listHeadings(appended).map((h) => h.title);
-    expect(titles).toEqual(expect.arrayContaining(["一句话卖点", "主角", "角色：沈越"]));
+    expect(titles).toEqual(expect.arrayContaining(["第一节", "第二节", "角色：沈越"]));
   });
 
   test("listHeadings 跳过 HTML 注释里的模板 heading（防幽灵卡）", () => {
@@ -112,9 +112,18 @@ describe("doc-spec（结构规范）", () => {
   test("四层文件枚举齐全", () => {
     expect(DOC_FILES).toEqual(["core.md", "world.md", "characters.md", "outline.md"]);
   });
-  test("core 规范含小节；characters 指向 add-character", () => {
-    expect(renderDocSpec("core")).toContain("## 一句话卖点");
-    expect(renderDocSpec("core")).toContain("爽感承诺");
+  test("core 规范 = 小说介绍四格；world = 空间/规则/术语三格（旧格移除）", () => {
+    expect(renderDocSpec("core")).toContain("## 一句话简介");
+    expect(renderDocSpec("core")).toContain("## 金手指 / 超常设定");
+    expect(renderDocSpec("core")).toContain("基调 · 情绪");
+    expect(renderDocSpec("core")).not.toContain("一句话卖点");
+    expect(renderDocSpec("core")).not.toContain("爽感承诺");
+    expect(renderDocSpec("world")).toContain("## 空间与舞台");
+    expect(renderDocSpec("world")).toContain("## 规则与秩序");
+    expect(renderDocSpec("world")).toContain("## 术语表");
+    expect(renderDocSpec("world")).not.toContain("世界观一句话");
+    expect(renderDocSpec("world")).not.toContain("势力与人物群像");
+    expect(renderDocSpec("world")).not.toContain("历史痕迹与秘密");
     expect(renderDocSpec("characters")).toContain("add-character");
   });
 });
@@ -124,12 +133,12 @@ describe("doc-spec（结构规范）", () => {
 describe("项目懒建 / 搜索 / 锚点", () => {
   test("懒建：建项目不种四层；文件被写入才出现", async () => {
     expect(await listDocs(pid)).toEqual([]);
-    await writeDoc(pid, "core.md", "# core\n\n## 一句话卖点\n空难后困于荒岛。");
+    await writeDoc(pid, "core.md", "# core\n\n## 一句话简介\n空难后困于荒岛。");
     expect(await listDocs(pid)).toEqual(["core.md"]);
   });
 
   test("searchDocs 跨文档命中；renderHits 分组", async () => {
-    await writeDoc(pid, "core.md", "## 主角\n沈越 想要活着回去。");
+    await writeDoc(pid, "core.md", "## 一句话简介\n沈越 想要活着回去。");
     await writeDoc(pid, "world.md", "## 势力\n沈越 与林晚结伴求生。");
     const hits = await searchDocs(pid, "沈越");
     expect(hits.length).toBe(2);
@@ -145,15 +154,17 @@ describe("项目懒建 / 搜索 / 锚点", () => {
     expect(await designActive(pid)).toBe(false);
   });
 
-  test("buildAnchor 含标题/进度/索引，core 全文常驻", async () => {
-    const anchor = await buildAnchor(pid);
-    expect(anchor).toContain("<nvl-state>");
-    expect(anchor).toContain("测试书");
-    expect(anchor).toContain("沈越 想要活着回去"); // core 全文
+  test("buildResidentDocs：core + world 常驻全文，无状态包装", async () => {
+    await writeDoc(pid, "core.md", "# core\n\n## 一句话简介\n沈越 想要活着回去。");
+    await writeDoc(pid, "world.md", "## 空间与舞台\n一座荒岛。\n\n## 规则与秩序\n无超自然。");
+    const resident = await buildResidentDocs(pid);
+    expect(resident).toContain("沈越 想要活着回去"); // core 全文
+    expect(resident).toContain("一座荒岛。"); // world 全文
+    expect(resident).toContain("无超自然。");
+    expect(resident).not.toContain("<nvl-state>"); // 无状态包装
+    expect(resident).not.toContain("写作进度"); // 进度归工具，不常驻
     const index = await buildDocIndex(pid);
-    expect(index).toContain("core.md");
-    const progress = await buildProgress(pid);
-    expect(progress).toContain("尚无正文");
+    expect(index).toContain("core.md"); // 索引仍由 list-docs 提供
   });
 });
 

@@ -82,7 +82,7 @@ function printBanner(projectId: string): Promise<void> {
     const status = await buildProjectStatus(projectId);
     // status 首行是“作品：…”与上面重复，展示四层现状即可
     console.log(status.split("\n").slice(1).join("\n"));
-    if (verbose) console.log(`   （<nvl-state> 锚点仍每轮给模型派生注入，这里不重复打印）`);
+    if (verbose) console.log(`   （core/world 常驻设定仍每轮注入 editor 上下文，这里不重复打印）`);
   })();
 }
 

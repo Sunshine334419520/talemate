@@ -14,7 +14,7 @@ import { AgentRegistry } from "../agent/registry";
 import { loadModelConfig } from "../core/config";
 import type { AgentDef, AssistantPart, LLMEvent, ModelConfig, ProjectMeta, StoredMessage, ToolContext } from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
-import { buildAnchor, buildDocIndex } from "../framework/anchor";
+import { buildResidentDocs, buildDocIndex } from "../framework/anchor";
 import { renderHits, searchDocs } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
@@ -154,21 +154,21 @@ export class Session {
   }
 
   /**
-   * 拼 system prompt：env + 角色 system + (设计段协议) + (<nvl-state> 锚点) + AGENTS.md + skill 目录。
-   * 锚点只给可见 primary（editor）派生注入——subagent 不注入（省 token，靠 task prompt 切片）。
+   * 拼 system prompt：env + 角色 system + (设计段协议) + (core/world 常驻设定) + AGENTS.md + skill 目录。
+   * 常驻设定只给可见 primary（editor）注入——subagent 不注入（省 token，靠 task prompt 切片）。
    */
   private async buildSystem(agent: AgentDef): Promise<string> {
     const rules = await readProjectRules(this.projectId);
     const skills = await discoverSkills(this.projectId);
-    let anchor: string | undefined;
-    if (agent.mode === "primary" && !agent.hidden) anchor = await buildAnchor(this.projectId);
+    let resident: string | undefined;
+    if (agent.mode === "primary" && !agent.hidden) resident = await buildResidentDocs(this.projectId);
     return buildSystemPrompt({
       projectTitle: this.meta.title,
       agentName: agent.name,
       roleSystem: agent.system,
       rules,
       skills: renderSkillCatalog(skills),
-      anchor,
+      resident,
     });
   }
 
