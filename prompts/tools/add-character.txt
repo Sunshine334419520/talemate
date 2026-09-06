@@ -1,0 +1,10 @@
+Add a new character card to characters.md.
+
+A card is `## 角色：<name>` with the five fixed fields, each a `###` section:
+one-line role (一句话定位) / want & fear (想要·最怕) / speech style (说话方式 — give a
+verbatim sample line, not just trait adjectives) / habitual action (习惯动作) / role in story
+(在故事中的功能).
+
+Provide as many fields as you have now. Missing fields are written as （待定） and reported,
+then filled later via update-character. The name is checked against existing cards (no
+duplicates).

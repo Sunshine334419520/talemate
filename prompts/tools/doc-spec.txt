@@ -1,0 +1,9 @@
+Return the structural spec for one novel layer: which sections that layer's doc should
+contain, and how to draft / refine it.
+
+Call this when the user wants to build or perfect a layer — core / world / characters /
+outline (they'll often say it, e.g. "完善核心设定", "把世界观铺开", "加个角色", "排大纲").
+layer: one of core | world | characters | outline.
+
+If the target doc does not exist yet (lazy), get this spec FIRST, then draft the doc from the
+user's own words (not by interrogating field by field) and confirm before writing it.

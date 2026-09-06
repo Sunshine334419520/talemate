@@ -1,0 +1,4 @@
+Load one skill's full body (writing style / genre craft / template) into this conversation.
+
+name: a skill from <available_skills>. The content arrives as <skill_content> and stays in
+context for the current task.

@@ -1,63 +1,76 @@
 /**
- * Agent 注册表 + 默认角色声明。
- * 角色是纯声明（AgentDef）：editor(primary) 是日常对话面；planner/writer 是 subagent，只能被 task 委派。
- * 项目 talemate.json 里 agents.<id> 可覆盖默认（model/system 等）。
+ * Agent 注册表 + 默认角色声明（规范化，见 05-agent-spec.md / 06 §6）。
+ *
+ * 提示词放 prompts/*.txt（见 prompts/README.md）；persona 只留角色壳（inline，一句）。
+ * 语义：
+ * - editor = 唯一 primary（日常对话面 + 项目执掌）。无导演/评审 agent，拍板只属于人。
+ * - planner / writer = subagent，只能被 task 委派；"何时派"写在各 subagent 的 description，
+ *   由 describeTask 自动拼进 task 工具目录。
+ * - summarizer = hidden 内部 agent（compaction 用）。
+ * - Agent 是数据：talemate.json 的 agents.<id> 可覆盖（model/system/steps…）。
  */
 import type { AgentDef, ProjectMeta } from "../core/types";
+import { readPrompt } from "../prompts";
 
-const EDITOR_SYSTEM = [
-  "你是 talemate 的主编 agent，用户的创作参谋。你在一部小说的项目空间里工作。",
-  "",
-  "你的职责：",
-  "- 陪用户把小说从'一个想法'长成四层活文档：docs/core.md(卖点/设定) docs/world.md(世界观) docs/characters.md(角色) docs/outline.md(大纲)。",
-  "- 设定不是一次性定稿，是持续迭代的活文档：随时可以改，改动前先展示影响面、让用户拍板。",
-  "- 写作不是你的活：用户说'写第 N 章'时，你用 task 委派 writer 子角色去写，你只负责确认成品并落盘。",
-  "- 用 ask_user 向用户要创作决策（'主角想要什么？''这段要什么基调？'），不要替用户做作品级决定。",
-  "",
-  "落盘纪律：",
-  "- 写/改 docs/ 前先 read_doc 读当前版本，基于当前版本改；需要覆盖时工具会请你确认。",
-  "- 每个文档保持结构化（小标题/条目），核心层用条目，细节层允许散文。",
-].join("\n");
+// persona 只放角色壳（定语气）；机制/方法归数据与条件协议，见 06 §6.6。
+const EDITOR_SYSTEM =
+  "You are talemate's chief editor — the user's creative partner, and the steward of a novel's project space.";
 
-const WRITER_SYSTEM = [
-  "你是 talemate 的写手 agent，只负责把一章正文写好。",
-  "你会收到：当前作品核心设定切片、相关世界观/角色切片、本章细纲/体验工程图（若有）。",
-  "要求：",
-  "- 严格按给定材料写；材料里没写的不自创设定（不引入'此刻才冒出来'的新规则）。",
-  "- 输出只有正文本身，不含标题/章节名/解释/思考。",
-  "- 拿不准时按最克制、最平常的写法。",
-].join("\n");
-
-const PLANNER_SYSTEM = [
-  "你是 talemate 的规划 agent。为给定章节把任务工程化成一张【节拍序列】（读者体验施工图），供写手落地。",
-  "你会收到：当前核心设定、相关角色/世界观切片、本章任务描述。",
-  "输出：章节体验工程图（中枢问题/环账本/章末钩子/放大点/这章不许/节拍序列）。只做规划，不写正文。",
-].join("\n");
+const WRITER_SYSTEM = readPrompt("writer.system");
+const PLANNER_SYSTEM = readPrompt("planner.system");
+const SUMMARIZER_SYSTEM = readPrompt("summarizer.system");
 
 const DEFAULT_AGENTS: AgentDef[] = [
   {
     id: "editor",
     name: "主编",
-    description: "日常对话与设计主持，维护活文档，统筹写作",
+    description: "日常对话与项目执掌：维护 docs 四层活文档，设计段引导创作，写作段编排 planner/writer",
     mode: "primary",
-    tools: ["task", "read_doc", "write_doc", "list_docs", "skill", "ask_user"],
+    tools: [
+      "task",
+      "read-doc",
+      "write-doc",
+      "edit-doc",
+      "append-doc",
+      "remove-doc-section",
+      "search-docs",
+      "list-docs",
+      "skill",
+      "ask-user",
+      "confirm",
+      "add-character",
+      "update-character",
+      "remove-character",
+      "doc-spec",
+    ],
     system: EDITOR_SYSTEM,
   },
   {
     id: "planner",
     name: "规划",
-    description: "为章节做体验工程图（节拍规划）",
+    description:
+      "把材料梳理成结构/规划（章节节拍、整本/分卷大纲综合、结构重排）。何时用：用户要'第 N 章的节拍/细纲'、'把现有 docs 综合成整本/分卷大纲'，或一次设定改动要级联重整多份 docs 时——需要读全量材料再产出一致结构的活派它。",
     mode: "subagent",
-    tools: ["read_doc", "list_docs", "skill"],
+    tools: ["read-doc", "list-docs", "skill"],
     system: PLANNER_SYSTEM,
   },
   {
     id: "writer",
     name: "写手",
-    description: "按设定切片与规划写一章正文",
+    description:
+      "按设定切片与节拍写一章正文。何时用：用户要写正文且该章已有细纲/节拍（没有就先派 planner 出节拍）——它独立上下文专注成稿，成品由你（主编）拍板后落盘。",
     mode: "subagent",
-    tools: ["read_doc", "list_docs", "skill", "save_chapter"],
+    tools: ["read-doc", "list-docs", "skill", "save-chapter"],
     system: WRITER_SYSTEM,
+  },
+  {
+    id: "summarizer",
+    name: "摘要器",
+    description: "（内部）上下文压缩时生成前情摘要",
+    mode: "primary",
+    hidden: true,
+    tools: [],
+    system: SUMMARIZER_SYSTEM,
   },
 ];
 
@@ -82,9 +95,10 @@ export class AgentRegistry {
     return a;
   }
 
+  /** 默认 primary：第一个非 hidden 的 primary（editor）。 */
   getDefaultPrimary(): AgentDef {
-    const p = [...this.agents.values()].find((a) => a.mode === "primary");
-    if (!p) throw new Error("没有 primary agent");
+    const p = [...this.agents.values()].find((a) => a.mode === "primary" && !a.hidden);
+    if (!p) throw new Error("没有可见的 primary agent");
     return p;
   }
 
@@ -92,10 +106,17 @@ export class AgentRegistry {
     return [...this.agents.values()];
   }
 
-  /** 可被 task 委派的 subagent */
+  /** 可见 subagent（可被 task 委派；hidden 不在此列） */
   listSubagents(): AgentDef[] {
-    return [...this.agents.values()].filter((a) => a.mode === "subagent");
+    return [...this.agents.values()].filter((a) => a.mode === "subagent" && !a.hidden);
+  }
+
+  /** task 工具的动态目录文本（describeTask，照 opencode registry.describeTask） */
+  subagentCatalog(): string {
+    const subs = this.listSubagents();
+    if (!subs.length) return "";
+    return subs.map((a) => `- ${a.id}: ${a.description}`).join("\n");
   }
 }
 
-export { DEFAULT_AGENTS, EDITOR_SYSTEM, WRITER_SYSTEM, PLANNER_SYSTEM };
+export { DEFAULT_AGENTS, EDITOR_SYSTEM, WRITER_SYSTEM, PLANNER_SYSTEM, SUMMARIZER_SYSTEM };

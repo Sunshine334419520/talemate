@@ -1,0 +1,5 @@
+Update one or more fields of an existing character card; unspecified fields stay unchanged.
+
+name identifies the card. Give only the fields to change: one_line / want_fear / idiolect /
+habit / function. Replacing those fields triggers user confirmation. If the card does not
+exist, use add-character instead.

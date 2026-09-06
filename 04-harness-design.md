@@ -73,7 +73,7 @@ novels/<project-id>/
 | 层 | 文档 | 变化特征 | 注入方式 |
 |---|---|---|---|
 | 核心层 | `docs/core.md` | 极少变、一改牵全身、用户必须拍板 | 写作/规划时**常驻精简带**（小） |
-| 世界层 | `docs/world.md` | 慢变、追加为主 | 按需读（read_doc / task prompt 切片） |
+| 世界层 | `docs/world.md` | 慢变、追加为主 | 按需读（read-doc / task prompt 切片） |
 | 人物层 | `docs/characters.md` | 慢变、追加为主 | 按需读（本章相关角色切片） |
 | 情节层 | `docs/outline.md` | 快变、最局部 | 按需读（当前章/卷切片） |
 
@@ -107,7 +107,7 @@ interface Agent {
 ### 3.2 主编（editor，primary）—— 唯一的"日常对话面"
 
 - 用户建项目后进入的就是主编会话。**设计段**：主编引导/陪用户把企划从"一个想法"长成四层活文档；每次落盘用 `confirm`。
-- 主编手里有：`read_doc / write_doc / list_docs`（活文档）+ `task`（委派规划/写手）+ `skill` + `ask_user`。
+- 主编手里有：`read-doc / write-doc / list-docs`（活文档）+ `task`（委派规划/写手）+ `skill` + `ask-user`。
 - 主编**不亲自写正文**（正文是写手子会话的活），避免"设计对话上下文污染正文腔调、正文污染设计讨论"。
 
 ### 3.3 task 委派 = 子会话隔离（opencode 照搬）
@@ -217,24 +217,24 @@ defineTool({
 | id | 用途 | 可见角色 |
 |---|---|---|
 | `task` | 委派子会话（§3.3）：`{agent, prompt}` → `<task_result>` | editor |
-| `read_doc` | 读项目活文档（按文件名/可选小标题切） | editor, planner, writer |
-| `write_doc` | 写/改活文档（落盘前过 `confirm`，metadata 带改动摘要） | editor |
-| `list_docs` | 列项目 docs/ 与 skills/ | editor, planner, writer |
+| `read-doc` | 读项目活文档（按文件名/可选小标题切） | editor, planner, writer |
+| `write-doc` | 写/改活文档（落盘前过 `confirm`，metadata 带改动摘要） | editor |
+| `list-docs` | 列项目 docs/ 与 skills/ | editor, planner, writer |
 | `skill` | 按名注入知识包正文 | editor, planner, writer |
-| `ask_user` | 向主编提问要创作决策（返回答案文本给模型继续） | editor（planner/writer 默认禁用） |
-| `save_chapter` | 写手把成品正文落 `chapters/`（含命名规约） | writer |
+| `ask-user` | 向主编提问要创作决策（返回答案文本给模型继续） | editor（planner/writer 默认禁用） |
+| `save-chapter` | 写手把成品正文落 `chapters/`（含命名规约） | writer |
 
 > 规划/写手是否直接落盘 vs 只回传文本由主编落盘——**阶段一先定为"回传文本为主、save 为辅"**，避免子会话乱写文件；写入一律走 editor 的 confirm。可后续按角色放宽。
 
-### 7.3 人工点：confirm / ask_user（对应"用户当主编"）
+### 7.3 人工点：confirm / ask-user（对应"用户当主编"）
 
 - **confirm(action, summary, diff?)**：写/覆盖活文档、落盘正文等**不可轻易反悔动作**前，向用户展示"要做什么 + 影响面 + diff"，用户 3 秒拍板。对应 opencode edit 的 `ctx.ask(metadata: diff)`。
-- **ask_user(question, options?)**：设计对话中 agent 需要用户出想法/裁决时用（"主角的金手指是什么？""这段要不要写得残酷点？"）。**不是权限审批**，是参谋要决策。
+- **ask-user(question, options?)**：设计对话中 agent 需要用户出想法/裁决时用（"主角的金手指是什么？""这段要不要写得残酷点？"）。**不是权限审批**，是参谋要决策。
 - 阶段一：两者都是进程内 await 用户输入；TUI/UI 阶段再做成事件化审批流。
 
 ### 7.4 权限模型（极简）
 
-- 不搬 opencode 的 allow/ask/deny + 级联队列。只需：**默认全放行 + 每个工具自声明"是否需 confirm"**（工具定义里 `confirm?: (args) => summary`）。角色 `permission` 字段可整体关掉某工具（如 planner 禁 ask_user）。够用即可。
+- 不搬 opencode 的 allow/ask/deny + 级联队列。只需：**默认全放行 + 每个工具自声明"是否需 confirm"**（工具定义里 `confirm?: (args) => summary`）。角色 `permission` 字段可整体关掉某工具（如 planner 禁 ask-user）。够用即可。
 
 ---
 
@@ -295,18 +295,18 @@ defineTool({
 3. `llm/`：流式多轮（anthropic + openai 兼容），截断检测保留
 4. `agent/`：注册表 + editor/planner/writer 默认声明
 5. `session/`：runLoop + 单队列 + compaction（估算+摘要+消息落盘）
-6. `tool/`：defineTool + registry + task / read_doc / write_doc / list_docs / skill / ask_user / confirm / save_chapter
+6. `tool/`：defineTool + registry + task / read-doc / write-doc / list-docs / skill / ask-user / confirm / save-chapter
 7. `skill/`：发现（全局+项目）、SKILL.md 解析、目录注入、skill 工具
 8. `context/`：env+AGENTS.md+skill 目录组装、compaction 截断取历史
-9. CLI 冒烟：`novel create` → 进会话 → 让 editor 读/写一个 doc、ask_user 一次、委派一个 writer 子会话（返回文本），验证全链路通
+9. CLI 冒烟：`novel create` → 进会话 → 让 editor 读/写一个 doc、ask-user 一次、委派一个 writer 子会话（返回文本），验证全链路通
 
 ### P1 · 写作领域接入
 - editor 设计对话（把 企划 长成 docs/ 四层）
-- 手动触发"写第 N 章"：editor read_doc 取当前切片 → task writer（prompt 带 writer 规范 + 细纲 + 当前 core）→ save_chapter
+- 手动触发"写第 N 章"：editor read-doc 取当前切片 → task writer（prompt 带 writer 规范 + 细纲 + 当前 core）→ save-chapter
 - planner（节拍规划/体验工程图）作为独立 subagent 角色接 gen-plan 的 prompt
 
 ### P2 · 产品化
-- CLI/TUI 交互面、斜杠命令、confirm/ask_user 事件化
+- CLI/TUI 交互面、斜杠命令、confirm/ask-user 事件化
 - 文风卡迁移成 skill 库（style-01-wangwen → SKILL.md），扩充技法/题材库
 
 ---
@@ -322,7 +322,7 @@ defineTool({
 | 规则文件常驻全量注入（AGENTS.md "Instructions from:" 就近注入） | 照搬：一项目一 AGENTS.md | 研究 B（session/instruction.ts） |
 | 事件分类：delta live-only、ended durable；compaction 即一条消息 | 照搬落盘规则 + 小说向摘要模板 | 研究 D（schema/session-event.ts, core/compaction.ts） |
 | defineTool + registry（按 agent/permission 过滤） | 照搬最小版；无 output schema | 研究 C（tool/tool.ts, registry.ts） |
-| permission allow/ask/deny + question 工具 | **简化**：默认放行 + 工具自声明 confirm + ask_user | 研究 C |
+| permission allow/ask/deny + question 工具 | **简化**：默认放行 + 工具自声明 confirm + ask-user | 研究 C |
 | SQLite + drizzle + 事件溯源 + projector | **简化/替换**：文件系统 + jsonl（seq 单调），事件溯源不落 | 研究 D |
 | provider/推理/温度/截断 | 保留现有 llm.ts 能力，升流式 | 现有代码 |
 | bash/fs-edit/pty/grep/glob/todo/MCP/LSP/权限队列/OTel/云同步 | **剥离** | — |

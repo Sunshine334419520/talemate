@@ -1,138 +1,483 @@
 /**
- * CLI（阶段一：库 + REPL）。
- * 用法：
- *   bun run src/cli.ts novel create "书名" [题材]
- *   bun run src/cli.ts <project-id>          # 进主编会话 REPL
- *   bun run src/cli.ts ls                    # 列项目
- *   bun run src/cli.ts resume <project-id>   # 列出会话（二期加多会话恢复）
+ * talemate CLI（真实体验入口）。
  *
- * 交互面：真实 stdin confirm/ask_user + 多行输入（空行提交）。
+ * 用法：
+ *   talemate                        # 帮助 + 若上次有 current 则提示进入
+ *   talemate ls                     # 列出所有项目空间
+ *   talemate new <书名> [题材]       # 建空间（播种四层骨架）并进入
+ *   talemate use <id|书名>           # 进入某空间（可简写 talemate <id>）
+ *
+ * 空间内 REPL（默认 verbose——每一步都打印）：
+ *   /help /quit /status /projects /use <id|书名> /new <书名> [题材]
+ *   /sessions /open <n> /doc <name> /verbose /quiet /reasoning
+ *   - 单行回车即发送；行尾加反斜杠 `\` 续行（多行输入）。
+ *   - 模型回复流式显示；工具调用/子代理边界/每轮落盘回放默认全打。
  */
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { loadModelConfig, hasCredentials } from "./core/config";
-import type { LLMEvent } from "./core/types";
-import { createProject, listProjects, loadProjectMeta } from "./storage/project";
-import { listSessionIds, loadSessionMeta } from "./storage/session-store";
-import { BUILTIN_TOOLS } from "./tool/builtin";
-import { openSession, type UserIO } from "./session/session";
+import { join } from "node:path";
+import { loadModelConfig, hasCredentials, talemateHome } from "./core/config";
+import type { LLMEvent, StoredMessage } from "./core/types";
+import { designActive } from "./framework/anchor";
+import { buildProjectStatus } from "./framework/report";
+import { createProject, listChapters, loadProjectMeta, readDoc } from "./storage/project";
+import { listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
+import { openSession, type Session, type UserIO } from "./session/session";
 
-async function main() {
-  const [cmd, ...rest] = process.argv.slice(2);
+// ─────────────────────────── 受管根 / current 指针 ───────────────────────────
 
-  if (cmd === "novel" && rest[0] === "create") {
-    const title = rest[1];
-    if (!title) {
-      console.error("用法：bun run src/cli.ts novel create \"书名\" [题材]");
-      process.exit(1);
-    }
-    const meta = await createProject({ title, genre: rest[2] });
-    console.log(`已创建小说项目：${meta.id}（${meta.title}）`);
-    console.log(`进入主编会话：bun run src/cli.ts ${meta.id}`);
-    return;
-  }
-
-  if (cmd === "ls") {
-    const projects = await listProjects();
-    if (!projects.length) {
-      console.log("（还没有小说项目。用 novel create 创建）");
-      return;
-    }
-    for (const p of projects) console.log(`${p.id}\t${p.title}${p.genre ? `（${p.genre}）` : ""}`);
-    return;
-  }
-
-  if (cmd === "resume") {
-    const projectId = rest[0];
-    const sessions = await listSessionIds(projectId);
-    console.log(`项目 ${projectId} 的会话：`);
-    for (const sid of sessions) {
-      try {
-        const m = await loadSessionMeta(projectId, sid);
-        console.log(`  ${sid}\t${m.title}\t${new Date(m.time.created).toLocaleString()}`);
-      } catch {
-        console.log(`  ${sid}\t(损坏)`);
-      }
-    }
-    return;
-  }
-
-  // 默认：进 REPL
-  const projectId = cmd;
-  if (!projectId) {
-    console.error("用法见文件头。快速开始：bun run src/cli.ts novel create \"书名\"");
-    process.exit(1);
-  }
-
-  await repl(projectId);
+function currentFile(): string {
+  return join(talemateHome(), "current.json");
 }
 
-/** REPL：用户输入一行 → 主编 post → 打印结果，循环 */
-async function repl(projectId: string): Promise<void> {
-  const meta = await loadProjectMeta(projectId);
-  const model = loadModelConfig();
-  if (!hasCredentials(model)) {
-    console.error("✗ 未找到 API key。mock 冒烟用：TALEMATE_PROVIDER=mock");
-    process.exit(1);
+async function loadCurrent(): Promise<string | undefined> {
+  try {
+    const raw = await readFile(currentFile(), "utf-8");
+    const c = JSON.parse(raw) as { id?: string };
+    return c.id;
+  } catch {
+    return undefined;
   }
-  console.log(`[talemate] 项目：${meta.title} 角色：主编  model=${model.provider}:${model.model}`);
-  console.log("（输入 /quit 退出；一次输入多行用空行结束）");
+}
 
-  const rl = createInterface({ input, output });
-  const io: UserIO = {
-    onEvent: (e: LLMEvent) => renderEvent(e),
-    confirm: async (action, summary) => {
-      const ans = await rl.question(`\n⚠ 需要确认：${action}\n  ${summary}\n  [y/N] `);
-      return /^y|yes/i.test(ans.trim());
-    },
-    askUser: async (question, options) => {
-      const optsText = options?.length ? `\n  选项：${options.join(" / ")}` : "";
-      return (await rl.question(`\n❓ ${question}${optsText}\n  > `)).trim();
-    },
-  };
+async function saveCurrent(id: string): Promise<void> {
+  await mkdir(talemateHome(), { recursive: true });
+  await writeFile(currentFile(), JSON.stringify({ id }, null, 2), "utf-8");
+}
 
-  // 一次会话 = 建一个新 session（阶段一不做多会话恢复）
-  const session = await openSession({ projectId, io, title: `会话 ${new Date().toLocaleString()}` });
-  console.log(`[talemate] 会话 ${session.sessionId}（输入 /quit 退出）`);
+// ─────────────────────────── 展示辅助 ───────────────────────────
 
-  let buf: string[] = [];
-  for (;;) {
-    const line = await rl.question("你> ");
-    if (line.trim() === "/quit") break;
-    if (line.trim() === "") {
-      const text = buf.join("\n").trim();
-      buf = [];
-      if (!text) continue;
-      console.log("── 主编 ──");
-      try {
-        const reply = await session.post(text);
-        console.log(`\n${reply}`);
-      } catch (e) {
-        console.error(`\n✗ ${e instanceof Error ? e.message : e}`);
+const DIM = "\x1b[2m";
+const CYAN = "\x1b[36m";
+const YELLOW = "\x1b[33m";
+const RESET = "\x1b[0m";
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) + `…` : s;
+}
+
+// ─────────────────────────── REPL 状态 ───────────────────────────
+
+let verbose = true;
+let showReasoning = false;
+let curSpaceId: string | undefined;
+let curTitle: string | undefined;
+let curSession: Session | undefined;
+let lastSeq = 0;
+let inChildScope = false;
+let rl: ReturnType<typeof createInterface>;
+
+function promptText(): string {
+  return `${curTitle ?? curSpaceId ?? "talemate"}/主编> `;
+}
+
+function printBanner(projectId: string): Promise<void> {
+  return (async () => {
+    const meta = await loadProjectMeta(projectId);
+    const chapters = await listChapters(projectId);
+    const design = (await designActive(projectId)) ? "设计段" : "写作段";
+    console.log(`\n${CYAN}◈ ${meta.title}${meta.genre ? `（${meta.genre}）` : ""}${RESET}  id: ${meta.id} · ${design}`);
+    console.log(`   chapters/: ${chapters.length ? chapters.join(", ") : "（空）"}`);
+    const status = await buildProjectStatus(projectId);
+    // status 首行是“作品：…”与上面重复，展示四层现状即可
+    console.log(status.split("\n").slice(1).join("\n"));
+    if (verbose) console.log(`   （<nvl-state> 锚点仍每轮给模型派生注入，这里不重复打印）`);
+  })();
+}
+
+/** 打印"本轮新增落盘消息"的紧凑索引（工具结果已流式/预览显示过，不重复全文；要看全文用 /msg <seq>）。 */
+function replayNew(messages: StoredMessage[], from: number): number {
+  let last = from;
+  let toolCount = 0;
+  for (const m of messages) {
+    if (m.seq <= from) continue;
+    last = m.seq;
+    if (m.role === "assistant") {
+      for (const p of m.parts ?? []) {
+        if (p.type !== "tool") continue;
+        toolCount++;
+        const len = p.output !== undefined ? p.output.length : (p.error?.length ?? 0);
+        console.log(`  ⚙ 工具落盘：${p.name}（${len} 字 · 完整见 /msg ${m.seq}）`);
       }
-      console.log("────────");
-    } else {
-      buf.push(line);
     }
   }
+  if (toolCount) console.log(`\n${DIM}本轮 ${toolCount} 次工具调用已落盘${RESET}`);
+  return last;
+}
+
+/** 打印某条落盘消息的全文（/msg <seq> 用）：文本 + 工具入参/输出。 */
+async function printMessage(projectId: string, sessionId: string, seqText: string): Promise<void> {
+  const n = Number(seqText);
+  const all = await loadMessages(projectId, sessionId);
+  const m = all.find((x) => x.seq === n);
+  if (!m) {
+    console.log(`没有第 ${seqText} 条消息（本会话 seq 范围 1..${all.length}）。`);
+    return;
+  }
+  if (m.role === "assistant") {
+    for (const p of m.parts ?? []) {
+      if (p.type === "text") console.log(`[msg#${n} text]\n${p.text}`);
+      else if (p.type === "reasoning") console.log(`[msg#${n} reasoning]\n${p.text}`);
+      else if (p.type === "tool") {
+        console.log(`[msg#${n} tool ${p.name} ${p.state}]`);
+        if (p.input) console.log(`input:\n${p.input}`);
+        if (p.output !== undefined) console.log(`output:\n${p.output}`);
+        if (p.error) console.log(`error:\n${p.error}`);
+      }
+    }
+  } else {
+    console.log(`[msg#${n} ${m.role}]\n${m.text ?? JSON.stringify(m, null, 2)}`);
+  }
+}
+
+// ─────────────────────────── io（详细打印渲染） ───────────────────────────
+
+function makeIO(): UserIO {
+  const onEvent = (e: LLMEvent): void => {
+    switch (e.type) {
+      case "text.delta":
+        process.stdout.write(inChildScope ? `${e.text}` : e.text);
+        break;
+      case "reasoning.delta":
+        if (showReasoning) process.stdout.write(`${DIM}${e.text}${RESET}`);
+        break;
+      case "tool-call":
+        if (verbose) {
+          console.log(`\n${CYAN}⚙ 工具调用${RESET} ${e.name} ${DIM}input=${truncate(e.input, 300)}${RESET}`);
+        }
+        break;
+      case "tool.result":
+        if (verbose) {
+          const out = truncate(e.output.replace(/\n/g, " "), 160);
+          console.log(`   ↳ 结果（${e.output.length} 字）：${out || "(空)"}`);
+        }
+        break;
+      case "scope.open":
+        inChildScope = true;
+        if (verbose) console.log(`\n${YELLOW}┌─ 委派子代理：${e.label}（其推理/工具/文本见下）${RESET}`);
+        break;
+      case "scope.close":
+        inChildScope = false;
+        if (verbose) console.log(`\n${YELLOW}└─ 子代理结束 ─${RESET}`);
+        break;
+      case "session.status":
+        if (e.status === "idle") process.stdout.write("\n");
+        break;
+      default:
+        break;
+    }
+  };
+  return {
+    onEvent,
+    confirm: async (action, summary) => {
+      console.log(`\n${YELLOW}⚠ 需要确认${RESET}：${action}`);
+      console.log(summary.split("\n").map((l) => `   ${l}`).join("\n"));
+      const ans = (await rl.question("   [y/N] ")).trim().toLowerCase();
+      return ans === "y" || ans === "yes";
+    },
+    askUser: async (question, options) => {
+      console.log(`\n${YELLOW}❓ 主编提问${RESET}：${question}`);
+      if (options?.length) console.log(`   选项：${options.map((o, i) => `${i + 1}. ${o}`).join("  ")}`);
+      const ans = (await rl.question("   > ")).trim();
+      return ans;
+    },
+  };
+}
+
+// ─────────────────────────── 会话开 / 切 ───────────────────────────
+
+async function openInSpace(projectId: string, sessionId?: string): Promise<void> {
+  const io = makeIO();
+  curSpaceId = projectId;
+  const session = await openSession({
+    projectId,
+    io,
+    title: sessionId ? undefined : `会话 ${new Date().toLocaleString()}`,
+    sessionId,
+  });
+  curSession = session;
+  lastSeq = 0;
+  const meta = await loadProjectMeta(projectId);
+  curTitle = meta.title;
+  await printBanner(projectId);
+  if (sessionId) console.log(`已恢复会话 ${session.sessionId}`);
+  else console.log(`新会话 ${session.sessionId}（/quit 退出 · /help 命令）`);
+}
+
+/** 解析 /use 选择：id 精确 或 书名包含 */
+async function resolveSpace(sel: string): Promise<string | undefined> {
+  const { listProjects } = await import("./storage/project");
+  const all = await listProjects();
+  const hit = all.find((p) => p.id === sel) ?? all.find((p) => p.title.includes(sel));
+  return hit?.id;
+}
+
+async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch"> {
+  const [cmd, ...rest] = raw.trim().split(/\s+/);
+  const arg = rest.join(" ");
+  switch (cmd) {
+    case "/quit":
+    case "/exit":
+      return "quit";
+    case "/help":
+      console.log(
+        [
+          "命令：",
+          "  /quit          退出",
+          "  /status        当前空间 / 会话 / 角色 / docs 填充 / 章节",
+          "  /projects      列出所有项目空间（* = 当前）",
+          "  /use <id|书名>  切到另一空间（开新会话；可 /sessions 恢复旧会话）",
+          "  /new <书名> [题材]  新建空间并进入",
+          "  /sessions      列出当前空间的历史会话",
+          "  /open <n>      恢复当前空间第 n 个历史会话",
+          "  /doc <name>    打印某文档全文（core.md …）",
+          "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
+          "  /verbose       打开详细打印（默认开）",
+          "  /quiet         只显示最终文本",
+          "  /reasoning     切换是否显示模型思考",
+          "  行尾加 \\ 续行；空行不发送。",
+        ].join("\n"),
+      );
+      return "continue";
+    case "/status": {
+      if (!curSpaceId || !curSession) return "continue";
+      console.log(`会话：${curSession.sessionId} · agent: ${curSession.agent.name}`);
+      console.log(await buildProjectStatus(curSpaceId));
+      return "continue";
+    }
+    case "/projects": {
+      const { listProjects } = await import("./storage/project");
+      const all = await listProjects();
+      if (!all.length) {
+        console.log("（还没有项目空间。用 /new <书名> 建一个）");
+        return "continue";
+      }
+      console.log(`共 ${all.length} 个空间：`);
+      for (const p of all) {
+        const chapters = await listChapters(p.id);
+        const mark = p.id === curSpaceId ? " *" : "";
+        console.log(`  ${p.id}${mark}  ${p.title}${p.genre ? `（${p.genre}）` : ""}  章=${chapters.length}`);
+      }
+      return "continue";
+    }
+    case "/use": {
+      if (!arg) {
+        console.log("用法：/use <id|书名>");
+        return "continue";
+      }
+      const id = await resolveSpace(arg);
+      if (!id) {
+        console.log(`没有找到项目空间：${arg}`);
+        return "continue";
+      }
+      if (id === curSpaceId) {
+        console.log(`已经在 ${id}`);
+        return "continue";
+      }
+      await openInSpace(id);
+      return "switch";
+    }
+    case "/new": {
+      const title = arg;
+      if (!title) {
+        console.log("用法：/new <书名> [题材]");
+        return "continue";
+      }
+      const [t, ...g] = title.split(/\s+/);
+      const genre = g.join(" ");
+      const meta = await createProject({ title: t, genre: genre || undefined });
+      console.log(`已创建：${meta.id}（${meta.title}）`);
+      await saveCurrent(meta.id);
+      await openInSpace(meta.id);
+      return "switch";
+    }
+    case "/sessions": {
+      if (!curSpaceId) return "continue";
+      const ids = await listSessionIds(curSpaceId);
+      if (!ids.length) {
+        console.log("（本空间还没有历史会话）");
+        return "continue";
+      }
+      for (let i = 0; i < ids.length; i++) {
+        const m = await loadSessionMeta(curSpaceId, ids[i]).catch(() => undefined);
+        console.log(`  ${i + 1}. ${m?.title ?? ids[i]}  (${new Date(m?.time.created ?? 0).toLocaleString()})`);
+      }
+      return "continue";
+    }
+    case "/open": {
+      if (!curSpaceId) return "continue";
+      const ids = await listSessionIds(curSpaceId);
+      const n = Number(arg);
+      if (!ids[n - 1]) {
+        console.log(`没有第 ${arg} 个会话。可用：/sessions`);
+        return "continue";
+      }
+      await openInSpace(curSpaceId, ids[n - 1]);
+      return "switch";
+    }
+    case "/doc": {
+      if (!curSpaceId) return "continue";
+      const name = arg.includes(".md") ? arg : `${arg}.md`;
+      const c = await readDoc(curSpaceId, name);
+      console.log(c === undefined ? `没有 ${name}` : `# ${name}\n${c}`);
+      return "continue";
+    }
+    case "/msg": {
+      if (!curSpaceId || !curSession) return "continue";
+      if (!arg) {
+        console.log("用法：/msg <seq>（seq 见 /sessions 或工具落盘提示）");
+        return "continue";
+      }
+      await printMessage(curSession.projectId, curSession.sessionId, arg);
+      return "continue";
+    }
+    case "/verbose":
+      verbose = true;
+      console.log("详细打印：开");
+      return "continue";
+    case "/quiet":
+      verbose = false;
+      console.log("详细打印：关（只显示最终文本）");
+      return "continue";
+    case "/reasoning":
+      showReasoning = !showReasoning;
+      console.log(`显示思考：${showReasoning ? "开" : "关"}`);
+      return "continue";
+    default:
+      console.log(`未知命令 ${cmd}（/help 看命令）`);
+      return "continue";
+  }
+}
+
+async function repl(projectId: string, sessionId?: string): Promise<void> {
+  rl = createInterface({ input, output, terminal: process.stdin.isTTY });
+  await openInSpace(projectId, sessionId);
+
+  let buf = "";
+  let closed = false;
+  const onClose = (): void => {
+    closed = true;
+  };
+  rl.on("close", onClose);
+
+  while (!closed) {
+    let line: string;
+    try {
+      line = (await rl.question(promptText())).trim();
+    } catch {
+      break; // EOF / 输入被关闭（管道非交互也走这里干净退出）
+    }
+    if (line.endsWith("\\")) {
+      buf += line.slice(0, -1) + "\n";
+      continue;
+    }
+    const text = (buf + line).trim();
+    buf = "";
+
+    if (!text) continue;
+    if (text.startsWith("/")) {
+      const r = await handleSlash(text);
+      if (r === "quit") break;
+      continue; // switch 已由 openInSpace 换好 session/prompt
+    }
+    if (!curSession) {
+      console.log("（尚未进入任何项目空间）");
+      continue;
+    }
+    // verbose 标记用户输入
+    console.log(`\n${CYAN}你${RESET} > ${text}`);
+    try {
+      const reply = await curSession.post(text);
+      if (!verbose) console.log(`\n${reply}`);
+      else {
+        // 详细回放本轮落盘消息（工具入参/输出全文）
+        const msgs = await loadMessages(curSession.projectId, curSession.sessionId);
+        lastSeq = replayNew(msgs, lastSeq);
+        console.log(`\n${DIM}—— 本轮结束 ——${RESET}`);
+      }
+    } catch (e) {
+      console.error(`\n✗ ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  rl.removeListener("close", onClose);
   rl.close();
 }
 
-/** 渲染事件：流式 delta 直接打印（无换行），step 边界换行 */
-function renderEvent(e: LLMEvent): void {
-  switch (e.type) {
-    case "text.delta":
-      process.stdout.write(e.text);
-      break;
-    case "reasoning.delta":
-      process.stdout.write(`\x1b[2m${e.text}\x1b[0m`); // 灰色思考
-      break;
-    case "step.start":
-      process.stdout.write("\n");
-      break;
-    case "step.end":
-      if (e.finish !== "stop") process.stdout.write(`\n[step ${e.finish}]\n`);
-      break;
+// ─────────────────────────── 入口 ───────────────────────────
+
+async function main(): Promise<void> {
+  const [cmd, sub, ...rest] = process.argv.slice(2);
+
+  // talemate new / novel create
+  if ((cmd === "new" || (cmd === "novel" && sub === "create")) && rest.length >= 0) {
+    const title = cmd === "new" ? sub ?? rest[0] : rest[0];
+    const genre = cmd === "new" ? rest.join(" ") : rest.slice(1).join(" ");
+    if (!title) {
+      console.error('用法：talemate new <书名> [题材]');
+      process.exit(1);
+    }
+    const meta = await createProject({ title, genre: genre || undefined });
+    console.log(`已创建项目空间：${meta.id}（${meta.title}）`);
+    await saveCurrent(meta.id);
+    await repl(meta.id);
+    return;
+  }
+
+  // talemate ls
+  if (cmd === "ls") {
+    const { listProjects } = await import("./storage/project");
+    const all = await listProjects();
+    if (!all.length) {
+      console.log("（还没有项目空间。用：talemate new <书名> [题材]）");
+      return;
+    }
+    console.log(`共 ${all.length} 个项目空间：`);
+    for (const p of all) {
+      const chapters = await listChapters(p.id);
+      console.log(`  ${p.id}\t${p.title}${p.genre ? `（${p.genre}）` : ""}\t章=${chapters.length}\t${new Date(p.createdAt).toLocaleDateString()}`);
+    }
+    return;
+  }
+
+  // talemate use <sel> / talemate <id>
+  const sel = cmd === "use" ? sub ?? "" : cmd ?? "";
+  if (sel) {
+    const id = await resolveSpace(sel);
+    if (!id) {
+      console.error(`没有找到项目空间：${sel}`);
+      console.error("可用：talemate ls");
+      process.exit(1);
+    }
+    await saveCurrent(id);
+    await repl(id);
+    return;
+  }
+
+  // 无参：帮助 + ls + current 提示
+  console.log(
+    [
+      "talemate —— 小说创作 Agent（主编会话）",
+      "",
+      "用法：",
+      "  talemate ls                 列出所有项目空间",
+      "  talemate new <书名> [题材]   新建空间（播种四层骨架）并进入",
+      "  talemate use <id|书名>       进入某空间",
+      "  talemate <id>               同 use",
+      "",
+      "进入后是主编会话：直接对话；/help 看命令。",
+    ].join("\n"),
+  );
+  const cur = await loadCurrent();
+  const all = await (await import("./storage/project")).listProjects();
+  if (all.length) {
+    console.log("\n现有项目空间：");
+    for (const p of all) console.log(`  ${p.id}  ${p.title}${cur === p.id ? "  ← current" : ""}`);
+    if (cur) console.log(`\n上次进入：${cur}（直接 talemate ${cur}）`);
+  }
+  const model = loadModelConfig();
+  if (!hasCredentials(model)) {
+    console.error(`\n✗ 未找到 API key。mock 冒烟用：TALEMATE_PROVIDER=mock；也可 TALEMATE_REASONING=off`);
   }
 }
 

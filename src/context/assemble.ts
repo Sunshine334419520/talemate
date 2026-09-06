@@ -18,11 +18,17 @@ export function buildSystemPrompt(parts: {
   roleSystem: string;
   rules: string; // AGENTS.md 全文（可为空）
   skills: string; // <available_skills>（可为空）
+  /** <nvl-state> 框架锚点（editor 每轮派生注入；见 framework/anchor） */
+  anchor?: string;
+  /** 设计段协议（editor 处于设计段时注入；见 agent/registry DESIGN_PROTOCOL） */
+  designProtocol?: string;
 }): string {
   const blocks: string[] = [];
   const env = `${new Date().toISOString().slice(0, 10)} 作品：${parts.projectTitle} 当前角色：${parts.agentName}`;
   blocks.push(env);
   blocks.push(parts.roleSystem);
+  if (parts.designProtocol) blocks.push(parts.designProtocol);
+  if (parts.anchor) blocks.push(parts.anchor);
   if (parts.rules) blocks.push(`Instructions from: AGENTS.md\n${parts.rules}`);
   if (parts.skills) {
     blocks.push(

@@ -1,0 +1,2 @@
+Explicitly request the user's approval before an irreversible action (overwriting a setting,
+landing a chapter). Give a short action name and an impact summary for the user to judge.

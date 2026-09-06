@@ -25,15 +25,15 @@ export async function createProject(opts: { title: string; genre?: string }): Pr
 
   const meta: ProjectMeta = { id, title: opts.title, genre: opts.genre, createdAt: Date.now() };
   await writeProjectMeta(meta);
-  // 初始 AGENTS.md（项目规则占位，后续 editor 可扩写）
+  // docs/ 懒建：企划文档不预种——用户要完善某层时由 editor 调 doc-spec 拿形状再成稿落盘。
   await writeFile(
     pp.agents,
     [
       `# ${opts.title} · 项目规则`,
       "",
       "这是本小说项目的操作规范（对 agent 常驻注入）。",
-      "- 设定文档在 docs/：core.md（核心/卖点）、world.md（世界观）、characters.md（角色）、outline.md（大纲）。",
-      "- 写作前先读对应 docs 切片取当前版本；不引用缓存旧设定。",
+      "- 企划文档按需建在 docs/：core.md（核心/卖点）、world.md（世界观）、characters.md（角色）、outline.md（大纲）。想完善哪层，先 doc-spec 拿该层该有哪些小节，再成稿落盘。",
+      "- 写作前先读对应 docs 取当前版本；不引用缓存旧设定。",
       "- 成品正文存 chapters/，命名 chapter_ch<N>_v<M>.md；规划存 plan_ch<N>.md。",
       "",
     ].join("\n"),
@@ -125,4 +125,14 @@ export async function saveChapter(projectId: string, filename: string, content: 
   const file = join(pp.chapters, safe);
   await writeFile(file, content, "utf-8");
   return file;
+}
+
+/** 列 chapters/ 下已有文件（正文/规划/其他），排序返回；目录不存在返回 []。 */
+export async function listChapters(projectId: string): Promise<string[]> {
+  const dir = projectPaths(talemateHome(), projectId).chapters;
+  try {
+    return (await readdir(dir)).sort();
+  } catch {
+    return [];
+  }
 }

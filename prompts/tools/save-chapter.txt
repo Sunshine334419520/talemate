@@ -1,0 +1,3 @@
+Save a finished piece (prose or a plan) into chapters/. filename follows the naming rules:
+chapter_ch<N>_v<M>.md for prose, plan_ch<N>.md for a plan. Use this for long text instead of
+dumping it all back to the chief editor. Saving triggers user confirmation.

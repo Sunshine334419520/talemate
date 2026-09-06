@@ -1,0 +1,7 @@
+Ask the user ONE creative question (a setting, a call, a trade-off).
+
+Product-level decisions (protagonist, tone, ending direction) belong to the user: do NOT
+decide them for the user — when unsure, ask here. Make the question concrete and give a
+default tendency; the answer comes back and you continue.
+
+Do not overuse: do not ask about things you can reasonably default yourself.

@@ -14,12 +14,14 @@ import { AgentRegistry } from "../agent/registry";
 import { loadModelConfig } from "../core/config";
 import type { AgentDef, AssistantPart, LLMEvent, ModelConfig, ProjectMeta, StoredMessage, ToolContext } from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
+import { buildAnchor, buildDocIndex } from "../framework/anchor";
+import { renderHits, searchDocs } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
 import { discoverSkills, loadSkillByName, renderSkillCatalog } from "../skill/discovery";
-import { listDocs, loadProjectMeta, readDoc, readProjectRules, saveChapter, writeDoc } from "../storage/project";
+import { listChapters, loadProjectMeta, readDoc, readProjectRules, saveChapter, writeDoc } from "../storage/project";
 import { appendMessage, createSession, loadMessages, loadModelWindow } from "../storage/session-store";
-import { BUILTIN_TOOLS } from "../tool/builtin";
+import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
 import { executeToolPart } from "../tool/runner";
 import { compact, isOverBudget } from "./compaction";
@@ -122,7 +124,20 @@ export class Session {
           onText: o.onText,
           onReasoning: o.onReasoning,
         }),
-      executeTool: (ag, call) => executeToolPart(agentId, call, this.tools, this.makeContext(agent)),
+      executeTool: async (ag, call) => {
+        // 详细打印事件：工具调用、task 子代理边界（子会话事件发生在 scope.open/close 之间）、工具结果
+        const isTask = call.name === "task";
+        this.io.onEvent({ type: "tool-call", id: call.id, name: call.name, input: JSON.stringify(call.input ?? {}) });
+        if (isTask) {
+          const sub = (call.input as { agent?: string }).agent ?? call.name;
+          this.io.onEvent({ type: "scope.open", label: `task → ${sub}` });
+        }
+        const part = await executeToolPart(agentId, call, this.tools, this.makeContext(agent));
+        if (isTask) this.io.onEvent({ type: "scope.close", label: "task" });
+        const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
+        this.io.onEvent({ type: "tool.result", id: call.id, name: call.name, output: out });
+        return part;
+      },
       commitAssistant: (msg) => this.persistAssistant(msg.agent, msg.parts, msg.finish),
     });
   }
@@ -131,20 +146,29 @@ export class Session {
   private async buildRequest(agent: AgentDef): Promise<{ system: string; messages: NeutralMsg[]; tools?: ToolSchema[] }> {
     const neutral = toNeutralMessages(await this.messageWindow());
     const system = await this.buildSystem(agent);
-    const toolSchemas = this.tools.schemasFor(agent.tools);
+    const toolSchemas = this.tools.schemasFor(
+      agent.tools,
+      agent.tools.includes("task") ? { taskCatalog: this.agents.subagentCatalog() } : undefined,
+    );
     return { system, messages: neutral, tools: toolSchemas.length ? toolSchemas : undefined };
   }
 
-  /** 拼 system prompt：env(在 buildSystemPrompt 里) + 角色 system + AGENTS.md + skill 目录 */
+  /**
+   * 拼 system prompt：env + 角色 system + (设计段协议) + (<nvl-state> 锚点) + AGENTS.md + skill 目录。
+   * 锚点只给可见 primary（editor）派生注入——subagent 不注入（省 token，靠 task prompt 切片）。
+   */
   private async buildSystem(agent: AgentDef): Promise<string> {
     const rules = await readProjectRules(this.projectId);
     const skills = await discoverSkills(this.projectId);
+    let anchor: string | undefined;
+    if (agent.mode === "primary" && !agent.hidden) anchor = await buildAnchor(this.projectId);
     return buildSystemPrompt({
       projectTitle: this.meta.title,
       agentName: agent.name,
       roleSystem: agent.system,
       rules,
       skills: renderSkillCatalog(skills),
+      anchor,
     });
   }
 
@@ -159,9 +183,14 @@ export class Session {
       askUser: (q, options) => this.io.askUser(q, options),
       readDoc: (name) => readDoc(this.projectId, name),
       writeDoc: (name, content) => writeDoc(this.projectId, name, content),
-      listDocs: async () => {
-        const docs = await listDocs(this.projectId);
-        return `docs/\n${docs.map((d) => `  - ${d}`).join("\n") || "  （空）"}`;
+      listDocs: () => buildDocIndex(this.projectId),
+      searchDocs: async (query) => {
+        const hits = await searchDocs(this.projectId, query, "docs");
+        return renderHits(hits, query);
+      },
+      listChapters: async () => {
+        const names = await listChapters(this.projectId);
+        return names.length ? names.join("\n") : "（尚无正文/规划落盘）";
       },
       runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt),
       loadSkill: (name) => loadSkillByName(this.projectId, name).then((s) => s?.body),
@@ -227,10 +256,12 @@ export class Session {
   private async maybeCompact(): Promise<void> {
     const all = await this.ensureLoaded();
     if (!isOverBudget(all)) return;
+    const summarizer = this.agents.get("summarizer");
     const m = await compact({
       projectId: this.projectId,
       sessionId: this.sessionId,
       model: this.model,
+      system: summarizer.system,
       messages: all,
     });
     if (m) await this.push(m);

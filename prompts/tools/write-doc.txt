@@ -1,0 +1,5 @@
+Rewrite an entire doc (docs/) in one write. content is the complete new document.
+
+Use only for scaffolding or a whole-doc rewrite. For changing a single item, use edit-doc
+instead of rewriting the whole file. Read the current version first. Overwriting triggers
+user confirmation.

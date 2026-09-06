@@ -1,0 +1,5 @@
+Delete ONE section (by heading title) from a doc.
+
+Before deleting, the tool runs a reference check: pass term — the entity being removed
+(e.g. a character or setting name); if omitted it falls back to the section title. Any hits
+across docs/ are shown in the confirmation. Read the impact before confirming.

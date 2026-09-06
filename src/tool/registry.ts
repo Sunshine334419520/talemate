@@ -23,12 +23,21 @@ export class ToolRegistry {
     return this.tools.has(id);
   }
 
-  /** 该 agent 可见的工具 schema（喂给模型选工具） */
-  schemasFor(agentTools: string[]): ToolSchema[] {
+  /**
+   * 该 agent 可见的工具 schema（喂给模型选工具）。
+   * opts.taskCatalog：task 工具的动态 description——列出当前可委派的 subagent（describeTask，照 opencode registry）。
+   */
+  schemasFor(agentTools: string[], opts?: { taskCatalog?: string }): ToolSchema[] {
     return agentTools
       .map((id) => this.tools.get(id))
       .filter((t): t is RegisteredTool => !!t)
-      .map((t) => ({ name: t.id, description: t.description, inputSchema: t.input }));
+      .map((t) => {
+        let description = t.description;
+        if (t.id === "task" && opts?.taskCatalog) {
+          description = `${description}\n\n可委派的 subagent：\n${opts.taskCatalog}`;
+        }
+        return { name: t.id, description, inputSchema: t.input };
+      });
   }
 
   list(): string[] {

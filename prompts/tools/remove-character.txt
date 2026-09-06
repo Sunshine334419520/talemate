@@ -1,0 +1,5 @@
+Delete a character card from characters.md (and refresh the 角色总表).
+
+Before deleting, a reference check runs on the name across docs/ and the hits are shown in
+the confirmation — read the impact (other docs such as world/outline may reference this
+character) before confirming.

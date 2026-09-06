@@ -1,0 +1,3 @@
+List the project's setting docs (docs/) and, under each one, its section headings — so you
+know what material exists, how to address sections, and which items are still placeholder
+（待定）. Call this before editing.

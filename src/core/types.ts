@@ -32,6 +32,8 @@ export interface AgentDef {
   system: string; // 角色 system prompt
   model?: ModelConfig; // 缺省继承项目默认模型
   steps?: number; // 本轮最多多少步（防跑飞）
+  /** 内部隐藏 agent（如 summarizer）：不参与 /agent 切换、不进 task 可派列表、不当默认 primary。 */
+  hidden?: boolean;
 }
 
 /** ─── 工具 ─── */
@@ -60,8 +62,12 @@ export interface ToolContext {
   readDoc(name: string): Promise<string | undefined>;
   /** 写/覆盖活文档（docs/ 下），返回完整路径 */
   writeDoc(name: string, content: string): Promise<string>;
-  /** 列项目 docs/ */
+  /** 列项目 docs/（含每个文档的一级小节标题——模型据此寻址/看骨架状态） */
   listDocs(): Promise<string>;
+  /** 跨 docs/ 扫词（framework.search）：改/删前查引用、看影响面 */
+  searchDocs(query: string): Promise<string>;
+  /** 列 chapters/ 已有文件（正文/规划） */
+  listChapters(): Promise<string>;
   /** 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文 */
   runSubagent(agentId: string, prompt: string): Promise<string>;
   /** 读指定 skill 正文 */
@@ -163,6 +169,9 @@ export type LLMEvent =
   | { type: "text.delta"; text: string }
   | { type: "reasoning.delta"; text: string }
   | { type: "tool-call"; id: string; name: string; input: string }
+  | { type: "tool.result"; id: string; name: string; output: string }
+  | { type: "scope.open"; label: string }
+  | { type: "scope.close"; label: string }
   | { type: "step.start" }
   | { type: "step.end"; finish: "stop" | "tool_calls" | "error" }
   | { type: "session.status"; status: "busy" | "idle" };

@@ -1,0 +1,7 @@
+Read one project doc, or a single section of it, by exact filename.
+
+name: a docs/ filename incl. extension (core.md / world.md / characters.md / outline.md …).
+section (optional): an exact heading title inside that doc, e.g. 主角, 爽感承诺, 角色：沈越.
+
+Without section, returns the whole doc. Prefer a section read for large docs. Run list-docs
+first to see which docs and sections exist.

@@ -10,6 +10,7 @@
  * 触发由 session 侧负责：用**内存缓存里的消息**调 isOverBudget 判断，超阈值再调 compact（并把
  * 内存消息传进去，避免重复读盘）——这样压缩本身不引入一次额外读盘。
  */
+import { SUMMARIZER_SYSTEM } from "../agent/registry";
 import type { ModelConfig, StoredMessage } from "../core/types";
 import { chat } from "../llm/provider";
 import { appendMessage, loadMessages } from "../storage/session-store";
@@ -38,25 +39,19 @@ export function isOverBudget(messages: StoredMessage[], threshold = COMPACT_THRE
   return estimateChars(messages) > threshold;
 }
 
-const COMPACTION_SYSTEM = [
-  "你是一个小说项目的摘要器。把给定的对话/材料压成一段前情摘要，供后续写作继续时引用。",
-  "要求：",
-  "- 只保留对继续写作必要的信息：故事当前写到哪、已确定的设定与人物、未回收的伏笔/悬念、下一步要做什么。",
-  "- 丢弃寒暄、工具调用细节、重复解释。",
-  "- 用条目式，控制在 600 字内。",
-].join("\n");
-
 /** 保留的 recent 消息条数（原样留在上下文里，防止摘要丢细节） */
 const RECENT_KEEP = 6;
 
 /**
  * 执行一次压缩。messages 可由调用方传入（会话内存缓存）以免重复读盘；缺省从盘读。
+ * system 由调用方（session，取 hidden summarizer agent）提供；缺省回落 SUMMARIZER_SYSTEM。
  * 返回写入的 compaction 消息；head 无可压内容/过小则返回 null。
  */
 export async function compact(opts: {
   projectId: string;
   sessionId: string;
   model: ModelConfig;
+  system?: string;
   messages?: StoredMessage[];
 }): Promise<StoredMessage | null> {
   const { projectId, sessionId, model } = opts;
@@ -103,7 +98,7 @@ export async function compact(opts: {
   const summary = (
     await chat({
       model,
-      system: COMPACTION_SYSTEM,
+      system: opts.system ?? SUMMARIZER_SYSTEM,
       messages: [{ role: "user", text: `以下是需要摘要的内容：\n\n${headText}` }],
     })
   ).text;
