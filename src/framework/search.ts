@@ -1,44 +1,56 @@
 /**
- * searchDocs：跨 docs/(+chapters/) 扫词，返回 "文件 → 小节 + 行 snippet" 命中。
- * 供 editor 改/删前查影响面（remove-doc-section 用它做强制引用检查）。
+ * searchDocs：跨 design/(+chapters/) 扫词，返回 "文件 → 小节 + 行 snippet" 命中。
+ * 供 editor 改/删前查影响面（remove-doc-section / remove-character 用它做强制引用检查）。
  */
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { projectPaths, talemateHome } from "../core/config";
 import { findInContent } from "./markdown";
-import { DOC_FILES } from "./dockind";
 
 const NAME_RE = /^[\w一-鿿.\-]+$/;
 
 export interface Hit {
-  file: string;
+  file: string; // 相对路径（design/ 下如 wiki/地理.md；chapters/ 下平铺）
   heading?: string;
   line: number;
   text: string;
 }
 
-/** 在单个 .md 文件里扫词；返回命中的行（含所在小节）。读不到 → []。 */
-async function scanFile(file: string, dir: string, query: string): Promise<Hit[]> {
+/** 读单个 .md 并扫词；读不到 → []。 */
+async function scanFile(abs: string, rel: string, query: string): Promise<Hit[]> {
   let content: string;
   try {
-    content = await readFile(join(dir, file), "utf-8");
+    content = await readFile(abs, "utf-8");
   } catch {
     return [];
   }
-  return findInContent(content, query).map((h) => ({ file, heading: h.heading, line: h.line, text: h.text }));
+  return findInContent(content, query).map((h) => ({ file: rel, heading: h.heading, line: h.line, text: h.text }));
 }
 
-/** 列出某个子目录（docs 或 chapters）下所有 .md 文件名。 */
-async function listMd(dir: string): Promise<string[]> {
-  try {
-    return (await readdir(dir)).filter((f) => f.endsWith(".md"));
-  } catch {
-    return [];
+/** 递归列一个目录下所有 .md，返回 {abs, rel}（rel = 相对该目录）。 */
+async function walk(rootDir: string): Promise<{ abs: string; rel: string }[]> {
+  const out: { abs: string; rel: string }[] = [];
+  async function rec(dir: string, prefix: string): Promise<void> {
+    let entries: { name: string; isDir: boolean }[] = [];
+    try {
+      entries = await readdir(dir, { withFileTypes: true }).then((ds) =>
+        ds.map((d) => ({ name: d.name, isDir: d.isDirectory() })),
+      );
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDir) await rec(join(dir, e.name), rel);
+      else if (e.name.endsWith(".md") && NAME_RE.test(e.name)) out.push({ abs: join(dir, e.name), rel });
+    }
   }
+  await rec(rootDir, "");
+  return out;
 }
 
 /**
- * 跨文档搜 query。scope: "docs" | "all"（docs + chapters，默认 docs）。
+ * 跨文档搜 query。scope: "docs" | "all"（design/ + chapters/，默认 design/）。
  * 返回扁平命中表；每个文件内按行序。
  */
 export async function searchDocs(
@@ -51,19 +63,9 @@ export async function searchDocs(
   const pp = projectPaths(talemateHome(), projectId);
   const out: Hit[] = [];
 
-  const docs = await listMd(pp.docs);
-  const docFiles = docs.length ? docs : DOC_FILES;
-  for (const f of docFiles) {
-    // 安全文件名（防目录穿越）
-    if (!NAME_RE.test(f)) continue;
-    out.push(...(await scanFile(f, pp.docs, q)));
-  }
+  for (const f of await walk(pp.design)) out.push(...(await scanFile(f.abs, f.rel, q)));
   if (scope === "all") {
-    const chapters = await listMd(pp.chapters);
-    for (const f of chapters) {
-      if (!NAME_RE.test(f)) continue;
-      out.push(...(await scanFile(f, pp.chapters, q)));
-    }
+    for (const f of await walk(pp.chapters)) out.push(...(await scanFile(f.abs, f.rel, q)));
   }
   return out.sort((a, b) => a.line - b.line);
 }

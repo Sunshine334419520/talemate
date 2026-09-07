@@ -6,9 +6,9 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createProject, listDocs, readDoc, writeDoc } from "../storage/project";
+import { createProject, listDocs, readDoc, removeDoc, writeDoc } from "../storage/project";
 import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "./markdown";
-import { DOC_FILES } from "./dockind";
+import { RESIDENT_DOCS } from "./dockind";
 import { renderDocSpec } from "./doc_spec";
 import { renderHits, searchDocs } from "./search";
 import { buildResidentDocs, buildDocIndex, designActive } from "./anchor";
@@ -109,8 +109,8 @@ describe("markdown 区块手术", () => {
 // ─── doc-spec（结构规范） ───
 
 describe("doc-spec（结构规范）", () => {
-  test("四层文件枚举齐全", () => {
-    expect(DOC_FILES).toEqual(["core.md", "world.md", "characters.md", "outline.md"]);
+  test("常驻设定文档枚举：core + wiki/world 总纲", () => {
+    expect(RESIDENT_DOCS).toEqual(["core.md", "wiki/world.md"]);
   });
   test("core 规范 = 小说介绍四格；world = 空间/规则/术语三格（旧格移除）", () => {
     expect(renderDocSpec("core")).toContain("## 一句话简介");
@@ -139,27 +139,27 @@ describe("项目懒建 / 搜索 / 锚点", () => {
 
   test("searchDocs 跨文档命中；renderHits 分组", async () => {
     await writeDoc(pid, "core.md", "## 一句话简介\n沈越 想要活着回去。");
-    await writeDoc(pid, "world.md", "## 势力\n沈越 与林晚结伴求生。");
+    await writeDoc(pid, "wiki/world.md", "## 势力\n沈越 与林晚结伴求生。");
     const hits = await searchDocs(pid, "沈越");
     expect(hits.length).toBe(2);
     const text = renderHits(hits, "沈越");
     expect(text).toContain("core.md");
-    expect(text).toContain("world.md");
+    expect(text).toContain("wiki/world.md");
     expect(await searchDocs(pid, "不存在的词")).toHaveLength(0);
   });
 
   test("designActive：骨架态为真，填写后为假", async () => {
     expect(await designActive(pid)).toBe(true);
-    await writeDoc(pid, "outline.md", "## 一句话主线\n沈越必须活着回去。\n\n## 分卷方向\n卷一…");
+    await writeDoc(pid, "outline/outline.md", "## 一句话主线\n沈越必须活着回去。\n\n## 分卷方向\n卷一…");
     expect(await designActive(pid)).toBe(false);
   });
 
-  test("buildResidentDocs：core + world 常驻全文，无状态包装", async () => {
+  test("buildResidentDocs：core + world 总纲常驻全文，无状态包装", async () => {
     await writeDoc(pid, "core.md", "# core\n\n## 一句话简介\n沈越 想要活着回去。");
-    await writeDoc(pid, "world.md", "## 空间与舞台\n一座荒岛。\n\n## 规则与秩序\n无超自然。");
+    await writeDoc(pid, "wiki/world.md", "## 空间与舞台\n一座荒岛。\n\n## 规则与秩序\n无超自然。");
     const resident = await buildResidentDocs(pid);
     expect(resident).toContain("沈越 想要活着回去"); // core 全文
-    expect(resident).toContain("一座荒岛。"); // world 全文
+    expect(resident).toContain("一座荒岛。"); // world 总纲全文
     expect(resident).toContain("无超自然。");
     expect(resident).not.toContain("<nvl-state>"); // 无状态包装
     expect(resident).not.toContain("写作进度"); // 进度归工具，不常驻
@@ -180,7 +180,9 @@ function makeCtx(projectId: string): ToolContext {
     askUser: async () => "（测试）",
     readDoc: (name) => readDoc(projectId, name),
     writeDoc: (name, content) => writeDoc(projectId, name, content),
+    removeDoc: (name) => removeDoc(projectId, name),
     listDocs: () => buildDocIndex(projectId),
+    listDocPaths: () => listDocs(projectId),
     searchDocs: async (q) => renderHits(await searchDocs(projectId, q), q),
     listChapters: async () => "（无）",
     runSubagent: async () => "（无）",
@@ -189,9 +191,8 @@ function makeCtx(projectId: string): ToolContext {
   };
 }
 
-describe("character-tools（add/update/remove + status）", () => {
-
-  test("add-character：建规范卡（5 小节）+ 更新角色总表", async () => {
+describe("character-tools（add/update/remove + 总表同步）", () => {
+  test("add-character：建规范卡（一文件 5 小节）+ 同步 _index 总表", async () => {
     const r = await addCharacterTool.execute(
       {
         name: "林晚",
@@ -204,12 +205,13 @@ describe("character-tools（add/update/remove + status）", () => {
       makeCtx(pid) as never,
     );
     expect(r.output).toContain("林晚");
-    const content = (await readDoc(pid, "characters.md"))!;
-    expect(content).toContain("## 角色：林晚");
+    const content = (await readDoc(pid, "characters/林晚.md"))!;
+    expect(content).toContain("# 角色：林晚");
     for (const label of ["一句话定位", "想要 · 最怕", "说话方式", "习惯动作", "在故事中的功能"]) {
       expect(content).toContain(`### ${label}`);
     }
-    expect(getSection(content, "角色总表").body).toContain("林晚");
+    const idx = (await readDoc(pid, "characters/_index.md"))!;
+    expect(idx).toContain("林晚");
   });
 
   test("add-character：重复名被拒（自愈提示）", async () => {
@@ -223,18 +225,16 @@ describe("character-tools（add/update/remove + status）", () => {
       makeCtx(pid) as never,
     );
     expect(r.output).toContain("说话方式");
-    const content = (await readDoc(pid, "characters.md"))!;
+    const content = (await readDoc(pid, "characters/林晚.md"))!;
     expect(content).toContain("新版：越在乎越呛");
     expect(content).toContain("空姐，与江屿困同一座岛"); // 未传字段保留
   });
 
-
-
   test("remove-character：删卡并同步总表", async () => {
     const r = await removeCharacterTool.execute({ name: "林晚" }, makeCtx(pid) as never);
     expect(r.output).toContain("已删除");
-    const content = (await readDoc(pid, "characters.md"))!;
-    expect(content).not.toContain("## 角色：林晚");
-    expect(getSection(content, "角色总表").body).not.toContain("林晚");
+    expect(await readDoc(pid, "characters/林晚.md")).toBeUndefined();
+    const idx = (await readDoc(pid, "characters/_index.md"))!;
+    expect(idx).not.toContain("林晚");
   });
 });

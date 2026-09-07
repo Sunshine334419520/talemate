@@ -1,14 +1,16 @@
 /**
- * DocKind：四层企划文档的元信息（排序/文件/一句话）。
+ * DocKind：四层企划文档的元信息（排序/路径/一句话）。
  *
  * 结构规范（每层该有哪些小节）不在预埋文件里了——见 doc_spec.ts，按需读取（懒建）。
  * 文件是真相：目标文档平时不存在，用户要完善某层时由 editor 调 doc-spec 拿形状再成稿落盘。
+ * 目录（2026-09-07）：design/ 下 core.md 单文件；world = wiki 总纲入口 + 专题页；characters = 一角色一卡；
+ * outline = 整本 + 分卷/章节细纲。RESIDENT_DOCS = core + wiki/world 总纲（editor 每轮常驻注入）。
  */
 export type DocId = "core" | "world" | "characters" | "outline";
 
 export interface DocKind {
   id: DocId;
-  file: string; // core.md …
+  file: string; // design/ 下相对路径（入口；characters 为目录）
   title: string; // 中文层名
   blurb: string; // 一层一句话（用于列表/锚点）
 }
@@ -23,22 +25,23 @@ export const DOC_KINDS: DocKind[] = [
   },
   {
     id: "world",
-    file: "world.md",
+    file: "wiki/world.md",
     title: "世界层",
-    blurb: "空间与舞台/规则与秩序/术语表——世界当下设定，慢变、追加为主",
+    blurb: "wiki/world.md 总纲入口（空间与舞台/规则与秩序/术语表）常驻；长尾设定拆 wiki/<题>.md 专题页按需读、可自由新增",
   },
   {
     id: "characters",
-    file: "characters.md",
+    file: "characters/",
     title: "人物层",
-    blurb: "角色总表 + 每角色卡（含说话方式/习惯动作）",
+    blurb: "一角色一卡 characters/<名>.md（含说话方式/习惯动作）+ characters/_index.md 角色总表（工具自动同步）",
   },
   {
     id: "outline",
-    file: "outline.md",
+    file: "outline/outline.md",
     title: "情节层",
-    blurb: "主线/开篇钩子/分卷/伏笔登记——快变、最局部",
+    blurb: "outline.md 整本（主线/开篇钩子/分卷/结局/伏笔登记）；章节细纲 plan_ch<N>.md、分卷 vol_*.md 同目录",
   },
 ];
 
-export const DOC_FILES = DOC_KINDS.map((k) => k.file);
+/** 常驻注入 editor 的设定文档（core + world 总纲），见 framework/anchor buildResidentDocs。 */
+export const RESIDENT_DOCS = ["core.md", "wiki/world.md"];

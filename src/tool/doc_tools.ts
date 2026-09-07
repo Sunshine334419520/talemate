@@ -1,5 +1,5 @@
 /**
- * doc-tools：docs/ 通用文档操作（read/list/search/write/edit/append/remove）。
+ * doc-tools：design/ 通用文档操作（read/list/search/write/edit/append/remove）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt。特殊领域（角色/大纲）另有专工具。
  */
 import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "../framework/markdown";
@@ -81,7 +81,7 @@ export const writeDocTool: RegisteredTool<{ name: string; content: string }> = d
     required: ["name", "content"],
   },
   needsConfirm(args) {
-    return `覆盖 docs/${args.name}（${args.content.length} 字，整篇重写）`;
+    return `覆盖 design/${args.name}（${args.content.length} 字，整篇重写）`;
   },
   async execute(args, ctx) {
     const old = await ctx.readDoc(args.name);
@@ -116,10 +116,10 @@ export const editDocTool: RegisteredTool<{ name: string; section: string; conten
       return { output: `文档 ${args.name} 没有小节「${args.section}」。可用小节：\n${(s.available ?? []).join("\n")}` };
     }
     const ok = await ctx.confirm(
-      `改写 docs/${args.name} › ${args.section}`,
+      `改写 design/${args.name} › ${args.section}`,
       `旧 ${(s.body ?? "").length} 字 → 新 ${args.content.length} 字；其余小节不变。`,
     );
-    if (!ok) return { output: `用户已拒绝改写 docs/${args.name} › ${args.section}` };
+    if (!ok) return { output: `用户已拒绝改写 design/${args.name} › ${args.section}` };
     const next = replaceSection(current, args.section, args.content);
     const file = await ctx.writeDoc(args.name, next);
     return { output: `已改写 ${file} › ${args.section}`, metadata: { name: args.name, section: args.section } };
@@ -184,8 +184,8 @@ export const removeDocSectionTool: RegisteredTool<{ name: string; section: strin
       refs.startsWith("没有命中") || refs.startsWith(`「${term}」在文档里没有命中`)
         ? `引用检查「${term}」：无命中。`
         : `引用检查「${term}」（含本文档内同小节行，请判断是否需级联）：\n${refs}`;
-    const ok = await ctx.confirm(`删除 docs/${args.name} › ${args.section}（${(s.block ?? "").length} 字）`, summary);
-    if (!ok) return { output: `用户已拒绝删除 docs/${args.name} › ${args.section}` };
+    const ok = await ctx.confirm(`删除 design/${args.name} › ${args.section}（${(s.block ?? "").length} 字）`, summary);
+    if (!ok) return { output: `用户已拒绝删除 design/${args.name} › ${args.section}` };
     const file = await ctx.writeDoc(args.name, removeSection(current, args.section));
     return { output: `已删除 ${file} › ${args.section}`, metadata: { name: args.name, section: args.section } };
   },

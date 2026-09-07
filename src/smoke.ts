@@ -62,10 +62,10 @@ try {
   console.log(`    子会话：${subMetas.map((m) => `${m.title}(${m.id})`).join(", ")}`);
   if (!writerSession) throw new Error("writer 子会话未落盘");
 
-  // 4b) docs 懒建：初始为空（按需 doc-spec 拿形状再成稿）
+  // 4b) design/ 懒建：初始为空（按需 doc-spec 拿形状再成稿）
   const seeded = await listDocs(meta.id);
-  console.log(`[5b] docs 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空，按需 doc-spec 成稿）"}`);
-  if (seeded.length !== 0) throw new Error("docs 应懒建为空");
+  console.log(`[5b] design/ 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空，按需 doc-spec 成稿）"}`);
+  if (seeded.length !== 0) throw new Error("design/ 应懒建为空");
 
   // 5) 端到端收到 delta 文本
   console.log(`[6] 收到流式 delta：${seen.length > 0 ? "✓" : "✗"}`);

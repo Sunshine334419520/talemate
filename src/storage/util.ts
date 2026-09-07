@@ -20,6 +20,21 @@ export function safeName(name: string): string | undefined {
   return /^[\w一-鿿.\-]+$/.test(base) ? base : undefined;
 }
 
+/**
+ * 设计文档的相对子路径（design/ 之下，允许一层以上目录，如 wiki/地理.md、characters/沈越.md）。
+ * 反斜杠归一为 `/`；拒绝空串/绝对路径/`.` `..`/空段；每段限 [\w一-鿿.\-]+。防目录穿越。
+ */
+export function safeRelPath(name: string): string | undefined {
+  const p = name.replace(/\\/g, "/");
+  if (!p || p.startsWith("/")) return undefined;
+  const segs = p.split("/");
+  for (const s of segs) {
+    if (s === "" || s === "." || s === "..") return undefined;
+    if (!/^[\w一-鿿.\-]+$/.test(s)) return undefined;
+  }
+  return segs.join("/");
+}
+
 export async function readLines(file: string): Promise<string[]> {
   return readFile(file, "utf-8")
     .then((t) => (t ? t.split("\n") : []))

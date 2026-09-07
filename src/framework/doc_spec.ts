@@ -36,7 +36,7 @@ export const DOC_SPECS: Record<DocId, DocSpec> = {
   // - 一句话卖点并入一句话简介；主角只以"身份词"留在简介前提句，其内核(想要/最怕/为什么是他)下放 characters 主角卡；
   // - 爽感承诺收敛为基调·情绪（写哪章都不许破坏的情绪，不是爽点排布——排布归 outline/技法）；
   // - 目标读者移出（非写作不变量，与"定位"的关系未定）。
-  // - 世界观是 world.md 自己的活（三格：空间与舞台/规则与秩序/术语表），不并入 core；是否随简介常驻加载待定，长大再议。
+  // - 世界观是 wiki/world.md 自己的活（三格：空间与舞台/规则与秩序/术语表），不并入 core；总纲随 core 常驻（buildResidentDocs），长尾拆 wiki/<题>.md 专题页按需读。
   core: {
     id: "core",
     file: "core.md",
@@ -56,32 +56,39 @@ export const DOC_SPECS: Record<DocId, DocSpec> = {
   //   作为成因/遗迹写进相关空间/规则描述；悬念/未解之谜归 outline「伏笔与回收登记」）。
   world: {
     id: "world",
-    file: "world.md",
-    title: "世界层（舞台与规则）",
+    file: "wiki/world.md",
+    title: "世界层（舞台与规则 · wiki）",
     sections: [
       { heading: "空间与舞台", hint: "世界性质（现实都市/高魔/克苏鲁/古代…）+ 主要舞台 + 时代与科技水平 + 地图怎么流动；过去只在仍生效时作为成因/遗迹写进相关描述" },
       { heading: "规则与秩序", hint: "约束每一场成立的规则：力量体系/社会规则/资源约束 + 硬边界（上限/代价/不可逆）+ 世界当前总体状况（若整个世界悬着什么硬事实，写作每章都别忘）" },
-      { heading: "术语表", hint: "生造词/专名解释（暂集中收在此层）" },
-    ],
-    guide: WORK_METHOD,
-  },
-  characters: {
-    id: "characters",
-    file: "characters.md",
-    title: "人物层（角色总表 + 角色卡）",
-    sections: [
-      { heading: "角色总表", hint: "每行一位：名字 | 一句话定位" },
+      { heading: "术语表", hint: "生造词/专名解释（暂集中收在此层，长大再拆行）" },
     ],
     guide: [
       "工作法：",
-      "1) 加角色用 add-character（自动生成规范卡：一句话定位/想要·最怕/说话方式(给声音范例原文)/习惯动作/在故事中的功能，缺格会提示补）；",
-      "2) 想了解/完善某角色先 read-doc 看当前卡，update-character 只改你传的格；",
-      "3) 每个角色一张 `## 角色：〈名字〉` 卡；总表由工具自动同步，不用手改。",
+      "1) 总纲入口是 wiki/world.md（以上三格），常驻注入、写在它里面；",
+      "2) 长尾设定（地理/势力/历史/专名展开等）拆成 wiki/<题>.md 专题页，world.md 里留一行指引——专题页按需读、不常驻；",
+      "3) 先让用户用自己的话讲 → 按小节整理成草稿（没讲到的写（待定））→ write-doc 整层落盘 confirm；",
+      "4) 之后只 edit-doc 还待定/要改的那一格，补细节给建议/选项、一次可答多个；",
+      "5) 文档文件一旦建立，后续以文件当前内容为准（先 read-doc 再动）。",
+    ].join("\n"),
+  },
+  characters: {
+    id: "characters",
+    file: "characters/",
+    title: "人物层（角色总表 + 一角色一卡）",
+    sections: [
+      { heading: "角色总表", hint: "characters/_index.md，每行一位：名字 · 一句话定位——由工具自动同步" },
+    ],
+    guide: [
+      "工作法：",
+      "1) 加角色用 add-character：自动生成 characters/<名>.md 规范卡（一句话定位/想要·最怕/说话方式(给声音范例原文)/习惯动作/在故事中的功能，缺格会提示补），并同步 characters/_index.md 角色总表；",
+      "2) 想了解/完善某角色先 read-doc 看 characters/<名>.md 当前卡，update-character 只改你传的格；",
+      "3) 一角色一卡；_index.md 由工具自动同步，不用手改；删角色用 remove-character。",
     ].join("\n"),
   },
   outline: {
     id: "outline",
-    file: "outline.md",
+    file: "outline/outline.md",
     title: "情节层（主线到章节）",
     sections: [
       { heading: "一句话主线", hint: "从开场到结局要完成什么、代价是什么" },
@@ -90,7 +97,13 @@ export const DOC_SPECS: Record<DocId, DocSpec> = {
       { heading: "结局方向", hint: "止于什么；可暂留余地" },
       { heading: "伏笔与回收登记", hint: "埋点 | 章节 | 状态：埋/已回收/放弃" },
     ],
-    guide: WORK_METHOD,
+    guide: [
+      "工作法：",
+      "1) 整本结构写 outline/outline.md（本节五格）；章节细纲 plan_ch<N>.md、分卷细纲 vol_*.md 与它同目录；",
+      "2) 先让用户用自己的话讲 → 按小节整理成草稿（没讲到的写（待定））→ write-doc 整层落盘 confirm；",
+      "3) 之后只 edit-doc 还待定/要改的那一格，补细节给建议/选项、一次可答多个；",
+      "4) 文档文件一旦建立，后续以文件当前内容为准（先 read-doc 再动）。",
+    ].join("\n"),
   },
 };
 
@@ -98,8 +111,9 @@ export const DOC_SPECS: Record<DocId, DocSpec> = {
 export function renderDocSpec(id: DocId): string {
   const spec = DOC_SPECS[id];
   const head = spec.sections.map((s) => `  ## ${s.heading}${s.hint ? `（${s.hint}）` : ""}`).join("\n");
+  const target = spec.file.endsWith("/") ? `design/${spec.file}` : `design/${spec.file}`;
   return [
-    `【${spec.title} · 目标文档 docs/${spec.file}】`,
+    `【${spec.title} · 目标 ${target}】`,
     "该层文档应含以下小节（每个 ## 即一格，后续可单独 edit-doc 那一格）：",
     head,
     "",

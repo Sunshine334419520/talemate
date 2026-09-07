@@ -24,11 +24,15 @@ export function paths(home = talemateHome()) {
 /** 项目目录与内部结构 */
 export function projectPaths(home: string, projectId: string) {
   const root = join(home, "novels", projectId);
+  const design = join(root, "design");
   return {
     root,
     meta: join(root, "talemate.json"),
     agents: join(root, "AGENTS.md"),
-    docs: join(root, "docs"),
+    design,
+    wiki: join(design, "wiki"),
+    characters: join(design, "characters"),
+    outline: join(design, "outline"),
     chapters: join(root, "chapters"),
     skills: join(root, "skills"),
     sessions: join(root, ".talemate", "sessions"),

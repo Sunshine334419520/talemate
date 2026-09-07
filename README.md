@@ -7,12 +7,12 @@ AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系�
 └── novels/<project-id>/        ← 一小说一目录（用户只认书名）
     ├── talemate.json           # 项目元信息（id/书名/题材/创建时间/角色覆盖）
     ├── AGENTS.md               # 项目规则（常驻注入）
-    ├── docs/                   # 设计段：企划活文档（懒建，按需 doc-spec 成稿）
-    │   ├── core.md             #   核心层：小说介绍
-    │   ├── world.md            #   世界层：空间/规则/术语
-    │   ├── characters.md       #   人物层：角色总表 + 角色卡
-    │   └── outline.md          #   情节层：主线/钩子/分卷/伏笔
-    ├── chapters/               # 写作段产物（正文/规划）
+    ├── design/                 # 设计段：企划活文档（懒建，按需 doc-spec 成稿）
+    │   ├── core.md             #   核心层：小说介绍（常驻）
+    │   ├── wiki/world.md       #   世界层总纲（常驻）；wiki/<题>.md 专题页按需读
+    │   ├── characters/         #   人物层：一角色一卡 <名>.md + _index.md 总表
+    │   └── outline/            #   情节层：outline.md 整本 + plan_ch<N>.md 章节细纲
+    ├── chapters/               # 写作段：成品正文 chapter_ch<N>_v<M>.md
     ├── skills/                 # 项目级 SKILL.md（可选）
     └── .talemate/sessions/<id> # 会话元 + messages.jsonl
 ```
@@ -48,4 +48,4 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 
 ## 文档
 
-当前基准：`05-agent-spec.md`（Agent/工具规范，与代码一致）、`prompts/README.md`。设计演进记录：`04-harness-design.md`（harness 顶层）、`02-product-definition.md`（产品定义）、`06-framework-and-mode-notes.md`、`07-editor-framework-design.md`、`03-implementation-plan.md`（注意 §3/§4 已成历史）。
+当前基准：**`08-architecture.md`**（当前架构与流程总览）、`05-agent-spec.md`（Agent/工具规范，与代码一致）、`prompts/README.md`。设计演进记录：`04-harness-design.md`（harness 顶层）、`02-product-definition.md`（产品定义）、`06-framework-and-mode-notes.md`（§7/§8 为现行）、`07-editor-framework-design.md`、`03-implementation-plan.md`（注意 §3/§4 已成历史）。

@@ -1,2 +1,2 @@
-Search a word (character / setting / term) across docs/ and return file + section + line hits.
+Search a word (character / setting / term) across design/ and return file + section + line hits.
 Use before editing or removing a setting to see where it is referenced and judge the impact.

@@ -231,7 +231,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /new <书名> [题材]  新建空间并进入",
           "  /sessions      列出当前空间的历史会话",
           "  /open <n>      恢复当前空间第 n 个历史会话",
-          "  /doc <name>    打印某文档全文（core.md …）",
+          "  /doc <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
           "  /quiet         只显示最终文本",

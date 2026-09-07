@@ -1,3 +1,6 @@
-Save a finished piece (prose or a plan) into chapters/. filename follows the naming rules:
-chapter_ch<N>_v<M>.md for prose, plan_ch<N>.md for a plan. Use this for long text instead of
-dumping it all back to the chief editor. Saving triggers user confirmation.
+Save a finished prose chapter into chapters/. filename follows the naming rules:
+chapter_ch<N>_v<M>.md. Use this for the actual prose you would rather persist to disk than
+dump back to the chief editor. Saving triggers user confirmation.
+
+(Plans / beat sheets are design docs: write those to design/outline/plan_ch<N>.md via
+write-doc instead — do not put them under chapters/.)

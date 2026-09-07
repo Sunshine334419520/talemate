@@ -1,7 +1,8 @@
-Read one project doc, or a single section of it, by exact filename.
+Read one design doc, or a single section of it, by exact relative path under design/.
 
-name: a docs/ filename incl. extension (core.md / world.md / characters.md / outline.md …).
+name: a design/ relative path incl. extension (core.md / wiki/world.md / characters/沈越.md /
+outline/outline.md / wiki/地理.md …).
 section (optional): an exact heading title inside that doc, e.g. 一句话简介, 题材 · 频道, 角色：沈越.
 
-Without section, returns the whole doc. Prefer a section read for large docs. Run list-docs
+Without section, returns the whole doc. Prefer a section read for a large doc. Run list-docs
 first to see which docs and sections exist.

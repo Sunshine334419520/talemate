@@ -19,7 +19,7 @@ import { renderHits, searchDocs } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
 import { discoverSkills, loadSkillByName, renderSkillCatalog } from "../skill/discovery";
-import { listChapters, loadProjectMeta, readDoc, readProjectRules, saveChapter, writeDoc } from "../storage/project";
+import { listChapters, listDocs, loadProjectMeta, readDoc, readProjectRules, removeDoc, saveChapter, writeDoc } from "../storage/project";
 import { appendMessage, createSession, loadMessages, loadModelWindow } from "../storage/session-store";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
@@ -183,7 +183,9 @@ export class Session {
       askUser: (q, options) => this.io.askUser(q, options),
       readDoc: (name) => readDoc(this.projectId, name),
       writeDoc: (name, content) => writeDoc(this.projectId, name, content),
+      removeDoc: (name) => removeDoc(this.projectId, name),
       listDocs: () => buildDocIndex(this.projectId),
+      listDocPaths: () => listDocs(this.projectId),
       searchDocs: async (query) => {
         const hits = await searchDocs(this.projectId, query, "docs");
         return renderHits(hits, query);

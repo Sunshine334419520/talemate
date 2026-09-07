@@ -85,7 +85,7 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
   input: {
     type: "object",
     properties: {
-      action: { type: "string", description: "动作名，如 覆盖 characters.md" },
+      action: { type: "string", description: "动作名，如 覆盖 design/core.md / 删除角色「林晚」" },
       summary: { type: "string", description: "影响摘要，给用户看" },
     },
     required: ["action", "summary"],
