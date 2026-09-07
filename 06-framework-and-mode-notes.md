@@ -4,6 +4,10 @@
 > 主题：小说框架内容该不该常驻 / 为什么维护框架不是 SubAgent / 知识为什么要用 Skill / opencode 的 plan-mode 是什么
 > 源码依据：`~/code/opencode/packages/opencode/src/`（agent.ts / reminders.ts / tool/plan.ts / skill/index.ts / cli/cmd/run.ts）
 
+> ## ⚠️ 阅读指引（2026-09-06）：仅 §7、§8 为现行
+>
+> §0–§6 是早期讨论/决策过程记录，其中多处已被推翻：`<nvl-state>` 锚点已删除、DocKind 骨架"播种进文件"已改为**懒建 + doc-spec 按需**、维护纪律"放 editor.system"已被 §6.6 修正、`DESIGN_PROTOCOL` 自动注入已取消。**以 §7（懒建 + doc-spec）、§8（core/world 收敛）为准**；§0–§6 只作决策历史，读代码时不要按它们对照。实现以 `05-agent-spec.md`、`07-editor-framework-design.md` 与 `src/` 为准。
+
 ---
 
 ## 0. 起于四个连环疑问

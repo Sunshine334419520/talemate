@@ -20,7 +20,7 @@ export function buildSystemPrompt(parts: {
   skills: string; // <available_skills>（可为空）
   /** core/world 常驻设定全文（editor 每轮注入；见 framework/anchor buildResidentDocs） */
   resident?: string;
-  /** 设计段协议（editor 处于设计段时注入；见 agent/registry DESIGN_PROTOCOL） */
+  /** 设计段协议——已不再自动注入（06 §7：改名 doc-spec 按需取）；保留字段兼容历史 */
   designProtocol?: string;
 }): string {
   const blocks: string[] = [];

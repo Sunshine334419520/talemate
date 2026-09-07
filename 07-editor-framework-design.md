@@ -27,6 +27,7 @@
 |---|---|---|
 | `list-docs` | 开场/不确定有哪些材料；返回各文档 + 小节标题（含未填 `（待定）` 可见） | — |
 | `read-doc` | 读整篇；或带 `section`（小节标题，如「主角」「角色：沈越」）只读一格 | — |
+| `doc-spec` | 用户点名完善某层时拿该层"结构规范 + 成稿做法"（懒建：docs 平时不存在） | — |
 | `search-docs` | 改/删某个设定前查它被谁引用（影响面） | — |
 | `append-doc` | 追加一块（新角色卡 / 新设定小节）；block 自带 `##` 标题，重名会提示改用 edit | 无（非破坏） |
 | `edit-doc` | 改一个小节正文（其余原样保留） | ✅ 动态（旧→新长度） |
@@ -122,37 +123,35 @@ editor 只有一个人格；进入空间**只展示四层现状卡片**（`src/f
 
 ---
 
-## 3. 设计对话流程
+## 3. 设计对话流程（懒建 / doc-spec 按需成稿）
 
 ```mermaid
 flowchart TD
-    A[用户进项目 / 说想写什么] --> B{editor: designActive?<br/>outline 还是骨架}
-    B -- 否 --> Z[主编职责：按需读 docs 切片<br/>准备写作/回答案]
-    B -- 是 --> C[每轮注入: persona + 设计段协议 + core/world 常驻设定]
-    C --> D[挑一层推进，依赖序 core→world/characters→outline]
-    D --> E[层内循环：问→辩→定→记]
-    E --> F{这一格能一句话讲清<br/>且用户认可?}
-    F -- 否 --> E
-    F -- 是 --> G[edit/append 写进对应 docs → confirm 拍板]
-    G --> H[update 后 read 当前版保持一致]
-    H --> I{这层还有关键格未定?}
-    I -- 是 --> E
-    I -- 否 --> J[向用户报一句：当前已定 + 还待定]
-    J --> K{用户冒出新点子 / 推翻旧设定?}
-    K -- 是 --> L[判定归哪层; 牵动别处用 search-docs 查影响面;<br/>小改自己 edit, 大级联 task planner]
-    L --> H
-    K -- 否 --> M{用户说可以开始写了?<br/>(outline 有了分卷/细纲方向)}
-    M -- 否 --> D
-    M -- 是 --> Z
+    A[用户进项目 / 说想写什么] --> S[显示四层现状卡片 + 一句提示<br/>core+world 常驻设定每轮注入 editor]
+    S --> B{用户点名完善某层?<br/>如: 完善核心设定 / 给第1章排大纲}
+    B -- 否 --> Z[主编职责：按需读 docs 切片<br/>准备写作 / 直接答疑]
+    B -- 是 --> C[调 doc-spec 拿该层结构规范 <br/>core / world / characters / outline]
+    C --> D[按小节把用户自由描述整成草稿<br/>没讲到的写（待定）]
+    D --> E[write-doc 整层落盘 → confirm 拍板]
+    E --> F{这层还有关键格(待定/要改)?}
+    F -- 是 --> G[edit-doc 那一节 → 给建议/选项, 一次可多答]
+    G --> F
+    F -- 否 --> H[向用户报一句：当前已定 + 还待定]
+    H --> I{用户冒出新点子 / 推翻旧设定?}
+    I -- 是 --> J[判定归哪层; 牵动别处用 search-docs 查影响面;<br/>小改自己 edit, 大级联 task planner]
+    J --> H
+    I -- 否 --> K{用户说可以开始写了?<br/>(outline 有了分卷/细纲方向)}
+    K -- 否 --> B
+    K -- 是 --> Z
 ```
 
-流程要点：
+流程要点（2026-09-06 版）：
 
 1. **先 core 后 outline**。core 决定一切；outline 最后且最易变，不在 core 立住前深聊。
-2. **聊定才写**：没写进 docs 的不算已定。每层循环"问→辩→定→记"，每次 `edit-doc`/`append-doc` 只动一格、confirm 拍板。
-3. **层告一段落报状态**：给用户"当前已定 + 还待定"，避免原地打转（材料清单用 list-docs）。
+2. **点谁做谁**：editor **不自动注入设计协议**——用户点名要完善某层时，editor 调 `doc-spec` 拿该层结构规范再成稿（懒建：docs 平时不存在，写了才出现）。
+3. **聊定才写**：没写进 docs 的不算已定。成稿先按小节把用户的话整理（缺的写（待定））→ `write-doc` 整层落盘 `confirm` 拍板；之后只改仍（待定）/要改的那一小节（`edit-doc`），补细节给建议/选项、一次可答多个。
 4. **新点子即时归类**：当场判断归哪层，聊定落盘；推翻旧设定先用 `search-docs` 看影响面，小改自己 `edit-doc`，牵动多层的结构级改动派 planner（`task(planner)`，让它 read 全量 docs 产出一致的新版，editor 复核给用户）。
-5. **写作段由用户点单进入**：outline 有了方向后，editor 回到编排职责，设计协议自然退场。
+5. **写作段由用户点单进入**：outline 有了方向后，editor 回到编排职责（`task(planner)` 出节拍 → `task(writer)` 写正文 → 拍板落盘）。`designActive`（`src/framework/anchor.ts`）只用于 CLI 显示"设计段/写作段"标签，不再参与上下文注入判断。
 
 ---
 
@@ -171,12 +170,11 @@ flowchart TD
 
 ## 5. 常驻设定与上下文组装
 
-editor（可见 primary）每次请求的 system = `env + 角色 system + [设计段协议] + core/world 常驻设定 + AGENTS.md + skill 目录`（`src/context/assemble.ts` / `src/session/session.ts`）：
+editor（可见 primary）每次请求的 system = `env + 角色 system + core/world 常驻设定 + AGENTS.md + skill 目录`（`src/context/assemble.ts` / `src/session/session.ts`；设计协议不再注入，结构规范由 `doc-spec` 工具按需给出）：
 
 ```markdown
 2026-…  作品：〈书名〉 当前角色：主编        ← env 块
 〈editor persona〉
-[设计段协议（仅设计段）]
 【常驻设定 · docs/core.md】（每轮注入，写作不得违背）
 <core.md 全文>
 【常驻设定 · docs/world.md】（每轮注入，写作不得违背）
@@ -263,7 +261,7 @@ Instructions from: AGENTS.md
 - 小节寻址/手术：`src/framework/markdown.ts`
 - 引用检查：`src/framework/search.ts`
 - 锚点派生 + 设计段判定：`src/framework/anchor.ts`
-- 主编 persona + 设计段协议 + hidden summarizer：`src/agent/registry.ts`
+- 主编 persona + hidden summarizer：`src/agent/registry.ts`
 - 上下文组装（锚点/协议注入）：`src/context/assemble.ts` · `src/session/session.ts`
 - 框架工具集：`src/tool/（按领域模块：doc_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））` · task 动态目录：`src/tool/registry.ts`
 - compaction agent 化：`src/session/compaction.ts`

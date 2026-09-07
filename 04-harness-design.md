@@ -97,7 +97,8 @@ interface Agent {
   system: string        // 角色 system prompt（editor：设计对话主持；writer：写手规范…）
   tools: string[]       // 该角色可见工具 id 列表
   steps?: number        // 上限轮次（防跑飞）
-  permission?: Ruleset  // 预留：该角色在哪些动作上须经 confirm（见 §7.4）
+  hidden?: boolean      // 内部隐藏 agent（如 summarizer）：不进角色表 / task 列表 / 默认 primary
+  model?: ModelRef      // 缺省继承父会话模型（按角色可配不同模型/推理强度）
 }
 ```
 
@@ -187,7 +188,7 @@ description: 网文白话爽感文风（第三人称）。用户指定该文风/
 
 - **发现**：全局库 `~/.talemate/skills/<name>/SKILL.md`（文风库/技法库/题材库，作者级、跨作品）+ 项目库 `novels/<id>/skills/<name>/SKILL.md`（本小说专属）。后者覆盖前者同名项。
 - **注入**：system 只放 `<available_skills>`（name+description，location）；`skill` 工具按名把正文 `<skill_content>` 载入（tool-result，一条对话消息）。
-- **触发**：模型按 description 自主调用为主；每条 skill 同时注册成一条斜杠命令（如 `/style-wangwen`）供用户手动召唤。
+- **触发**：模型按 description 自主调用 `skill` 工具为主；未实现"每条 skill 注册成斜杠命令"（二期可加：`/style-wangwen` 供用户手动召唤）。
 - **二期**：文风提取（上传样本 → 生成 skill）；远端 skill 分发（本期不做，只要本地目录）。
 
 ---
@@ -212,19 +213,47 @@ defineTool({
 - 执行前校验入参；**校验失败/工具不存在 → 返回面向模型的重写指令**（不抛裸异常），让模型自纠。
 - 长输出：超预算写临时文件 + 返回预览 + 提示用 read 工具分段取（正文章节场景重要）。
 
-### 7.2 内置工具清单（阶段一）
+### 7.2 内置工具清单（已落地 16 个）
+
+按领域分四个模块（`src/tool/`），工具 id 用 kebab，TS 文件名 snake：
+
+**doc_tools（docs/ 通用文档操作）**
 
 | id | 用途 | 可见角色 |
 |---|---|---|
-| `task` | 委派子会话（§3.3）：`{agent, prompt}` → `<task_result>` | editor |
-| `read-doc` | 读项目活文档（按文件名/可选小标题切） | editor, planner, writer |
-| `write-doc` | 写/改活文档（落盘前过 `confirm`，metadata 带改动摘要） | editor |
-| `list-docs` | 列项目 docs/ 与 skills/ | editor, planner, writer |
-| `skill` | 按名注入知识包正文 | editor, planner, writer |
-| `ask-user` | 向主编提问要创作决策（返回答案文本给模型继续） | editor（planner/writer 默认禁用） |
-| `save-chapter` | 写手把成品正文落 `chapters/`（含命名规约） | writer |
+| `read-doc` | 读项目活文档（整篇或按小标题切） | editor, planner, writer |
+| `list-docs` | 列 docs/ 各文档 + 一级小节索引（骨架/填充度一眼可见） | editor, planner, writer |
+| `search-docs` | 跨 docs/(+chapters/) 扫词，返回"文件→小节+行"命中（改/删前查影响面） | editor |
+| `write-doc` | 整篇写/覆盖（对用户 confirm） | editor |
+| `edit-doc` | 改一个小节正文（其余原样；动态 confirm） | editor |
+| `append-doc` | 末尾追加一块（新角色卡/新小节；重名提示改用 edit） | editor |
+| `remove-doc-section` | 删一小节（删除前内置引用检查进 confirm） | editor |
 
-> 规划/写手是否直接落盘 vs 只回传文本由主编落盘——**阶段一先定为"回传文本为主、save 为辅"**，避免子会话乱写文件；写入一律走 editor 的 confirm。可后续按角色放宽。
+**character_tools（角色卡领域）**
+
+| id | 用途 | 可见角色 |
+|---|---|---|
+| `add-character` | 新建角色卡（缺字段自动补（待定）并提示补哪些；首次调用自建 characters.md） | editor |
+| `update-character` | 改一张卡的若干小节（只改传入的格；confirm 后写回） | editor |
+| `remove-character` | 删角色卡（删除前引用检查进 confirm，并同步角色总表） | editor |
+
+**framework_tools（框架层）**
+
+| id | 用途 | 可见角色 |
+|---|---|---|
+| `doc-spec` | 按需返回某层"结构规范 + 成稿/补缺做法"（懒建时模型靠它成稿） | editor |
+
+**core_tools（委派/知识/人机交互）**
+
+| id | 用途 | 可见角色 |
+|---|---|---|
+| `task` | 委派 subagent（可派列表由运行时拼进 description） | editor |
+| `skill` | 按名注入 SKILL.md 知识包正文 | editor, planner, writer |
+| `ask-user` | 向主编提问要创作裁决（非审批，返回答案文本） | editor |
+| `confirm` | 给模型显式"落盘前征求主编确认"的动作入口 | editor |
+| `save-chapter` | 把成品正文/规划落 `chapters/`（confirm） | writer |
+
+> 写入一律走 editor 或工具内 confirm；writer 的 `save-chapter` 在子会话内落盘并 confirm（05 §5.4 仍未最终选型：writer 落盘+回摘要 vs 只回传由 editor 审全文再落）。
 
 ### 7.3 人工点：confirm / ask-user（对应"用户当主编"）
 
@@ -251,14 +280,13 @@ defineTool({
 
 ## 9. LLM 层（升级现有 llm.ts）
 
-- 现状：`chat(system, user)` 单轮；无流式事件、无多轮。
-- 目标接口：
+- 实现（已落地 `src/llm/provider.ts`）：`chat(opts): Promise<AssistantTurn>`，provider 无关的多轮调用，内部流式——期间经 `onText/onReasoning` 回调实时吐 delta，返回聚合的 `{ text, reasoning, toolCalls, finish, usage }`。未采用 `AsyncIterable<LLMEvent>`。
   ```
-  stream(request): AsyncIterable<LLMEvent>
-  // LLMEvent = text.delta | text.ended | reasoning.delta | tool-call | tool-result | error | step…
+  chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promise<AssistantTurn>
+  // AssistantTurn = { text, reasoning?, toolCalls, finish: "stop"|"tool_calls"|"error", usage? }
   ```
-- 保留：provider 抽象（anthropic / openai 兼容 / DeepSeek V4）、按角色推理强度（editor=对话可用 low/off、writer=low、plan/摘要=按需）、max_tokens 截断检测、temperature。
-- 会话循环持有"未完成 assistant 消息"，把 text.delta / reasoning / tool 状态实时写入，流完整体落盘一条（§4）。
+- 保留：provider 抽象（anthropic / openai 兼容(DeepSeek/Moonshot 含推理) / mock）、max_tokens 截断检测（anthropic stop_reason=max_tokens / openai finish_reason=length）、temperature、按角色推理强度（`TALEMATE_REASONING` 环境变量，低推理档经 `reasoning_effort`/`thinking` 传）。
+- 会话循环（`session/loop.ts`）持有"未完成 assistant 消息"，把 text.delta / reasoning / tool 状态实时写入，流完整体落盘一条（§4）。
 
 ---
 

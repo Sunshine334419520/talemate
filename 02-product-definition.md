@@ -2,7 +2,7 @@
 
 > 日期：2026-08-30 · **2026-09-04 重大修订**（见下）
 > 状态：2026-09-04 起以修订版为准
-> 关联文档：`01-feasibility.md`（可行性探索）+ `04-harness-design.md`（当前 harness 基准）
+> 关联文档：`04-harness-design.md`（当前 harness 基准）+ `05-agent-spec.md`（Agent/工具规范）
 
 > ## ⚠️ 2026-09-04 重大修订：移除评判系统，转向"项目空间 + 创作 Agent"
 >
@@ -104,19 +104,19 @@
 
 ## 9. 架构：借 OpenCode 的边界
 
-**整体形状**：无头 server 核心 + 薄客户端（TUI 先行，Web/桌面后置）+ 类型化 SDK。
+**整体形状**：自建 harness 基础设施（`src/` 下 core/storage/llm/agent/session/tool/skill/context）+ CLI 薄入口（`talemate new / ls / use` + REPL）。server 后置——将来做成无头核心 + 薄客户端时，核心不感知 UI（当前已把事件广播做成内部接口 `onEvent`）。
 
 ### 借（高价值复用）
-- **agent 循环**（`session/prompt.ts` 的 `runLoop`）
-- **子代理机制 = task 工具创建子 Session**——**这正是"写手/批评者分离 + 批评者独立上下文"的现成实现**。导演会话在主线，写手/批评者各开子会话，互不污染
-- **上下文管理**（溢出检测 + 压缩 + 摘要），provider 无关，直接搬
-- **Skill 发现机制**（SKILL.md 自动注入 system prompt）——映射文风包 / 题材包 / 世界观设定册
-- **Tool 框架 + 插件钩子**（`ToolDefinition` 自定义工具，不动核心）——"写章节 / 评章节 / 改章节"挂这里
-- **Provider 抽象**——自定义 API key 直接对上
+- **agent 循环**（`src/session/loop.ts` 的 `runLoop`）
+- **子代理机制 = task 工具创建子 Session / 独立上下文**——写手/规划与主编对话隔离：editor 在主线，planner/writer 各开子会话，互不污染（`src/session/session.ts` `runSubagent`）
+- **上下文管理**（溢出检测 + 压缩 + 摘要），provider 无关，直接搬（`src/session/compaction.ts`）
+- **Skill 发现机制**（SKILL.md 自动注入 system prompt 目录）——映射文风包 / 题材包 / 知识包
+- **Tool 框架 + 注册表**（`defineTool` + 按角色白名单过滤）——"读/写/改文档、落角色卡、派子代理"挂这里
+- **Provider 抽象**——自定义 API key 直接对上（anthropic / openai 兼容 / mock）
 
 ### 剥（不匹配，去掉）
-- 本地文件 / git / worktree / pty / LSP 绑定
-- 面向 CLI 审批的 permission / ask 模型（写作工具重新想权限模型）
+- 本地文件 / git / worktree / pty / LSP 工具——写作是文本世界（docs/chapters 走文件系统即可）
+- 面向 CLI 审批的 allow/ask/deny 级联——权限模型简化为"默认放行 + 工具自声明 confirm / ask-user"
 
 ## 10. MVP 范围：浅-浅-深
 

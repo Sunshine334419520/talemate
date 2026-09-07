@@ -1,13 +1,13 @@
 # 实现计划：AI 小说创作 Agent
 
 > 日期：2026-08-30 · **2026-09-04 重大修订**
-> 上游：`01-feasibility.md`（可行性）+ `02-product-definition.md`（产品定义定稿，2026-09-04 已修订去评判）+ `04-harness-design.md`（当前实现基准）
+> 上游：`02-product-definition.md`（产品定义定稿，2026-09-04 已修订去评判）+ `04-harness-design.md`（当前实现基准）
 
 > ## ⚠️ 2026-09-04 重大修订：从"判据循环验证"转向"自建 harness 基础设施"
 >
 > - **§5「P1a 单章循环验证（批评者循环）」整体作废**——那是评判系统的验证实验，评判系统已从产品移除（见 02 §0）。
 > - 新的实现路径在 **`04-harness-design.md`**：P0 自建 harness 基础设施（core/storage/llm/agent/session/tool/skill/context，**已完成并冒烟通过**）→ P1 接入写作领域 → P2 产品化。
-> - 本文档 §2 技术栈（TS + Bun、无 Effect、文件系统存储先行）、§3 架构借 opencode 边界、§4 领域模型方向仍然有效，具体以 04 落地为准。§1 的"在自建架构上验证、不靠外部 harness"已变为现实（自建 harness 即产品内核，非仅为验证）。
+> - 本文档 **§2 技术栈（TS + Bun、无 Effect、文件系统存储先行）仍有效**；**§3 架构图、§4 领域模型、§5 原"P1a 单章循环"描述的是 2026-09-04 之前"评判系统 + 无头 server"旧架构，已被替换**——真正实现以 `04-harness-design.md`（顶层）、`05-agent-spec.md`（Agent/工具规范）、`07-editor-framework-design.md`（editor+框架）为准。当前状态：P0 harness 已完成，从 P1（写作领域接入）继续。
 
 ---
 
