@@ -42,6 +42,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "update-character",
       "remove-character",
       "doc-spec",
+      "webfetch",
+      "websearch",
     ],
     system: EDITOR_SYSTEM,
   },
@@ -51,7 +53,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
     description:
       "把材料梳理成结构/规划（章节节拍、整本/分卷大纲综合、结构重排）。何时用：用户要'第 N 章的节拍/细纲'、'把现有 docs 综合成整本/分卷大纲'，或一次设定改动要级联重整多份 docs 时——需要读全量材料再产出一致结构的活派它。",
     mode: "subagent",
-    tools: ["read-doc", "list-docs", "skill"],
+    tools: ["read-doc", "list-docs", "skill", "webfetch", "websearch"],
     system: PLANNER_SYSTEM,
   },
   {

@@ -1,0 +1,9 @@
+Fetch one URL and return its content as text / markdown / raw html.
+
+url: must start with http:// or https://
+format (optional): text | markdown | html — default markdown (best for reading a web page)
+timeout (optional): seconds, default 30, max 120
+
+HTML pages are converted per format; plain files (txt/md/json…) are returned as-is; images/PDF
+are rejected. Large pages are truncated with a note. Use when the story needs a fact, setting,
+or reference material you should not rely on from memory — then reason from what came back.

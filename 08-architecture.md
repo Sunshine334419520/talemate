@@ -24,9 +24,9 @@ talemate = 一个"**活的小说项目空间**"承载的、由多角色创作 Ag
    ┌─────────────┼──────────────────────────────────────────────┐
    │             │                                              │
    ▼             ▼                                              ▼
-agent/         tool/          16 工具(按 agent 白名单可见)        framework/      领域层
-registry.ts  (define/registry/runner + 4 域模块)              anchor/report/characters/doc_spec/
-角色声明        └ doc_tools·character_tools·framework_tools·core_tools   markdown/search/dockind
+agent/         tool/          18 工具(按 agent 白名单可见)        framework/      领域层
+registry.ts  (define/registry/runner + 5 域模块)              anchor/report/characters/doc_spec/
+角色声明        └ doc_tools·character_tools·framework_tools·core_tools·web_tools   markdown/search/dockind
    │                                                                │
    ▼                                                                ▼
 context/  assemble(buildSystemPrompt, toNeutralMessages)            存储能力经 ToolContext 注入
@@ -75,7 +75,7 @@ skill/     SKILL.md 发现与注入
 
 | 角色 | mode | 职责 | 谁触发它 | 工具 |
 |---|---|---|---|---|
-| **editor 主编** | primary | 唯一对话面 + 项目执掌：设计段把企划做厚、写作段编排拍板 | 用户每次输入 | 15 个（读写文档/角色/doc-spec/task/skill/ask-user/confirm） |
+| **editor 主编** | primary | 唯一对话面 + 项目执掌：设计段把企划做厚、写作段编排拍板 | 用户每次输入 | 17 个（读写文档/角色/doc-spec/task/skill/ask-user/confirm/webfetch/websearch） |
 | **planner 规划** | subagent | 通用结构师：节拍/整本·分卷大纲/级联重排 | editor 经 `task` | read-doc / list-docs / skill |
 | **writer 写手** | subagent | 按切片+节拍写一章正文，只输出正文 | editor 经 `task` | read-doc / list-docs / skill / save-chapter |
 | **summarizer** | hidden | 上下文压缩生成前情摘要 | harness 内部 | 无 |
@@ -85,7 +85,7 @@ skill/     SKILL.md 发现与注入
 
 ---
 
-## 4. 工具（16 个，`src/tool/`）
+## 4. 工具（18 个，`src/tool/`）
 
 **doc_tools**（design/ 通用文档）
 `read-doc` `list-docs`(含小节索引) `search-docs` `write-doc` `edit-doc` `append-doc` `remove-doc-section`
@@ -98,6 +98,9 @@ skill/     SKILL.md 发现与注入
 
 **core_tools**（委派/知识/人机交互）
 `task` `skill` `ask-user` `confirm` `save-chapter`
+
+**web_tools**（联网，editor/planner 可见）
+`webfetch`（抓一个 URL → text/markdown/html）`websearch`（搜索：默认 tavily(有 key)；无 key 回退 bocha/exa/duckduckgo，见 .env.example）
 
 可见性由各角色 `tools` 白名单决定；`schemasFor` 给 `task` 动态拼上可委派 subagent 清单。
 
