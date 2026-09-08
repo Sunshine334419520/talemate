@@ -20,8 +20,8 @@ export const readDocTool: RegisteredTool<{ name: string; section?: string }> = d
   input: {
     type: "object",
     properties: {
-      name: { type: "string", description: "文档文件名，含 .md" },
-      section: { type: "string", description: "可选：小节标题，只读该节" },
+      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
+      section: { type: "string", description: "Optional: exact section heading to read only that section" },
     },
     required: ["name"],
   },
@@ -57,7 +57,7 @@ export const searchDocsTool: RegisteredTool<{ query: string }> = defineTool<{ qu
   description: P("search-docs"),
   input: {
     type: "object",
-    properties: { query: { type: "string", description: "要查的词（人名/设定/术语）" } },
+    properties: { query: { type: "string", description: "Term to search (character / setting / term)" } },
     required: ["query"],
   },
   async execute(args, ctx) {
@@ -75,8 +75,8 @@ export const writeDocTool: RegisteredTool<{ name: string; content: string }> = d
   input: {
     type: "object",
     properties: {
-      name: { type: "string", description: "文档文件名，含 .md" },
-      content: { type: "string", description: "完整文档正文" },
+      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
+      content: { type: "string", description: "The complete document body" },
     },
     required: ["name", "content"],
   },
@@ -102,9 +102,9 @@ export const editDocTool: RegisteredTool<{ name: string; section: string; conten
   input: {
     type: "object",
     properties: {
-      name: { type: "string", description: "文档文件名，含 .md" },
-      section: { type: "string", description: "要改的小节标题（须与 read-doc 看到的一致）" },
-      content: { type: "string", description: "该小节的新正文，不含标题行" },
+      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
+      section: { type: "string", description: "Section heading to rewrite (must match read-doc)" },
+      content: { type: "string", description: "New body for that section, without the heading line" },
     },
     required: ["name", "section", "content"],
   },
@@ -133,8 +133,8 @@ export const appendDocTool: RegisteredTool<{ name: string; block: string }> = de
   input: {
     type: "object",
     properties: {
-      name: { type: "string", description: "文档文件名，含 .md" },
-      block: { type: "string", description: "要追加的整块 markdown（自带 ## / ### 标题）" },
+      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
+      block: { type: "string", description: "Markdown block to append (with its own ## / ### headings)" },
     },
     required: ["name", "block"],
   },
@@ -165,9 +165,9 @@ export const removeDocSectionTool: RegisteredTool<{ name: string; section: strin
   input: {
     type: "object",
     properties: {
-      name: { type: "string", description: "文档文件名，含 .md" },
-      section: { type: "string", description: "要删除的小节标题" },
-      term: { type: "string", description: "可选：用于引用检查的实体词；不填则用小节标题" },
+      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
+      section: { type: "string", description: "Section heading to delete" },
+      term: { type: "string", description: "Optional: entity term for the reference check; defaults to the section heading" },
     },
     required: ["name", "section"],
   },

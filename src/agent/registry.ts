@@ -1,21 +1,19 @@
 /**
- * Agent 注册表 + 默认角色声明（规范化，见 05-agent-spec.md / 06 §6）。
+ * Agent 注册表 + 默认角色声明（规范化，见 05-agent-spec.md / prompts/README.md）。
  *
- * 提示词放 prompts/*.txt（见 prompts/README.md）；persona 只留角色壳（inline，一句）。
+ * persona（system）全部放 prompts/*.txt，readPrompt 加载（英文）；description 内联于此（短数据，路由契约）。
  * 语义：
  * - editor = 唯一 primary（日常对话面 + 项目执掌）。无导演/评审 agent，拍板只属于人。
  * - planner / writer = subagent，只能被 task 委派；"何时派"写在各 subagent 的 description，
- *   由 describeTask 自动拼进 task 工具目录。
+ *   由 subagentCatalog() 自动拼进 task 工具目录（照 opencode describeTask）。
  * - summarizer = hidden 内部 agent（compaction 用）。
  * - Agent 是数据：talemate.json 的 agents.<id> 可覆盖（model/system/steps…）。
  */
 import type { AgentDef, ProjectMeta } from "../core/types";
 import { readPrompt } from "../prompts";
 
-// persona 只放角色壳（定语气）；机制/方法归数据与条件协议，见 06 §6.6。
-const EDITOR_SYSTEM =
-  "You are talemate's chief editor — the user's creative partner, and the steward of a novel's project space.";
-
+// persona 放角色壳（定语气）与必要的编排残差；机制/方法归数据与工具，见 prompts/README.md 归属纪律。
+const EDITOR_SYSTEM = readPrompt("editor.system");
 const WRITER_SYSTEM = readPrompt("writer.system");
 const PLANNER_SYSTEM = readPrompt("planner.system");
 const SUMMARIZER_SYSTEM = readPrompt("summarizer.system");
@@ -24,7 +22,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
   {
     id: "editor",
     name: "主编",
-    description: "日常对话与项目执掌：维护 docs 四层活文档，设计段引导创作，写作段编排 planner/writer",
+    description: "The chief editor. Runs the project, maintains the design docs (design/), and orchestrates planning/writing via task.",
     mode: "primary",
     tools: [
       "task",
@@ -51,7 +49,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
     id: "planner",
     name: "规划",
     description:
-      "把材料梳理成结构/规划（章节节拍、整本/分卷大纲综合、结构重排）。何时用：用户要'第 N 章的节拍/细纲'、'把现有 docs 综合成整本/分卷大纲'，或一次设定改动要级联重整多份 docs 时——需要读全量材料再产出一致结构的活派它。",
+      "The structural designer. Turns source material into a usable plan: chapter beat sheets, whole-novel or volume outlines, or cascading restructures across the design docs.\n" +
+      "Use this when you need a chapter's beat plan (细纲 / 节拍), to synthesize the whole outline (design/outline/outline.md) from the existing docs, or when a setting change must cascade and re-consolidate several docs — jobs that require reading the full material and returning one consistent structure.",
     mode: "subagent",
     tools: ["read-doc", "list-docs", "skill", "webfetch", "websearch"],
     system: PLANNER_SYSTEM,
@@ -60,7 +59,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
     id: "writer",
     name: "写手",
     description:
-      "按设定切片与节拍写一章正文。何时用：用户要写正文且该章已有细纲/节拍（没有就先派 planner 出节拍）——它独立上下文专注成稿，成品由你（主编）拍板后落盘。",
+      "The prose writer. Writes one chapter's prose strictly from the provided setting slices + beat plan.\n" +
+      "Use this when the user asks for a chapter's prose AND that chapter already has an approved beat plan (design/outline/plan_ch<N>.md); if there is no plan yet, first delegate planner to produce one. It runs in an isolated context to focus on the draft; you (chief editor) review and approve the piece before it lands in chapters/.",
     mode: "subagent",
     tools: ["read-doc", "list-docs", "skill", "save-chapter"],
     system: WRITER_SYSTEM,
@@ -68,7 +68,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
   {
     id: "summarizer",
     name: "摘要器",
-    description: "（内部）上下文压缩时生成前情摘要",
+    description: "Internal: generates a prior-state summary during context compaction. (hidden, never surfaced)",
     mode: "primary",
     hidden: true,
     tools: [],
@@ -117,7 +117,13 @@ export class AgentRegistry {
   subagentCatalog(): string {
     const subs = this.listSubagents();
     if (!subs.length) return "";
-    return subs.map((a) => `- ${a.id}: ${a.description}`).join("\n");
+    // 空 description = 路由契约未写 → 明示"只能由用户手动调用"，不让模型自动委派（照 opencode）。
+    return subs
+      .map(
+        (a) =>
+          `- ${a.id}: ${a.description.trim() || "This subagent should only be called manually by the user."}`,
+      )
+      .join("\n");
   }
 }
 

@@ -9,7 +9,7 @@
 
 ## 0. 一句话定位
 
-talemate = 一个"**活的小说项目空间**"承载的、由多角色创作 Agent 围绕"**活的企划书**"工作的系统。设计段把企划做厚、写作段结构先行（规划→节拍）+ 用户当主编拍板；**无事后打分/评判循环**。用户是主编，Agent 是参谋与执行者。
+talemate = 一个"**活的小说项目空间**"承载的、由多角色创作 Agent 围绕"**活的企划书**"工作的系统。把企划做厚、写正文章节前先做规划（节拍）+ 用户当主编拍板；**无事后打分/评判循环**。用户是主编，Agent 是参谋与执行者。
 
 ---
 
@@ -50,7 +50,7 @@ skill/     SKILL.md 发现与注入
 └── novels/<project-id>/            ← 一小说一目录（用户只认书名）
     ├── talemate.json               # 项目元信息: id/书名/题材/createdAt/agents.<id> 覆盖
     ├── AGENTS.md                   # 项目规则(常驻注入): 路径约定/写作纪律
-    ├── design/                     # ◀ 设计段: 企划活文档(懒建——文件被写才出现)
+    ├── design/                     # ◀ 企划活文档(懒建——文件被写才出现)
     │   ├── core.md                 #   核心层: 小说介绍(常驻)
     │   ├── wiki/                   #   世界层 = wiki
     │   │   ├── world.md            #     总纲入口(常驻): 空间与舞台/规则与秩序/术语表
@@ -62,7 +62,7 @@ skill/     SKILL.md 发现与注入
     │       ├── outline.md          #     整本: 一句话主线/开篇钩子/分卷/结局/伏笔登记
     │       ├── plan_ch<N>.md       #     章节细纲(从 chapters/ 迁入)
     │       └── vol_*.md            #     分卷细纲
-    ├── chapters/                   # ◀ 写作段: 成品正文 chapter_ch<N>_v<M>.md
+    ├── chapters/                   # ◀ 成品正文 chapter_ch<N>_v<M>.md
     ├── skills/                     # 项目级 SKILL.md(可选)
     └── .talemate/sessions/<id>/    # 会话元 session.json + messages.jsonl
 ```
@@ -75,13 +75,13 @@ skill/     SKILL.md 发现与注入
 
 | 角色 | mode | 职责 | 谁触发它 | 工具 |
 |---|---|---|---|---|
-| **editor 主编** | primary | 唯一对话面 + 项目执掌：设计段把企划做厚、写作段编排拍板 | 用户每次输入 | 17 个（读写文档/角色/doc-spec/task/skill/ask-user/confirm/webfetch/websearch） |
+| **editor 主编** | primary | 唯一对话面 + 项目执掌：引导把企划做厚、按需编排 planner/writer 并拍板 | 用户每次输入 | 17 个（读写文档/角色/doc-spec/task/skill/ask-user/confirm/webfetch/websearch） |
 | **planner 规划** | subagent | 通用结构师：节拍/整本·分卷大纲/级联重排 | editor 经 `task` | read-doc / list-docs / skill |
 | **writer 写手** | subagent | 按切片+节拍写一章正文，只输出正文 | editor 经 `task` | read-doc / list-docs / skill / save-chapter |
 | **summarizer** | hidden | 上下文压缩生成前情摘要 | harness 内部 | 无 |
 
 - editor **不亲自写正文**；planner/writer **不能直接对话**只被 task 派生；无导演/评审/拍板 agent（拍板永远是人）。
-- persona：editor 一句 inline；planner/writer/summarizer 在 `prompts/*.txt`，经 `readPrompt()` 载入。
+- persona（system）：editor/planner/writer/summarizer 全在 `prompts/*.txt`（英文，`readPrompt()` 载入）；agent `description`（路由契约，英文）内联于 `registry.ts`，写法见 `prompts/README.md`「描述 · agent description 路由规范」。
 
 ---
 
@@ -146,38 +146,38 @@ sequenceDiagram
 
 ---
 
-## 6. 两个阶段（设计段 / 写作段）怎么咬合
+## 6. editor 手下的两类活：企划成型 与 章节生产
 
-`designActive()` 只用来让 CLI 显示"设计段/写作段"标签，`outline/outline.md` 还是骨架 → 设计段。**不参与上下文注入判断**（设计协议已删）。
+editor **没有阶段状态机**（"设计段/写作段"已删除，`designActive` 连同其标签一并移除）。它在同一个会话里做两类活，界限不是 harness 强制的，而是**用户点名驱动**：用户说"完善核心设定 / 加角色林晚"就走**企划成型**，说"写第 N 章"就走**章节生产**。
 
 ```mermaid
 flowchart TD
-    A[进入项目: 四层现状卡片 + 提示] --> B{用户点名完善某层?<br/>如"完善核心设定"/"加角色林晚"}
-    B -- 否 --> Z[主编职责: 按需读 design/ 切片<br/>准备写作 / 直接答疑]
-    B -- 是 --> C[调 doc-spec 拿该层结构规范]
-    C --> D[按小节把用户自由描述整成草稿<br/>没讲到的写(待定)]
-    D --> E[write-doc 落盘 → confirm 拍板]
-    E --> F{这层还有关键格(待定/要改)?}
-    F -- 是 --> G[edit-doc 那格 → 给建议/选项, 一次可多答]
-    G --> F
-    F -- 否 --> H[向用户报一句: 当前已定 + 还待定]
-    H --> I{用户冒出新点子/推翻旧设定?}
-    I -- 是 --> J[判定归哪层; search-docs 查影响面;<br/>小改 edit, 大级联 task planner]
-    J --> H
-    I -- 否 --> K{用户说写第 N 章?}
-    K -- 否 --> B
-    K -- 是 --> W[写作段: editor 编排]
+    A[进入项目: 四层现状卡片 + 提示] --> B{用户现在要什么?}
+    B -- 完善某层 / 加角色 --> P[企划成型]
+    B -- 写第 N 章 --> W[章节生产]
+    P --> P1[调 doc-spec 拿该层结构规范]
+    P1 --> P2[按小节把用户自由描述整成草稿<br/>没讲到的写(待定)]
+    P2 --> P3[write-doc 落盘 → confirm 拍板]
+    P3 --> P4{这层还有关键格(待定/要改)?}
+    P4 -- 是 --> P5[edit-doc 那格 → 给建议/选项, 一次可多答]
+    P5 --> P4
+    P4 -- 否 --> P6[向用户报一句: 当前已定 + 还待定]
+    P6 --> P7{用户冒出新点子/推翻旧设定?}
+    P7 -- 是 --> P8[判定归哪层; search-docs 查影响面;<br/>小改 edit, 大级联 task planner]
+    P8 --> P6
+    P7 -- 否 --> B
     W --> W1[read-doc 取当前 core+相关切片<br/>+(plan_ch 若有)]
     W1 --> W2{已有细纲?}
-    W2 -- 否 --> W3[task planner 出节拍 → 拍板]
+    W2 -- 否 --> W3[task planner 出节拍 → 给用户拍板]
     W3 --> W4
     W2 -- 是 --> W4[task writer 带切片+节拍写正文]
     W4 --> W5[writer save-chapter 落 chapters/<br/>+ task_result 回传 editor]
     W5 --> W6[editor 面向用户确认, 拍板定稿]
+    W6 --> B
 ```
 
-- **设计段成稿工作法**：不逐格盘问 → 让用户自由讲 → 按 doc-spec 小节整理（缺写（待定））→ `write-doc` 整层 confirm 落盘 → 之后仅 `edit-doc` 还待定/要改的那一格。
-- **写作段 plan-gate**：writer 对某章执行门禁于"已有用户批准的细纲"（无则先 task planner 出节拍再写），节拍/细纲归 `design/outline/plan_ch<N>.md`。
+- **企划成型工作法**：不逐格盘问 → 让用户自由讲 → 按 doc-spec 小节整理（缺写（待定））→ `write-doc` 整层 confirm 落盘 → 之后仅 `edit-doc` 还待定/要改的那一格。
+- **章节生产纪律（软约束，存于 editor 协议）**：写某章前先有已批准的细纲（`design/outline/plan_ch<N>.md`），无则先 task planner 出节拍再写——这是 editor 的工作纪律，不是 harness 硬门禁。
 
 ---
 

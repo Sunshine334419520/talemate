@@ -260,7 +260,7 @@ Instructions from: AGENTS.md
 - 结构规范与懒建：`src/framework/doc_spec.ts`（按需取规范）· `src/storage/project.ts`（createProject 不播种）· `doc-spec`/`add-character` 工具
 - 小节寻址/手术：`src/framework/markdown.ts`
 - 引用检查：`src/framework/search.ts`
-- 锚点派生 + 设计段判定：`src/framework/anchor.ts`
+- 常驻设定注入 + 文档索引：`src/framework/anchor.ts`
 - 主编 persona + hidden summarizer：`src/agent/registry.ts`
 - 上下文组装（锚点/协议注入）：`src/context/assemble.ts` · `src/session/session.ts`
 - 框架工具集：`src/tool/（按领域模块：doc_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））` · task 动态目录：`src/tool/registry.ts`

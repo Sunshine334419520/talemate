@@ -1,5 +1,5 @@
 /**
- * 离线测试（不打 LLM）：markdown 区块手术 / DocKind 骨架 / 播种 / 跨文档搜索 / 常驻设定与设计段判定。
+ * 离线测试（不打 LLM）：markdown 区块手术 / DocKind 骨架 / 播种 / 跨文档搜索 / 常驻设定注入。
  * 运行：bun test
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
@@ -11,7 +11,7 @@ import { appendBlock, getSection, listHeadings, removeSection, replaceSection } 
 import { RESIDENT_DOCS } from "./dockind";
 import { renderDocSpec } from "./doc_spec";
 import { renderHits, searchDocs } from "./search";
-import { buildResidentDocs, buildDocIndex, designActive } from "./anchor";
+import { buildResidentDocs, buildDocIndex } from "./anchor";
 import { addCharacterTool, removeCharacterTool, updateCharacterTool } from "../tool/character_tools";
 import type { ToolContext } from "../core/types";
 
@@ -146,12 +146,6 @@ describe("项目懒建 / 搜索 / 锚点", () => {
     expect(text).toContain("core.md");
     expect(text).toContain("wiki/world.md");
     expect(await searchDocs(pid, "不存在的词")).toHaveLength(0);
-  });
-
-  test("designActive：骨架态为真，填写后为假", async () => {
-    expect(await designActive(pid)).toBe(true);
-    await writeDoc(pid, "outline/outline.md", "## 一句话主线\n沈越必须活着回去。\n\n## 分卷方向\n卷一…");
-    expect(await designActive(pid)).toBe(false);
   });
 
   test("buildResidentDocs：core + world 总纲常驻全文，无状态包装", async () => {

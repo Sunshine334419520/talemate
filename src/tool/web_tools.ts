@@ -128,9 +128,9 @@ export const webFetchTool: RegisteredTool<{ url: string; format?: FetchFormat; t
   input: {
     type: "object",
     properties: {
-      url: { type: "string", description: "要抓取的 URL（http/https）" },
-      format: { type: "string", enum: ["text", "markdown", "html"], description: "返回格式，默认 markdown" },
-      timeout: { type: "number", description: "超时秒数，默认 30，最大 120" },
+      url: { type: "string", description: "URL to fetch (http/https)" },
+      format: { type: "string", enum: ["text", "markdown", "html"], description: "Output format; default markdown" },
+      timeout: { type: "number", description: "Timeout in seconds; default 30, max 120" },
     },
     required: ["url"],
   },
@@ -299,8 +299,8 @@ export const webSearchTool: RegisteredTool<{ query: string; numResults?: number 
   input: {
     type: "object",
     properties: {
-      query: { type: "string", description: "搜索词" },
-      numResults: { type: "number", description: "返回条数，默认 6，最大 10" },
+      query: { type: "string", description: "Search query" },
+      numResults: { type: "number", description: "Number of results; default 6, max 10" },
     },
     required: ["query"],
   },

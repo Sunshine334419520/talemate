@@ -17,8 +17,8 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
   input: {
     type: "object",
     properties: {
-      agent: { type: "string", description: "子代理 id（见下方可委派列表）" },
-      prompt: { type: "string", description: "给子代理的完整任务说明，把所需材料/切片写全" },
+      agent: { type: "string", description: "Subagent id (see the delegable list below)" },
+      prompt: { type: "string", description: "Complete task description for the subagent; include all needed material/slices" },
     },
     required: ["agent", "prompt"],
   },
@@ -40,7 +40,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
   description: P("skill"),
   input: {
     type: "object",
-    properties: { name: { type: "string", description: "skill 名" } },
+    properties: { name: { type: "string", description: "Skill name" } },
     required: ["name"],
   },
   async execute(args, ctx) {
@@ -60,11 +60,11 @@ export const askUserTool: RegisteredTool<{ question: string; options?: string[] 
   input: {
     type: "object",
     properties: {
-      question: { type: "string", description: "要问用户的创作问题" },
+      question: { type: "string", description: "The creative question to ask the user" },
       options: {
         type: "array",
         items: { type: "string" },
-        description: "可选选项（供用户快速选，最多 4 个）",
+        description: "Optional choices for a quick pick (max 4)",
       },
     },
     required: ["question"],
@@ -85,8 +85,8 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
   input: {
     type: "object",
     properties: {
-      action: { type: "string", description: "动作名，如 覆盖 design/core.md / 删除角色「林晚」" },
-      summary: { type: "string", description: "影响摘要，给用户看" },
+      action: { type: "string", description: "Action name, e.g. rewrite design/core.md / delete character 林晚" },
+      summary: { type: "string", description: "Impact summary shown to the user" },
     },
     required: ["action", "summary"],
   },
@@ -106,8 +106,8 @@ export const saveChapterTool: RegisteredTool<{ filename: string; content: string
   input: {
     type: "object",
     properties: {
-      filename: { type: "string", description: "文件名，含 .md" },
-      content: { type: "string", description: "完整内容" },
+      filename: { type: "string", description: "Filename incl. .md" },
+      content: { type: "string", description: "Full content" },
     },
     required: ["filename", "content"],
   },

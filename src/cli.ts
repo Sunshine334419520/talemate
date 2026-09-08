@@ -19,7 +19,6 @@ import { stdin as input, stdout as output } from "node:process";
 import { join } from "node:path";
 import { loadModelConfig, hasCredentials, talemateHome } from "./core/config";
 import type { LLMEvent, StoredMessage } from "./core/types";
-import { designActive } from "./framework/anchor";
 import { buildProjectStatus } from "./framework/report";
 import { createProject, listChapters, loadProjectMeta, readDoc } from "./storage/project";
 import { listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
@@ -76,8 +75,7 @@ function printBanner(projectId: string): Promise<void> {
   return (async () => {
     const meta = await loadProjectMeta(projectId);
     const chapters = await listChapters(projectId);
-    const design = (await designActive(projectId)) ? "设计段" : "写作段";
-    console.log(`\n${CYAN}◈ ${meta.title}${meta.genre ? `（${meta.genre}）` : ""}${RESET}  id: ${meta.id} · ${design}`);
+    console.log(`\n${CYAN}◈ ${meta.title}${meta.genre ? `（${meta.genre}）` : ""}${RESET}  id: ${meta.id}`);
     console.log(`   chapters/: ${chapters.length ? chapters.join(", ") : "（空）"}`);
     const status = await buildProjectStatus(projectId);
     // status 首行是“作品：…”与上面重复，展示四层现状即可

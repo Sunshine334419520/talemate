@@ -90,7 +90,7 @@ Tool 也是一份数据（`Def { id, description, parameters, execute → { titl
 
 | 角色 | mode | 一句话职责（persona 边界） | 工具集 | 建议模型/推理 | 谁能触发它 |
 |---|---|---|---|---|---|
-| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：设计段把"想法"长成 docs/ 四层活文档并维护；写作段当编排者，委派并拍板 | task, read-doc, write-doc, **edit-doc, append-doc, remove-doc-section, search-docs**, list-docs, skill, ask-user, confirm | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
+| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：把"想法"长成 design/ 四层活文档并维护；当编排者，委派并拍板 | task, read-doc, write-doc, **edit-doc, append-doc, remove-doc-section, search-docs**, list-docs, skill, ask-user, confirm | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
 | **planner（规划）** | subagent | 通用结构师：把材料梳理成结构/规划（章节节拍、整本/分卷大纲、结构重排）——尺度是 task 参数，不是角色 | read-doc, list-docs, skill | 可单配；规划是分析活，low/high 皆可 | editor 经 task |
 | **writer（写手）** | subagent | 按"当前设定切片 + 细纲/节拍"写一章正文；不自创设定、只输出正文 | read-doc, list-docs, skill, save-chapter* | 生成活，low 更省（临时思考 §七已实测） | editor 经 task |
 | **summarizer（内部）** | primary + hidden | 上下文压缩时生成前情摘要；**不进用户可见角色表、不进 task 可派列表、不当默认 primary** | 无 | 缺省继承；可 talemate.json 覆盖小模型 | harness 内部自动 |
@@ -224,7 +224,7 @@ task { agent: "planner" | "writer" | …, prompt: string }
 本轮实现 = **框架设计闭环 + harness 深度规范化**，与 `06-framework-and-mode-notes.md` §6/§6.6 一致，详见 `07-editor-framework-design.md`（主编规范 + 框架设计流程 + 跑通示例）。
 
 **已落地**
-- framework 域层 `src/framework/`：`doc_spec`（每层结构规范，按需取）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `report`（四层现状卡片）· `anchor`（core/world 常驻设定注入 `buildResidentDocs` + 设计段判定）。
+- framework 域层 `src/framework/`：`doc_spec`（每层结构规范，按需取）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `report`（四层现状卡片）· `anchor`（core/world 常驻设定注入 `buildResidentDocs`）。
 - **懒建**：createProject 不再播种四层（`src/storage/project.ts`）；docs 初始为空，用户要完善某层时 editor 调 `doc-spec` 拿形状再成稿；`add-character` 首次调用自建 characters.md。新增 `listChapters`。
 - 框架增删改查工具：`list-docs`（含小节索引）/ `read-doc`(带 section) / `search-docs` / `edit-doc` / `append-doc` / `remove-doc-section`（删除前内置引用检查进 confirm）（`src/tool/（按领域模块：doc_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`）。
 - editor 上下文：可见 primary 每轮注入 core/world 常驻设定（`buildResidentDocs`，`src/context/assemble.ts` + `src/session/session.ts`）；设计引导不自动注入——用户点名某层时 editor 调 `doc-spec` 工具按需拿规范。常驻设定现读自磁盘，无写后刷新钩子、永不陈旧。（原 `<nvl-state>` 状态包装块已删，见 06 §8。）

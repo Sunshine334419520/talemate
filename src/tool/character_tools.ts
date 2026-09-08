@@ -23,7 +23,7 @@ const P = (id: string) => readPrompt(`tools/${id}`);
 
 function fieldProps(required: string[]): Record<string, { type: string; description: string }> {
   const out: Record<string, { type: string; description: string }> = {
-    name: { type: "string", description: "角色名（会建成 characters/<名字>.md 卡片）" },
+    name: { type: "string", description: "Character name (creates characters/<name>.md)" },
   };
   for (const f of CHARACTER_FIELDS) out[f.key] = { type: "string", description: `${f.label}：${f.placeholder}` };
   return out;
@@ -115,7 +115,7 @@ export const removeCharacterTool: RegisteredTool<{ name: string }> = defineTool<
   description: P("remove-character"),
   input: {
     type: "object",
-    properties: { name: { type: "string", description: "要删除的角色名" } },
+    properties: { name: { type: "string", description: "Character name to delete" } },
     required: ["name"],
   },
   async execute(args, ctx) {

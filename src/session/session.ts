@@ -154,7 +154,7 @@ export class Session {
   }
 
   /**
-   * 拼 system prompt：env + 角色 system + (设计段协议) + (core/world 常驻设定) + AGENTS.md + skill 目录。
+   * 拼 system prompt：env + 角色 system + (core/world 常驻设定) + AGENTS.md + skill 目录。
    * 常驻设定只给可见 primary（editor）注入——subagent 不注入（省 token，靠 task prompt 切片）。
    */
   private async buildSystem(agent: AgentDef): Promise<string> {

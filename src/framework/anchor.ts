@@ -1,5 +1,5 @@
 /**
- * 常驻设定注入 + 设计段判定 + 文档索引。
+ * 常驻设定注入 + 文档索引。
  *
  * 常驻设定：core.md（小说介绍）+ wiki/world.md（世界层总纲）是每轮注入 editor 的固定基线——
  * 现读全文、**不带状态包装**。core/world 专题页（wiki/<题>.md）不常驻，按需 read-doc。
@@ -58,25 +58,6 @@ export async function buildResidentDocs(projectId: string): Promise<string> {
     blocks.push(`【常驻设定 · design/${name}】（每轮注入，写作不得违背）\n${content}`);
   }
   return blocks.join("\n\n");
-}
-
-/** 设计段判定：设计/outline/outline.md 还是空骨架/仅占位 → 认为处于"框架设计"阶段。 */
-export async function designActive(projectId: string): Promise<boolean> {
-  const outline = await readDoc(projectId, "outline/outline.md");
-  if (outline === undefined) return true;
-  return isOnlySkeleton(outline);
-}
-
-/** 极简骨架判定：去掉 heading / 注释 / 待定占位 / 引用引导后没剩内容。 */
-function isOnlySkeleton(content: string): boolean {
-  const meaningful = content
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => !l.startsWith("#") && !l.startsWith("<!--") && !l.startsWith("-->") && !l.startsWith(">"))
-    .join(" ")
-    .replace(/（待定[^）]*）/g, "")
-    .trim();
-  return meaningful.length === 0;
 }
 
 export { DOC_KINDS, RESIDENT_DOCS };

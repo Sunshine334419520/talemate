@@ -1,18 +1,18 @@
 # talemate
 
-AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系统。设计段把企划做厚、写作段结构先行(规划→节拍)+ 用户当主编拍板;不设事后打分/评判循环。
+AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系统。把企划做厚、写正文章节前先做规划(节拍)+ 用户当主编拍板;不设事后打分/评判循环。
 
 ```
 受管根目录（TALEMATE_HOME，默认 ~/.talemate/）
 └── novels/<project-id>/        ← 一小说一目录（用户只认书名）
     ├── talemate.json           # 项目元信息（id/书名/题材/创建时间/角色覆盖）
     ├── AGENTS.md               # 项目规则（常驻注入）
-    ├── design/                 # 设计段：企划活文档（懒建，按需 doc-spec 成稿）
+    ├── design/                 # 企划活文档（懒建，按需 doc-spec 成稿）
     │   ├── core.md             #   核心层：小说介绍（常驻）
     │   ├── wiki/world.md       #   世界层总纲（常驻）；wiki/<题>.md 专题页按需读
     │   ├── characters/         #   人物层：一角色一卡 <名>.md + _index.md 总表
     │   └── outline/            #   情节层：outline.md 整本 + plan_ch<N>.md 章节细纲
-    ├── chapters/               # 写作段：成品正文 chapter_ch<N>_v<M>.md
+    ├── chapters/               # 成品正文 chapter_ch<N>_v<M>.md
     ├── skills/                 # 项目级 SKILL.md（可选）
     └── .talemate/sessions/<id> # 会话元 + messages.jsonl
 ```
