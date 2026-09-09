@@ -70,7 +70,11 @@ export const askUserTool: RegisteredTool<{ question: string; options?: string[] 
     required: ["question"],
   },
   async execute(args, ctx) {
-    const answer = await ctx.askUser(args.question, args.options);
+    const question = args.question?.trim();
+    if (!question) {
+      return { output: `ask-user 缺少必填 question（收到：${JSON.stringify(args).slice(0, 200)}）——请用合法 JSON 带 question 重新调用。` };
+    }
+    const answer = await ctx.askUser(question, args.options);
     return { output: `用户回答：${answer}`, metadata: { answer } };
   },
 });
@@ -91,7 +95,10 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
     required: ["action", "summary"],
   },
   async execute(args, ctx) {
-    const ok = await ctx.confirm(args.action, args.summary);
+    if (!args.action?.trim() || !args.summary?.trim()) {
+      return { output: `confirm 缺少 action/summary（收到：${JSON.stringify(args).slice(0, 200)}）——请带完整字段重新调用。` };
+    }
+    const ok = await ctx.confirm(args.action.trim(), args.summary.trim());
     return ok ? { output: `用户已确认：${args.action}` } : { output: `用户已拒绝：${args.action}` };
   },
 });

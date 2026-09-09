@@ -235,13 +235,79 @@ function toOpenAITool(t: ToolSchema): OpenAI.Chat.Completions.ChatCompletionTool
   return { type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } };
 }
 
-function safeParseArgs(args: string): Record<string, unknown> {
-  if (!args) return {};
-  try {
-    return JSON.parse(args) as Record<string, unknown>;
-  } catch {
-    return { _raw: args };
+/**
+ * 解析模型返回的 tool arguments 字符串为对象。openai 兼容模型（尤其 DeepSeek）偶尔会给出
+ * 不规范的 JSON：套代码围栏、字符串内未转义换行、尾逗号、或双层转义（arguments 本身是
+ * 一段 JSON 字符串字面量）。逐层容错：剥围栏 → JSON.parse → 双层转义解一层 → 启发式修补 → 回退 {}。
+ * 不再产出 `{ _raw }` 之类的畸形兜底（会让工具读不到具名字段，如 ask-user 的 question → undefined）。
+ * 解析不动时回退空对象，由工具自身的必填守卫返回"请重发"让模型自纠。
+ */
+export function safeParseArgs(raw: string | undefined): Record<string, unknown> {
+  let s = (raw ?? "").trim();
+  if (!s) return {};
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const tryParse = (t: string): unknown => {
+    try {
+      return JSON.parse(t);
+    } catch {
+      return undefined;
+    }
+  };
+  const toObj = (v: unknown): Record<string, unknown> | undefined =>
+    v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+  const direct = toObj(tryParse(s));
+  if (direct) return direct;
+  // 双层转义：parsed 成功但得到的是字符串（其内容又是一段 JSON）
+  const first = tryParse(s);
+  if (typeof first === "string") {
+    const nested = toObj(tryParse(first));
+    if (nested) return nested;
   }
+  // 启发式修补（未转义换行 / 尾逗号）后重试
+  const patched = toObj(tryParse(repairJson(s)));
+  if (patched) return patched;
+  return {};
+}
+
+/** 轻量修补常见 LLM 坏 JSON：去尾逗号 + 把字符串字面量内的裸换行/制表转义。 */
+function repairJson(s: string): string {
+  const noTrailing = s.replace(/,\s*([}\]])/g, "$1");
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (const ch of noTrailing) {
+    if (esc) {
+      out += ch;
+      esc = false;
+      continue;
+    }
+    if (inStr && ch === "\\") {
+      out += ch;
+      esc = true;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = !inStr;
+      out += ch;
+      continue;
+    }
+    if (inStr) {
+      if (ch === "\n") {
+        out += "\\n";
+        continue;
+      }
+      if (ch === "\r") {
+        out += "\\r";
+        continue;
+      }
+      if (ch === "\t") {
+        out += "\\t";
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return out;
 }
 
 // ─── Mock（离线冒烟：验证 runner / 工具循环，不打网络） ───
