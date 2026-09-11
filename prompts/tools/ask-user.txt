@@ -1,7 +1,15 @@
 Ask the user ONE creative question (a setting, a call, a trade-off).
 
-Product-level decisions (protagonist, tone, ending direction) belong to the user: do NOT
-decide them for the user — when unsure, ask here. Make the question concrete and give a
-default tendency; the answer comes back and you continue.
+Product-level calls (protagonist, tone, ending direction) belong to the user — never decide
+them silently. But "not deciding for them" is NOT the same as "must ask now": default what
+you reasonably can, mark it （待定）, and let the user veto.
 
-Do not overuse: do not ask about things you can reasonably default yourself.
+Ask here only where a different answer means a different book. Never use this as a gate
+("must settle X before moving on"); never fire two questions back to back.
+
+Carry your lean and the reasoning — not neutral options:
+- state what you would pick, and why, tied to something the user actually said;
+- each option says what it buys AND what it costs (an option with no cost is not a real one);
+- end with a one-word pass ("reply 1", or "go with your call").
+
+Keep options short; the reasoning goes in question. The answer comes back and you continue.

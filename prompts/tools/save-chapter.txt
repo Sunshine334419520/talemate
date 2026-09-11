@@ -3,4 +3,4 @@ chapter_ch<N>_v<M>.md. Use this for the actual prose you would rather persist to
 dump back to the chief editor. Saving triggers user confirmation.
 
 (Plans / beat sheets are design docs: write those to design/outline/plan_ch<N>.md via
-write-doc instead — do not put them under chapters/.)
+write-design instead — do not put them under chapters/.)

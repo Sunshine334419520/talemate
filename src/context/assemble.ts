@@ -18,7 +18,7 @@ export function buildSystemPrompt(parts: {
   roleSystem: string;
   rules: string; // AGENTS.md 全文（可为空）
   skills: string; // <available_skills>（可为空）
-  /** core/world 常驻设定全文（editor 每轮注入；见 framework/anchor buildResidentDocs） */
+  /** core/world 常驻设定全文（editor 每轮注入；见 framework/anchor buildResidentDesigns） */
   resident?: string;
 }): string {
   const blocks: string[] = [];

@@ -6,11 +6,11 @@
  * 运行：bun run src/smoke.ts
  * 环境：TALEMATE_PROVIDER=mock（不需 key）；TALEMATE_HOME 自动用临时目录。
  */
-import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openSession, type UserIO } from "./session/session";
-import { createProject, listDocs } from "./storage/project";
+import { createProject, listDesigns, readProjectRules } from "./storage/project";
 import { loadMessages, listSessionIds, loadSessionMeta } from "./storage/session-store";
 import { loadModelConfig } from "./core/config";
 
@@ -62,9 +62,9 @@ try {
   console.log(`    子会话：${subMetas.map((m) => `${m.title}(${m.id})`).join(", ")}`);
   if (!writerSession) throw new Error("writer 子会话未落盘");
 
-  // 4b) design/ 懒建：初始为空（按需 doc-spec 拿形状再成稿）
-  const seeded = await listDocs(meta.id);
-  console.log(`[5b] design/ 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空，按需 doc-spec 成稿）"}`);
+  // 4b) design/ 懒建：初始为空（按需 design-spec 拿形状再成稿）
+  const seeded = await listDesigns(meta.id);
+  console.log(`[5b] design/ 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空，按需 design-spec 成稿）"}`);
   if (seeded.length !== 0) throw new Error("design/ 应懒建为空");
 
   // 5) 端到端收到 delta 文本
@@ -74,8 +74,10 @@ try {
   const pp = join(HOME, "novels", meta.id);
   const tree = await listTree(pp);
   console.log(`[7] 项目目录：\n${tree.map((f) => "    " + f.replace(pp + "/", "")).join("\n")}`);
-  const rules = await readFile(join(pp, "AGENTS.md"), "utf-8");
-  console.log(`[8] AGENTS.md 已建：${rules.split("\n")[0]}`);
+  // 8) AGENTS.md 不预种：它是用户自己的文件（06 §6.3），不存在 → 不注入
+  const rules = await readProjectRules(meta.id);
+  console.log(`[8] AGENTS.md 不预种：${rules === "" ? "✓（不存在 → 不注入）" : `✗ ${rules.slice(0, 40)}`}`);
+  if (rules !== "") throw new Error("AGENTS.md 不应预种（是用户自己的文件）");
 
   console.log("\n✔ P0 冒烟全链路通过");
 } finally {

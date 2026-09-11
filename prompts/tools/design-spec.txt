@@ -1,0 +1,14 @@
+Return the structural spec for one novel layer: its exact section headings, and what belongs in
+each. Every other tool addresses sections by name (read-design, edit-design, the status card) —
+inventing your own headings breaks them.
+
+Call this whenever the conversation is about **designing the novel** — the user telling you what
+they want to write, or asking to work on a layer. A story-idea discussion usually touches 核心设定
+and 世界观; a design pass usually touches one layer. Call it once per layer in play.
+
+Do NOT call it for anything else: writing a chapter, asking about status, or anything that isn't
+about designing the story.
+
+Draft from the user's own words, not by interrogating field by field, and confirm before writing.
+
+layer: core | world | characters | outline.

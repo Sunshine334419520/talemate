@@ -25,8 +25,8 @@ talemate = 一个"**活的小说项目空间**"承载的、由多角色创作 Ag
    │             │                                              │
    ▼             ▼                                              ▼
 agent/         tool/          18 工具(按 agent 白名单可见)        framework/      领域层
-registry.ts  (define/registry/runner + 5 域模块)              anchor/report/characters/doc_spec/
-角色声明        └ doc_tools·character_tools·framework_tools·core_tools·web_tools   markdown/search/dockind
+registry.ts  (define/registry/runner + 5 域模块)              anchor/report/characters/design_spec/
+角色声明        └ design_tools·character_tools·framework_tools·core_tools·web_tools   markdown/search/layers
    │                                                                │
    ▼                                                                ▼
 context/  assemble(buildSystemPrompt, toNeutralMessages)            存储能力经 ToolContext 注入
@@ -49,7 +49,7 @@ skill/     SKILL.md 发现与注入
 受管根目录 (env TALEMATE_HOME, 默认 ~/.talemate/)
 └── novels/<project-id>/            ← 一小说一目录（用户只认书名）
     ├── talemate.json               # 项目元信息: id/书名/题材/createdAt/agents.<id> 覆盖
-    ├── AGENTS.md                   # 项目规则(常驻注入): 路径约定/写作纪律
+    ├── AGENTS.md                   # 用户自己的项目规矩(不预建·可空); 存在才每轮注入(06 §6.3)
     ├── design/                     # ◀ 企划活文档(懒建——文件被写才出现)
     │   ├── core.md                 #   核心层: 小说介绍(常驻)
     │   ├── wiki/                   #   世界层 = wiki
@@ -67,7 +67,7 @@ skill/     SKILL.md 发现与注入
     └── .talemate/sessions/<id>/    # 会话元 session.json + messages.jsonl
 ```
 
-**懒建 / 常驻**：`createProject` 只建目录不种文件（`design/` 初始为空）；`core.md` 与 `wiki/world.md` 由 `buildResidentDocs` 每轮**现读**注入 editor（无状态包装、不缓存），wiki 专题页/characters/outline 全部按需 `read-doc`。
+**懒建 / 常驻**：`createProject` 只建目录不种文件（`design/` 初始为空）；`core.md` 与 `wiki/world.md` 由 `buildResidentDocs` 每轮**现读**注入 editor（无状态包装、不缓存），wiki 专题页/characters/outline 全部按需 `read-design`。
 
 ---
 
@@ -75,9 +75,9 @@ skill/     SKILL.md 发现与注入
 
 | 角色 | mode | 职责 | 谁触发它 | 工具 |
 |---|---|---|---|---|
-| **editor 主编** | primary | 唯一对话面 + 项目执掌：引导把企划做厚、按需编排 planner/writer 并拍板 | 用户每次输入 | 17 个（读写文档/角色/doc-spec/task/skill/ask-user/confirm/webfetch/websearch） |
-| **planner 规划** | subagent | 通用结构师：节拍/整本·分卷大纲/级联重排 | editor 经 `task` | read-doc / list-docs / skill |
-| **writer 写手** | subagent | 按切片+节拍写一章正文，只输出正文 | editor 经 `task` | read-doc / list-docs / skill / save-chapter |
+| **editor 主编** | primary | 唯一对话面 + 项目执掌：引导把企划做厚、按需编排 planner/writer 并拍板 | 用户每次输入 | 17 个（读写文档/角色/design-spec/task/skill/ask-user/confirm/webfetch/websearch） |
+| **planner 规划** | subagent | 通用结构师：节拍/整本·分卷大纲/级联重排 | editor 经 `task` | read-design / list-designs / skill |
+| **writer 写手** | subagent | 按切片+节拍写一章正文，只输出正文 | editor 经 `task` | read-design / list-designs / skill / save-chapter |
 | **summarizer** | hidden | 上下文压缩生成前情摘要 | harness 内部 | 无 |
 
 - editor **不亲自写正文**；planner/writer **不能直接对话**只被 task 派生；无导演/评审/拍板 agent（拍板永远是人）。
@@ -87,14 +87,14 @@ skill/     SKILL.md 发现与注入
 
 ## 4. 工具（18 个，`src/tool/`）
 
-**doc_tools**（design/ 通用文档）
-`read-doc` `list-docs`(含小节索引) `search-docs` `write-doc` `edit-doc` `append-doc` `remove-doc-section`
+**design_tools**（design/ 通用文档）
+`read-design` `list-designs`(含小节索引) `search-designs` `write-design` `edit-design` `append-design` `remove-design-section`
 
 **character_tools**（人物层）
 `add-character` `update-character` `remove-character`
 
 **framework_tools**
-`doc-spec`(按需拿某层"结构规范+成稿做法")
+`design-spec`(按需拿某层"结构规范+成稿做法")
 
 **core_tools**（委派/知识/人机交互）
 `task` `skill` `ask-user` `confirm` `save-chapter`
@@ -155,18 +155,18 @@ flowchart TD
     A[进入项目: 四层现状卡片 + 提示] --> B{用户现在要什么?}
     B -- 完善某层 / 加角色 --> P[企划成型]
     B -- 写第 N 章 --> W[章节生产]
-    P --> P1[调 doc-spec 拿该层结构规范]
+    P --> P1[调 design-spec 拿该层结构规范]
     P1 --> P2[按小节把用户自由描述整成草稿<br/>没讲到的写(待定)]
-    P2 --> P3[write-doc 落盘 → confirm 拍板]
+    P2 --> P3[write-design 落盘 → confirm 拍板]
     P3 --> P4{这层还有关键格(待定/要改)?}
-    P4 -- 是 --> P5[edit-doc 那格 → 给建议/选项, 一次可多答]
+    P4 -- 是 --> P5[edit-design 那格 → 给建议/选项, 一次可多答]
     P5 --> P4
     P4 -- 否 --> P6[向用户报一句: 当前已定 + 还待定]
     P6 --> P7{用户冒出新点子/推翻旧设定?}
-    P7 -- 是 --> P8[判定归哪层; search-docs 查影响面;<br/>小改 edit, 大级联 task planner]
+    P7 -- 是 --> P8[判定归哪层; search-designs 查影响面;<br/>小改 edit, 大级联 task planner]
     P8 --> P6
     P7 -- 否 --> B
-    W --> W1[read-doc 取当前 core+相关切片<br/>+(plan_ch 若有)]
+    W --> W1[read-design 取当前 core+相关切片<br/>+(plan_ch 若有)]
     W1 --> W2{已有细纲?}
     W2 -- 否 --> W3[task planner 出节拍 → 给用户拍板]
     W3 --> W4
@@ -176,7 +176,7 @@ flowchart TD
     W6 --> B
 ```
 
-- **企划成型工作法**：不逐格盘问 → 让用户自由讲 → 按 doc-spec 小节整理（缺写（待定））→ `write-doc` 整层 confirm 落盘 → 之后仅 `edit-doc` 还待定/要改的那一格。
+- **企划成型工作法**：不逐格盘问 → 让用户自由讲 → 按 design-spec 小节整理（缺写（待定））→ `write-design` 整层 confirm 落盘 → 之后仅 `edit-design` 还待定/要改的那一格。
 - **章节生产纪律（软约束，存于 editor 协议）**：写某章前先有已批准的细纲（`design/outline/plan_ch<N>.md`），无则先 task planner 出节拍再写——这是 editor 的工作纪律，不是 harness 硬门禁。
 
 ---
@@ -187,11 +187,11 @@ flowchart TD
 |---|---|
 | **多角色** = 数据（AgentDef） | 加角色只写 AgentDef + tools 白名单，不改 loop/registry |
 | **Task 委派** | 隔离上下文、只传 prompt；可派清单由 `subagentCatalog()` 动态进 task 描述 |
-| **懒建 + doc-spec** | 文件不预种；editor `doc-spec` 拿结构 → 成稿 → write-doc → edit-doc |
+| **懒建 + design-spec** | 文件不预种；editor `design-spec` 拿结构 → 成稿 → write-design → edit-design |
 | **常驻注入** | `buildResidentDocs` 现读 `core.md`+`wiki/world.md`；仅可见 primary；无 `<nvl-state>` 包装 |
 | **寻址** | 文档名 = `design/` 相对路径（`safeRelPath` 防穿越）；`wiki/<题>.md`、`characters/<名>.md` |
 | **一角色一卡 + 派生总表** | `characters/<名>.md` 5 小节；`_index.md` 由工具增删改后扫描重建 |
-| **强制纪律进工具** | 覆盖/删除/落盘走 confirm；`remove-doc-section`/`remove-character` 内置 `search-docs` 引用检查——模型"想跳过也跳不过" |
+| **强制纪律进工具** | 覆盖/删除/落盘走 confirm；`remove-design-section`/`remove-character` 内置 `search-designs` 引用检查——模型"想跳过也跳不过" |
 | **上下文压缩** | `compact()` 用 hidden summarizer 生成 `<story-state>`（summary+recent），“最新 compaction 之后”为上下文 |
 | **推理强度** | `TALEMATE_REASONING`（low/high/max/off）；anthropic `thinking` / openai `reasoning_effort` |
 
@@ -201,7 +201,7 @@ flowchart TD
 
 ```
 bun run typecheck   # tsc --noEmit
-bun test            # 15 pass（markdown 手术 / doc-spec / 懒建 / 搜索 / 常驻注入 / 一角色一卡）
+bun test            # 15 pass（markdown 手术 / design-spec / 懒建 / 搜索 / 常驻注入 / 一角色一卡）
 bun run smoke       # mock 全链路：建项目 → editor → task 委派 writer → 落盘；断言 design/ 初始为空
 ```
 

@@ -2,6 +2,7 @@
  * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / save-chapter）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
  */
+import { confirmBody } from "../framework/design_ops";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
 
@@ -118,10 +119,16 @@ export const saveChapterTool: RegisteredTool<{ filename: string; content: string
     },
     required: ["filename", "content"],
   },
-  needsConfirm(args) {
-    return `落盘 chapters/${args.filename}（${args.content.length} 字）`;
-  },
+  // confirm 在 execute 里做：落盘前把正文摆给用户看（渲染器复用 design_ops 那一份）
   async execute(args, ctx) {
+    const ok = await confirmBody(
+      ctx,
+      `落盘 chapters/${args.filename}`,
+      `正文 ${args.content.length} 字。`,
+      "将写入的内容",
+      args.content,
+    );
+    if (!ok) return { output: `用户已拒绝落盘 chapters/${args.filename}` };
     const file = await ctx.saveChapter(args.filename, args.content);
     return { output: `已保存 ${file}`, metadata: { file } };
   },

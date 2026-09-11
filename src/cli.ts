@@ -9,7 +9,7 @@
  *
  * 空间内 REPL（默认 verbose——每一步都打印）：
  *   /help /quit /status /projects /use <id|书名> /new <书名> [题材]
- *   /sessions /open <n> /doc <name> /verbose /quiet /reasoning
+ *   /sessions /open <n> /design <name> /verbose /quiet /reasoning（思考默认收起，一行摘要）
  *   - 单行回车即发送；行尾加反斜杠 `\` 续行（多行输入）。
  *   - 模型回复流式显示；工具调用/子代理边界/每轮落盘回放默认全打。
  */
@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { loadModelConfig, hasCredentials, talemateHome } from "./core/config";
 import type { LLMEvent, StoredMessage } from "./core/types";
 import { buildProjectStatus } from "./framework/report";
-import { createProject, listChapters, loadProjectMeta, readDoc } from "./storage/project";
+import { createProject, listChapters, loadProjectMeta, readDesign } from "./storage/project";
 import { listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
 import { openSession, type Session, type UserIO } from "./session/session";
 
@@ -59,7 +59,8 @@ function truncate(s: string, n: number): string {
 // ─────────────────────────── REPL 状态 ───────────────────────────
 
 let verbose = true;
-let showReasoning = false;
+/** 思考显示：hide = 收起成一行摘要（默认，照 opencode 的 thinking_mode）；show = 流式打印全文。 */
+let reasoningMode: "hide" | "show" = "hide";
 let curSpaceId: string | undefined;
 let curTitle: string | undefined;
 let curSession: Session | undefined;
@@ -131,15 +132,59 @@ async function printMessage(projectId: string, sessionId: string, seqText: strin
 
 // ─────────────────────────── io（详细打印渲染） ───────────────────────────
 
+/**
+ * 收起模式下的思考显示（不需要 TUI）：流式期间用一行 `\r` 重写的状态行顶着，推理一结束就擦掉、
+ * 换成一行摘要。展开全文走 /msg <seq>——推理本来就落盘在 messages.jsonl 的 reasoning part 里。
+ */
+let think: { started: number; chars: number; head: string; live: boolean } | undefined;
+let lastLiveWrite = 0;
+
+/** 擦掉原地刷新的状态行（空行覆盖 + 回车归位）。 */
+function clearLiveLine(): void {
+  if (think?.live) {
+    process.stdout.write(`\r${" ".repeat(48)}\r`);
+    think.live = false;
+  }
+}
+
+/** 推理结束 → 收起成一行摘要。 */
+function flushThinking(): void {
+  if (!think) return;
+  const wasLive = think.live;
+  clearLiveLine();
+  const secs = ((Date.now() - think.started) / 1000).toFixed(1);
+  const head = think.head ? ` · ${think.head}` : "";
+  console.log(`${wasLive ? "" : "\n"}${DIM}▸ 思考 ${secs}s · ${think.chars} 字${head}${RESET}`);
+  think = undefined;
+}
+
 function makeIO(): UserIO {
   const onEvent = (e: LLMEvent): void => {
+    if (e.type !== "reasoning.delta") flushThinking(); // 任何别的事件都表示这段推理已经结束
     switch (e.type) {
       case "text.delta":
         process.stdout.write(inChildScope ? `${e.text}` : e.text);
         break;
-      case "reasoning.delta":
-        if (showReasoning) process.stdout.write(`${DIM}${e.text}${RESET}`);
+      case "reasoning.delta": {
+        if (reasoningMode === "show") {
+          process.stdout.write(`${DIM}${e.text}${RESET}`);
+          break;
+        }
+        if (inChildScope) break; // 子代理的推理不打状态行（会和父会话的输出缠在一起）
+        if (!think) think = { started: Date.now(), chars: 0, head: "", live: false };
+        think.chars += e.text.length;
+        if (!think.head) {
+          const line = e.text.split("\n").find((l) => l.trim());
+          if (line) think.head = truncate(line.trim(), 40);
+        }
+        const now = Date.now();
+        if (now - lastLiveWrite > 120) {
+          lastLiveWrite = now;
+          process.stdout.write(`\r${DIM}◌ 思考中… ${((now - think.started) / 1000).toFixed(0)}s${RESET}`);
+          think.live = true;
+        }
         break;
+      }
       case "tool-call":
         if (verbose) {
           console.log(`\n${CYAN}⚙ 工具调用${RESET} ${e.name} ${DIM}input=${truncate(e.input, 300)}${RESET}`);
@@ -229,11 +274,11 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /new <书名> [题材]  新建空间并进入",
           "  /sessions      列出当前空间的历史会话",
           "  /open <n>      恢复当前空间第 n 个历史会话",
-          "  /doc <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
+          "  /design <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
           "  /quiet         只显示最终文本",
-          "  /reasoning     切换是否显示模型思考",
+          "  /reasoning     切换思考显示：收起（默认，一行摘要）/ 展开（流式全文）",
           "  行尾加 \\ 续行；空行不发送。",
         ].join("\n"),
       );
@@ -314,10 +359,10 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
       await openInSpace(curSpaceId, ids[n - 1]);
       return "switch";
     }
-    case "/doc": {
+    case "/design": {
       if (!curSpaceId) return "continue";
       const name = arg.includes(".md") ? arg : `${arg}.md`;
-      const c = await readDoc(curSpaceId, name);
+      const c = await readDesign(curSpaceId, name);
       console.log(c === undefined ? `没有 ${name}` : `# ${name}\n${c}`);
       return "continue";
     }
@@ -339,8 +384,10 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
       console.log("详细打印：关（只显示最终文本）");
       return "continue";
     case "/reasoning":
-      showReasoning = !showReasoning;
-      console.log(`显示思考：${showReasoning ? "开" : "关"}`);
+      reasoningMode = reasoningMode === "show" ? "hide" : "show";
+      console.log(
+        `思考显示：${reasoningMode === "show" ? "展开（流式打印全文）" : "收起（只打一行摘要；全文用 /msg <seq>）"}`,
+      );
       return "continue";
     default:
       console.log(`未知命令 ${cmd}（/help 看命令）`);

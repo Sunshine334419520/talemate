@@ -59,17 +59,17 @@ export interface ToolContext {
   /** 向用户提问要创作决策（非审批），返回答案文本 */
   askUser(question: string, options?: string[]): Promise<string>;
   /** 读取一个活文档文件内容（design/ 下相对路径），不存在返回 undefined */
-  readDoc(name: string): Promise<string | undefined>;
+  readDesign(name: string): Promise<string | undefined>;
   /** 写/覆盖活文档（design/ 下），返回完整路径 */
-  writeDoc(name: string, content: string): Promise<string>;
+  writeDesign(name: string, content: string): Promise<string>;
   /** 删除活文档（design/ 下，如角色卡）；不存在静默 */
-  removeDoc(name: string): Promise<void>;
+  removeDesign(name: string): Promise<void>;
   /** 列项目 design/（含每个文档的一级小节标题——模型据此寻址/看骨架状态） */
-  listDocs(): Promise<string>;
+  listDesigns(): Promise<string>;
   /** 列 design/ 下所有 .md 文档的相对路径（原始清单，供工具枚举/重建索引用） */
-  listDocPaths(): Promise<string[]>;
+  listDesignPaths(): Promise<string[]>;
   /** 跨 design/ 扫词（framework.search）：改/删前查引用、看影响面 */
-  searchDocs(query: string): Promise<string>;
+  searchDesigns(query: string): Promise<string>;
   /** 列 chapters/ 已有文件（正文/规划） */
   listChapters(): Promise<string>;
   /** 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文 */

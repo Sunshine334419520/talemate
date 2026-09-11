@@ -5,7 +5,7 @@
 > 参考资料：`~/code/agent-foundry/docs/opencode-study/`（01/03/04/05 课）+ `~/code/opencode` 源码精读（本文标注了出处）
 > 这份规范回答四个问题：**我们到底需要哪些 Agent / 哪些 SubAgent / 这些 Agent 在什么时机被触发 / 用什么机制触发**，顺带把 Agent / SubAgent / Tool / Skill / 规则文件五者的边界钉死，避免 P1 接领域时凭感觉加角色。
 >
-> ⚠️ **2026-09-06 修订（以本文 §8 为准）**：企划层改 **懒建 + doc-spec 按需**——createProject 不再播种四层；设计引导不再是 DESIGN_PROTOCOL 自动注入，而是用户点名某层时由 editor 调 `doc-spec` 拿结构再成稿。§0/§4 里「outline 还是骨架即注入设计协议」等旧表述已过时。
+> ⚠️ **2026-09-06 修订（以本文 §8 为准）**：企划层改 **懒建 + design-spec 按需**——createProject 不再播种四层；设计引导不再是 DESIGN_PROTOCOL 自动注入，而是用户点名某层时由 editor 调 `design-spec` 拿结构再成稿。§0/§4 里「outline 还是骨架即注入设计协议」等旧表述已过时。
 
 ---
 
@@ -74,12 +74,12 @@ Tool 也是一份数据（`Def { id, description, parameters, execute → { titl
 | 需要一个独立上下文专注干完、产出要隔离、或想给它单配模型 | **SubAgent** | execute 里会"为一个完整思考任务开一个新 LLM 对话"吗？ |
 | 确定性、单次、schema 化的动作（读文档/落盘/问用户/委派本身） | **Tool** | 不需要它"自己想怎么做"，给参数就给结果？ |
 | 按需注入的知识正文（文风卡/技法包/模板/判据库） | **Skill** | 是"知识/说明书"而不是"动作/脑"吗？ |
-| 跨角色常驻的操作规范、路径约定、命名纪律 | **AGENTS.md** | 是要"每步都遵守的规则"吗？ |
+| **用户自己**想给这部小说加的项目规矩（如"本作禁超自然"） | **AGENTS.md** | 这是用户自己的东西、还是产品的行为？产品行为不得写这（06 §6.3） |
 
 三条附则，用来挡住常见误判：
 
 1. **不设导演 Agent，也不设"评审/拍板" Agent。** opencode 没有导演；多脑协作的唯一机制是父 Agent 用 `task` 委派。拍板永远是人（用户当主编），不需要也不应该有"审查另一个 agent 产出的 agent"——那是已删除的评判系统的残留冲动。
-2. **能靠 Tool 完成的，不升级成 SubAgent；能靠 Skill 注入的，不重写成 SubAgent。** 比如"读某角色卡切片"是 editor 自己 `read-doc` 就能干的，不该派个子代理；"要按某个文风的规矩写"是 writer 载入一张风格 skill，不是另开一个角色。**SubAgent 是稀缺资源（每次 = 一整段独立上下文 + 一次往返），只在"隔离上下文"或"独立人格/模型"真的买到东西时才用。**
+2. **能靠 Tool 完成的，不升级成 SubAgent；能靠 Skill 注入的，不重写成 SubAgent。** 比如"读某角色卡切片"是 editor 自己 `read-design` 就能干的，不该派个子代理；"要按某个文风的规矩写"是 writer 载入一张风格 skill，不是另开一个角色。**SubAgent 是稀缺资源（每次 = 一整段独立上下文 + 一次往返），只在"隔离上下文"或"独立人格/模型"真的买到东西时才用。**
 3. **一个任务的"流程"不单独成角色。** "规划→写正文→拍板"是 editor 的工作协议（写进它的 system prompt），不是一个新 Agent。下一节按这个原则给目录。
 
 ---
@@ -90,9 +90,9 @@ Tool 也是一份数据（`Def { id, description, parameters, execute → { titl
 
 | 角色 | mode | 一句话职责（persona 边界） | 工具集 | 建议模型/推理 | 谁能触发它 |
 |---|---|---|---|---|---|
-| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：把"想法"长成 design/ 四层活文档并维护；当编排者，委派并拍板 | task, read-doc, write-doc, **edit-doc, append-doc, remove-doc-section, search-docs**, list-docs, skill, ask-user, confirm | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
-| **planner（规划）** | subagent | 通用结构师：把材料梳理成结构/规划（章节节拍、整本/分卷大纲、结构重排）——尺度是 task 参数，不是角色 | read-doc, list-docs, skill | 可单配；规划是分析活，low/high 皆可 | editor 经 task |
-| **writer（写手）** | subagent | 按"当前设定切片 + 细纲/节拍"写一章正文；不自创设定、只输出正文 | read-doc, list-docs, skill, save-chapter* | 生成活，low 更省（临时思考 §七已实测） | editor 经 task |
+| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：把"想法"长成 design/ 四层活文档并维护；当编排者，委派并拍板 | task, read-design, write-design, **edit-design, append-design, remove-design-section, search-designs**, list-designs, skill, ask-user, confirm | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
+| **planner（规划）** | subagent | 通用结构师：把材料梳理成结构/规划（章节节拍、整本/分卷大纲、结构重排）——尺度是 task 参数，不是角色 | read-design, list-designs, skill | 可单配；规划是分析活，low/high 皆可 | editor 经 task |
+| **writer（写手）** | subagent | 按"当前设定切片 + 细纲/节拍"写一章正文；不自创设定、只输出正文 | read-design, list-designs, skill, save-chapter* | 生成活，low 更省（临时思考 §七已实测） | editor 经 task |
 | **summarizer（内部）** | primary + hidden | 上下文压缩时生成前情摘要；**不进用户可见角色表、不进 task 可派列表、不当默认 primary** | 无 | 缺省继承；可 talemate.json 覆盖小模型 | harness 内部自动 |
 
 \* `save-chapter` 的去留见 §5.4（writer 直接落盘 vs editor 拍板后落盘，尚未最终选型；当前保留 writer 的 save-chapter）。
@@ -131,9 +131,9 @@ Tool 也是一份数据（`Def { id, description, parameters, execute → { titl
 
 这是把产品流程落到"模型何时调 task"的地方，按 02 §4 修订版写：
 
-1. **设计段对话**：editor 直接答；框架维护是 editor 的活——查 = `list-docs/read-doc/search-docs`，增 = `append-doc`，改 = `edit-doc`（只动一格），删 = `remove-doc-section`（删除前工具内置引用检查），整篇重写才用 `write-doc`。**confirm = 用户拍板，别绕过；不派子代理**。
+1. **设计段对话**：editor 直接答；框架维护是 editor 的活——查 = `list-designs/read-design/search-designs`，增 = `append-design`，改 = `edit-design`（只动一格），删 = `remove-design-section`（删除前工具内置引用检查），整篇重写才用 `write-design`。**confirm = 用户拍板，别绕过；不派子代理**。
 2. **用户要为某章做节拍规划**（"第 N 章怎么写 / 做个细纲"）→ editor `task(planner, { prompt: 带 core+相关角色/世界切片 + 本章任务 })`；planner 只读 docs/skill，回节拍文本；editor 展示给用户，拍板后由 editor 落 `plan_ch<N>.md`。
-3. **用户要写某章正文** → editor 先 `read-doc` 拿"当前版本"的 core + 相关切片 + （若有）`plan_ch<N>.md` → `task(writer, { prompt: writer 规范 + 切片 + 节拍 })` → writer 产出正文 → **回到 editor，editor 面向用户做成品确认，用户拍板后 editor 落 `chapter_ch<N>_v<M>.md`**。
+3. **用户要写某章正文** → editor 先 `read-design` 拿"当前版本"的 core + 相关切片 + （若有）`plan_ch<N>.md` → `task(writer, { prompt: writer 规范 + 切片 + 节拍 })` → writer 产出正文 → **回到 editor，editor 面向用户做成品确认，用户拍板后 editor 落 `chapter_ch<N>_v<M>.md`**。
    - 允许 editor 合并 2+3（用户只说"写第 N 章"且没有现成规划时，editor 可先 task(planner) 拿到节拍、把节拍连同切片一起 task(writer)）——**这是同一个循环里连续两次 task 调用**，opencode 就是这么串多步的，不需要任何编排代码。
 4. **任何一步出现"要不要写残酷点 / 金手指边界是什么"这类作品级取舍** → editor `ask-user`（参谋要裁决，不是权限审批）。
 5. **"什么时候必须派、什么时候自己干"**：需要**隔离上下文**或**独立专注**的活才 task；editor 自己能一两步查完的（读个切片、列个文档）绝不派。**每派一次都是一段全新上下文 + 一次往返成本。**
@@ -201,7 +201,7 @@ task { agent: "planner" | "writer" | …, prompt: string }
 从 opencode 4 类内置 agent prompt 提炼（03 课 §9），我们写 editor/planner/writer 的 system 时遵守：
 
 1. **第一行定角色 + 定边界**："你是主编（用户的参谋，不亲自写正文）" / "你是规划（只做节拍，不写正文）"。
-2. **能力写成"工具映射"**：editor 的"什么时候 read-doc、什么时候 task、什么时候 ask-user"要写清触发条件，别只写形容词（"你要会统筹"）。
+2. **能力写成"工具映射"**：editor 的"什么时候 read-design、什么时候 task、什么时候 ask-user"要写清触发条件，别只写形容词（"你要会统筹"）。
 3. **写负向约束**：writer 的"不自创设定""输出只有正文、不含标题/解释"（现有 WRITER_SYSTEM 已带）；planner 的"不写正文"。
 4. **机器消费的输出给格式契约**：planner 明确节拍输出的固定结构（中枢问题/环账本/章末钩子/放大点/这章不许/节拍序列，04 §3.2 已列）；compaction 给"600 字内条目式"。
 5. **把"要不要 task / 何时 task"写成 editor 的操作手册 §4.2**——这是触发时机真正的落点。
@@ -224,12 +224,12 @@ task { agent: "planner" | "writer" | …, prompt: string }
 本轮实现 = **框架设计闭环 + harness 深度规范化**，与 `06-framework-and-mode-notes.md` §6/§6.6 一致，详见 `07-editor-framework-design.md`（主编规范 + 框架设计流程 + 跑通示例）。
 
 **已落地**
-- framework 域层 `src/framework/`：`doc_spec`（每层结构规范，按需取）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `report`（四层现状卡片）· `anchor`（core/world 常驻设定注入 `buildResidentDocs`）。
-- **懒建**：createProject 不再播种四层（`src/storage/project.ts`）；docs 初始为空，用户要完善某层时 editor 调 `doc-spec` 拿形状再成稿；`add-character` 首次调用自建 characters.md。新增 `listChapters`。
-- 框架增删改查工具：`list-docs`（含小节索引）/ `read-doc`(带 section) / `search-docs` / `edit-doc` / `append-doc` / `remove-doc-section`（删除前内置引用检查进 confirm）（`src/tool/（按领域模块：doc_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`）。
-- editor 上下文：可见 primary 每轮注入 core/world 常驻设定（`buildResidentDocs`，`src/context/assemble.ts` + `src/session/session.ts`）；设计引导不自动注入——用户点名某层时 editor 调 `doc-spec` 工具按需拿规范。常驻设定现读自磁盘，无写后刷新钩子、永不陈旧。（原 `<nvl-state>` 状态包装块已删，见 06 §8。）
+- framework 域层 `src/framework/`：`design_spec`（每层结构规范，按需取）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `report`（四层现状卡片）· `anchor`（core/world 常驻设定注入 `buildResidentDocs`）。
+- **懒建**：createProject 不再播种四层（`src/storage/project.ts`）；docs 初始为空，用户要完善某层时 editor 调 `design-spec` 拿形状再成稿；`add-character` 首次调用自建 characters.md。新增 `listChapters`。
+- 框架增删改查工具：`list-designs`（含小节索引）/ `read-design`(带 section) / `search-designs` / `edit-design` / `append-design` / `remove-design-section`（删除前内置引用检查进 confirm）（`src/tool/（按领域模块：design_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`）。
+- editor 上下文：可见 primary 每轮注入 core/world 常驻设定（`buildResidentDocs`，`src/context/assemble.ts` + `src/session/session.ts`）；设计引导不自动注入——用户点名某层时 editor 调 `design-spec` 工具按需拿规范。常驻设定现读自磁盘，无写后刷新钩子、永不陈旧。（原 `<nvl-state>` 状态包装块已删，见 06 §8。）
 - 内部杂活 agent 化 + task 动态描述 + hidden 过滤（§5.2/5.3）。
-- 单测 `src/framework/framework.test.ts`（`bun test`，含懒建/doc-spec/角色卡）+ `bun run smoke`（断言 docs 懒建为空）+ `bun run typecheck` 全绿。
+- 单测 `src/framework/framework.test.ts`（`bun test`，含懒建/design-spec/角色卡）+ `bun run smoke`（断言 docs 懒建为空）+ `bun run typecheck` 全绿。
 
 **§7 决策点处置**
 - 2（planner 独立 subagent）：已定为**通用结构师**，尺度走 task 参数（本规范 §3.1 表述已更新）。

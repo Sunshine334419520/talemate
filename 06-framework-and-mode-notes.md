@@ -6,7 +6,7 @@
 
 > ## ⚠️ 阅读指引（2026-09-06）：仅 §7、§8 为现行
 >
-> §0–§6 是早期讨论/决策过程记录，其中多处已被推翻：`<nvl-state>` 锚点已删除、DocKind 骨架"播种进文件"已改为**懒建 + doc-spec 按需**、维护纪律"放 editor.system"已被 §6.6 修正、`DESIGN_PROTOCOL` 自动注入已取消。**以 §7（懒建 + doc-spec）、§8（core/world 收敛）为准**；§0–§6 只作决策历史，读代码时不要按它们对照。实现以 `05-agent-spec.md`、`07-editor-framework-design.md` 与 `src/` 为准。
+> §0–§6 是早期讨论/决策过程记录，其中多处已被推翻：`<nvl-state>` 锚点已删除、DocKind 骨架"播种进文件"已改为**懒建 + doc-spec 按需**、维护纪律"放 editor.system"已被 §6.6 修正、`DESIGN_PROTOCOL` 自动注入已取消。**以 §7（懒建 + doc-spec）、§8（core/world 收敛）为准**；另 **§6.3 里"AGENTS.md 归属"那段仍然有效**（AGENTS.md = 用户自己的文件、默认可空、不预建、产品行为不得依赖它）。**其余** §0–§6 只作决策历史，读代码时不要按它们对照。实现以 `05-agent-spec.md`、`07-editor-framework-design.md` 与 `src/` 为准。
 
 ---
 
@@ -141,7 +141,7 @@
 | 题材附加规范 | skill | 用户可加 |
 | 级联大活/读全量再综合 | task(planner) | — |
 
-**AGENTS.md 定位修正（本节最重要）**：AGENTS.md 语义等同 CLAUDE.md——项目级、用户管理、系统只提供"每轮注入该文件"的能力、默认可空。**产品核心行为不得依赖它。** 维护纪律（先读后写 / 覆盖与删除前 confirm / 删前查引用 / 改 core 扫 outline / 改完刷新锚点）属产品核心行为 → 放 editor.system（现状 `EDITOR_SYSTEM` 已有"落盘纪律"一小段，扩写即可），不进 AGENTS.md。AGENTS.md 只放用户想加的本项目规矩（如"本作禁超自然"）；产品可播种最小占位提示，但逻辑不依赖其内容。
+**AGENTS.md 定位修正（本节最重要）**：AGENTS.md 语义等同 CLAUDE.md——项目级、用户管理、系统只提供"每轮注入该文件"的能力、默认可空。**产品核心行为不得依赖它。** 维护纪律（先读后写 / 覆盖与删除前 confirm / 删前查引用 / 改 core 扫 outline / 改完刷新锚点）属产品核心行为 → 放 editor.system（现状 `EDITOR_SYSTEM` 已有"落盘纪律"一小段，扩写即可），不进 AGENTS.md。AGENTS.md 只放用户想加的本项目规矩（如"本作禁超自然"）；**产品连占位也不播种——该文件默认不存在**（`createProject` 不建它），不存在 → `readProjectRules` 返回空 → 注入整块跳过；用户自己在磁盘上建了才生效。editor 的写接口被 `safeRelPath` 限定在 `design/` 下，结构上碰不到它。
 
 ### 6.4 待补的工具缺口
 

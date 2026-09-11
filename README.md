@@ -6,8 +6,8 @@ AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系�
 受管根目录（TALEMATE_HOME，默认 ~/.talemate/）
 └── novels/<project-id>/        ← 一小说一目录（用户只认书名）
     ├── talemate.json           # 项目元信息（id/书名/题材/创建时间/角色覆盖）
-    ├── AGENTS.md               # 项目规则（常驻注入）
-    ├── design/                 # 企划活文档（懒建，按需 doc-spec 成稿）
+    ├── AGENTS.md               # 用户自己的项目规矩（不预建，可空；存在才每轮注入）
+    ├── design/                 # 企划活文档（懒建，按需 design-spec 成稿）
     │   ├── core.md             #   核心层：小说介绍（常驻）
     │   ├── wiki/world.md       #   世界层总纲（常驻）；wiki/<题>.md 专题页按需读
     │   ├── characters/         #   人物层：一角色一卡 <名>.md + _index.md 总表
@@ -37,8 +37,8 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 | `src/cli.ts` | CLI + REPL 入口 |
 | `src/agent/registry.ts` | Agent 注册表：editor(primary) / planner / writer(subagent) / summarizer(hidden) |
 | `src/session/*` | 会话接线、agent 循环(runLoop)、上下文压缩(compaction) |
-| `src/tool/*` | 工具框架 + 16 个内置工具(doc/character/framework/core) |
-| `src/framework/*` | 写作领域层：doc_spec / markdown 区块手术 / characters 角色卡 / search 引用 / report 现状卡 / anchor 常驻设定 |
+| `src/tool/*` | 工具框架 + 16 个内置工具(design/character/framework/core) |
+| `src/framework/*` | 写作领域层：design_spec / markdown 区块手术 / characters 角色卡 / search 引用 / report 现状卡 / anchor 常驻设定 |
 | `src/llm/*` | provider 抽象(anthropic / openai 兼容 / mock) + 流式多轮 + 工具循环 |
 | `src/storage/*` | 文件系统项目/会话存储 |
 | `src/skill/*` | SKILL.md 发现与解析 |

@@ -2,4 +2,4 @@ Append a block to the END of a doc — a new character card, a new setting secti
 
 block must carry its own heading (start with e.g. ## 角色：<名字>). Existing content is not
 modified, so no confirmation is needed. If the block's heading already exists in the doc,
-prefer edit-doc instead of appending a duplicate.
+prefer edit-design instead of appending a duplicate.

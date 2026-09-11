@@ -14,12 +14,12 @@ import { AgentRegistry } from "../agent/registry";
 import { loadModelConfig } from "../core/config";
 import type { AgentDef, AssistantPart, LLMEvent, ModelConfig, ProjectMeta, StoredMessage, ToolContext } from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
-import { buildResidentDocs, buildDocIndex } from "../framework/anchor";
-import { renderHits, searchDocs } from "../framework/search";
+import { buildResidentDesigns, buildDesignIndex } from "../framework/anchor";
+import { renderHits, searchDesigns } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
 import { discoverSkills, loadSkillByName, renderSkillCatalog } from "../skill/discovery";
-import { listChapters, listDocs, loadProjectMeta, readDoc, readProjectRules, removeDoc, saveChapter, writeDoc } from "../storage/project";
+import { listChapters, listDesigns, loadProjectMeta, readDesign, readProjectRules, removeDesign, saveChapter, writeDesign } from "../storage/project";
 import { appendMessage, createSession, loadMessages, loadModelWindow } from "../storage/session-store";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
@@ -161,7 +161,7 @@ export class Session {
     const rules = await readProjectRules(this.projectId);
     const skills = await discoverSkills(this.projectId);
     let resident: string | undefined;
-    if (agent.mode === "primary" && !agent.hidden) resident = await buildResidentDocs(this.projectId);
+    if (agent.mode === "primary" && !agent.hidden) resident = await buildResidentDesigns(this.projectId);
     return buildSystemPrompt({
       projectTitle: this.meta.title,
       agentName: agent.name,
@@ -181,13 +181,13 @@ export class Session {
       signal: this.abort.signal,
       confirm: (action, summary) => this.io.confirm(action, summary),
       askUser: (q, options) => this.io.askUser(q, options),
-      readDoc: (name) => readDoc(this.projectId, name),
-      writeDoc: (name, content) => writeDoc(this.projectId, name, content),
-      removeDoc: (name) => removeDoc(this.projectId, name),
-      listDocs: () => buildDocIndex(this.projectId),
-      listDocPaths: () => listDocs(this.projectId),
-      searchDocs: async (query) => {
-        const hits = await searchDocs(this.projectId, query, "docs");
+      readDesign: (name) => readDesign(this.projectId, name),
+      writeDesign: (name, content) => writeDesign(this.projectId, name, content),
+      removeDesign: (name) => removeDesign(this.projectId, name),
+      listDesigns: () => buildDesignIndex(this.projectId),
+      listDesignPaths: () => listDesigns(this.projectId),
+      searchDesigns: async (query) => {
+        const hits = await searchDesigns(this.projectId, query, "design");
         return renderHits(hits, query);
       },
       listChapters: async () => {

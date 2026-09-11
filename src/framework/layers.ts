@@ -1,22 +1,22 @@
 /**
- * DocKind：四层企划文档的元信息（排序/路径/一句话）。
+ * Layer：四层企划文档的元信息（排序/路径/一句话）。
  *
- * 结构规范（每层该有哪些小节）不在预埋文件里了——见 doc_spec.ts，按需读取（懒建）。
- * 文件是真相：目标文档平时不存在，用户要完善某层时由 editor 调 doc-spec 拿形状再成稿落盘。
+ * 结构规范（每层该有哪些小节）不在预埋文件里了——见 design_spec.ts，按需读取（懒建）。
+ * 文件是真相：目标文档平时不存在，用户要完善某层时由 editor 调 design-spec 拿形状再成稿落盘。
  * 目录（2026-09-07）：design/ 下 core.md 单文件；world = wiki 总纲入口 + 专题页；characters = 一角色一卡；
- * outline = 整本 + 分卷/章节细纲。RESIDENT_DOCS = core + wiki/world 总纲（editor 每轮常驻注入）。
+ * outline = 整本 + 分卷/章节细纲。RESIDENT_DESIGNS = core + wiki/world 总纲（editor 每轮常驻注入）。
  */
-export type DocId = "core" | "world" | "characters" | "outline";
+export type LayerId = "core" | "world" | "characters" | "outline";
 
-export interface DocKind {
-  id: DocId;
+export interface Layer {
+  id: LayerId;
   file: string; // design/ 下相对路径（入口；characters 为目录）
   title: string; // 中文层名
   blurb: string; // 一层一句话（用于列表/锚点）
 }
 
 /** 四层元信息（排序 = 依赖序：core 最先，outline 最后）。 */
-export const DOC_KINDS: DocKind[] = [
+export const LAYERS: Layer[] = [
   {
     id: "core",
     file: "core.md",
@@ -43,5 +43,5 @@ export const DOC_KINDS: DocKind[] = [
   },
 ];
 
-/** 常驻注入 editor 的设定文档（core + world 总纲），见 framework/anchor buildResidentDocs。 */
-export const RESIDENT_DOCS = ["core.md", "wiki/world.md"];
+/** 常驻注入 editor 的设定文档（core + world 总纲），见 framework/anchor buildResidentDesigns。 */
+export const RESIDENT_DESIGNS = ["core.md", "wiki/world.md"];

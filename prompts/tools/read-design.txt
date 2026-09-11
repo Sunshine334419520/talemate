@@ -4,5 +4,5 @@ name: a design/ relative path incl. extension (core.md / wiki/world.md / charact
 outline/outline.md / wiki/地理.md …).
 section (optional): an exact heading title inside that doc, e.g. 一句话简介, 题材 · 频道, 角色：沈越.
 
-Without section, returns the whole doc. Prefer a section read for a large doc. Run list-docs
+Without section, returns the whole doc. Prefer a section read for a large doc. Run list-designs
 first to see which docs and sections exist.

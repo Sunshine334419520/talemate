@@ -2,8 +2,11 @@
  * character-tools：角色卡领域工具（add/update/remove-character）。
  * 角色规范（卡该有哪 5 个小节）在 src/framework/characters.ts —— 工具入参即契约，落盘成合规卡。
  * 一角色一卡（design/characters/<名>.md）；characters/_index.md 是派生总表，每次增删改后重建。
- * 文件读写复用 ctx 原语，不互相调用其它工具。
+ *
+ * 写盘是薄壳：校验 / confirm / 变换 / 落盘都在 framework/design_ops.ts。角色层在这里只多两样自己的东西——
+ * 卡片内容由结构化字段拼（buildCardMarkdown），以及写完之后**重建总表**（索引同步是角色层独有的不变量）。
  */
+import { applyDesignOp } from "../framework/design_ops";
 import {
   CHARACTER_FIELDS,
   buildCardMarkdown,
@@ -45,14 +48,14 @@ function pendingLabels(fields: CharacterFields): string[] {
 /** 扫描 characters/ 重建 _index.md（工具每次增删改后调用）。 */
 async function rebuildIndex(ctx: ToolContext): Promise<void> {
   const cards: { name: string; one_line: string | undefined }[] = [];
-  for (const rel of await ctx.listDocPaths()) {
+  for (const rel of await ctx.listDesignPaths()) {
     const name = nameFromPath(rel);
     if (!name) continue; // 含 _index.md 本身
-    const content = await ctx.readDoc(rel);
+    const content = await ctx.readDesign(rel);
     if (content === undefined) continue;
     cards.push({ name, one_line: parseCardBody(content).one_line });
   }
-  await ctx.writeDoc(INDEX_PATH, renderIndex(cards));
+  await ctx.writeDesign(INDEX_PATH, renderIndex(cards));
 }
 
 /** add-character：新建一张角色卡（缺失字段自动补（待定），输出提示后续补哪些），并同步总表。 */
@@ -67,11 +70,18 @@ export const addCharacterTool: RegisteredTool<Record<string, unknown>> = defineT
   async execute(args, ctx) {
     const name = (args.name as string | undefined)?.trim();
     if (!name) return { output: "add-character 需要 name（角色名）。" };
-    if ((await ctx.readDoc(cardPath(name))) !== undefined) {
+    if ((await ctx.readDesign(cardPath(name))) !== undefined) {
       return { output: `角色「${name}」已存在。要改它请用 update-character。` };
     }
     const fields = pickFields(args);
-    await ctx.writeDoc(cardPath(name), buildCardMarkdown(name, fields));
+    // confirm:false —— 新建无破坏性，沿用原行为不打断用户
+    const r = await applyDesignOp(ctx, {
+      kind: "write",
+      name: cardPath(name),
+      content: buildCardMarkdown(name, fields),
+      confirm: false,
+    });
+    if (!r.ok) return { output: r.output };
     await rebuildIndex(ctx);
     const pend = pendingLabels(fields);
     return {
@@ -95,21 +105,27 @@ export const updateCharacterTool: RegisteredTool<Record<string, unknown>> = defi
   async execute(args, ctx) {
     const name = (args.name as string | undefined)?.trim();
     if (!name) return { output: "update-character 需要 name（角色名）。" };
-    const content = await ctx.readDoc(cardPath(name));
+    const content = await ctx.readDesign(cardPath(name));
     if (content === undefined) return { output: `没有找到角色「${name}」。可用 add-character 新建。` };
     const incoming = pickFields(args);
     const changed = CHARACTER_FIELDS.filter((f) => incoming[f.key] !== undefined).map((f) => f.label);
     if (!changed.length) return { output: "没有传入要改的小节（至少给一个：one_line / want_fear / idiolect / habit / function）。" };
     const merged: CharacterFields = { ...parseCardBody(content), ...incoming };
-    const ok = await ctx.confirm(`更新角色卡「${name}」`, `将改写小节：${changed.join("、")}；其余保留。`);
-    if (!ok) return { output: `用户已拒绝更新角色卡「${name}」` };
-    await ctx.writeDoc(cardPath(name), buildCardMarkdown(name, merged));
+    // 走 write 而不是 edit：卡片是整份重建的，confirm 时正好摊出改完的完整卡
+    const r = await applyDesignOp(ctx, {
+      kind: "write",
+      name: cardPath(name),
+      content: buildCardMarkdown(name, merged),
+      action: `更新角色卡「${name}」`,
+      meta: `将改写小节：${changed.join("、")}；其余保留。`,
+    });
+    if (!r.ok) return { output: r.output };
     await rebuildIndex(ctx);
     return { output: `已更新角色卡「${name}」：${changed.join("、")}。`, metadata: { name } };
   },
 });
 
-/** remove-character：删除角色卡（删除前引用检查进 confirm，删除后同步总表）。 */
+/** remove-character：删除角色卡（删前引用检查进 confirm，删除后同步总表）。 */
 export const removeCharacterTool: RegisteredTool<{ name: string }> = defineTool<{ name: string }>({
   id: "remove-character",
   description: P("remove-character"),
@@ -120,17 +136,15 @@ export const removeCharacterTool: RegisteredTool<{ name: string }> = defineTool<
   },
   async execute(args, ctx) {
     const name = args.name.trim();
-    if ((await ctx.readDoc(cardPath(name))) === undefined) {
-      return { output: `没有找到角色「${name}」。` };
-    }
-    const refs = await ctx.searchDocs(name);
-    const summary =
-      refs.startsWith("没有命中") || refs.startsWith(`「${name}」在文档里没有命中`)
-        ? `引用检查「${name}」：无命中。`
-        : `引用检查「${name}」（含角色卡自身，请判断需否级联改 world/outline）：\n${refs}`;
-    const ok = await ctx.confirm(`删除角色卡「${name}」（design/characters/${name}.md）`, summary);
-    if (!ok) return { output: `用户已拒绝删除角色「${name}」` };
-    await ctx.removeDoc(cardPath(name));
+    const r = await applyDesignOp(ctx, {
+      kind: "drop",
+      name: cardPath(name),
+      term: name,
+      action: `删除角色卡「${name}」（design/characters/${name}.md）`,
+      refScope: "含角色卡自身，请判断需否级联改 world/outline",
+      notFound: `没有找到角色「${name}」。`,
+    });
+    if (!r.ok) return { output: r.output };
     await rebuildIndex(ctx);
     return { output: `已删除角色「${name}」并同步角色总表。` };
   },

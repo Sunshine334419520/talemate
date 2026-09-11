@@ -1,17 +1,17 @@
 /**
- * 离线测试（不打 LLM）：markdown 区块手术 / DocKind 骨架 / 播种 / 跨文档搜索 / 常驻设定注入。
+ * 离线测试（不打 LLM）：markdown 区块手术 / Layer 骨架 / 播种 / 跨文档搜索 / 常驻设定注入。
  * 运行：bun test
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createProject, listDocs, readDoc, removeDoc, writeDoc } from "../storage/project";
+import { createProject, listDesigns, readDesign, removeDesign, writeDesign } from "../storage/project";
 import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "./markdown";
-import { RESIDENT_DOCS } from "./dockind";
-import { renderDocSpec } from "./doc_spec";
-import { renderHits, searchDocs } from "./search";
-import { buildResidentDocs, buildDocIndex } from "./anchor";
+import { RESIDENT_DESIGNS } from "./layers";
+import { renderDesignSpec } from "./design_spec";
+import { renderHits, searchDesigns } from "./search";
+import { buildResidentDesigns, buildDesignIndex } from "./anchor";
 import { addCharacterTool, removeCharacterTool, updateCharacterTool } from "../tool/character_tools";
 import type { ToolContext } from "../core/types";
 
@@ -106,25 +106,25 @@ describe("markdown 区块手术", () => {
   });
 });
 
-// ─── doc-spec（结构规范） ───
+// ─── design-spec（结构规范） ───
 
-describe("doc-spec（结构规范）", () => {
+describe("design-spec（结构规范）", () => {
   test("常驻设定文档枚举：core + wiki/world 总纲", () => {
-    expect(RESIDENT_DOCS).toEqual(["core.md", "wiki/world.md"]);
+    expect(RESIDENT_DESIGNS).toEqual(["core.md", "wiki/world.md"]);
   });
   test("core 规范 = 小说介绍四格；world = 空间/规则/术语三格（旧格移除）", () => {
-    expect(renderDocSpec("core")).toContain("## 一句话简介");
-    expect(renderDocSpec("core")).toContain("## 金手指 / 超常设定");
-    expect(renderDocSpec("core")).toContain("基调 · 情绪");
-    expect(renderDocSpec("core")).not.toContain("一句话卖点");
-    expect(renderDocSpec("core")).not.toContain("爽感承诺");
-    expect(renderDocSpec("world")).toContain("## 空间与舞台");
-    expect(renderDocSpec("world")).toContain("## 规则与秩序");
-    expect(renderDocSpec("world")).toContain("## 术语表");
-    expect(renderDocSpec("world")).not.toContain("世界观一句话");
-    expect(renderDocSpec("world")).not.toContain("势力与人物群像");
-    expect(renderDocSpec("world")).not.toContain("历史痕迹与秘密");
-    expect(renderDocSpec("characters")).toContain("add-character");
+    expect(renderDesignSpec("core")).toContain("## 一句话简介");
+    expect(renderDesignSpec("core")).toContain("## 金手指 / 超常设定");
+    expect(renderDesignSpec("core")).toContain("基调 · 情绪");
+    expect(renderDesignSpec("core")).not.toContain("一句话卖点");
+    expect(renderDesignSpec("core")).not.toContain("爽感承诺");
+    expect(renderDesignSpec("world")).toContain("## 空间与舞台");
+    expect(renderDesignSpec("world")).toContain("## 规则与秩序");
+    expect(renderDesignSpec("world")).toContain("## 术语表");
+    expect(renderDesignSpec("world")).not.toContain("世界观一句话");
+    expect(renderDesignSpec("world")).not.toContain("势力与人物群像");
+    expect(renderDesignSpec("world")).not.toContain("历史痕迹与秘密");
+    expect(renderDesignSpec("characters")).toContain("add-character");
   });
 });
 
@@ -132,33 +132,33 @@ describe("doc-spec（结构规范）", () => {
 
 describe("项目懒建 / 搜索 / 锚点", () => {
   test("懒建：建项目不种四层；文件被写入才出现", async () => {
-    expect(await listDocs(pid)).toEqual([]);
-    await writeDoc(pid, "core.md", "# core\n\n## 一句话简介\n空难后困于荒岛。");
-    expect(await listDocs(pid)).toEqual(["core.md"]);
+    expect(await listDesigns(pid)).toEqual([]);
+    await writeDesign(pid, "core.md", "# core\n\n## 一句话简介\n空难后困于荒岛。");
+    expect(await listDesigns(pid)).toEqual(["core.md"]);
   });
 
-  test("searchDocs 跨文档命中；renderHits 分组", async () => {
-    await writeDoc(pid, "core.md", "## 一句话简介\n沈越 想要活着回去。");
-    await writeDoc(pid, "wiki/world.md", "## 势力\n沈越 与林晚结伴求生。");
-    const hits = await searchDocs(pid, "沈越");
+  test("searchDesigns 跨文档命中；renderHits 分组", async () => {
+    await writeDesign(pid, "core.md", "## 一句话简介\n沈越 想要活着回去。");
+    await writeDesign(pid, "wiki/world.md", "## 势力\n沈越 与林晚结伴求生。");
+    const hits = await searchDesigns(pid, "沈越");
     expect(hits.length).toBe(2);
     const text = renderHits(hits, "沈越");
     expect(text).toContain("core.md");
     expect(text).toContain("wiki/world.md");
-    expect(await searchDocs(pid, "不存在的词")).toHaveLength(0);
+    expect(await searchDesigns(pid, "不存在的词")).toHaveLength(0);
   });
 
-  test("buildResidentDocs：core + world 总纲常驻全文，无状态包装", async () => {
-    await writeDoc(pid, "core.md", "# core\n\n## 一句话简介\n沈越 想要活着回去。");
-    await writeDoc(pid, "wiki/world.md", "## 空间与舞台\n一座荒岛。\n\n## 规则与秩序\n无超自然。");
-    const resident = await buildResidentDocs(pid);
+  test("buildResidentDesigns：core + world 总纲常驻全文，无状态包装", async () => {
+    await writeDesign(pid, "core.md", "# core\n\n## 一句话简介\n沈越 想要活着回去。");
+    await writeDesign(pid, "wiki/world.md", "## 空间与舞台\n一座荒岛。\n\n## 规则与秩序\n无超自然。");
+    const resident = await buildResidentDesigns(pid);
     expect(resident).toContain("沈越 想要活着回去"); // core 全文
     expect(resident).toContain("一座荒岛。"); // world 总纲全文
     expect(resident).toContain("无超自然。");
     expect(resident).not.toContain("<nvl-state>"); // 无状态包装
     expect(resident).not.toContain("写作进度"); // 进度归工具，不常驻
-    const index = await buildDocIndex(pid);
-    expect(index).toContain("core.md"); // 索引仍由 list-docs 提供
+    const index = await buildDesignIndex(pid);
+    expect(index).toContain("core.md"); // 索引仍由 list-designs 提供
   });
 });
 
@@ -172,12 +172,12 @@ function makeCtx(projectId: string): ToolContext {
     signal: new AbortController().signal,
     confirm: async () => true,
     askUser: async () => "（测试）",
-    readDoc: (name) => readDoc(projectId, name),
-    writeDoc: (name, content) => writeDoc(projectId, name, content),
-    removeDoc: (name) => removeDoc(projectId, name),
-    listDocs: () => buildDocIndex(projectId),
-    listDocPaths: () => listDocs(projectId),
-    searchDocs: async (q) => renderHits(await searchDocs(projectId, q), q),
+    readDesign: (name) => readDesign(projectId, name),
+    writeDesign: (name, content) => writeDesign(projectId, name, content),
+    removeDesign: (name) => removeDesign(projectId, name),
+    listDesigns: () => buildDesignIndex(projectId),
+    listDesignPaths: () => listDesigns(projectId),
+    searchDesigns: async (q) => renderHits(await searchDesigns(projectId, q), q),
     listChapters: async () => "（无）",
     runSubagent: async () => "（无）",
     loadSkill: async () => undefined,
@@ -199,12 +199,12 @@ describe("character-tools（add/update/remove + 总表同步）", () => {
       makeCtx(pid) as never,
     );
     expect(r.output).toContain("林晚");
-    const content = (await readDoc(pid, "characters/林晚.md"))!;
+    const content = (await readDesign(pid, "characters/林晚.md"))!;
     expect(content).toContain("# 角色：林晚");
     for (const label of ["一句话定位", "想要 · 最怕", "说话方式", "习惯动作", "在故事中的功能"]) {
       expect(content).toContain(`### ${label}`);
     }
-    const idx = (await readDoc(pid, "characters/_index.md"))!;
+    const idx = (await readDesign(pid, "characters/_index.md"))!;
     expect(idx).toContain("林晚");
   });
 
@@ -219,7 +219,7 @@ describe("character-tools（add/update/remove + 总表同步）", () => {
       makeCtx(pid) as never,
     );
     expect(r.output).toContain("说话方式");
-    const content = (await readDoc(pid, "characters/林晚.md"))!;
+    const content = (await readDesign(pid, "characters/林晚.md"))!;
     expect(content).toContain("新版：越在乎越呛");
     expect(content).toContain("空姐，与江屿困同一座岛"); // 未传字段保留
   });
@@ -227,8 +227,8 @@ describe("character-tools（add/update/remove + 总表同步）", () => {
   test("remove-character：删卡并同步总表", async () => {
     const r = await removeCharacterTool.execute({ name: "林晚" }, makeCtx(pid) as never);
     expect(r.output).toContain("已删除");
-    expect(await readDoc(pid, "characters/林晚.md")).toBeUndefined();
-    const idx = (await readDoc(pid, "characters/_index.md"))!;
+    expect(await readDesign(pid, "characters/林晚.md")).toBeUndefined();
+    const idx = (await readDesign(pid, "characters/_index.md"))!;
     expect(idx).not.toContain("林晚");
   });
 });

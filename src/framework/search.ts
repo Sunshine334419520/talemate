@@ -1,6 +1,6 @@
 /**
- * searchDocs：跨 design/(+chapters/) 扫词，返回 "文件 → 小节 + 行 snippet" 命中。
- * 供 editor 改/删前查影响面（remove-doc-section / remove-character 用它做强制引用检查）。
+ * searchDesigns：跨 design/(+chapters/) 扫词，返回 "文件 → 小节 + 行 snippet" 命中。
+ * 供 editor 改/删前查影响面（remove-design-section / remove-character 用它做强制引用检查）。
  */
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -50,13 +50,13 @@ async function walk(rootDir: string): Promise<{ abs: string; rel: string }[]> {
 }
 
 /**
- * 跨文档搜 query。scope: "docs" | "all"（design/ + chapters/，默认 design/）。
+ * 跨文档搜 query。scope: "design" | "all"（design/ + chapters/，默认 design/）。
  * 返回扁平命中表；每个文件内按行序。
  */
-export async function searchDocs(
+export async function searchDesigns(
   projectId: string,
   query: string,
-  scope: "docs" | "all" = "docs",
+  scope: "design" | "all" = "design",
 ): Promise<Hit[]> {
   const q = query.trim();
   if (!q) return [];

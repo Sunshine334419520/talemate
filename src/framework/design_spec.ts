@@ -1,24 +1,29 @@
 /**
- * doc-spec：每层"结构规范"（该层目标文档该有哪些小节 + 成稿/补缺做法）。
+ * design-spec：每层"结构规范"（该层目标文档该有哪些小节 + 成稿/补缺做法）。
  *
  * 设计（2026-09-06）：
- * - 懒建：目标文档平时不存在，用户要完善某层时才由 editor 调 doc-spec 拿形状，再成稿落盘。
+ * - 懒建：目标文档平时不存在，用户要完善某层时才由 editor 调 design-spec 拿形状，再成稿落盘。
  * - 成稿：不逐格盘问；让用户先用自己话讲 → 按小节整理一版草稿（缺的写（待定））→ 确认后整层落盘；
- *   之后只更新仍（待定）/要改的那一小节（edit-doc），补细节时给建议/选项。
+ *   之后只更新仍（待定）/要改的那一小节（edit-design），补细节时给建议/选项。
  * - 结构与内容分离：这里只定义"长什么样"；文档文件一旦建立即内容与真相。
+ *
+ * 2026-09-11：曾加过"无参模式 = 归档归位表（一次给 core+world）"，已**撤掉**——它把两个职责塞进一个工具：
+ * `spec` 回答"这一层该长什么样"，"归位"回答"这段讨论该记到哪"，是两件事。归档回到**流程**：
+ * 由 persona 的 # Recording 决定时机，模型按需逐层 design-spec + write-design。
+ * （hint 的"字段枚举→判据"改写本轮未做，见设计记录。）
  */
-import { DOC_KINDS, type DocId } from "./dockind";
+import { LAYERS, type LayerId } from "./layers";
 
-export interface DocSection {
+export interface DesignSection {
   heading: string;
   hint?: string;
 }
 
-export interface DocSpec {
-  id: DocId;
+export interface DesignSpec {
+  id: LayerId;
   file: string;
   title: string;
-  sections: DocSection[];
+  sections: DesignSection[];
   guide: string; // 成稿/补缺做法（给模型看的工作法）
 }
 
@@ -26,17 +31,17 @@ const WORK_METHOD = [
   "工作法：",
   "1) 先让用户用自己的话讲（他往往会给一整段，别逐格盘问）；",
   "2) 把他的话按上面小节整理成一版草稿，没讲到的写（待定），保留用户原话里的细节与味道；",
-  "3) 整篇写进该文件前先经用户确认（write-doc 会请你确认）；",
-  "4) 之后只更新仍（待定）/要改的那一小节（edit-doc 按小节标题改），补细节时给建议或选项、一次可答多个；",
-  "5) 文档文件一旦建立，后续以文件当前内容为准（先 read-doc 再动）。",
+  "3) 整篇写进该文件前先经用户确认（write-design 会请你确认）；",
+  "4) 之后只更新仍（待定）/要改的那一小节（edit-design 按小节标题改），补细节时给建议或选项、一次可答多个；",
+  "5) 文档文件一旦建立，后续以文件当前内容为准（先 read-design 再动）。",
 ].join("\n");
 
-export const DOC_SPECS: Record<DocId, DocSpec> = {
+export const DESIGN_SPECS: Record<LayerId, DesignSpec> = {
   // core：核心层 = 小说介绍（写作方向不变量）——常驻，一切层依赖它。2026-09-06 收敛：
   // - 一句话卖点并入一句话简介；主角只以"身份词"留在简介前提句，其内核(想要/最怕/为什么是他)下放 characters 主角卡；
   // - 爽感承诺收敛为基调·情绪（写哪章都不许破坏的情绪，不是爽点排布——排布归 outline/技法）；
   // - 目标读者移出（非写作不变量，与"定位"的关系未定）。
-  // - 世界观是 wiki/world.md 自己的活（三格：空间与舞台/规则与秩序/术语表），不并入 core；总纲随 core 常驻（buildResidentDocs），长尾拆 wiki/<题>.md 专题页按需读。
+  // - 世界观是 wiki/world.md 自己的活（三格：空间与舞台/规则与秩序/术语表），不并入 core；总纲随 core 常驻（buildResidentDesigns），长尾拆 wiki/<题>.md 专题页按需读。
   core: {
     id: "core",
     file: "core.md",
@@ -67,9 +72,9 @@ export const DOC_SPECS: Record<DocId, DocSpec> = {
       "工作法：",
       "1) 总纲入口是 wiki/world.md（以上三格），常驻注入、写在它里面；",
       "2) 长尾设定（地理/势力/历史/专名展开等）拆成 wiki/<题>.md 专题页，world.md 里留一行指引——专题页按需读、不常驻；",
-      "3) 先让用户用自己的话讲 → 按小节整理成草稿（没讲到的写（待定））→ write-doc 整层落盘 confirm；",
-      "4) 之后只 edit-doc 还待定/要改的那一格，补细节给建议/选项、一次可答多个；",
-      "5) 文档文件一旦建立，后续以文件当前内容为准（先 read-doc 再动）。",
+      "3) 先让用户用自己的话讲 → 按小节整理成草稿（没讲到的写（待定））→ write-design 整层落盘 confirm；",
+      "4) 之后只 edit-design 还待定/要改的那一格，补细节给建议/选项、一次可答多个；",
+      "5) 文档文件一旦建立，后续以文件当前内容为准（先 read-design 再动）。",
     ].join("\n"),
   },
   characters: {
@@ -82,7 +87,7 @@ export const DOC_SPECS: Record<DocId, DocSpec> = {
     guide: [
       "工作法：",
       "1) 加角色用 add-character：自动生成 characters/<名>.md 规范卡（一句话定位/想要·最怕/说话方式(给声音范例原文)/习惯动作/在故事中的功能，缺格会提示补），并同步 characters/_index.md 角色总表；",
-      "2) 想了解/完善某角色先 read-doc 看 characters/<名>.md 当前卡，update-character 只改你传的格；",
+      "2) 想了解/完善某角色先 read-design 看 characters/<名>.md 当前卡，update-character 只改你传的格；",
       "3) 一角色一卡；_index.md 由工具自动同步，不用手改；删角色用 remove-character。",
     ].join("\n"),
   },
@@ -100,25 +105,24 @@ export const DOC_SPECS: Record<DocId, DocSpec> = {
     guide: [
       "工作法：",
       "1) 整本结构写 outline/outline.md（本节五格）；章节细纲 plan_ch<N>.md、分卷细纲 vol_*.md 与它同目录；",
-      "2) 先让用户用自己的话讲 → 按小节整理成草稿（没讲到的写（待定））→ write-doc 整层落盘 confirm；",
-      "3) 之后只 edit-doc 还待定/要改的那一格，补细节给建议/选项、一次可答多个；",
-      "4) 文档文件一旦建立，后续以文件当前内容为准（先 read-doc 再动）。",
+      "2) 先让用户用自己的话讲 → 按小节整理成草稿（没讲到的写（待定））→ write-design 整层落盘 confirm；",
+      "3) 之后只 edit-design 还待定/要改的那一格，补细节给建议/选项、一次可答多个；",
+      "4) 文档文件一旦建立，后续以文件当前内容为准（先 read-design 再动）。",
     ].join("\n"),
   },
 };
 
-/** 渲染成给模型的规范文本（doc-spec 工具返回用）。 */
-export function renderDocSpec(id: DocId): string {
-  const spec = DOC_SPECS[id];
+/** 渲染成给模型的规范文本（design-spec 工具返回用）。目标路径留着——write-design 靠它知道往哪写。 */
+export function renderDesignSpec(id: LayerId): string {
+  const spec = DESIGN_SPECS[id];
   const head = spec.sections.map((s) => `  ## ${s.heading}${s.hint ? `（${s.hint}）` : ""}`).join("\n");
-  const target = spec.file.endsWith("/") ? `design/${spec.file}` : `design/${spec.file}`;
   return [
-    `【${spec.title} · 目标 ${target}】`,
-    "该层文档应含以下小节（每个 ## 即一格，后续可单独 edit-doc 那一格）：",
+    `【${spec.title} · 目标 design/${spec.file}】`,
+    "该层文档应含以下小节（每个 ## 即一格，后续可单独 edit-design 那一格）：",
     head,
     "",
     spec.guide,
   ].join("\n");
 }
 
-export { DOC_KINDS };
+export { LAYERS };
