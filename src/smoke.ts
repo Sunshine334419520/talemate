@@ -21,9 +21,11 @@ process.env.TALEMATE_PROVIDER = "mock";
 process.env.TALEMATE_MOCK_TOOL = "task";
 
 const seen: string[] = [];
+const proposals: string[] = [];
 const io: UserIO = {
   onEvent: (e) => {
     if (e.type === "text.delta") seen.push(e.text);
+    if (e.type === "proposal") proposals.push(e.text);
   },
   confirm: async () => true,
   askUser: async (q) => `（自动答复：${q}）`,
@@ -74,10 +76,43 @@ try {
   const pp = join(HOME, "novels", meta.id);
   const tree = await listTree(pp);
   console.log(`[7] 项目目录：\n${tree.map((f) => "    " + f.replace(pp + "/", "")).join("\n")}`);
-  // 8) AGENTS.md 不预种：它是用户自己的文件（06 §6.3），不存在 → 不注入
+  // 8) AGENTS.md 不预种：它是用户自己的文件，不存在 → 不注入
   const rules = await readProjectRules(meta.id);
   console.log(`[8] AGENTS.md 不预种：${rules === "" ? "✓（不存在 → 不注入）" : `✗ ${rules.slice(0, 40)}`}`);
   if (rules !== "") throw new Error("AGENTS.md 不应预种（是用户自己的文件）");
+
+  // 9) 提案两段式：propose-design 不写盘、结束本回合，用户回话才决定"同意"
+  process.env.TALEMATE_MOCK_TOOL = "propose-design";
+  const meta2 = await createProject({ title: "冒烟提案书" });
+  const s2 = await openSession({ projectId: meta2.id, model, io });
+  const r2 = await s2.post("把核心设定整理一版出来。");
+
+  const notWritten = (await listDesigns(meta2.id)).length === 0;
+  console.log(`[9] propose-design 不写盘：${notWritten ? "✓（design/ 仍为空）" : "✗ 竟然落盘了"}`);
+  if (!notWritten) throw new Error("提案不该落盘");
+
+  const prop = proposals.at(-1) ?? "";
+  const rendered =
+    prop.includes("提案 · 核心层") && prop.includes("1. 题材 · 频道") && prop.includes("回复「没问题」就写入");
+  console.log(`[9b] 提案已渲染给用户（逐格 + 收尾契约）：${rendered ? "✓" : "✗"}`);
+  if (!rendered) throw new Error(`提案未按预期渲染：${truncate(prop, 200)}`);
+
+  const halted = r2.includes("等用户回话");
+  console.log(`[9c] 本回合在提案处结束（halt）：${halted ? "✓" : `✗ ${truncate(r2, 80)}`}`);
+
+  const pending = s2.pending.get("core.md");
+  console.log(`[9d] 待落盘提案已登记且未获同意：${pending && !pending.approved ? "✓" : "✗"}`);
+
+  // "同意"由 harness 按用户回话判定——模型自述无效
+  await s2.post("没问题");
+  const agreed = s2.pending.get("core.md")?.approved === true;
+  console.log(`[10] 用户说「没问题」→ 记为用户已同意：${agreed ? "✓" : "✗"}`);
+  if (!agreed) throw new Error("同意未被 harness 记下");
+
+  await s2.post("等一下，第 3 格我想改成雨夜");
+  const revoked = s2.pending.get("core.md")?.approved === false;
+  console.log(`[10b] 用户改口要改内容 → 同意撤销：${revoked ? "✓" : "✗"}`);
+  if (!revoked) throw new Error("带改动要求的回话不该算同意");
 
   console.log("\n✔ P0 冒烟全链路通过");
 } finally {

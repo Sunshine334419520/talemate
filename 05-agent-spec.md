@@ -90,7 +90,7 @@ Tool 也是一份数据（`Def { id, description, parameters, execute → { titl
 
 | 角色 | mode | 一句话职责（persona 边界） | 工具集 | 建议模型/推理 | 谁能触发它 |
 |---|---|---|---|---|---|
-| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：把"想法"长成 design/ 四层活文档并维护；当编排者，委派并拍板 | task, read-design, write-design, **edit-design, append-design, remove-design-section, search-designs**, list-designs, skill, ask-user, confirm | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
+| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：把"想法"长成 design/ 四层活文档并维护；当编排者，委派并拍板 | task, read-design, **propose-design, apply-design, append-design, remove-design-section, search-designs**, list-designs, skill, ask-user, confirm | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
 | **planner（规划）** | subagent | 通用结构师：把材料梳理成结构/规划（章节节拍、整本/分卷大纲、结构重排）——尺度是 task 参数，不是角色 | read-design, list-designs, skill | 可单配；规划是分析活，low/high 皆可 | editor 经 task |
 | **writer（写手）** | subagent | 按"当前设定切片 + 细纲/节拍"写一章正文；不自创设定、只输出正文 | read-design, list-designs, skill, save-chapter* | 生成活，low 更省（临时思考 §七已实测） | editor 经 task |
 | **summarizer（内部）** | primary + hidden | 上下文压缩时生成前情摘要；**不进用户可见角色表、不进 task 可派列表、不当默认 primary** | 无 | 缺省继承；可 talemate.json 覆盖小模型 | harness 内部自动 |
@@ -131,7 +131,7 @@ Tool 也是一份数据（`Def { id, description, parameters, execute → { titl
 
 这是把产品流程落到"模型何时调 task"的地方，按 02 §4 修订版写：
 
-1. **设计段对话**：editor 直接答；框架维护是 editor 的活——查 = `list-designs/read-design/search-designs`，增 = `append-design`，改 = `edit-design`（只动一格），删 = `remove-design-section`（删除前工具内置引用检查），整篇重写才用 `write-design`。**confirm = 用户拍板，别绕过；不派子代理**。
+1. **设计段对话**：editor 直接答；框架维护是 editor 的活——查 = `list-designs/read-design/search-designs`，增 = `append-design`，改/成稿 = **`propose-design`（用 `layer` 指核心层/世界观/大纲，路径由工具定；带/不带 `section`；摆草稿给用户看，不写盘，并结束本回合）→ 用户回话 → `apply-design` 落盘**，删 = `remove-design-section`（删除前工具内置引用检查）。**落盘必须走这两段，别绕过；不派子代理**。
 2. **用户要为某章做节拍规划**（"第 N 章怎么写 / 做个细纲"）→ editor `task(planner, { prompt: 带 core+相关角色/世界切片 + 本章任务 })`；planner 只读 docs/skill，回节拍文本；editor 展示给用户，拍板后由 editor 落 `plan_ch<N>.md`。
 3. **用户要写某章正文** → editor 先 `read-design` 拿"当前版本"的 core + 相关切片 + （若有）`plan_ch<N>.md` → `task(writer, { prompt: writer 规范 + 切片 + 节拍 })` → writer 产出正文 → **回到 editor，editor 面向用户做成品确认，用户拍板后 editor 落 `chapter_ch<N>_v<M>.md`**。
    - 允许 editor 合并 2+3（用户只说"写第 N 章"且没有现成规划时，editor 可先 task(planner) 拿到节拍、把节拍连同切片一起 task(writer)）——**这是同一个循环里连续两次 task 调用**，opencode 就是这么串多步的，不需要任何编排代码。
@@ -191,6 +191,7 @@ task { agent: "planner" | "writer" | …, prompt: string }
 | 子代理工具集 | 由 sub AgentDef.tools 决定 ✅ | 默认不含 task/ask-user/confirm（确认留在 editor 层，见 5.4） |
 | model 继承 | `sub.model ?? this.model` ✅ | 保持；agent 钉模型用于"内部杂活用小模型" |
 | confirm / ask-user | 工具层 `needsConfirm` + `io.confirm` ✅ | 语义固定：confirm=不可逆动作拍板；ask-user=参谋要创作裁决，不是权限 |
+| 设计落盘 | 提案两段式 + `halt` ✅ | `propose-design`（不写盘、结束回合）→ 用户回话 → `apply-design`。**"同意"由 harness 按用户回话判定**（`isAgreement`），模型自述无效；落盘内容只从提案取，模型无法夹带用户没看过的字 |
 | skill 注入 | system 只放目录、正文按需 skill 工具 ✅ | 保持；文风/技法包走这条路，不做成 agent |
 | 事件/消息 | 消息带 agent ✅；compaction 消息是 `<story-state>` ✅ | 保持 |
 
@@ -221,13 +222,13 @@ task { agent: "planner" | "writer" | …, prompt: string }
 
 ## 8. 落地状态与后续（2026-09-05）
 
-本轮实现 = **框架设计闭环 + harness 深度规范化**，与 `06-framework-and-mode-notes.md` §6/§6.6 一致，详见 `07-editor-framework-design.md`（主编规范 + 框架设计流程 + 跑通示例）。
+本轮实现 = **框架设计闭环 + harness 深度规范化**，流程与工具清单以 `08-architecture.md` 为准。
 
 **已落地**
-- framework 域层 `src/framework/`：`design_spec`（每层结构规范，按需取）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `report`（四层现状卡片）· `anchor`（core/world 常驻设定注入 `buildResidentDocs`）。
+- framework 域层 `src/framework/`：`design_spec`（每层结构规范，按需取）· `design_ops`（所有写盘工具的唯一实现）· `proposal`（提案逐格渲染，不认识任何一层）· `markdown`（按小节区块手术）· `search`（跨文档引用）· `characters`（角色卡 schema）· `layers`（层元信息）· `report`（四层现状卡片）· `anchor`（core/world 常驻设定注入 `buildResidentDesigns`）。
 - **懒建**：createProject 不再播种四层（`src/storage/project.ts`）；docs 初始为空，用户要完善某层时 editor 调 `design-spec` 拿形状再成稿；`add-character` 首次调用自建 characters.md。新增 `listChapters`。
-- 框架增删改查工具：`list-designs`（含小节索引）/ `read-design`(带 section) / `search-designs` / `edit-design` / `append-design` / `remove-design-section`（删除前内置引用检查进 confirm）（`src/tool/（按领域模块：design_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`）。
-- editor 上下文：可见 primary 每轮注入 core/world 常驻设定（`buildResidentDocs`，`src/context/assemble.ts` + `src/session/session.ts`）；设计引导不自动注入——用户点名某层时 editor 调 `design-spec` 工具按需拿规范。常驻设定现读自磁盘，无写后刷新钩子、永不陈旧。（原 `<nvl-state>` 状态包装块已删，见 06 §8。）
+- 框架增删改查工具：`list-designs`（含小节索引）/ `read-design`(带 section) / `search-designs` / `propose-design` + `apply-design`（两段式落盘） / `append-design` / `remove-design-section`（删除前内置引用检查进 confirm）（`src/tool/（按领域模块：design_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`）。
+- editor 上下文：可见 primary 每轮注入 core/world 常驻设定（`buildResidentDesigns`，`src/context/assemble.ts` + `src/session/session.ts`）；设计引导不自动注入——用户点名某层时 editor 调 `design-spec` 工具按需拿规范。常驻设定现读自磁盘，无写后刷新钩子、永不陈旧。（原 `<nvl-state>` 状态包装块已删。）另有唯一的**状态**注入：有未落盘提案时，system 里多一段 `<pending-proposal>`。
 - 内部杂活 agent 化 + task 动态描述 + hidden 过滤（§5.2/5.3）。
 - 单测 `src/framework/framework.test.ts`（`bun test`，含懒建/design-spec/角色卡）+ `bun run smoke`（断言 docs 懒建为空）+ `bun run typecheck` 全绿。
 

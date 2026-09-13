@@ -2,5 +2,5 @@ Save a finished prose chapter into chapters/. filename follows the naming rules:
 chapter_ch<N>_v<M>.md. Use this for the actual prose you would rather persist to disk than
 dump back to the chief editor. Saving triggers user confirmation.
 
-(Plans / beat sheets are design docs: write those to design/outline/plan_ch<N>.md via
-write-design instead — do not put them under chapters/.)
+(Plans / beat sheets are design docs: put those in design/outline/plan_ch<N>.md via
+propose-design instead — do not put them under chapters/.)

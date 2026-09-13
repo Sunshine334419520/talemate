@@ -1,20 +1,26 @@
 /**
- * Session：一个项目上下文里的会话。它只做两件事——
- * 1) 持有会话状态（id/项目/角色/模型/IO/data）、落盘会话元、可中止；
+ * Session：一个项目上下文里的会话。只做两件事——
+ * 1) 持有会话状态（id/项目/角色/模型/IO）、落盘会话元、可中止；
  * 2) 当接线器：把 storage / LLM / 工具 / 上下文组装成 LoopDeps，交给 session/loop 的 runLoop 去跑。
  *
- * 循环本身不在 Session 里（见 loop.ts）。Session 不自造循环，只把"这次请求怎么取历史、怎么生成、
- * 怎么执行工具、怎么落盘"这些能力喂给 runLoop。
- *
- * 消息读取做了内存缓存：一次 post() 里只有首次读盘，之后每次 append 都同步 push 进内存，
- * buildRequest 从内存取、不再每步重读整个 messages.jsonl。
+ * 循环本身在 loop.ts。消息读走内存缓存：一次 post() 里只有首次读盘，之后每次 append 同步 push 进内存。
  */
 import { randomUUID } from "node:crypto";
 import { AgentRegistry } from "../agent/registry";
 import { loadModelConfig } from "../core/config";
-import type { AgentDef, AssistantPart, LLMEvent, ModelConfig, ProjectMeta, StoredMessage, ToolContext } from "../core/types";
+import type {
+  AgentDef,
+  AssistantPart,
+  LLMEvent,
+  ModelConfig,
+  PendingProposal,
+  ProjectMeta,
+  StoredMessage,
+  ToolContext,
+} from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
 import { buildResidentDesigns, buildDesignIndex } from "../framework/anchor";
+import { labelOf } from "../framework/proposal";
 import { renderHits, searchDesigns } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
@@ -45,6 +51,42 @@ export const autoIO: UserIO = {
   },
 };
 
+/**
+ * 用户这轮回话算不算"同意待落盘的提案"。
+ *
+ * 由 harness 判、不问模型：同意必须落在**用户真的说过的话**上，模型自述不算。
+ * fail-closed：措辞不常见就多走一轮，不会写用户没认可的东西。
+ * 「没问题，但第 3 格改成 X」不算同意——夹着改动要求，匹配不上。
+ */
+const AGREE_WORDS = "没问题|可以|行|好的|好|同意|确认|就这样|写吧|落盘|ok|okay|yes|y";
+const AGREE_CHAIN_RE = new RegExp(`^(?:(?:${AGREE_WORDS})[，,、。！!.…~\\s]*)+$`, "i");
+
+/** 这句话是不是一个"同意"（见上；导出供测试）。 */
+export function isAgreement(text: string): boolean {
+  return AGREE_CHAIN_RE.test(text.trim());
+}
+
+/**
+ * 未落盘提案的状态注入（进 system，每轮都有；纯函数，导出供测试）。
+ * 让协议状态独立于消息历史——压缩会把 tool 消息折掉，`/open` 恢复后历史也可能被截。
+ */
+export function renderPendingNote(pending: Map<string, PendingProposal>): string | undefined {
+  if (!pending.size) return undefined;
+  const lines = [...pending.values()].map((p) => {
+    const what = p.section ? `只改「${p.section}」这一格` : "整篇";
+    const state = p.approved
+      ? "用户已表示同意 → 可以 apply-design"
+      : "用户还没同意 → 等他回话；他要改就重新 propose-design";
+    return `- ${p.name}（${what}）：${state}`;
+  });
+  return [
+    "<pending-proposal>",
+    "有一份提案已经摆给用户看过、但还没写进任何文件。能落盘的只有这一份（apply-design 不接受新正文），且必须等用户同意。",
+    ...lines,
+    "</pending-proposal>",
+  ].join("\n");
+}
+
 export interface SessionDeps {
   projectId: string;
   /** 会话角色，缺省 primary 第一个 */
@@ -71,6 +113,11 @@ export class Session {
   private abort = new AbortController();
   /** 会话消息内存缓存：同会话多次 post() 间复用；首次按需从盘载入 */
   private cache: StoredMessage[] | null = null;
+  /**
+   * 待落盘的提案（design 写入 propose → apply 的中转态），按文档路径索引。
+   * 只在内存里：重启即失效，apply 会要求重新提案。
+   */
+  readonly pending = new Map<string, PendingProposal>();
 
   constructor(deps: SessionDeps & { meta: ProjectMeta; agents: AgentRegistry; tools: ToolRegistry; model: ModelConfig }) {
     this.projectId = deps.projectId;
@@ -102,10 +149,29 @@ export class Session {
     this.abort.abort();
   }
 
+  /**
+   * 用户这轮说了话 → 更新待落盘提案的"同意"标记（见 isAgreement）。
+   * 只认最近提交的那一份：halt 保证一回合只摆一份，更早的提案不能被顺带点亮。
+   */
+  private markPendingApproval(input: string): void {
+    if (!this.pending.size) return;
+    const ok = isAgreement(input);
+    let latest: PendingProposal | undefined;
+    for (const p of this.pending.values()) if (!latest || p.at > latest.at) latest = p;
+    if (latest) latest.approved = ok;
+  }
+
+  /** 提示符用：待落盘提案的展示名（如"核心层"）。没有 pending → undefined。 */
+  get pendingLabel(): string | undefined {
+    if (!this.pending.size) return undefined;
+    return [...new Set([...this.pending.values()].map((p) => labelOf(p.name, p.content)))].join("、");
+  }
+
   /** 跑完一轮：输入 → runLoop（agent 循环）→ 返回最终 assistant 正文 */
   async post(input: string, opts?: { agentId?: string }): Promise<string> {
     const agentId = opts?.agentId ?? this.agentId;
     const agent = this.agents.get(agentId);
+    this.markPendingApproval(input);
 
     return runLoop(agent, input, {
       signal: this.abort.signal,
@@ -162,7 +228,7 @@ export class Session {
     const skills = await discoverSkills(this.projectId);
     let resident: string | undefined;
     if (agent.mode === "primary" && !agent.hidden) resident = await buildResidentDesigns(this.projectId);
-    return buildSystemPrompt({
+    const base = buildSystemPrompt({
       projectTitle: this.meta.title,
       agentName: agent.name,
       roleSystem: agent.system,
@@ -170,6 +236,8 @@ export class Session {
       skills: renderSkillCatalog(skills),
       resident,
     });
+    const note = renderPendingNote(this.pending);
+    return note ? `${base}\n\n${note}` : base;
   }
 
   /** 构造工具执行上下文（ToolContext），供 execute 获取读写/确认/委派等能力 */
@@ -181,6 +249,15 @@ export class Session {
       signal: this.abort.signal,
       confirm: (action, summary) => this.io.confirm(action, summary),
       askUser: (q, options) => this.io.askUser(q, options),
+      showProposal: (text) => this.io.onEvent({ type: "proposal", text }),
+      // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
+      getProposal: (name) => this.pending.get(name),
+      setProposal: (p) => {
+        this.pending.set(p.name, p);
+      },
+      clearProposal: (name) => {
+        this.pending.delete(name);
+      },
       readDesign: (name) => readDesign(this.projectId, name),
       writeDesign: (name, content) => writeDesign(this.projectId, name, content),
       removeDesign: (name) => removeDesign(this.projectId, name),

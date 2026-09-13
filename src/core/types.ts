@@ -1,6 +1,4 @@
-/**
- * talemate 共享类型。语义基准：04-harness-design.md（P0 基础设施，轻栈：TS+Bun、无 Effect、文件系统存储）。
- */
+/** talemate 跨层共享类型。轻栈：TS + Bun、无 Effect、文件系统存储。 */
 
 /** Provider 抽象：anthropic 原生 + openai 兼容（DeepSeek/Moonshot 等经 baseURL 指向）+ mock（离线冒烟） */
 export type Provider = "anthropic" | "openai" | "mock";
@@ -49,6 +47,24 @@ export type JsonSchema = {
   description?: string;
 };
 
+/**
+ * 一份待用户拍板的设计提案（propose → apply 的中转态）。
+ * apply-design 不收正文、只写这里存的那份，所以"用户看过的 == 落盘的"由构造保证。
+ */
+export interface PendingProposal {
+  /** 目标活文档（design/ 下相对路径） */
+  name: string;
+  /** 将落盘的正文：整篇提案=全文；单格提案=该小节正文（不含标题行） */
+  content: string;
+  /** 单格提案的小节标题；整篇提案缺省 */
+  section?: string;
+  /** 单格提案的提案时整篇快照——落盘前校验文档未被改过，变了要求重新提案 */
+  base?: string;
+  /** 用户已回话表示同意。**由 harness 判定**（见 Session 里按用户回话匹配同意词），不由模型自述 */
+  approved: boolean;
+  at: number;
+}
+
 /** 工具执行环境：循环提供给 execute 的能力（会话上下文） */
 export interface ToolContext {
   projectId: string;
@@ -58,6 +74,12 @@ export interface ToolContext {
   confirm(action: string, summary: string): Promise<boolean>;
   /** 向用户提问要创作决策（非审批），返回答案文本 */
   askUser(question: string, options?: string[]): Promise<string>;
+  /** 把一份待审阅的提案整块展示给用户（只读、无返回值）——走事件通道，CLI/TUI 各自渲染 */
+  showProposal(text: string): void;
+  getProposal(name: string): PendingProposal | undefined;
+  /** 替换时 approved 一律重置为 false——用户没见过新版就不算同意 */
+  setProposal(p: PendingProposal): void;
+  clearProposal(name: string): void;
   /** 读取一个活文档文件内容（design/ 下相对路径），不存在返回 undefined */
   readDesign(name: string): Promise<string | undefined>;
   /** 写/覆盖活文档（design/ 下），返回完整路径 */
@@ -74,11 +96,9 @@ export interface ToolContext {
   listChapters(): Promise<string>;
   /** 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文 */
   runSubagent(agentId: string, prompt: string): Promise<string>;
-  /** 读指定 skill 正文 */
   loadSkill(name: string): Promise<string | undefined>;
   /** 成品落 chapters/（返回完整路径） */
   saveChapter(filename: string, content: string): Promise<string>;
-  /** 中止信号 */
   signal: AbortSignal;
 }
 
@@ -94,6 +114,11 @@ export interface ToolDef<Args = unknown> {
   input: JsonSchema;
   /** 返回该调用是否需要人类确认；需要则返回给用户看的摘要 */
   needsConfirm?(args: Args): string | undefined;
+  /**
+   * 该工具**成功后结束本回合**，把控制权交回用户（如 propose-design：结论摆出来了，该用户说话了）。
+   * 只在 state==="completed" 时生效——校验失败必须留给模型同轮自纠，否则循环会死在一个本可自愈的错误上。
+   */
+  halt?: boolean;
   execute(args: Args, ctx: ToolContext): Promise<ToolResult>;
 }
 
@@ -120,12 +145,14 @@ export type AssistantPart =
       input?: string;
       output?: string;
       error?: string;
+      /** 该工具要求结束本回合（见 ToolDef.halt）；loop 据此在提交本条后 break */
+      halt?: boolean;
       time?: { ran?: number; completed?: number };
     };
 
 export type MessageRole = "user" | "assistant" | "system" | "compaction";
 
-/** 持久化消息。role=compaction 时 summary+recent 承载前情摘要（§8 设计）。 */
+/** 持久化消息。role=compaction 时 summary+recent 承载前情摘要。 */
 export interface StoredMessage {
   seq: number;
   role: MessageRole;
@@ -176,6 +203,8 @@ export type LLMEvent =
   | { type: "tool.result"; id: string; name: string; output: string }
   | { type: "scope.open"; label: string }
   | { type: "scope.close"; label: string }
+  /** 只读展示给用户的块（提案逐格清单等）——无返回值，与 confirm/askUser 的交互式提示区分 */
+  | { type: "proposal"; text: string }
   | { type: "step.start" }
   | { type: "step.end"; finish: "stop" | "tool_calls" | "error" }
   | { type: "session.status"; status: "busy" | "idle" };

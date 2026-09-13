@@ -239,7 +239,6 @@ function toOpenAITool(t: ToolSchema): OpenAI.Chat.Completions.ChatCompletionTool
  * 解析模型返回的 tool arguments 字符串为对象。openai 兼容模型（尤其 DeepSeek）偶尔会给出
  * 不规范的 JSON：套代码围栏、字符串内未转义换行、尾逗号、或双层转义（arguments 本身是
  * 一段 JSON 字符串字面量）。逐层容错：剥围栏 → JSON.parse → 双层转义解一层 → 启发式修补 → 回退 {}。
- * 不再产出 `{ _raw }` 之类的畸形兜底（会让工具读不到具名字段，如 ask-user 的 question → undefined）。
  * 解析不动时回退空对象，由工具自身的必填守卫返回"请重发"让模型自纠。
  */
 export function safeParseArgs(raw: string | undefined): Record<string, unknown> {
@@ -312,6 +311,24 @@ function repairJson(s: string): string {
 
 // ─── Mock（离线冒烟：验证 runner / 工具循环，不打网络） ───
 
+/** 冒烟剧本：propose-design 的一份合法草稿（必须带该层规范的小节标题，否则会被工具守卫拒）。 */
+const MOCK_PROPOSAL = [
+  "# 核心设定",
+  "",
+  "## 题材 · 频道",
+  "男频 · 都市异能",
+  "",
+  "## 一句话简介",
+  "沈越，被逐出家族的前首席，靠一门不能见光的本事往回爬。",
+  "",
+  "## 金手指 / 超常设定",
+  "（待定）",
+  "",
+  "## 基调 · 情绪",
+  "冷硬里带一点不甘。",
+  "",
+].join("\n");
+
 async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
   const lastUser = [...opts.messages].reverse().find((m) => m.role === "user")?.text ?? "";
   const tools = opts.tools ?? [];
@@ -324,7 +341,9 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
     const input =
       mockTool === "task"
         ? { agent: "writer", prompt: "照核心设定与细纲，把第 1 章正文写出来。" }
-        : sampleArgs(schema);
+        : mockTool === "propose-design"
+          ? { layer: "core", content: MOCK_PROPOSAL }
+          : sampleArgs(schema);
     return {
       text: "",
       toolCalls: [{ id: "mock-call-1", name: mockTool, input }],

@@ -27,8 +27,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
     tools: [
       "task",
       "read-design",
-      "write-design",
-      "edit-design",
+      "propose-design",
+      "apply-design",
       "append-design",
       "remove-design-section",
       "search-designs",

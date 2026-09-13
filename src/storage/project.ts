@@ -30,7 +30,7 @@ export async function createProject(opts: { title: string; genre?: string }): Pr
   await writeProjectMeta(meta);
   // 建项目不预种任何文件：
   // - design/ 懒建——用户要完善某层时由 editor 调 design-spec 拿形状再成稿落盘；
-  // - AGENTS.md 是**用户自己的**项目规矩（06 §6.3：等同 CLAUDE.md——项目级、用户管理、默认可空）。
+  // - AGENTS.md 是**用户自己的**项目规矩（等同 CLAUDE.md：项目级、用户管理、默认可空）。
   //   系统只提供"每轮注入该文件"的能力（readProjectRules → context/assemble）：文件不存在 →
   //   readProjectRules 返回 "" → assemble 整块跳过，什么都不注入。用户建了才加载。
   //   editor 的写接口被限定在 design/ 下（safeRelPath 挡 ".."），结构上碰不到它。

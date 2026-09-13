@@ -1,10 +1,8 @@
 /**
  * Layer：四层企划文档的元信息（排序/路径/一句话）。
  *
- * 结构规范（每层该有哪些小节）不在预埋文件里了——见 design_spec.ts，按需读取（懒建）。
- * 文件是真相：目标文档平时不存在，用户要完善某层时由 editor 调 design-spec 拿形状再成稿落盘。
- * 目录（2026-09-07）：design/ 下 core.md 单文件；world = wiki 总纲入口 + 专题页；characters = 一角色一卡；
- * outline = 整本 + 分卷/章节细纲。RESIDENT_DESIGNS = core + wiki/world 总纲（editor 每轮常驻注入）。
+ * 结构规范（每层该有哪些小节）见 design_spec.ts，按需取（懒建）；目标文档平时不存在。
+ * 目录：core.md 单文件；world = wiki 总纲入口 + 专题页；characters = 一角色一卡；outline = 整本 + 分卷/章节细纲。
  */
 export type LayerId = "core" | "world" | "characters" | "outline";
 

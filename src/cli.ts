@@ -56,6 +56,13 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `…` : s;
 }
 
+/**
+ * 提案类工具：入参就是整篇草稿（还带文件路径），正文由 harness 渲染后经 `proposal` 事件整块打印。
+ * 所以它们不走常规工具行的截断打印——否则会把 `input={"name":"core.md",...}` 打出来，
+ * 既看不懂，也和"对用户不出现文件路径"这条纪律冲突。
+ */
+const PROPOSAL_TOOLS = new Set(["propose-design", "apply-design"]);
+
 // ─────────────────────────── REPL 状态 ───────────────────────────
 
 let verbose = true;
@@ -69,7 +76,10 @@ let inChildScope = false;
 let rl: ReturnType<typeof createInterface>;
 
 function promptText(): string {
-  return `${curTitle ?? curSpaceId ?? "talemate"}/主编> `;
+  const base = `${curTitle ?? curSpaceId ?? "talemate"}/主编`;
+  // 有待落盘的提案 → 提示符上挂着，用户一眼看到"还有东西等我拍板"
+  const pending = curSession?.pendingLabel;
+  return pending ? `${base}（待写入：${pending}）> ` : `${base}> `;
 }
 
 function printBanner(projectId: string): Promise<void> {
@@ -95,6 +105,7 @@ function replayNew(messages: StoredMessage[], from: number): number {
     if (m.role === "assistant") {
       for (const p of m.parts ?? []) {
         if (p.type !== "tool") continue;
+        if (PROPOSAL_TOOLS.has(p.name)) continue; // 提案正文已整块打印过，不算"工具落盘"
         toolCount++;
         const len = p.output !== undefined ? p.output.length : (p.error?.length ?? 0);
         console.log(`  ⚙ 工具落盘：${p.name}（${len} 字 · 完整见 /msg ${m.seq}）`);
@@ -186,15 +197,19 @@ function makeIO(): UserIO {
         break;
       }
       case "tool-call":
-        if (verbose) {
+        if (verbose && !PROPOSAL_TOOLS.has(e.name)) {
           console.log(`\n${CYAN}⚙ 工具调用${RESET} ${e.name} ${DIM}input=${truncate(e.input, 300)}${RESET}`);
         }
         break;
       case "tool.result":
-        if (verbose) {
+        if (verbose && !PROPOSAL_TOOLS.has(e.name)) {
           const out = truncate(e.output.replace(/\n/g, " "), 160);
           console.log(`   ↳ 结果（${e.output.length} 字）：${out || "(空)"}`);
         }
+        break;
+      case "proposal":
+        // 提案正文是给用户读的：整块打印（不缩进、不截断），前后留空行与流式正文分开
+        console.log(`\n${e.text}\n`);
         break;
       case "scope.open":
         inChildScope = true;
@@ -434,12 +449,14 @@ async function repl(projectId: string, sessionId?: string): Promise<void> {
     console.log(`\n${CYAN}你${RESET} > ${text}`);
     try {
       const reply = await curSession.post(text);
-      if (!verbose) console.log(`\n${reply}`);
-      else {
+      if (verbose) {
         // 详细回放本轮落盘消息（工具入参/输出全文）
         const msgs = await loadMessages(curSession.projectId, curSession.sessionId);
         lastSeq = replayNew(msgs, lastSeq);
         console.log(`\n${DIM}—— 本轮结束 ——${RESET}`);
+      } else if (reply) {
+        // 提案回合（halt）通常没有正文——正文已由 proposal 事件整块打印，别再多打一个空行
+        console.log(`\n${reply}`);
       }
     } catch (e) {
       console.error(`\n✗ ${e instanceof Error ? e.message : e}`);

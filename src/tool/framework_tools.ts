@@ -1,9 +1,6 @@
 /**
  * framework-tools：框架层工具。
- * 当前仅 design-spec——**查形状**（某层该有哪些小节 + 成稿/补缺做法），不是文档操作。
- *
- * 说明：framework-status（跨层待定清单）已删除——它与入口现状卡片/常驻设定注入/read-design 职责重叠。
- * 曾把"归档归位表"作为 design-spec 的无参模式塞进来，已撤：spec 与"这段讨论记到哪"是两个职责。
+ * 当前仅 design-spec——**查形状**（某层该有哪些小节、每格装什么、成稿做法），不是文档操作。
  */
 import type { LayerId } from "../framework/layers";
 import { renderDesignSpec } from "../framework/design_spec";

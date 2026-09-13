@@ -35,7 +35,7 @@ prompts/
 
 ## 归属纪律（重要——决定哪些内容根本不进 prompt）
 
-凡能由以下载体承载的，一律归位，不进常驻 prompt（详见 `../06-framework-and-mode-notes.md` §6.6）：
+凡能由以下载体承载的，一律归位，不进常驻 prompt（详见 `../08-architecture.md` §7「强制纪律进工具」）：
 
 - **数据**：项目是什么 / 文档结构 → 常驻设定注入（core/world 全文，`framework/anchor.ts` `buildResidentDocs`）+ 文档文件骨架（模型每轮看得到，别在 persona 重复）。
 - **工具**：能做什么 / 覆盖要 confirm / 删前查引用 → 工具实现 + 工具 description。
@@ -44,6 +44,8 @@ prompts/
 - **用户项目规矩** → AGENTS.md（用户管理）。
 
 **因此 persona 只留"角色壳"；每份文件只讲一件事、只在其生效时刻以它自己的载体出现。**
+
+**一处已知例外**：`editor.system.txt` 的 `# The user leads`（2026-09-13）——"设计由用户主导；一件事落了地就结束这一回合，不自己开下一件"。它本该按纪律归"工具/方法"，但**触发时刻在 `apply-design` 之后**，而那个时刻只有 persona 每轮都在场（工具描述只在被调用的一瞬生效）。放到别处试过两次（`design-spec` 参数描述、多处工具描述）都无效。**这个例外是有意为之，别按纪律清理掉。**
 
 ## 描述 · agent `description` 路由规范
 

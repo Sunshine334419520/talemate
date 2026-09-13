@@ -14,7 +14,9 @@ export interface Heading {
   end: number;
 }
 
-const HEADING_RE = /^(\#{2,})\s+(.*?)\s*$/;
+// `#{1,}`：H1 也要能匹配——否则 `listHeadings(content, 1)`（取文档标题）永远拿不到 H1，
+// 与"列出 level ≥ minLevel 的 heading"这条契约不符。默认 minLevel=2 的调用方行为不变。
+const HEADING_RE = /^(\#{1,})\s+(.*?)\s*$/;
 
 /** 列出 content 里 level ≥ minLevel 的全部 heading（minLevel 默认 2）。跳过 `<!-- -->` 注释块（注释里别放模板 heading）。 */
 export function listHeadings(content: string, minLevel = 2): Heading[] {

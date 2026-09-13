@@ -1,15 +1,7 @@
 /**
- * 项目四层"现状报告"（进入空间时给用户看的状态卡片）。
- *
- * 设计（2026-09-06）：只展示现状 + 提示"想完善就说什么"，不自动驱动——
- * 具体干什么由用户决定，editor 在用户点名后才用工具去动那一层。
+ * 项目四层"现状报告"：进入空间时的状态卡片，与 `/status` 复用。
  * 真值 = design/ 文件（有没有、填没填都读出来）。
- *
- * 设计（2026-09-11）：层名照常展示（世界观/大纲/角色本就是作者懂的创作概念），改的是**引导语**：
- * - 全空 → 引向"讲想法"，不谈层；
- * - core/world 有缺格 → 只指向**第一个**不齐的层（排在后面的角色/大纲因此天然不会被指向），并列出缺的格名；
- * - 都齐 → 不引导。
- * 文件名/路径属内部维护，一律不出现在卡片上（卡片只出现层名与格名）。
+ * 卡片只出现层名与格名——文件名/路径属内部维护，不进用户视野。
  */
 import { listDesigns, loadProjectMeta, readDesign } from "../storage/project";
 import type { LayerId } from "./layers";
@@ -17,8 +9,8 @@ import { DESIGN_SPECS } from "./design_spec";
 import { getSection } from "./markdown";
 import { nameFromPath } from "./characters";
 
-/** 空行 / 说明行 / （待定…）占位 —— 都不算"填了"。 */
-function isFiller(line: string): boolean {
+/** 空行 / 说明行 / （待定…）占位 —— 都不算"填了"。（导出：proposal.ts 判"这格还没填"复用同一份） */
+export function isFiller(line: string): boolean {
   const t = line.trim();
   return !t || t.startsWith("### ") || t.startsWith(">") || t.startsWith("<!--") || /^（待定.*）$/.test(t);
 }
@@ -51,11 +43,7 @@ function layerBrief(exists: boolean, lead: string | undefined, fallback: string)
   return lead ? `✓ ${lead}` : fallback;
 }
 
-/**
- * 引导语：只指向第一个还不齐的层（core → world）。
- * 角色/大纲排在后面，因此天然不会被指向——它们该随写作进程自然生长，不催。
- * 两层都齐 → 返回 undefined（卡片只剩状态）。
- */
+/** 引导语：只覆盖 core 与 world，只指向第一个还不齐的层；两层都齐 → 不引导。 */
 function buildGuidance(core: string | undefined, world: string | undefined): string | undefined {
   if (core === undefined && world === undefined) {
     return "想写个什么样的故事？直接讲给我听，我们边聊边把这些记下来。";

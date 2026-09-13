@@ -1,17 +1,62 @@
 /**
- * design-tools：design/ 通用文档操作（read / list / search / write / edit / append / remove）。
+ * design-tools：design/ 通用文档操作（read / list / search / propose / apply / append / remove）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt。
  *
- * 写侧（write/edit/append/remove-design-section）都是**薄壳**——校验、confirm(完整内容)、变换、
- * 落盘全在 framework/design_ops.ts 那一份实现里，这里只留自己的入参契约与成功文案。
- * 读侧（read/list/search）不走 design_ops。
+ * 写侧分两段：propose-design（不写盘，渲染提案并 halt 本回合）→ 用户回话 → apply-design（写提案那一份）。
+ * 写侧都是**薄壳**：校验、confirm(完整内容)、变换、落盘全在 framework/design_ops.ts 那一份实现里
+ * （apply-design 也委派它）。读侧不走 design_ops。
+ *
+ * 注意：`AgentDef.tools` 白名单只决定模型看到哪些 schema，**不是执行边界**（session 传的是全局 registry）。
+ * 撤一个工具必须真删定义，只从白名单拿掉等于没拿掉。
  */
+import { INDEX_PATH } from "../framework/characters";
 import { applyDesignOp, designNotFound } from "../framework/design_ops";
+import { DESIGN_SPECS } from "../framework/design_spec";
+import type { LayerId } from "../framework/layers";
 import { getSection } from "../framework/markdown";
+import { isBlankBody, renderProposal, reviewable } from "../framework/proposal";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
 
 const P = (id: string) => readPrompt(`tools/${id}`);
+
+/** 有规范登记、且主文档是一个文件的层（`characters` 不在内——它的 file 是目录）。 */
+const MAIN_LAYERS = ["core", "world", "outline"] as const;
+
+/**
+ * 定这次要写哪个文件：固定层用 `layer`（路径由代码定），自由命名的文档用 `name`。
+ *
+ * 固定层的主文档路径不能由模型拼：`RESIDENT_DESIGNS` 只认 `wiki/world.md`，写到 `design/world.md`
+ * 的世界层不会被常驻注入、且用户看不出来。
+ * `name` 分支同样要拦——模型可以绕开 layer 直接给 `name:"world.md"`。
+ */
+function resolveDoc(args: { layer?: unknown; name?: unknown }): { name: string } | { error: string } {
+  const layer = typeof args.layer === "string" ? args.layer.trim().toLowerCase() : "";
+  const name = typeof args.name === "string" ? args.name.trim() : "";
+  if (layer && name) {
+    return { error: "layer 与 name 只能给一个：核心层/世界观/大纲用 layer（路径由工具定），专题页 / 章节细纲 / 角色卡用 name。" };
+  }
+  if (layer) {
+    if (!(MAIN_LAYERS as readonly string[]).includes(layer)) {
+      return {
+        error: `layer 应为 core / world / outline（收到：${layer}）。角色是一角色一卡、主文档不是一个文件——加/改角色请用 add-character / update-character。`,
+      };
+    }
+    return { name: DESIGN_SPECS[layer as LayerId].file };
+  }
+  if (!name) {
+    return { error: "propose-design/apply-design 缺少 layer 或 name——核心层/世界观/大纲给 layer，其余文档给 name。" };
+  }
+  // 守卫：某一层的主文档不许写到别处
+  const base = name.split("/").pop() ?? name;
+  const clash = Object.values(DESIGN_SPECS).find((s) => s.file !== name && s.file.split("/").pop() === base);
+  if (clash) {
+    return {
+      error: `${clash.title}的主文档是 design/${clash.file}，不是 ${name}——这一层请用 layer:"${clash.id}"（路径由工具定）；或者换个文件名。`,
+    };
+  }
+  return { name };
+}
 
 /** read-design：读整篇或按小节读 */
 export const readDesignTool: RegisteredTool<{ name: string; section?: string }> = defineTool<{
@@ -68,55 +113,159 @@ export const searchDesignsTool: RegisteredTool<{ query: string }> = defineTool<{
   },
 });
 
-/** write-design：整篇写/覆盖 */
-export const writeDesignTool: RegisteredTool<{ name: string; content: string }> = defineTool<{
-  name: string;
-  content: string;
-}>({
-  id: "write-design",
-  description: P("write-design"),
-  input: {
-    type: "object",
-    properties: {
-      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
-      content: { type: "string", description: "The complete document body" },
+/**
+ * propose-design：把一版结论交给用户审阅——不写盘，并把本回合交给用户（halt）。
+ * 带 section = 只改一格，不带 = 整篇成稿。
+ */
+export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; content: string; section?: string }> =
+  defineTool<{ layer?: string; name?: string; content: string; section?: string }>({
+    id: "propose-design",
+    description: P("propose-design"),
+    halt: true, // 结论摆出来了，接下来该用户说话——本回合到此为止（不靠模型自觉）
+    input: {
+      type: "object",
+      properties: {
+        layer: {
+          type: "string",
+          description:
+            "Which main layer to write: core | world | outline. The path is fixed by the tool — prefer this over name for those three.",
+        },
+        name: {
+          type: "string",
+          description:
+            "Document path under design/ for documents that are not one of the three main layers (e.g. wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md)",
+        },
+        content: {
+          type: "string",
+          description:
+            "Proposed text: the complete document when section is omitted; that section's new body WITHOUT the heading line when section is given",
+        },
+        section: {
+          type: "string",
+          description: "Optional: exact section heading to rewrite; omit to propose the whole document",
+        },
+      },
+      required: ["content"],
     },
-    required: ["name", "content"],
-  },
-  async execute(args, ctx) {
-    const r = await applyDesignOp(ctx, { kind: "write", name: args.name, content: args.content });
-    if (!r.ok) return { output: r.output };
-    const diff = r.isNew ? "(新建)" : `(旧 ${r.oldLen} 字 → 新 ${r.newLen} 字)`;
-    return { output: `已保存 ${r.file} ${diff}` };
-  },
-});
+    async execute(args, ctx) {
+      const target = resolveDoc(args);
+      if ("error" in target) return { output: target.error };
+      const name = target.name;
+      const content = (args.content ?? "").trim();
+      const section = args.section?.trim() || undefined;
+      if (!content) {
+        return {
+          output: `propose-design 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带完整字段重新调用。`,
+        };
+      }
+      if (name === INDEX_PATH) {
+        return {
+          output: `${INDEX_PATH} 是工具自动维护的角色总表，不要手写——增删改角色请用 add-character / update-character / remove-character。`,
+        };
+      }
 
-/** edit-design：改一个小节（其余原样） */
-export const editDesignTool: RegisteredTool<{ name: string; section: string; content: string }> = defineTool<{
-  name: string;
-  section: string;
-  content: string;
+      const current = await ctx.readDesign(name);
+      let oldBody: string | undefined;
+      if (section) {
+        // 单格提案：文档与小节都必须存在（在**提案时**校验——否则用户批准了却写不进去）
+        if (current === undefined) return { output: await designNotFound(ctx, name) };
+        const s = getSection(current, section);
+        if (!s.found) {
+          return { output: `文档 ${name} 里没有小节「${section}」。可用小节：\n${(s.available ?? []).join("\n")}` };
+        }
+        if (/^#{1,6}\s/.test(content)) {
+          return { output: `section 的 content 不要带标题行（「${section}」这个标题由工具自己写）——请只给这一格的正文。` };
+        }
+        if (isBlankBody(content)) {
+          return { output: `「${section}」这一格的正文是空的——要清掉它请用 remove-design-section。` };
+        }
+        oldBody = s.body ?? "";
+      } else if (!reviewable(name, content)) {
+        return {
+          output:
+            "这版草稿没法逐格审阅（正文里没有小节标题，或没按该层规范的小节组织），摆给用户会是一页空白却照样落盘。" +
+            "请每格一个 `## 标题`（先调 design-spec 拿这一层的形状）。",
+        };
+      }
+
+      const prev = ctx.getProposal(name);
+      ctx.setProposal({ name, content, section, base: current, approved: false, at: Date.now() });
+      ctx.showProposal(
+        renderProposal({
+          name,
+          content,
+          section,
+          oldBody,
+          previous: prev?.content,
+        }),
+      );
+
+      return {
+        output:
+          "提案已交给用户审阅（尚未写入任何文件）。本回合已结束，等用户回话：用户认可 → apply-design；" +
+          "用户要改 → 用新内容再 propose-design（改了内容必须重新提案）。",
+        metadata: { name, section },
+      };
+    },
+  });
+
+/**
+ * apply-design：把待落盘提案写进文件。**不收正文**——内容只从提案来。
+ * 两道闸：没有提案 / 用户没同意（同意由 harness 按用户回话判定，不由模型自述）→ 拒绝。
+ */
+export const applyDesignTool: RegisteredTool<{ layer?: string; name?: string }> = defineTool<{
+  layer?: string;
+  name?: string;
 }>({
-  id: "edit-design",
-  description: P("edit-design"),
+  id: "apply-design",
+  description: P("apply-design"),
   input: {
     type: "object",
     properties: {
-      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
-      section: { type: "string", description: "Section heading to rewrite (must match read-design)" },
-      content: { type: "string", description: "New body for that section, without the heading line" },
+      layer: { type: "string", description: "Same key you proposed it with: core | world | outline" },
+      name: {
+        type: "string",
+        description: "Same document path you proposed it with, for documents that are not one of the three main layers",
+      },
     },
-    required: ["name", "section", "content"],
   },
   async execute(args, ctx) {
-    const r = await applyDesignOp(ctx, {
-      kind: "edit",
-      name: args.name,
-      section: args.section,
-      content: args.content,
-    });
+    const target = resolveDoc(args);
+    if ("error" in target) return { output: target.error };
+    const name = target.name;
+    const p = ctx.getProposal(name);
+    if (!p) {
+      return {
+        output: `没有 ${name} 的待落盘提案——先用 propose-design 把这一版交给用户过目，等用户回话再来。`,
+      };
+    }
+    if (!p.approved) {
+      return {
+        output:
+          `用户还没同意这一版提案，不能落盘。请按用户这几轮说的话重新 propose-design；` +
+          "落盘的永远只能是用户看过并认可的那一版。",
+      };
+    }
+    const current = await ctx.readDesign(name);
+    if ((current ?? null) !== (p.base ?? null)) {
+      return {
+        output: `${name} 在提案之后被改动过（或新建/删除了），现在落盘会盖掉那些改动——请重新 propose-design 出一版新的。`,
+      };
+    }
+
+    const r = await applyDesignOp(
+      ctx,
+      p.section
+        ? { kind: "edit", name, section: p.section, content: p.content, confirm: false }
+        : { kind: "write", name, content: p.content, confirm: false },
+    );
     if (!r.ok) return { output: r.output };
-    return { output: `已改写 ${r.file} › ${args.section}`, metadata: { name: args.name, section: args.section } };
+    ctx.clearProposal(name);
+    if (p.section) {
+      return { output: `已按提案改写 ${r.file} › ${p.section}`, metadata: { name, section: p.section } };
+    }
+    const diff = r.isNew ? "(新建)" : `(旧 ${r.oldLen} 字 → 新 ${r.newLen} 字)`;
+    return { output: `已按提案写入 ${r.file} ${diff}`, metadata: { name } };
   },
 });
 
@@ -172,8 +321,8 @@ export const DESIGN_TOOLS: RegisteredTool[] = [
   readDesignTool,
   listDesignsTool,
   searchDesignsTool,
-  writeDesignTool,
-  editDesignTool,
+  proposeDesignTool,
+  applyDesignTool,
   appendDesignTool,
   removeDesignSectionTool,
 ];

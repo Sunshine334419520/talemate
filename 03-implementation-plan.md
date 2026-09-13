@@ -7,7 +7,7 @@
 >
 > - **§5「P1a 单章循环验证（批评者循环）」整体作废**——那是评判系统的验证实验，评判系统已从产品移除（见 02 §0）。
 > - 新的实现路径在 **`04-harness-design.md`**：P0 自建 harness 基础设施（core/storage/llm/agent/session/tool/skill/context，**已完成并冒烟通过**）→ P1 接入写作领域 → P2 产品化。
-> - 本文档 **§2 技术栈（TS + Bun、无 Effect、文件系统存储先行）仍有效**；**§3 架构图、§4 领域模型、§5 原"P1a 单章循环"描述的是 2026-09-04 之前"评判系统 + 无头 server"旧架构，已被替换**——真正实现以 `04-harness-design.md`（顶层）、`05-agent-spec.md`（Agent/工具规范）、`07-editor-framework-design.md`（editor+框架）为准。当前状态：P0 harness 已完成，从 P1（写作领域接入）继续。
+> - 本文档 **§2 技术栈（TS + Bun、无 Effect、文件系统存储先行）仍有效**；**§3 架构图、§4 领域模型、§5 原"P1a 单章循环"描述的是 2026-09-04 之前"评判系统 + 无头 server"旧架构，已被替换**——真正实现以 `08-architecture.md`（当前权威总览）、`05-agent-spec.md`（Agent/工具规范）为准。当前状态：P0 harness 已完成，从 P1（写作领域接入）继续。
 
 ---
 

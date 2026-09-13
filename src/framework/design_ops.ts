@@ -1,20 +1,16 @@
 /**
  * design_ops：**所有写盘工具的唯一实现**。
  *
- * 分层（2026-09-11 收敛）：
- *   工具（8 个入口，各管自己的语义、入参契约、成功文案）
- *     ↓   读写流程：解析目标 → 校验 → confirm(完整内容) → 变换 → 写 → 回结果
+ *   工具（各管自己的语义、入参契约、成功文案）
+ *     ↓   解析目标 → 校验 → confirm(完整内容) → 变换 → 写 → 回结果
  *   design_ops（本文件——这一层只有一份）
  *     ↓   变换
  *   framework/markdown.ts（replaceSection / appendBlock / removeSection / getSection / listHeadings）
  *     ↓   存储原语
  *   storage/project.ts（readDesign / writeDesign / removeDesign / saveChapter）
  *
- * 为什么要有这层：入口多不是问题（8 个工具对应 8 种真实语义），但**实现必须只有一份**。
- * 此前 8 个工具各自手抄了同一套六步、四套 confirm 文案格式、各自的校验——收敛到这里。
- *
  * 边界（别把这层做胖）：
- * - **错误文案由调用方给**（`notFound` / `refScope`）：它们不是重复，是给模型的**路由线索**
+ * - **错误文案由调用方给**（`notFound` / `refScope`）：它们是给模型的**路由线索**
  *   （"可用 add-character 新建" / "可用小节：…"），统一化会抹掉模型自我纠正的依据。
  * - **成功文案由调用方拼**：各工具的句子本来就不同（"已追加到" vs "已改写 … › …"）。
  * - confirm 只有**两种**正文标签：`将写入的内容` / `将删除的内容`。
@@ -25,8 +21,8 @@ import { appendBlock, getSection, listHeadings, removeSection, replaceSection } 
 export type DesignOp =
   /** 整篇写/覆盖。confirm:false 用于"新建、无破坏性"的入口（如 add-character）。 */
   | { kind: "write"; name: string; content: string; action?: string; meta?: string; confirm?: boolean }
-  /** 按小节标题换掉一格，其余原样。 */
-  | { kind: "edit"; name: string; section: string; content: string; notFound?: string }
+  /** 按小节标题换掉一格，其余原样。confirm:false 用于"内容已经过提案回合、用户已过目"的入口（apply-design）。 */
+  | { kind: "edit"; name: string; section: string; content: string; notFound?: string; confirm?: boolean }
   /** 末尾追加一块（块内标题与文档已有标题重名则拒绝）。 */
   | { kind: "append"; name: string; block: string; notFound?: string }
   /** 删掉一个小节。 */
@@ -96,14 +92,16 @@ export async function applyDesignOp(ctx: ToolContext, op: DesignOp): Promise<Des
           output: `文档 ${op.name} 没有小节「${op.section}」。可用小节：\n${(s.available ?? []).join("\n")}`,
         };
       }
-      const ok = await confirmBody(
-        ctx,
-        `改写 design/${op.name} › ${op.section}`,
-        `旧 ${(s.body ?? "").length} 字 → 新 ${op.content.length} 字；其余小节不变。`,
-        "将写入的内容",
-        op.content,
-      );
-      if (!ok) return { ok: false, output: `用户已拒绝改写 design/${op.name} › ${op.section}` };
+      if (op.confirm !== false) {
+        const ok = await confirmBody(
+          ctx,
+          `改写 design/${op.name} › ${op.section}`,
+          `旧 ${(s.body ?? "").length} 字 → 新 ${op.content.length} 字；其余小节不变。`,
+          "将写入的内容",
+          op.content,
+        );
+        if (!ok) return { ok: false, output: `用户已拒绝改写 design/${op.name} › ${op.section}` };
+      }
       const file = await ctx.writeDesign(op.name, replaceSection(current, op.section, op.content));
       return { ok: true, file, name: op.name };
     }
@@ -118,7 +116,7 @@ export async function applyDesignOp(ctx: ToolContext, op: DesignOp): Promise<Des
         if (dup) {
           return {
             ok: false,
-            output: `「${dup.title}」已存在于 ${op.name}——若想修改它请用 edit-design，而不是再追加一份。`,
+            output: `「${dup.title}」已存在于 ${op.name}——若想修改它请用 propose-design（带 section），而不是再追加一份。`,
           };
         }
       }

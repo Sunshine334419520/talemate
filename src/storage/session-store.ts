@@ -64,7 +64,7 @@ export async function loadMessages(projectId: string, sessionId: string): Promis
     .sort((a, b) => a.seq - b.seq);
 }
 
-/** 供模型上下文：compaction 消息 + 其后的全部消息（§8：上下文=最新 compaction 之后的 seq） */
+/** 供模型上下文：最新 compaction 消息 + 其后的全部消息。 */
 export function loadModelWindow(messages: StoredMessage[]): StoredMessage[] {
   let from = 0;
   for (let i = 0; i < messages.length; i++) {

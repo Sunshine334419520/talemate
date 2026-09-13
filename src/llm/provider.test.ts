@@ -1,7 +1,7 @@
 /**
  * 离线测试：safeParseArgs 的容错解析（不联网）。
  * 回归：DeepSeek/openai 兼容模型偶尔返回不规范的 tool arguments JSON——套围栏、字符串内
- * 未转义换行、尾逗号、双层转义。之前解析失败会产出 { _raw }，导致 ask-user.question = undefined。
+ * 未转义换行、尾逗号、双层转义。解析失败必须回退空对象，让工具的必填守卫把错误报回模型。
  */
 import { describe, test, expect } from "bun:test";
 import { safeParseArgs } from "./provider";

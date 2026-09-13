@@ -38,7 +38,15 @@ export async function executeToolPart(
   try {
     const args = call.input as never;
     const res = await tool.execute(args, ctx);
-    return { ...base, state: "completed", output: res.output, time: { ...base.time, completed: Date.now() } };
+    return {
+      ...base,
+      state: "completed",
+      output: res.output,
+      // 只有**成功**才允许结束本回合：被拒/校验失败必须留给模型同轮自纠，
+      // 否则循环会死在一个本可自愈的错误上（见 prompt 工具返回的"可用小节"这类自愈文案）。
+      halt: tool.halt === true,
+      time: { ...base.time, completed: Date.now() },
+    };
   } catch (e) {
     return {
       ...base,

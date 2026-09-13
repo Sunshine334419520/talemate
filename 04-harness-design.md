@@ -215,6 +215,11 @@ defineTool({
 
 ### 7.2 内置工具清单（已落地 16 个）
 
+> ⚠️ **本节的 id 已过期，只作决策历史**。`docs/`、`doc_tools`、`read-doc`/`write-doc` 等名字在
+> 2026-09-11 改成了 `design/`、`design_tools`、`read-design`/`write-design`；`write-doc`/`edit-doc` 又在
+> 2026-09-12 被**两段式落盘**取代（`propose-design` 不写盘 + `halt` 结束回合 → 用户回话 → `apply-design`
+> 只落提案那一份）。**现行清单看 `08-architecture.md` §4**，本节不要拿来对照代码。
+
 按领域分四个模块（`src/tool/`），工具 id 用 kebab，TS 文件名 snake：
 
 **doc_tools（docs/ 通用文档操作）**
