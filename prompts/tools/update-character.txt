@@ -1,5 +1,10 @@
-Update one or more fields of an existing character card; unspecified fields stay unchanged.
+Update one or more sections of an existing character card; sections you do not pass stay
+unchanged, including custom ones.
 
-name identifies the card. Give only the fields to change: one_line / want_fear / idiolect /
-habit / function. Replacing those fields triggers user confirmation. If the card does not
-exist, use add-character instead.
+name identifies the card. Pass only the sections to change, by key: profile / want_fear /
+bottom_line / idiolect (常驻带), and contradiction / origin / quotes / body_habit / relations /
+ability / arc / function (按需格). Body text must not contain heading lines — the tool writes
+the heading itself.
+
+`当前` is maintained by the chapter write-back, not here. If the card does not exist, use
+add-character instead.

@@ -127,15 +127,21 @@ export const DESIGN_SPECS: Record<LayerId, DesignSpec> = {
     sections: [
       {
         heading: "角色总表",
-        write: "characters/_index.md，每行一位：名字 · 一句话定位。",
+        write: "characters/_index.md，每行一位：名字 · 身份/所属（取该卡「基本档案」的首句）。",
         avoid: "手写这个文件——它由工具增删改后自动同步。",
       },
     ],
     guide: [
+      "一角色一卡 characters/<名>.md = `# 角色：<名>` + 若干 `###` 小节，分两层：",
+      "  常驻带（写 ta 的任何一场戏都要带，先填这四格）：### 基本档案（首行写身份/所属，角色总表取这一行）/ ### 想要 · 最怕 / ### 底线 · 绝不做 / ### 说话方式（给一句『声音范例』原文，别只写性格形容词）；",
+      "  按需格（按场景切片，按戏份随时补，不填不是缺陷）：### 性格与矛盾 / ### 来历 · 成因 / ### 语录 / ### 身体 · 习惯 / ### 关联角色 / ### 能力 · 机制 / ### 转变 · 走向 / ### 在故事中的功能。",
+      "  `### 当前`（在场/已故 + 此刻处境）由章末回写维护，不要手改；规范外的自定义 `###` 小节允许（世界特有的，如「回响」），工具会原样保留。",
       "工作法：",
-      "1) 加角色用 add-character：自动生成 characters/<名>.md 规范卡（一句话定位/想要·最怕/说话方式(给声音范例原文)/习惯动作/在故事中的功能，缺格会提示补），并同步 characters/_index.md 角色总表；",
-      "2) 想了解/完善某角色先 read-design 看 characters/<名>.md 当前卡，update-character 只改你传的格；",
-      "3) 一角色一卡；_index.md 由工具自动同步，不用手改；删角色用 remove-character。",
+      "1) 加角色用 add-character：只缺的常驻格写（待定）并提示补，并同步 characters/_index.md；别逐格盘问——让用户用自己的话讲；",
+      "2) 想了解/完善某角色先 read-design 看 characters/<名>.md 当前卡，update-character 只改你传的格，其余（含自定义小节）原样保留；",
+      "3) 拿不准声音时用**试镜**：让 ta 开口给一句台词，比问「性格是什么」有效——用户说「他不会这么说话」的那一刻，才是真的在设计角色；",
+      "4) 用户说的与卡冲突时，把冲突摆出来问一句：改卡还是改戏？（卡是用户签过的合同，不是摆设）；",
+      "5) 一角色一卡；_index.md 由工具自动同步，不用手改；删角色用 remove-character。",
     ].join("\n"),
   },
   outline: {
@@ -172,10 +178,14 @@ export function renderDesignSpec(id: LayerId): string {
   ]);
   // 主文档是一个文件的层，把写入用的 key 就地给它（propose-design/apply-design 收 layer）；
   // characters 的 file 是目录、不是写入目标，所以不给 key（它的写法在 guide 里指向 add-character）。
-  const layerKey = spec.file.endsWith("/") ? "" : ` · layer: ${spec.id}`;
+  const isDir = spec.file.endsWith("/");
+  const layerKey = isDir ? "" : ` · layer: ${spec.id}`;
   return [
     `【${spec.title}${layerKey} · 目标 design/${spec.file}】`,
-    "该层文档应含以下小节（每个 ## 即一格，后续可单独 propose-design 那一格）：",
+    // 目录型（人物层）不是"一个文档若干 ##"——它的形状在 guide 里（一角色一卡，卡内是 ###）。
+    isDir
+      ? "本层不是单个文档：一角色一卡，卡的形状见下（唯一由工具维护的派生文件：）"
+      : "该层文档应含以下小节（每个 ## 即一格，后续可单独 propose-design 那一格）：",
     ...head,
     ...(spec.style ? ["", spec.style] : []),
     "",

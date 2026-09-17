@@ -48,4 +48,4 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 
 ## 文档
 
-当前基准：**`08-architecture.md`**（当前架构与流程总览）、`05-agent-spec.md`（Agent/工具规范，与代码一致）、`prompts/README.md`。设计演进记录：`04-harness-design.md`（harness 顶层，工具清单已过期）、`02-product-definition.md`（产品定义）、`03-implementation-plan.md`（注意 §3/§4 已成历史）。
+当前基准：**`08-architecture.md`**（当前架构与流程总览）、`05-agent-spec.md`（Agent/工具规范，与代码一致）、`prompts/README.md`。设计演进记录：`04-harness-design.md`（harness 顶层，工具清单已过期）、`09-character-layer-design.md`（人物层：卡的骨架/连续性/章末回写，**含未实现部分，看 §7 状态**）、`02-product-definition.md`（产品定义）、`03-implementation-plan.md`（注意 §3/§4 已成历史）。

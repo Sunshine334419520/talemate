@@ -1,10 +1,13 @@
 Add a new character card as a single file characters/<name>.md (under design/).
 
-A card is `# 角色：<name>` with the five fixed fields, each a `###` section:
-one-line role (一句话定位) / want & fear (想要·最怕) / speech style (说话方式 — give a
-verbatim sample line, not just trait adjectives) / habitual action (习惯动作) / role in story
-(在故事中的功能).
+A card is `# 角色：<name>` plus fixed `###` sections, in two tiers.
 
-Provide as many fields as you have now. Missing fields are written as （待定） and reported,
-then filled later via update-character. The name is checked against existing card files (no
-duplicates). The characters/_index.md 角色总表 is auto-synced.
+常驻带 — carried into every scene this character is in; fill these four first:
+基本档案 (lead with identity/affiliation) / 想要 · 最怕 / 底线 · 绝不做 / 说话方式 (give a
+verbatim sample line, not trait adjectives).
+
+按需格 — for later, by screen time; omitting them is not a defect: 性格与矛盾 / 来历 · 成因 /
+语录 / 身体 · 习惯 / 关联角色 / 能力 · 机制 / 转变 · 走向 / 在故事中的功能.
+
+Missing 常驻 fields are written as （待定） and reported. The name is checked against existing
+cards, and characters/_index.md 角色总表 is auto-synced.

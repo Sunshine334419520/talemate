@@ -8,13 +8,16 @@
  */
 import { applyDesignOp } from "../framework/design_ops";
 import {
-  CHARACTER_FIELDS,
+  EDITABLE_FIELDS,
+  RESIDENT_FIELDS,
+  applyCardEdits,
   buildCardMarkdown,
+  cardIdentity,
   cardPath,
   INDEX_PATH,
   isMissingField,
   nameFromPath,
-  parseCardBody,
+  rejectHeadings,
   syncIndex as renderIndex,
   type CharacterFields,
 } from "../framework/characters";
@@ -28,32 +31,37 @@ function fieldProps(required: string[]): Record<string, { type: string; descript
   const out: Record<string, { type: string; description: string }> = {
     name: { type: "string", description: "Character name (creates characters/<name>.md)" },
   };
-  for (const f of CHARACTER_FIELDS) out[f.key] = { type: "string", description: `${f.label}：${f.placeholder}` };
+  // 工具托管的「当前」不进 schema：它是章末回写的产物，不该被模型当普通字段填。
+  for (const f of EDITABLE_FIELDS) {
+    const tier = f.tier === "resident" ? "常驻带（每场必带）" : "按需格（按戏份补）";
+    out[f.key] = { type: "string", description: `${tier} ${f.label}：${f.placeholder}` };
+  }
   return out;
 }
 
 function pickFields(args: Record<string, unknown>): CharacterFields {
   const out: CharacterFields = {};
-  for (const f of CHARACTER_FIELDS) {
+  for (const f of EDITABLE_FIELDS) {
     const v = args[f.key];
     if (typeof v === "string" && v !== undefined) out[f.key] = v;
   }
   return out;
 }
 
+/** 还缺哪些**常驻格**。按需格缺失不是缺陷——按戏份填，所以不催。 */
 function pendingLabels(fields: CharacterFields): string[] {
-  return CHARACTER_FIELDS.filter((f) => isMissingField(fields[f.key])).map((f) => f.label);
+  return RESIDENT_FIELDS.filter((f) => isMissingField(fields[f.key])).map((f) => f.label);
 }
 
 /** 扫描 characters/ 重建 _index.md（工具每次增删改后调用）。 */
 async function rebuildIndex(ctx: ToolContext): Promise<void> {
-  const cards: { name: string; one_line: string | undefined }[] = [];
+  const cards: { name: string; identity: string | undefined }[] = [];
   for (const rel of await ctx.listDesignPaths()) {
     const name = nameFromPath(rel);
     if (!name) continue; // 含 _index.md 本身
     const content = await ctx.readDesign(rel);
     if (content === undefined) continue;
-    cards.push({ name, one_line: parseCardBody(content).one_line });
+    cards.push({ name, identity: cardIdentity(content) });
   }
   await ctx.writeDesign(INDEX_PATH, renderIndex(cards));
 }
@@ -87,13 +95,22 @@ export const addCharacterTool: RegisteredTool<Record<string, unknown>> = defineT
     return {
       output:
         `已新增角色卡「${name}」（design/characters/${name}.md）。` +
-        (pend.length ? `\n仍待补：${pend.join("、")}——可用 update-character 逐格完善。` : "\n卡已完整（五个小节都填了）。"),
+        (pend.length
+          ? `\n仍待补（常驻带）：${pend.join("、")}——这四格每场都要带，先补它们；` +
+            "按需格（性格与矛盾 / 来历 / 语录 / 关联角色…）按戏份随时补。"
+          : "\n常驻带四格都填了；按需格按戏份随时补。"),
       metadata: { name },
     };
   },
 });
 
-/** update-character：改一张卡的若干小节（只改传入的格，其余保留），confirm 后写回并同步总表。 */
+/**
+ * update-character：改一张卡的若干小节，confirm 后写回并同步总表。
+ *
+ * 改动是**外科**的（framework/characters.applyCardEdits）：只动传入的格，规范外的自定义小节
+ * （如「回响」）与别名格（老卡的「习惯动作」）原样保留。旧实现整卡重建，会把它们静默抹掉。
+ * 「当前」是工具托管格，这里碰不到。
+ */
 export const updateCharacterTool: RegisteredTool<Record<string, unknown>> = defineTool<Record<string, unknown>>({
   id: "update-character",
   description: P("update-character"),
@@ -108,20 +125,30 @@ export const updateCharacterTool: RegisteredTool<Record<string, unknown>> = defi
     const content = await ctx.readDesign(cardPath(name));
     if (content === undefined) return { output: `没有找到角色「${name}」。可用 add-character 新建。` };
     const incoming = pickFields(args);
-    const changed = CHARACTER_FIELDS.filter((f) => incoming[f.key] !== undefined).map((f) => f.label);
-    if (!changed.length) return { output: "没有传入要改的小节（至少给一个：one_line / want_fear / idiolect / habit / function）。" };
-    const merged: CharacterFields = { ...parseCardBody(content), ...incoming };
-    // 走 write 而不是 edit：卡片是整份重建的，confirm 时正好摊出改完的完整卡
+    const changed = EDITABLE_FIELDS.filter((f) => incoming[f.key] !== undefined);
+    if (!changed.length) {
+      return {
+        output:
+          `没有传入要改的小节。可改：${EDITABLE_FIELDS.map((f) => f.key).join(" / ")}。` +
+          "（「当前」由章末回写维护，不走这里。）",
+      };
+    }
+    for (const f of changed) {
+      const bad = rejectHeadings(incoming[f.key]!);
+      if (bad) return { output: `「${f.label}」${bad}` };
+    }
+    // 外科改：只换传入的格，其余（含自定义小节）字节不动。confirm 摊出的是改完的完整卡。
+    const next = applyCardEdits(content, incoming);
     const r = await applyDesignOp(ctx, {
       kind: "write",
       name: cardPath(name),
-      content: buildCardMarkdown(name, merged),
+      content: next,
       action: `更新角色卡「${name}」`,
-      meta: `将改写小节：${changed.join("、")}；其余保留。`,
+      meta: `将改写小节：${changed.map((f) => f.label).join("、")}；其余小节（含自定义小节）原样保留。`,
     });
     if (!r.ok) return { output: r.output };
     await rebuildIndex(ctx);
-    return { output: `已更新角色卡「${name}」：${changed.join("、")}。`, metadata: { name } };
+    return { output: `已更新角色卡「${name}」：${changed.map((f) => f.label).join("、")}。`, metadata: { name } };
   },
 });
 

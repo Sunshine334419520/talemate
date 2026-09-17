@@ -281,7 +281,7 @@ export class Session {
   private async runSubagent(agentId: string, prompt: string): Promise<string> {
     const sub = this.agents.get(agentId);
     if (sub.mode !== "subagent") throw new Error(`agent ${agentId} 不是 subagent，不能 task 委派`);
-    if (this.depth >= 2) throw new Error("子代理深度超限（task 嵌套最多 2 层）");
+    if (this.depth >= 1) throw new Error("子代理深度超限（task 最多嵌套 1 层）");
 
     const child = new Session({
       projectId: this.projectId,

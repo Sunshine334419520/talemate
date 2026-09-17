@@ -107,6 +107,30 @@ export function isSkeleton(content: string | undefined): boolean {
 }
 
 /**
+ * 空行 / 说明行 / （待定…）占位 —— 都不算"填了"。
+ * 原在 report.ts；挪到这里是因为 characters.ts 也要用它，而 report → characters 已有依赖，
+ * 反向 import 会成环。report.ts re-export 以保住原有调用点。
+ */
+export function isFiller(line: string): boolean {
+  const t = line.trim();
+  return !t || t.startsWith("### ") || t.startsWith(">") || t.startsWith("<!--") || /^（待定.*）$/.test(t);
+}
+
+/** 取一个区块正文的第一句有效内容（跳过占位/空行/引用），超过 max 字截断。用于"简要输出"与角色总表派生。 */
+export function leadLine(content: string, heading: string, max = 60): string | undefined {
+  const s = getSection(content, heading);
+  if (!s.found) return undefined;
+  const line = (s.body ?? "").split("\n").find((l) => !isFiller(l))?.trim();
+  return line ? (line.length > max ? `${line.slice(0, max)}…` : line) : undefined;
+}
+
+/** 文档里有没有 level 2 的标题（`##`，不含 `###`）。角色卡拿它做陷阱检查，见 characters.rejectShallowHeading。 */
+export function matchesLevel2Heading(content: string): string | undefined {
+  const m = content.match(/^##(?!#)\s+(.*)$/m);
+  return m ? m[1].trim() : undefined;
+}
+
+/**
  * 替换一个区块的正文。newBody 不含 heading 行；返回新全文。
  * 找不到 → throw（消息带 available，工具层再包成自愈文案）。
  */
@@ -116,12 +140,12 @@ export function replaceSection(content: string, title: string, newBody: string):
     throw new Error(`没有找到小节「${title}」。可用小节：${listHeadings(content).map((x) => x.title).join("、")}`);
   }
   const lines = content.split("\n");
-  const head = lines.slice(0, h.line).join("\n");
-  const tailLines = lines.slice(h.end);
-  const tail = tailLines.join("\n");
-  const headStr = head.length ? head + "\n" : "";
-  const tailStr = tailLines.length ? "\n" + tail : "";
-  return headStr + lines[h.line] + "\n\n" + newBody.trim() + tailStr;
+  // 与 removeSection 同一套拼法：块与块之间恒为一个空行。
+  // （旧实现只补一个 "\n"，改完的小节会和下一节的标题黏在一起——整卡重建时看不出来，
+  //   外科改之后每次都会出现。）
+  const head = lines.slice(0, h.line).join("\n").trimEnd();
+  const tail = lines.slice(h.end).join("\n").trimStart();
+  return [head, `${lines[h.line]}\n\n${newBody.trim()}`, tail].filter((s) => s.length > 0).join("\n\n");
 }
 
 /** 删除一个区块（含其 heading）。找不到 → throw。 */

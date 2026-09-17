@@ -6,22 +6,16 @@
 import { listDesigns, loadProjectMeta, readDesign } from "../storage/project";
 import type { LayerId } from "./layers";
 import { DESIGN_SPECS } from "./design_spec";
-import { getSection } from "./markdown";
+import { getSection, isFiller, leadLine } from "./markdown";
 import { nameFromPath } from "./characters";
 
-/** 空行 / 说明行 / （待定…）占位 —— 都不算"填了"。（导出：proposal.ts 判"这格还没填"复用同一份） */
-export function isFiller(line: string): boolean {
-  const t = line.trim();
-  return !t || t.startsWith("### ") || t.startsWith(">") || t.startsWith("<!--") || /^（待定.*）$/.test(t);
-}
+// isFiller 已挪到 markdown.ts（characters 也要用，而本文件 → characters 已有依赖）。
+// 这里 re-export 保住原有调用点（proposal.ts 从本文件引它）。
+export { isFiller };
 
 /** 取一个小节正文的第一句有效内容（跳过占位与空行），用于"简要输出"。 */
 function firstLine(content: string | undefined, heading: string): string | undefined {
-  if (content === undefined) return undefined;
-  const s = getSection(content, heading);
-  if (!s.found) return undefined;
-  const line = (s.body ?? "").split("\n").find((l) => !isFiller(l))?.trim();
-  return line ? (line.length > 60 ? `${line.slice(0, 60)}…` : line) : undefined;
+  return content === undefined ? undefined : leadLine(content, heading);
 }
 
 /** 该小节填了没（小节存在 + 有非占位正文）。 */

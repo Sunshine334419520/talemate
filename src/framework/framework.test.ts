@@ -13,7 +13,7 @@ import { renderDesignSpec } from "./design_spec";
 import { renderHits, searchDesigns } from "./search";
 import { buildResidentDesigns, buildDesignIndex } from "./anchor";
 import { addCharacterTool, removeCharacterTool, updateCharacterTool } from "../tool/character_tools";
-import { applyDesignTool, proposeDesignTool } from "../tool/design_tools";
+import { appendDesignTool, applyDesignTool, proposeDesignTool } from "../tool/design_tools";
 import { defineTool } from "../tool/define";
 import { ToolRegistry } from "../tool/registry";
 import { executeToolPart } from "../tool/runner";
@@ -223,31 +223,49 @@ function makeCtx(projectId: string): ToolContext & { pending: Map<string, Pendin
   };
 }
 
-describe("character-tools（add/update/remove + 总表同步）", () => {
-  test("add-character：建规范卡（一文件 5 小节）+ 同步 _index 总表", async () => {
+describe("character-tools（分层骨架 / 外科改 / 总表同步）", () => {
+  const CARD = (name: string) => `characters/${name}.md`;
+
+  test("add-character：建规范卡（常驻四格 + 「当前」，不铺按需格空架子）+ 同步总表", async () => {
     const r = await addCharacterTool.execute(
       {
         name: "林晚",
-        one_line: "空姐，与江屿困同一座岛",
+        profile: "空乘，与江屿困在同一座岛",
         want_fear: "想要体面地活着回去；最怕成为拖累",
+        bottom_line: "绝不对同岛的人动手",
         idiolect: "嘴硬心软，关心反着说；原话『你死了我可不会埋你』",
-        habit: "紧张时数东西够不够用",
-        function: "江屿的对照与软肋，感情暗线",
       },
       makeCtx(pid) as never,
     );
     expect(r.output).toContain("林晚");
-    const content = (await readDesign(pid, "characters/林晚.md"))!;
+    expect(r.output).toContain("常驻带四格都填了");
+
+    const content = (await readDesign(pid, CARD("林晚")))!;
     expect(content).toContain("# 角色：林晚");
-    for (const label of ["一句话定位", "想要 · 最怕", "说话方式", "习惯动作", "在故事中的功能"]) {
+    for (const label of ["基本档案", "想要 · 最怕", "底线 · 绝不做", "说话方式", "当前"]) {
       expect(content).toContain(`### ${label}`);
     }
+    // 按需格「给了才写」：没传的不该被铺成空架子
+    expect(content).not.toContain("### 性格与矛盾");
+    expect(content).not.toContain("### 语录");
+
     const idx = (await readDesign(pid, "characters/_index.md"))!;
-    expect(idx).toContain("林晚");
+    expect(idx).toContain("林晚 · 空乘，与江屿困在同一座岛"); // 总表取「基本档案」首句
+  });
+
+  test("add-character：只给 name 时只催常驻格，不催按需格（填充度自由）", async () => {
+    const r = await addCharacterTool.execute({ name: "船医" }, makeCtx(pid) as never);
+    // 只看"待补清单"本身——尾部那句列举按需格是提示，不算催
+    const pending = r.output.split("仍待补（常驻带）：")[1]?.split("——")[0] ?? "";
+    expect(pending).toContain("基本档案");
+    expect(pending).toContain("说话方式");
+    expect(pending).not.toContain("性格与矛盾");
+    expect(pending).not.toContain("语录");
+    expect(pending).not.toContain("关联角色");
   });
 
   test("add-character：重复名被拒（自愈提示）", async () => {
-    const r = await addCharacterTool.execute({ name: "林晚", one_line: "x" }, makeCtx(pid) as never);
+    const r = await addCharacterTool.execute({ name: "林晚", profile: "x" }, makeCtx(pid) as never);
     expect(r.output).toContain("已存在");
   });
 
@@ -257,15 +275,87 @@ describe("character-tools（add/update/remove + 总表同步）", () => {
       makeCtx(pid) as never,
     );
     expect(r.output).toContain("说话方式");
-    const content = (await readDesign(pid, "characters/林晚.md"))!;
+    const content = (await readDesign(pid, CARD("林晚")))!;
     expect(content).toContain("新版：越在乎越呛");
-    expect(content).toContain("空姐，与江屿困同一座岛"); // 未传字段保留
+    expect(content).toContain("空乘，与江屿困在同一座岛"); // 未传字段保留
+  });
+
+  // ── 回归：修掉"静默丢数据"（旧实现走 parseCardBody → buildCardMarkdown 整卡重建，
+  //    规范外的小节会被无声抹掉，confirm 文案却写着"其余保留"） ──
+
+  test("[回归] 自定义长尾小节、别名格、老卡小节在 update 后一字不丢", async () => {
+    await writeDesign(
+      pid,
+      CARD("乔家劲"),
+      [
+        "# 角色：乔家劲",
+        "",
+        "### 基本档案",
+        "钵兰街阿劲，自诩四二六红棍",
+        "",
+        "### 回响",
+        "「破万法」：契机「想要公平地进行对决」。",
+        "",
+        "### 习惯动作",
+        "紧张时数东西够不够用",
+        "",
+        "### 一句话定位",
+        "空姐，与江屿困同一座岛",
+        "",
+      ].join("\n"),
+    );
+    const r = await updateCharacterTool.execute(
+      { name: "乔家劲", idiolect: "短句、直给，不绕弯", body_habit: "动手前先解袖扣" },
+      makeCtx(pid) as never,
+    );
+    expect(r.output).toContain("说话方式");
+
+    const after = (await readDesign(pid, CARD("乔家劲")))!;
+    // 规范外的小节连同正文原样保留
+    expect(after).toContain("### 回响");
+    expect(after).toContain("「破万法」：契机「想要公平地进行对决」。");
+    // 别名命中写回**原格**，不产生重复的「身体 · 习惯」
+    expect(after).toContain("动手前先解袖扣");
+    expect(after).not.toContain("紧张时数东西够不够用");
+    const habitHeads = (after.match(/^### (身体 · 习惯|习惯动作)$/gm) ?? []).length;
+    expect(habitHeads).toBe(1);
+    // 老卡的小节也活着；新格按规范序插入
+    expect(after).toContain("### 一句话定位");
+    expect(after).toContain("### 说话方式");
+    // 总表随之更新，且取「基本档案」首句
+    const idx = (await readDesign(pid, "characters/_index.md"))!;
+    expect(idx).toContain("乔家劲 · 钵兰街阿劲，自诩四二六红棍");
+  });
+
+  test("[回归] 正文里带标题行被拒（卡上出现 ## 会让全部 ### 从提案审阅里消失）", async () => {
+    const r = await updateCharacterTool.execute(
+      { name: "林晚", idiolect: "## 说话方式\n她说……" },
+      makeCtx(pid) as never,
+    );
+    expect(r.output).toContain("不要带标题行");
+    expect(await readDesign(pid, CARD("林晚"))).toContain("新版：越在乎越呛"); // 没被写坏
+  });
+
+  test("「当前」是工具托管格：update 碰不到它，它在普通更新后原样存活", async () => {
+    const card = (await readDesign(pid, CARD("林晚")))!;
+    await writeDesign(pid, CARD("林晚"), card.replace(/### 当前\n[\s\S]*$/, "### 当前\n在场（岛上）\n"));
+
+    const r = await updateCharacterTool.execute({ name: "林晚", current: "已故" }, makeCtx(pid) as never);
+    expect(r.output).toContain("可改："); // 没有任何可改的键 → 明确拒绝
+    expect(await readDesign(pid, CARD("林晚"))).toContain("在场（岛上）");
+  });
+
+  test("总表：只有老「一句话定位」的卡也能出身份，不立刻退化成（待定）", async () => {
+    await writeDesign(pid, CARD("老卡"), "# 角色：老卡\n\n### 一句话定位\n从前的一句定位\n");
+    await updateCharacterTool.execute({ name: "老卡", idiolect: "x" }, makeCtx(pid) as never);
+    const idx = (await readDesign(pid, "characters/_index.md"))!;
+    expect(idx).toContain("老卡 · 从前的一句定位");
   });
 
   test("remove-character：删卡并同步总表", async () => {
     const r = await removeCharacterTool.execute({ name: "林晚" }, makeCtx(pid) as never);
     expect(r.output).toContain("已删除");
-    expect(await readDesign(pid, "characters/林晚.md")).toBeUndefined();
+    expect(await readDesign(pid, CARD("林晚"))).toBeUndefined();
     const idx = (await readDesign(pid, "characters/_index.md"))!;
     expect(idx).not.toContain("林晚");
   });
@@ -362,6 +452,31 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
 
     const idx = await proposeDesignTool.execute({ name: "characters/_index.md", content: "## a\nb" }, ctx as never);
     expect(idx.output).toContain("自动维护");
+  });
+
+  test("守卫：角色卡上出现 ## 被拒（否则卡里所有 ### 会从逐格审阅里消失）", async () => {
+    const ctx = makeCtx(pid);
+    const proposed = await proposeDesignTool.execute(
+      { name: "characters/某人.md", content: "# 角色：某人\n\n## 基本档案\n来历不明。\n" },
+      ctx as never,
+    );
+    expect(proposed.output).toContain("一律用 `###`");
+    expect(ctx.pending.size).toBe(0); // 没登记任何提案
+
+    const appended = await appendDesignTool.execute(
+      { name: "characters/某人.md", block: "## 回响\n破万法。" },
+      ctx as never,
+    );
+    expect(appended.output).toContain("一律用 `###`");
+
+    // 反过来：`###` 的自由小节（开放长尾）畅通
+    await writeDesign(pid, "characters/某人.md", "# 角色：某人\n\n### 基本档案\n来历不明。\n");
+    const ok = await appendDesignTool.execute(
+      { name: "characters/某人.md", block: "### 回响\n破万法：契机「想要公平地进行对决」。" },
+      ctx as never,
+    );
+    expect(ok.output).toContain("已追加到");
+    expect((await readDesign(pid, "characters/某人.md"))!).toContain("### 回响");
   });
 
   test("固定层用 layer：路径由工具定，模型不给路径", async () => {

@@ -83,16 +83,20 @@ const P_DESIGNSPEC_PAIR: Patch = {
   after: "",
 };
 
-/** add-character 描述把角色卡五格列全了——模型自己说「我已知道字段」，这是它的常驻来源。 */
+/** add-character 描述把角色卡两层的格列全了——模型自己说「我已知道字段」，这是它的常驻来源。 */
 const P_ADDCHAR_FIELDS: Patch = {
   kind: "describe",
   tool: "add-character",
-  note: "add-character.txt：去掉五格枚举（只留「有固定小节」）",
+  note: "add-character.txt：去掉两层格的枚举（只留「有固定小节」）",
   before:
-    "A card is `# 角色：<name>` with the five fixed fields, each a `###` section:\n" +
-    "one-line role (一句话定位) / want & fear (想要·最怕) / speech style (说话方式 — give a\n" +
-    "verbatim sample line, not just trait adjectives) / habitual action (习惯动作) / role in story\n" +
-    "(在故事中的功能).",
+    "A card is `# 角色：<name>` plus fixed `###` sections, in two tiers.\n" +
+    "\n" +
+    "常驻带 — carried into every scene this character is in; fill these four first:\n" +
+    "基本档案 (lead with identity/affiliation) / 想要 · 最怕 / 底线 · 绝不做 / 说话方式 (give a\n" +
+    "verbatim sample line, not trait adjectives).\n" +
+    "\n" +
+    "按需格 — for later, by screen time; omitting them is not a defect: 性格与矛盾 / 来历 · 成因 /\n" +
+    "语录 / 身体 · 习惯 / 关联角色 / 能力 · 机制 / 转变 · 走向 / 在故事中的功能.",
   after: "A card is `# 角色：<name>` with its fixed `###` fields.",
 };
 
@@ -118,7 +122,7 @@ const VARIANTS: Variant[] = [
   { id: "baseline", note: "原样 = 当前产品（persona 那条规则已在里面，所以它就是新基线）", patches: [] },
   { id: "apply-handback", note: "【加】落盘结果里补交回契约", patches: [P_APPLY_HANDBACK] },
   { id: "designspec-no-pair", note: "去掉「核心设定与世界观」那句暗示", patches: [P_DESIGNSPEC_PAIR] },
-  { id: "addchar-no-fields", note: "add-character 不再列五格", patches: [P_ADDCHAR_FIELDS] },
+  { id: "addchar-no-fields", note: "add-character 不再列两层格", patches: [P_ADDCHAR_FIELDS] },
   { id: "no-char-tools", note: "editor 没有角色工具", patches: [P_NO_CHAR_TOOLS] },
   {
     id: "all-off",
@@ -129,12 +133,20 @@ const VARIANTS: Variant[] = [
 
 // ─────────────────────────── 消融的落地 ───────────────────────────
 
-/** 替换必须命中：没命中说明原文变了、变体会静默退化成 baseline，整场实验就成了假的。 */
+/**
+ * 替换必须命中：没命中说明原文变了、变体会静默退化成 baseline，整场实验就成了假的。
+ *
+ * 行尾容忍：patch 的字面量按 `\n` 写（git 里存的就是 LF），但检出到工作区可能是 CRLF
+ * （本机 `core.autocrlf=true`）。不认这一层，整场 probe 会因为行尾而在第一处就抛。
+ */
 function mustReplace(text: string, before: string, after: string, what: string): string {
-  if (!text.includes(before)) {
-    throw new Error(`变体没生效（找不到要替换的原文）：${what}\n原文片段：${JSON.stringify(before.slice(0, 80))}`);
+  for (const [b, a] of [
+    [before, after],
+    [before.replace(/\n/g, "\r\n"), after.replace(/\n/g, "\r\n")],
+  ]) {
+    if (text.includes(b)) return text.replace(b, a);
   }
-  return text.replace(before, after);
+  throw new Error(`变体没生效（找不到要替换的原文）：${what}\n原文片段：${JSON.stringify(before.slice(0, 80))}`);
 }
 
 /** 按变体造出这次要用的 agents / tools（不改仓库里的任何文件）。 */

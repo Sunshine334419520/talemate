@@ -9,7 +9,7 @@
  * 注意：`AgentDef.tools` 白名单只决定模型看到哪些 schema，**不是执行边界**（session 传的是全局 registry）。
  * 撤一个工具必须真删定义，只从白名单拿掉等于没拿掉。
  */
-import { INDEX_PATH } from "../framework/characters";
+import { INDEX_PATH, nameFromPath, rejectShallowHeading } from "../framework/characters";
 import { applyDesignOp, designNotFound } from "../framework/design_ops";
 import { DESIGN_SPECS } from "../framework/design_spec";
 import type { LayerId } from "../framework/layers";
@@ -56,6 +56,19 @@ function resolveDoc(args: { layer?: unknown; name?: unknown }): { name: string }
     };
   }
   return { name };
+}
+
+/**
+ * 角色卡的结构守卫：卡上的小节一律 `###`（`# 角色：X` 是 H1）。
+ * 出现 `##` 会让 proposal.ownItems 取到更浅的层，于是卡里**所有** `###` 都从逐格审阅里消失——
+ * 用户没看过的字节照样落盘。这是静默的，必须在写入口拦住。
+ */
+function cardHeadingError(name: string, text: string): string | undefined {
+  if (!nameFromPath(name)) return undefined;
+  const shallow = rejectShallowHeading(text);
+  return shallow
+    ? `角色卡的小节一律用 \`###\`（收到 \`## ${shallow}\`）——更浅的标题会让卡里所有 \`###\` 从逐格审阅里消失，用户看不到却被落盘。`
+    : undefined;
 }
 
 /** read-design：读整篇或按小节读 */
@@ -163,6 +176,8 @@ export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; 
           output: `${INDEX_PATH} 是工具自动维护的角色总表，不要手写——增删改角色请用 add-character / update-character / remove-character。`,
         };
       }
+      const headingErr = cardHeadingError(name, content);
+      if (headingErr) return { output: headingErr };
 
       const current = await ctx.readDesign(name);
       let oldBody: string | undefined;
@@ -282,6 +297,8 @@ export const appendDesignTool: RegisteredTool<{ name: string; block: string }> =
     required: ["name", "block"],
   },
   async execute(args, ctx) {
+    const headingErr = cardHeadingError(args.name, args.block);
+    if (headingErr) return { output: headingErr };
     const r = await applyDesignOp(ctx, { kind: "append", name: args.name, block: args.block });
     if (!r.ok) return { output: r.output };
     return { output: `已追加到 ${r.file}`, metadata: { name: args.name } };

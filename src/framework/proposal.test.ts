@@ -31,16 +31,23 @@ describe("itemsOf · 一个函数、两个数据源", () => {
     ]);
   });
 
-  test("角色卡走兜底（在规范之外）：H1 + 5 个 ### 字段逐格列出", () => {
+  test("角色卡走兜底（在规范之外）：H1 + 常驻四格 + 「当前」逐格列出", () => {
     expect(specFor("characters/林晚.md")).toBeUndefined(); // 规范的 file 是目录 characters/
-    const card = buildCardMarkdown("林晚", { one_line: "空姐，与江屿困同一座岛" });
+    const card = buildCardMarkdown("林晚", { profile: "空姐，与江屿困同一座岛" });
     expect(itemsOf("characters/林晚.md", card).map((i) => i.heading)).toEqual([
-      "一句话定位",
+      "基本档案",
       "想要 · 最怕",
+      "底线 · 绝不做",
       "说话方式",
-      "习惯动作",
-      "在故事中的功能",
+      "当前",
     ]);
+  });
+
+  test("卡上的自定义长尾小节也逐格列出（开放长尾也能被审阅，不需要任何渲染分支）", () => {
+    const card = buildCardMarkdown("乔家劲", { profile: "钵兰街阿劲" }) + "\n\n### 回响\n破万法：契机「想要公平地进行对决」。\n";
+    const heads = itemsOf("characters/乔家劲.md", card).map((i) => i.heading);
+    expect(heads).toContain("回响");
+    expect(heads).toContain("基本档案");
   });
 
   test("专题页 / 章节细纲同样走兜底", () => {
@@ -113,11 +120,11 @@ describe("renderProposal", () => {
   });
 
   test("角色卡也能审阅（不需要为它写任何渲染代码）", () => {
-    const card = buildCardMarkdown("林晚", { one_line: "空姐，与江屿困同一座岛" });
+    const card = buildCardMarkdown("林晚", { profile: "空姐，与江屿困同一座岛" });
     const text = renderProposal({ name: "characters/林晚.md", content: card });
     expect(text).toContain("提案 · 角色：林晚");
-    expect(text).toContain("1. 一句话定位");
+    expect(text).toContain("1. 基本档案");
     expect(text).toContain("空姐，与江屿困同一座岛");
-    expect(text).toContain("第 2、3、4、5 格还没定"); // 只有一句话定位填了，其余是占位
+    expect(text).toContain("第 2、3、4、5 格还没定"); // 只有基本档案填了，其余常驻格与「当前」是占位
   });
 });
