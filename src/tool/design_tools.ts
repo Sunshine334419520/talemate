@@ -9,7 +9,7 @@
  * 注意：`AgentDef.tools` 白名单只决定模型看到哪些 schema，**不是执行边界**（session 传的是全局 registry）。
  * 撤一个工具必须真删定义，只从白名单拿掉等于没拿掉。
  */
-import { INDEX_PATH, nameFromPath, rejectShallowHeading } from "../framework/characters";
+import { nameFromPath, rejectShallowHeading } from "../framework/characters";
 import { applyDesignOp, designNotFound } from "../framework/design_ops";
 import { DESIGN_SPECS } from "../framework/design_spec";
 import type { LayerId } from "../framework/layers";
@@ -151,7 +151,7 @@ export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; 
         content: {
           type: "string",
           description:
-            "Proposed text: the complete document when section is omitted; that section's new body WITHOUT the heading line when section is given",
+            "The text to write. It IS the file: on approval it is written byte for byte, so it may contain document text only — no notes to the user, no rationale, no questions; undecided fields become （待定）. The complete document when section is omitted; that section's new body WITHOUT the heading line when section is given",
         },
         section: {
           type: "string",
@@ -169,11 +169,6 @@ export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; 
       if (!content) {
         return {
           output: `propose-design 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带完整字段重新调用。`,
-        };
-      }
-      if (name === INDEX_PATH) {
-        return {
-          output: `${INDEX_PATH} 是工具自动维护的角色总表，不要手写——增删改角色请用 add-character / update-character / remove-character。`,
         };
       }
       const headingErr = cardHeadingError(name, content);

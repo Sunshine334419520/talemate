@@ -55,9 +55,8 @@ skill/     SKILL.md 发现与注入
     │   ├── wiki/                   #   世界层 = wiki
     │   │   ├── world.md            #     总纲入口(常驻): 空间与舞台/规则与秩序/术语表
     │   │   └── <题>.md             #     专题页(按需读, 自由新增): 地理/势力/历史…
-    │   ├── characters/             #   人物层: 一角色一卡
-    │   │   ├── _index.md           #     角色总表(工具自动同步)
-    │   │   └── <名>.md             #     # 角色:<名> + 5 个 ### 小节
+    │   ├── characters/             #   人物层: 一角色一卡(无派生总表; 名单由 list-designs 现算)
+    │   │   └── <名>.md             #     # 角色:<名> + 常驻四格/按需格/「当前」/开放长尾
     │   └── outline/                #   情节层: 主线→章节的规划
     │       ├── outline.md          #     整本: 一句话主线/开篇钩子/分卷/结局/伏笔登记
     │       ├── plan_ch<N>.md       #     章节细纲(从 chapters/ 迁入)
@@ -211,7 +210,7 @@ flowchart TD
 | **懒建 + design-spec** | 文件不预种；editor `design-spec` 拿结构 → 成稿 → propose-design → 用户回话 → apply-design |
 | **常驻注入** | `buildResidentDesigns` 现读 `core.md`+`wiki/world.md`；仅可见 primary；无 `<nvl-state>` 包装 |
 | **寻址** | 文档名 = `design/` 相对路径（`safeRelPath` 防穿越）；`wiki/<题>.md`、`characters/<名>.md` |
-| **一角色一卡 + 派生总表** | `characters/<名>.md` 5 小节；`_index.md` 由工具增删改后扫描重建 |
+| **一角色一卡（无派生总表）** | `characters/<名>.md` 分常驻带/按需格/工具托管的「当前」+ 开放长尾；名单由 `list-designs` **现算**（一人一行：身份 + 常驻带齐没齐）。设计见 `09-character-layer-design.md` |
 | **强制纪律进工具** | design 落盘走**提案两段式**（`propose-design` 的 `halt` 结束回合 → `apply-design` 只落提案那一份，且要 harness 判定的"用户已同意"）；删除走 confirm + `remove-design-section`/`remove-character` 内置 `search-designs` 引用检查——模型"想跳过也跳不过" |
 | **提案的"同意"由 harness 判** | `Session.markPendingApproval` 按用户回话匹配同意词（没问题/可以/好/…）置位；模型自述无效。fail-closed：措辞不常见就多走一轮，绝不写用户没认可的东西 |
 | **上下文压缩** | `compact()` 用 hidden summarizer 生成 `<story-state>`（summary+recent），“最新 compaction 之后”为上下文 |

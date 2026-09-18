@@ -113,7 +113,15 @@ export function isSkeleton(content: string | undefined): boolean {
  */
 export function isFiller(line: string): boolean {
   const t = line.trim();
-  return !t || t.startsWith("### ") || t.startsWith(">") || t.startsWith("<!--") || /^（待定.*）$/.test(t);
+  return !t || t.startsWith("### ") || t.startsWith(">") || t.startsWith("<!--") || isPendingLine(t);
+}
+
+/**
+ * 一行是不是「待定」占位：整行 `（待定…）`，**或键值写法** `键：（待定…）`
+ * （角色卡的「基本档案」是逐行 `键：值`，不认这一种的话，`姓名：（待定）` 会被当成"填了"）。
+ */
+export function isPendingLine(line: string): boolean {
+  return /^(?:.{1,14}[:：]\s*)?（待定.*）$/.test(line.trim());
 }
 
 /** 取一个区块正文的第一句有效内容（跳过占位/空行/引用），超过 max 字截断。用于"简要输出"与角色总表派生。 */

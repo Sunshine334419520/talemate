@@ -8,5 +8,8 @@ Pass section to rewrite one section; omit it for a whole document. The draft mus
 own section headings (see design-spec) — a draft with no headings is refused, since the user would
 be shown a blank page. Fields you cannot fill yet get （待定）.
 
-Explain why you drafted it this way in your message BEFORE calling this, not after. Once the user
+**The draft IS the file**: on approval it is written byte for byte. So the content holds document
+text and nothing else — no notes to the user ("暂用名，待你定"), no rationale ("这句是配的试镜台词，
+你可以换掉"), no questions ("他要的是真相还是道歉？"). Undecided things become （待定） and nothing
+more. Say all of that in your message BEFORE calling this, not inside the draft. Once the user
 answers, apply-design lands it.

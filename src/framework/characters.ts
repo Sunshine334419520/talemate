@@ -6,7 +6,10 @@
  *   ondemand 按需格 —— 按场景切片；按戏份决定填几格，不填**不是缺陷**
  *   managed  工具托管 —— 「当前」（点形快变状态），普通更新一律不碰（见 applyCardEdits）
  * 规范之外的 `###` 小节 = **开放长尾**（世界特有的格，如「回响」），工具原样保留。
- * characters/_index.md 是派生总表（工具每次增删改后扫描 characters/ 重建，取「基本档案」首句）。
+ *
+ * **没有派生总表**：名单（有哪些人 + 每人常驻带齐没齐）由 `list-designs` **每次现算**，
+ * 数据源只有卡本身。曾经有过一个 `characters/_index.md`，它是卡的副本——副本会脱节
+ * （走 propose-design 落卡就不更新），现算不会。
  *
  * **卡是长期动态维护的活文档**——完整设计（好卡的标尺 / 点与边 / 维护模型 / 章末回写）见
  * `09-character-layer-design.md`。与"文件是真相"一致：读取/改动都以其当前内容为准，
@@ -14,7 +17,16 @@
  *
  * 硬约束：卡上只许 `###`（`# 角色：<名>` 是 H1）。理由见 rejectShallowHeading。
  */
-import { appendBlock, getSection, leadLine, listHeadings, matchesLevel2Heading, replaceSection } from "./markdown";
+import {
+  appendBlock,
+  getSection,
+  isFiller,
+  isPendingLine,
+  leadLine,
+  listHeadings,
+  matchesLevel2Heading,
+  replaceSection,
+} from "./markdown";
 
 export type CharacterTier = "resident" | "ondemand" | "managed";
 
@@ -56,7 +68,8 @@ export const CHARACTER_FIELDS: CharacterField[] = [
     key: "profile",
     label: "基本档案",
     tier: "resident",
-    placeholder: "（待定：首行写身份/所属——角色总表取这一行；其后性别/年龄段/外貌/出身）",
+    placeholder:
+      "（待定：逐行写「键：值」——姓名 / 性别 / 年龄段 / 身份 · 所属 / 出身，例：性别：男；名单取「身份 · 所属」那一行）",
   },
   {
     key: "want_fear",
@@ -137,20 +150,28 @@ export const EDITABLE_FIELDS = CHARACTER_FIELDS.filter((f) => f.tier !== "manage
 
 const CARD_PREFIX = "角色：";
 
+/**
+ * 「基本档案」的书写格式：**逐行「键：值」**。
+ * 它不是把格子拆开（仍是一格），而是给这一格一个可扫描的形状——一眼看得出缺哪一项，
+ * 待定也能落到单项上（`职业：（待定）`），而不是整段散文里混着解释。
+ */
+export const PROFILE_KEYS = ["姓名", "性别", "年龄段", "身份 · 所属", "出身"] as const;
+/** 名单取这一行——它才是"这个人是谁"。 */
+export const IDENTITY_KEY = "身份 · 所属";
+
+const KEYED_LINE = /^([^:：]{1,12})[:：]\s*(.*)$/;
+
 /** 单卡文件的 design 相对路径。 */
 export function cardPath(name: string): string {
   return `characters/${name}.md`;
 }
-
-/** 角色总表（派生文件）的 design 相对路径。 */
-export const INDEX_PATH = "characters/_index.md";
 
 /** 卡片文件标题（h1）。 */
 export function cardTitle(name: string): string {
   return `${CARD_PREFIX}${name}`;
 }
 
-/** 从 characters/ 相对路径提取角色名；`_index.md` 与其它目录 → undefined。 */
+/** 从 characters/ 相对路径提取角色名；其它目录 → undefined。（`_index.md` 是历史遗留文件，也排除） */
 export function nameFromPath(rel: string): string | undefined {
   if (!rel.startsWith("characters/") || !rel.endsWith(".md")) return undefined;
   const base = rel.slice("characters/".length, -".md".length);
@@ -172,11 +193,15 @@ function fieldByLabel(label: string): CharacterField | undefined {
   return CHARACTER_FIELDS.find((f) => f.label === t || (f.aliases ?? []).includes(t));
 }
 
+/**
+ * 值算不算"还没定"：空、或**每一行**都是待定占位（含 `姓名：（待定）` 这种键值写法）。
+ * 部分填了就把原样保留——未定的那几行（`出身：（待定）`）要留在卡上，用户才知道还差哪一项。
+ */
 function cleanPlaceholder(v: string | undefined): string | undefined {
   const t = (v ?? "").trim();
   if (!t) return undefined;
-  if (/^（待定.*）$/.test(t)) return undefined;
-  return t;
+  const lines = t.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.length && lines.every(isPendingLine) ? undefined : t;
 }
 
 /**
@@ -188,8 +213,13 @@ function cleanPlaceholder(v: string | undefined): string | undefined {
 export function buildCardBody(fields: CharacterFields): string {
   const blocks: string[] = [];
   for (const f of CHARACTER_FIELDS) {
-    const v = cleanPlaceholder(fields[f.key]);
-    if (!v && f.tier === "ondemand") continue;
+    const raw = fields[f.key];
+    // 按需格分三种情况，看的是**给没给**这一格，不是它的值：
+    //   raw === undefined  → 没给：这一格对 ta 不适用，不写（新卡才不会是 13 节空架子）
+    //   raw 是有内容的字符串 → 写内容
+    //   raw 是「（待定）」     → **给了但还没定**：留格，写该格自己的占位提示
+    if (raw === undefined && f.tier === "ondemand") continue;
+    const v = cleanPlaceholder(raw);
     // 标题后留一个空行：与 markdown.replaceSection 写出来的形状一致，免得"改过的格"和"没改的格"排版不同
     blocks.push(`### ${f.label}\n\n${v ?? f.placeholder}`);
   }
@@ -275,7 +305,7 @@ function insertSectionInOrder(content: string, field: CharacterField, body: stri
     const i = order.indexOf(h.title);
     return i !== -1 && i > mine;
   });
-  const block = `### ${field.label}\n${body || field.placeholder}`;
+  const block = `### ${field.label}\n\n${body || field.placeholder}`;
   if (!anchor) return appendBlock(content, block);
   const lines = content.split("\n");
   const head = lines.slice(0, anchor.line).join("\n").trimEnd();
@@ -284,16 +314,26 @@ function insertSectionInOrder(content: string, field: CharacterField, body: stri
 }
 
 /**
- * 角色总表取这一行：「基本档案」首句。
- * 回退到「一句话定位」是为了 P1 之前建的卡——不让老项目的总表一夜之间全变（待定）。
+ * 名单（`list-designs` 的角色段）取这一行：「基本档案」里「身份 · 所属」的值。
+ *
+ * 回退链（都是为了手写/旧卡不炸）：没有该键 → 第一条键值行的值 → 第一行正文（自由散文的老写法）
+ * →「一句话定位」（更老的卡）。
  */
 export function cardIdentity(content: string): string | undefined {
-  return leadLine(content, "基本档案") ?? leadLine(content, "一句话定位");
+  const body = getSection(content, "基本档案").body;
+  if (body) {
+    const entries = body
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !isFiller(l))
+      .map((l) => {
+        const m = l.match(KEYED_LINE);
+        return m ? { key: m[1].trim(), value: m[2].trim() } : { key: "", value: l };
+      })
+      .filter((e) => e.value && !/^（待定/.test(e.value));
+    const hit = entries.find((e) => e.key === IDENTITY_KEY) ?? entries[0];
+    if (hit) return hit.value.length > 60 ? `${hit.value.slice(0, 60)}…` : hit.value;
+  }
+  return leadLine(content, "一句话定位");
 }
 
-/** 重建 characters/_index.md 的正文（工具扫描后传入卡片清单）。 */
-export function syncIndex(cards: { name: string; identity: string | undefined }[]): string {
-  const bullets = cards.map((c) => `- ${c.name} · ${c.identity ?? "（待定）"}`);
-  const body = bullets.length ? bullets.join("\n") : "（待定：还没有角色卡）";
-  return `# characters · 人物层（角色总表）\n\n> 一角色一卡 characters/<名>.md；本表由工具自动同步，勿手改。\n\n${body}\n`;
-}

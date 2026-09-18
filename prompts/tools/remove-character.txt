@@ -1,5 +1,4 @@
-Delete a character card (the file characters/<name>.md, under design/) and refresh the
-characters/_index.md 角色总表.
+Delete a character card (the file characters/<name>.md, under design/).
 
 Before deleting, a reference check runs on the name across design/ and the hits are shown in
 the confirmation — read the impact (other docs such as wiki/outline may reference this

@@ -7,8 +7,20 @@
  * characters/outline 仍按需 read-design，索引由 list-designs 给出。
  */
 import { readDesign, listDesigns } from "../storage/project";
+import { RESIDENT_FIELDS, cardIdentity, isMissingField, nameFromPath, parseCardBody } from "./characters";
 import { listHeadings } from "./markdown";
 import { LAYERS, RESIDENT_DESIGNS } from "./layers";
+
+/**
+ * 角色卡在名单里的一行：`身份（常驻齐）` / `身份（待补：想要 · 最怕、底线 · 绝不做）`。
+ * 只报**常驻带**——按需格是"按戏份补"的，放进名单是噪音。
+ */
+function characterLine(content: string): string {
+  const identity = cardIdentity(content) ?? "（待定）";
+  const fields = parseCardBody(content);
+  const missing = RESIDENT_FIELDS.filter((f) => isMissingField(fields[f.key])).map((f) => f.label);
+  return missing.length ? `${identity}（待补：${missing.join("、")}）` : `${identity}（常驻齐）`;
+}
 
 /** 每个文档的一级小节（list-designs 工具返回；用于一眼看出有哪些材料与填充度）。按目录分组。 */
 export async function buildDesignIndex(projectId: string): Promise<string> {
@@ -33,6 +45,14 @@ export async function buildDesignIndex(projectId: string): Promise<string> {
       const content = await readDesign(projectId, f);
       const fileIndent = g ? "    " : "  ";
       const headIndent = g ? "      " : "    ";
+      // 角色卡一人一行，不铺 12 个小节标题——排章时要看的是"这个人能不能写了"。
+      // 名单**现算**（读卡），不存派生文件：副本会脱节，曾经那个 _index.md 就漏过。
+      const cardName = nameFromPath(f);
+      if (cardName) {
+        lines.push(`${fileIndent}- ${cardName} · ${content === undefined ? "（缺）" : characterLine(content)}`);
+        continue;
+      }
+      if (f === "characters/_index.md") continue; // 2026-09-18 删掉的派生总表；老项目里可能还留着，不再呈现
       if (content === undefined) {
         lines.push(`${fileIndent}${f}（缺）`);
         continue;

@@ -10,7 +10,7 @@ AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系�
     ├── design/                 # 企划活文档（懒建，按需 design-spec 成稿）
     │   ├── core.md             #   核心层：小说介绍（常驻）
     │   ├── wiki/world.md       #   世界层总纲（常驻）；wiki/<题>.md 专题页按需读
-    │   ├── characters/         #   人物层：一角色一卡 <名>.md + _index.md 总表
+    │   ├── characters/         #   人物层：一角色一卡 <名>.md（无派生总表，名单现算）
     │   └── outline/            #   情节层：outline.md 整本 + plan_ch<N>.md 章节细纲
     ├── chapters/               # 成品正文 chapter_ch<N>_v<M>.md
     ├── skills/                 # 项目级 SKILL.md（可选）

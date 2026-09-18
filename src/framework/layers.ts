@@ -31,7 +31,7 @@ export const LAYERS: Layer[] = [
     id: "characters",
     file: "characters/",
     title: "人物层",
-    blurb: "一角色一卡 characters/<名>.md（含说话方式/习惯动作）+ characters/_index.md 角色总表（工具自动同步）",
+    blurb: "一角色一卡 characters/<名>.md（常驻带：基本档案/想要·最怕/底线/说话方式；其余按戏份补）；名单由 list-designs 现算，无派生总表",
   },
   {
     id: "outline",

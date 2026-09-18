@@ -6,5 +6,5 @@ bottom_line / idiolect (常驻带), and contradiction / origin / quotes / body_h
 ability / arc / function (按需格). Body text must not contain heading lines — the tool writes
 the heading itself.
 
-`当前` is maintained by the chapter write-back, not here. If the card does not exist, use
-add-character instead.
+Passing a section as （待定） reserves it unfilled. `当前` is maintained by the chapter
+write-back, not here. If the card does not exist, use add-character instead.

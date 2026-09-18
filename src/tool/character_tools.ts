@@ -1,10 +1,9 @@
 /**
  * character-tools：角色卡领域工具（add/update/remove-character）。
- * 角色规范（卡该有哪 5 个小节）在 src/framework/characters.ts —— 工具入参即契约，落盘成合规卡。
- * 一角色一卡（design/characters/<名>.md）；characters/_index.md 是派生总表，每次增删改后重建。
+ * 角色规范（卡该有哪些小节、分几层）在 src/framework/characters.ts —— 工具入参即契约，落盘成合规卡。
+ * 一角色一卡（design/characters/<名>.md）；**没有派生总表**，名单由 list-designs 现算。
  *
- * 写盘是薄壳：校验 / confirm / 变换 / 落盘都在 framework/design_ops.ts。角色层在这里只多两样自己的东西——
- * 卡片内容由结构化字段拼（buildCardMarkdown），以及写完之后**重建总表**（索引同步是角色层独有的不变量）。
+ * 写盘是薄壳：校验 / confirm / 变换 / 落盘都在 framework/design_ops.ts。
  */
 import { applyDesignOp } from "../framework/design_ops";
 import {
@@ -12,18 +11,13 @@ import {
   RESIDENT_FIELDS,
   applyCardEdits,
   buildCardMarkdown,
-  cardIdentity,
   cardPath,
-  INDEX_PATH,
   isMissingField,
-  nameFromPath,
   rejectHeadings,
-  syncIndex as renderIndex,
   type CharacterFields,
 } from "../framework/characters";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
-import type { ToolContext } from "../core/types";
 
 const P = (id: string) => readPrompt(`tools/${id}`);
 
@@ -53,20 +47,7 @@ function pendingLabels(fields: CharacterFields): string[] {
   return RESIDENT_FIELDS.filter((f) => isMissingField(fields[f.key])).map((f) => f.label);
 }
 
-/** 扫描 characters/ 重建 _index.md（工具每次增删改后调用）。 */
-async function rebuildIndex(ctx: ToolContext): Promise<void> {
-  const cards: { name: string; identity: string | undefined }[] = [];
-  for (const rel of await ctx.listDesignPaths()) {
-    const name = nameFromPath(rel);
-    if (!name) continue; // 含 _index.md 本身
-    const content = await ctx.readDesign(rel);
-    if (content === undefined) continue;
-    cards.push({ name, identity: cardIdentity(content) });
-  }
-  await ctx.writeDesign(INDEX_PATH, renderIndex(cards));
-}
-
-/** add-character：新建一张角色卡（缺失字段自动补（待定），输出提示后续补哪些），并同步总表。 */
+/** add-character：新建一张角色卡（缺失字段自动补（待定），输出提示后续补哪些）。 */
 export const addCharacterTool: RegisteredTool<Record<string, unknown>> = defineTool<Record<string, unknown>>({
   id: "add-character",
   description: P("add-character"),
@@ -90,7 +71,6 @@ export const addCharacterTool: RegisteredTool<Record<string, unknown>> = defineT
       confirm: false,
     });
     if (!r.ok) return { output: r.output };
-    await rebuildIndex(ctx);
     const pend = pendingLabels(fields);
     return {
       output:
@@ -147,7 +127,6 @@ export const updateCharacterTool: RegisteredTool<Record<string, unknown>> = defi
       meta: `将改写小节：${changed.map((f) => f.label).join("、")}；其余小节（含自定义小节）原样保留。`,
     });
     if (!r.ok) return { output: r.output };
-    await rebuildIndex(ctx);
     return { output: `已更新角色卡「${name}」：${changed.map((f) => f.label).join("、")}。`, metadata: { name } };
   },
 });
@@ -172,8 +151,7 @@ export const removeCharacterTool: RegisteredTool<{ name: string }> = defineTool<
       notFound: `没有找到角色「${name}」。`,
     });
     if (!r.ok) return { output: r.output };
-    await rebuildIndex(ctx);
-    return { output: `已删除角色「${name}」并同步角色总表。` };
+    return { output: `已删除角色「${name}」。` };
   },
 });
 
