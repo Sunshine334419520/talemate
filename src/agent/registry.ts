@@ -39,6 +39,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "add-character",
       "update-character",
       "remove-character",
+      "character-brief",
       "design-spec",
       "webfetch",
       "websearch",

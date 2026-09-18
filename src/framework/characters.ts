@@ -147,6 +147,11 @@ export const CHARACTER_FIELDS: CharacterField[] = [
 export const RESIDENT_FIELDS = CHARACTER_FIELDS.filter((f) => f.tier === "resident");
 /** 可由 add/update-character 入参设置的格（工具托管的「当前」除外）。 */
 export const EDITABLE_FIELDS = CHARACTER_FIELDS.filter((f) => f.tier !== "managed");
+/**
+ * 骨架 = 常驻带四格 + 工具托管的「当前」——也就是**写这个角色的任何一场戏要带的最小集**。
+ * `character-brief` 取的就是这几格；整篇提案也必须带齐它们（见 missingSkeletonSections）。
+ */
+export const BRIEF_FIELDS = CHARACTER_FIELDS.filter((f) => f.tier !== "ondemand");
 
 const CARD_PREFIX = "角色：";
 
@@ -267,6 +272,31 @@ export function rejectHeadings(body: string): string | null {
   const m = body.match(/^#{1,6}\s+(.*)$/m);
   if (!m) return null;
   return `正文里不要带标题行（收到「${m[1].trim()}」）——标题由工具按规范写，只给正文即可。`;
+}
+
+/**
+ * 这张卡的骨架还缺哪几格（常驻四格 + 「当前」）。
+ *
+ * 整篇提案用：缺了不许落盘——否则会出现"卡在、但没有「当前」"这种半身卡（真实发生过）。
+ * 校验**不自动补格**：自动补会让"用户看过的"≠"落盘的"，那正是提案渲染存在的理由。
+ */
+export function missingSkeletonSections(content: string): string[] {
+  const have = new Set(listHeadings(content, 3).map((h) => h.title));
+  return BRIEF_FIELDS.filter((f) => !have.has(f.label)).map((f) => f.label);
+}
+
+/** 这张卡还缺哪些**常驻格**（按需格缺失不是缺陷）。名单行与 `character-brief` 共用同一份判定。 */
+export function pendingResidentLabels(content: string): string[] {
+  const fields = parseCardBody(content);
+  return RESIDENT_FIELDS.filter((f) => isMissingField(fields[f.key])).map((f) => f.label);
+}
+
+/** 取「常驻带 + 当前」的小节正文（缺的用该格自己的占位提示）。`character-brief` 用。 */
+export function briefBlocks(content: string): { label: string; body: string }[] {
+  return BRIEF_FIELDS.map((f) => ({
+    label: f.label,
+    body: getSection(content, f.label).body?.trim() || f.placeholder,
+  }));
 }
 
 /** 卡上出现了 `##`（比 `###` 更浅）→ 返回那个标题；没有则 undefined。见 rejectHeadings。 */

@@ -90,7 +90,7 @@ Tool 也是一份数据（`Def { id, description, parameters, execute → { titl
 
 | 角色 | mode | 一句话职责（persona 边界） | 工具集 | 建议模型/推理 | 谁能触发它 |
 |---|---|---|---|---|---|
-| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：把"想法"长成 design/ 四层活文档并维护；当编排者，委派并拍板 | task, read-design, **propose-design, apply-design, append-design, remove-design-section, search-designs**, list-designs, skill, ask-user, confirm | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
+| **editor（主编）** | primary | 用户的创作参谋与项目执掌者：把"想法"长成 design/ 四层活文档并维护；当编排者，委派并拍板 | task, read-design, **propose-design, apply-design, append-design, remove-design-section, search-designs**, list-designs, design-spec, add-character, update-character, remove-character, character-brief, skill, ask-user, confirm, webfetch, websearch | 默认项目模型；编辑对话可用 off/low | 用户（每次输入都绑它，唯一常驻脑） |
 | **planner（规划）** | subagent | 通用结构师：把材料梳理成结构/规划（章节节拍、整本/分卷大纲、结构重排）——尺度是 task 参数，不是角色 | read-design, list-designs, skill | 可单配；规划是分析活，low/high 皆可 | editor 经 task |
 | **writer（写手）** | subagent | 按"当前设定切片 + 细纲/节拍"写一章正文；不自创设定、只输出正文 | read-design, list-designs, skill, save-chapter* | 生成活，low 更省（临时思考 §七已实测） | editor 经 task |
 | **summarizer（内部）** | primary + hidden | 上下文压缩时生成前情摘要；**不进用户可见角色表、不进 task 可派列表、不当默认 primary** | 无 | 缺省继承；可 talemate.json 覆盖小模型 | harness 内部自动 |

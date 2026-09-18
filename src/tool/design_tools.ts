@@ -9,7 +9,7 @@
  * 注意：`AgentDef.tools` 白名单只决定模型看到哪些 schema，**不是执行边界**（session 传的是全局 registry）。
  * 撤一个工具必须真删定义，只从白名单拿掉等于没拿掉。
  */
-import { nameFromPath, rejectShallowHeading } from "../framework/characters";
+import { missingSkeletonSections, nameFromPath, rejectShallowHeading } from "../framework/characters";
 import { applyDesignOp, designNotFound } from "../framework/design_ops";
 import { DESIGN_SPECS } from "../framework/design_spec";
 import type { LayerId } from "../framework/layers";
@@ -69,6 +69,23 @@ function cardHeadingError(name: string, text: string): string | undefined {
   return shallow
     ? `角色卡的小节一律用 \`###\`（收到 \`## ${shallow}\`）——更浅的标题会让卡里所有 \`###\` 从逐格审阅里消失，用户看不到却被落盘。`
     : undefined;
+}
+
+/**
+ * 角色卡的**整篇**提案必须带齐骨架（常驻四格 + 「当前」），缺则拒绝并列出缺哪几格。
+ * 单格提案（带 section）不适用——它的 content 是小节正文，本来就没有标题。
+ *
+ * 为什么拦：真实会话里模型走 propose-design 写整张卡，结果**没写「当前」**（`add-character`
+ * 会恒定建出来，propose 不会）。两条落卡入口的骨架保证必须一致，否则就是半身卡。
+ */
+function cardSkeletonError(name: string, content: string, section?: string): string | undefined {
+  if (section || !nameFromPath(name)) return undefined;
+  const missing = missingSkeletonSections(content);
+  if (!missing.length) return undefined;
+  return (
+    `角色卡缺这几格：${missing.join("、")}——整篇提案必须带齐「常驻四格 + 当前」，没定的写（待定）。` +
+    "补齐后重新 propose-design。"
+  );
 }
 
 /** read-design：读整篇或按小节读 */
@@ -173,6 +190,8 @@ export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; 
       }
       const headingErr = cardHeadingError(name, content);
       if (headingErr) return { output: headingErr };
+      const skeletonErr = cardSkeletonError(name, content, section);
+      if (skeletonErr) return { output: skeletonErr };
 
       const current = await ctx.readDesign(name);
       let oldBody: string | undefined;

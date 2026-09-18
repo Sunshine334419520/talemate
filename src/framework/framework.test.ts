@@ -12,7 +12,12 @@ import { RESIDENT_DESIGNS } from "./layers";
 import { renderDesignSpec } from "./design_spec";
 import { renderHits, searchDesigns } from "./search";
 import { buildResidentDesigns, buildDesignIndex } from "./anchor";
-import { addCharacterTool, removeCharacterTool, updateCharacterTool } from "../tool/character_tools";
+import {
+  addCharacterTool,
+  characterBriefTool,
+  removeCharacterTool,
+  updateCharacterTool,
+} from "../tool/character_tools";
 import { appendDesignTool, applyDesignTool, proposeDesignTool } from "../tool/design_tools";
 import { defineTool } from "../tool/define";
 import { ToolRegistry } from "../tool/registry";
@@ -418,14 +423,103 @@ describe("character-tools（分层骨架 / 外科改 / 总表同步）", () => {
 
   test("[回归] 走 propose-design 落的卡也进名单（旧的派生总表在这条路上会漏）", async () => {
     const ctx = makeCtx(pid);
-    const content = "# 角色：沈越\n\n### 基本档案\n\n姓名：沈越\n性别：男\n身份 · 所属：婚礼／殡仪主持\n";
+    const content = [
+      "# 角色：沈越",
+      "",
+      "### 基本档案",
+      "",
+      "姓名：沈越",
+      "性别：男",
+      "身份 · 所属：婚礼／殡仪主持",
+      "",
+      "### 想要 · 最怕",
+      "",
+      "（待定）",
+      "",
+      "### 底线 · 绝不做",
+      "",
+      "不替周渡改口。",
+      "",
+      "### 说话方式",
+      "",
+      "（待定）",
+      "",
+      "### 当前",
+      "",
+      "（待定）",
+      "",
+    ].join("\n");
     await proposeDesignTool.execute({ name: CARD("沈越"), content }, ctx as never);
     ctx.pending.get(CARD("沈越"))!.approved = true;
     await applyDesignTool.execute({ name: CARD("沈越") }, ctx as never);
 
     const roster = await buildDesignIndex(pid);
-    expect(roster).toContain("- 沈越 · 婚礼／殡仪主持（待补："); // 名单现算 → 不会漏
+    expect(roster).toContain("- 沈越 · 婚礼／殡仪主持（待补：想要 · 最怕、说话方式）"); // 名单现算 → 不会漏
     expect(roster).not.toContain("characters/沈越.md:"); // 角色卡不再铺小节标题
+  });
+
+  test("守卫：角色卡整篇提案缺骨架被拒（免得落出没有「当前」的半身卡）", async () => {
+    const ctx = makeCtx(pid);
+    const thin = "# 角色：某人\n\n### 基本档案\n\n身份 · 所属：某人\n";
+    const bad = await proposeDesignTool.execute({ name: CARD("某人"), content: thin }, ctx as never);
+    expect(bad.output).toContain("缺这几格");
+    expect(bad.output).toContain("想要 · 最怕");
+    expect(bad.output).toContain("当前");
+    expect(ctx.pending.size).toBe(0); // 没登记任何提案
+
+    const full = [
+      "# 角色：某人",
+      "",
+      "### 基本档案",
+      "",
+      "身份 · 所属：某人",
+      "",
+      "### 想要 · 最怕",
+      "",
+      "（待定）",
+      "",
+      "### 底线 · 绝不做",
+      "",
+      "（待定）",
+      "",
+      "### 说话方式",
+      "",
+      "（待定）",
+      "",
+      "### 当前",
+      "",
+      "（待定）",
+      "",
+    ].join("\n");
+    const ok = await proposeDesignTool.execute({ name: CARD("某人"), content: full }, ctx as never);
+    expect(ok.output).toContain("尚未写入");
+    expect(ctx.pending.has(CARD("某人"))).toBe(true);
+  });
+
+  test("character-brief：只取常驻带 + 当前，按需格不进去；缺卡如实报", async () => {
+    await addCharacterTool.execute(
+      {
+        name: "报务员",
+        profile: "身份 · 所属：船上的报务员",
+        want_fear: "想上岸；最怕再听见求救信号",
+        bottom_line: "不伪造求救记录",
+        idiolect: "只报事实，不加形容词",
+        quotes: "「我听见了。就这些。」",
+      },
+      makeCtx(pid) as never,
+    );
+    const r = await characterBriefTool.execute({ names: ["报务员", "查无此人"] }, makeCtx(pid) as never);
+
+    expect(r.output).toContain("【报务员】船上的报务员（常驻齐）");
+    for (const label of ["基本档案", "想要 · 最怕", "底线 · 绝不做", "说话方式", "当前"]) {
+      expect(r.output).toContain(`### ${label}`);
+    }
+    expect(r.output).not.toContain("### 语录"); // 按需格不进简报
+    expect(r.output).not.toContain("我听见了"); // 它的正文也不进
+    expect(r.output).toContain("没有找到角色卡：查无此人");
+
+    const empty = await characterBriefTool.execute({ names: [] }, makeCtx(pid) as never);
+    expect(empty.output).toContain("需要 names");
   });
 
   test("remove-character：删卡；名单随之消失（现算，不用额外同步）", async () => {

@@ -10,9 +10,12 @@ import {
   EDITABLE_FIELDS,
   RESIDENT_FIELDS,
   applyCardEdits,
+  briefBlocks,
   buildCardMarkdown,
+  cardIdentity,
   cardPath,
   isMissingField,
+  pendingResidentLabels,
   rejectHeadings,
   type CharacterFields,
 } from "../framework/characters";
@@ -155,4 +158,58 @@ export const removeCharacterTool: RegisteredTool<{ name: string }> = defineTool<
   },
 });
 
-export const CHARACTER_TOOLS: RegisteredTool[] = [addCharacterTool, updateCharacterTool, removeCharacterTool];
+/** 一人一段：【名字】身份（常驻齐 / 待补：…）+ 常驻带与「当前」的正文。 */
+function renderBrief(name: string, content: string): string {
+  const identity = cardIdentity(content) ?? "（待定）";
+  const missing = pendingResidentLabels(content);
+  const flag = missing.length ? `待补：${missing.join("、")}` : "常驻齐";
+  const body = briefBlocks(content)
+    .map((b) => `### ${b.label}\n${b.body}`)
+    .join("\n\n");
+  return `【${name}】${identity}（${flag}）\n\n${body}`;
+}
+
+/**
+ * character-brief：取一个或多个角色的**常驻带 + 「当前」**——写 ta 的任何一场戏要带的最小集。
+ * 不含按需格与自定义格（那些按场景用 read-design 单读）。
+ *
+ * 存在的理由：卡可以很厚（一张 5KB），一章出场 5 个人就是几万字符，而每场都要用到的只有这几格。
+ * 由 editor 取好后放进 writer 的 task prompt（writer 自己不取）。
+ */
+export const characterBriefTool: RegisteredTool<{ names: unknown }> = defineTool<{ names: unknown }>({
+  id: "character-brief",
+  description: P("character-brief"),
+  input: {
+    type: "object",
+    properties: {
+      names: { type: "array", items: { type: "string" }, description: 'Character names, e.g. ["沈越","周渡"]' },
+    },
+    required: ["names"],
+  },
+  async execute(args, ctx) {
+    const names = (Array.isArray(args.names) ? args.names : []).map((n) => String(n).trim()).filter(Boolean);
+    if (!names.length) {
+      return { output: 'character-brief 需要 names（角色名数组），如 ["沈越","周渡"]。' };
+    }
+    const blocks: string[] = [];
+    const notFound: string[] = [];
+    for (const name of names) {
+      const content = await ctx.readDesign(cardPath(name));
+      if (content === undefined) {
+        notFound.push(name);
+        continue;
+      }
+      blocks.push(renderBrief(name, content));
+    }
+    const out = blocks.length ? blocks.join("\n\n") : "（没有取到任何角色）";
+    const tail = notFound.length ? `\n\n没有找到角色卡：${notFound.join("、")}（可 list-designs 看有哪些）。` : "";
+    return { output: out + tail, metadata: { names } };
+  },
+});
+
+export const CHARACTER_TOOLS: RegisteredTool[] = [
+  addCharacterTool,
+  updateCharacterTool,
+  removeCharacterTool,
+  characterBriefTool,
+];

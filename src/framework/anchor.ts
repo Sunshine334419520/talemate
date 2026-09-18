@@ -7,7 +7,7 @@
  * characters/outline 仍按需 read-design，索引由 list-designs 给出。
  */
 import { readDesign, listDesigns } from "../storage/project";
-import { RESIDENT_FIELDS, cardIdentity, isMissingField, nameFromPath, parseCardBody } from "./characters";
+import { cardIdentity, nameFromPath, pendingResidentLabels } from "./characters";
 import { listHeadings } from "./markdown";
 import { LAYERS, RESIDENT_DESIGNS } from "./layers";
 
@@ -17,8 +17,7 @@ import { LAYERS, RESIDENT_DESIGNS } from "./layers";
  */
 function characterLine(content: string): string {
   const identity = cardIdentity(content) ?? "（待定）";
-  const fields = parseCardBody(content);
-  const missing = RESIDENT_FIELDS.filter((f) => isMissingField(fields[f.key])).map((f) => f.label);
+  const missing = pendingResidentLabels(content);
   return missing.length ? `${identity}（待补：${missing.join("、")}）` : `${identity}（常驻齐）`;
 }
 

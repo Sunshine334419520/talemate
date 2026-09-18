@@ -74,7 +74,7 @@ skill/     SKILL.md 发现与注入
 
 | 角色 | mode | 职责 | 谁触发它 | 工具 |
 |---|---|---|---|---|
-| **editor 主编** | primary | 唯一对话面 + 项目执掌：引导把企划做厚、按需编排 planner/writer 并拍板 | 用户每次输入 | 17 个（读写文档/角色/design-spec/task/skill/ask-user/confirm/webfetch/websearch） |
+| **editor 主编** | primary | 唯一对话面 + 项目执掌：引导把企划做厚、按需编排 planner/writer 并拍板 | 用户每次输入 | 18 个（读写文档/角色/design-spec/character-brief/task/skill/ask-user/confirm/webfetch/websearch） |
 | **planner 规划** | subagent | 通用结构师：节拍/整本·分卷大纲/级联重排 | editor 经 `task` | read-design / list-designs / skill |
 | **writer 写手** | subagent | 按切片+节拍写一章正文，只输出正文 | editor 经 `task` | read-design / list-designs / skill / save-chapter |
 | **summarizer** | hidden | 上下文压缩生成前情摘要 | harness 内部 | 无 |
@@ -84,7 +84,7 @@ skill/     SKILL.md 发现与注入
 
 ---
 
-## 4. 工具（18 个，`src/tool/`）
+## 4. 工具（19 个，`src/tool/`）
 
 **design_tools**（design/ 通用文档）
 `read-design` `list-designs`(含小节索引) `search-designs` `propose-design` `apply-design` `append-design` `remove-design-section`
@@ -100,7 +100,12 @@ skill/     SKILL.md 发现与注入
 > 主文档写到别处会被拒，并把正确路径给回去让它自纠。
 
 **character_tools**（人物层）
-`add-character` `update-character` `remove-character`
+`add-character` `update-character` `remove-character` `character-brief`(取常驻带+当前，章前备料用)
+
+> **角色卡的骨架校验（2026-09-18）**：整篇提案（`propose-design` 不带 `section`）落到角色卡时，
+> 必须带齐「常驻四格 + 当前」，缺则拒绝并列出缺哪几格。起因：实测模型走 propose 写整张卡却
+> **没写「当前」**（`add-character` 会恒定建出来，propose 不会），于是出现"卡在、但没有当前"的半身卡。
+> 两条落卡入口的保证必须一致。校验**不自动补格**——自动补会让"用户看过的"≠"落盘的"。
 
 **framework_tools**
 `design-spec`(按需拿某层"结构规范+成稿做法")

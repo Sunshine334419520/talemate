@@ -37,7 +37,7 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 | `src/cli.ts` | CLI + REPL 入口 |
 | `src/agent/registry.ts` | Agent 注册表：editor(primary) / planner / writer(subagent) / summarizer(hidden) |
 | `src/session/*` | 会话接线、agent 循环(runLoop)、上下文压缩(compaction) |
-| `src/tool/*` | 工具框架 + 18 个内置工具(design/character/framework/core/web) |
+| `src/tool/*` | 工具框架 + 19 个内置工具(design/character/framework/core/web) |
 | `src/framework/*` | 写作领域层：design_spec 层规范 / design_ops 写盘唯一实现 / proposal 提案渲染 / markdown 区块手术 / characters 角色卡 / layers 层元信息 / search 引用 / report 现状卡 / anchor 常驻设定 |
 | `src/llm/*` | provider 抽象(anthropic / openai 兼容 / mock) + 流式多轮 + 工具循环 |
 | `src/storage/*` | 文件系统项目/会话存储 |
