@@ -1,6 +1,6 @@
 # prompts/ —— talemate 自带提示词规范
 
-所有给模型的常驻/协议/工具说明都放这里（照 opencode `*.txt`），TS 侧 `readPrompt()`（`src/prompts.ts`）加载。改提示词 = 改文件，diff/review 干净。
+所有给模型的常驻/协议/工具说明都放这里（纯 `*.txt`），TS 侧 `readPrompt()`（`src/prompts.ts`）加载。改提示词 = 改文件，diff/review 干净。
 
 ## 布局
 
@@ -55,18 +55,19 @@ prompts/
 - **为什么英文**：属"操作/元层"（给模型、跨模型稳），照语言策略用英文；`name`（中文）才是给人看的显示名。
 - **为何不进 `.txt`**：它是短数据、跟 `mode/tools` 紧耦合，拆文件反而割裂 agent 定义（对比：长 persona 才进 `.txt`）。
 
-**范本（opencode `agent.ts` 的 `explore`）**：
-> Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. `src/components/**/*.tsx`), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick"/"medium"/"very thorough".
+**范本**（本仓 `planner` 的 description，五条规则都踩到）：
+> The structural designer. Turns source material into a usable plan: chapter beat sheets, whole-novel or volume outlines, or cascading restructures across the design docs.
+> Use this when you need a chapter's beat plan (细纲 / 节拍), to synthesize the whole outline (design/outline/outline.md) from the existing docs, or when a setting change must cascade and re-consolidate several docs — jobs that require reading the full material and returning one consistent structure.
 
 **五条规则**：
 1. **首句 = 它是什么**（一个名词短语的领域定位）。
 2. **"Use this when…" = 触发条件**——给**具体字面量**（`design/outline/plan_ch<N>.md`、`"API endpoints"` 这类），别写抽象类别；模型按字面匹配。
 3. **给调用方可操作的参数**（explore 的 thoroughness；talemate 的"prompt 要写全切片/要它返回什么"）。
-4. **说边界/何时不用**（照 opencode `task.txt` 的 "When NOT to use…"）。
+4. **说边界/何时不用**（写成 "When NOT to use…"）。
 5. **陈述句、英文、短、无形容词堆砌**。
 6. **说清"何时不用我、那种情况去找谁"**——所有 subagent 的 description 会被拼进**同一份** `task` 目录，模型靠它们互相区分。只有一个 subagent 时这句可选，**两个以上就必需**：两份都写着 "Use this when…" 的 description，等于让模型在目录里瞎猜。
 
-**空 description 语义**：一个 subagent 不写/留空 description，会在 task 目录里显示为 `This subagent should only be called manually by the user.`——即"只能由人手动调用、不让模型自动委派"（照 opencode `registry.describeTask`）。
+**空 description 语义**：一个 subagent 不写/留空 description，会在 task 目录里显示为 `This subagent should only be called manually by the user.`——即"只能由人手动调用、不让模型自动委派"。
 
 **checklist（写完过一遍）**：
 - [ ] 英文；首句"它是什么"。

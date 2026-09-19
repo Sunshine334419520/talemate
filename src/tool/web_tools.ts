@@ -1,10 +1,10 @@
 /**
  * web-tools：联网工具（webfetch / websearch）。
  *
- * 参考 opencode `packages/opencode/src/tool/webfetch.ts` 与 `websearch.ts` 的形状，
+ * 形状：
  * 去 Effect、去云侧付费搜索，落到自托管可跑：
  * - webfetch：http(s) 抓取 + UA + 大小上限 + 超时；HTML 按 format 转 markdown / text（turndown）。
- * - websearch：可插拔 provider（照 opencode selectWebSearchProvider）。后端选择：
+ * - websearch：可插拔 provider。后端选择：
  *     duckduckgo（默认，无 key，尽力而为——部分网络被反爬拦截）
  *     bocha 博查（国内直连，推荐）→ BOCHA_API_KEY
  *     tavily / exa（国外主流）→ TAVILY_API_KEY / EXA_API_KEY
@@ -44,7 +44,7 @@ async function fetchUrl(url: string, format: FetchFormat, timeoutSec?: number): 
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
       },
     });
-    // Cloudflare 反爬 403 → 用诚实 UA 重试一次（照 opencode）
+    // Cloudflare 反爬 403 → 换个 UA 重试一次
     if (res.status === 403 && res.headers.get("cf-mitigated") === "challenge") {
       res = await fetch(url, {
         redirect: "follow",
@@ -103,7 +103,7 @@ export function htmlToText(html: string): string {
 const mdService = new TurndownService({ headingStyle: "atx", hr: "---", bulletListMarker: "-", codeBlockStyle: "fenced", emDelimiter: "*" });
 mdService.remove(["script", "style", "meta", "link", "noscript", "iframe"]);
 
-/** HTML → markdown（turndown，照 opencode）。转换失败退回纯文本。 */
+/** HTML → markdown（turndown）。转换失败退回纯文本。 */
 export function htmlToMarkdown(html: string): string {
   try {
     const md = mdService.turndown(html).trim();

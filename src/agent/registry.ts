@@ -6,7 +6,7 @@
  * - mate = 唯一 primary（日常对话面 + 项目执掌）。无导演/评审 agent，拍板只属于人（**人是主编**，
  *   agent 是搭档——两者不能共用一个头衔）。
  * - writer = subagent，只能被 task 委派；"何时派"写在它的 description，
- *   由 subagentCatalog() 自动拼进 task 工具目录（照 opencode describeTask）。
+ *   由 subagentCatalog() 自动拼进 task 工具目录。
  * - researcher = subagent，同上。**只读 + 只联网**（`edit` 是类别拒）——它考据外部世界，
  *   产出入带出处的事实，落盘仍归 mate。
  * - summarizer = hidden 内部 agent（compaction 用）。
@@ -144,11 +144,11 @@ export class AgentRegistry {
     return [...this.agents.values()].filter((a) => a.mode === "subagent" && !a.hidden);
   }
 
-  /** task 工具的动态目录文本（describeTask，照 opencode registry.describeTask） */
+  /** task 工具的动态目录文本 */
   subagentCatalog(): string {
     const subs = this.listSubagents();
     if (!subs.length) return "";
-    // 空 description = 路由契约未写 → 明示"只能由用户手动调用"，不让模型自动委派（照 opencode）。
+    // 空 description = 路由契约未写 → 明示"只能由用户手动调用"，不让模型自动委派。
     return subs
       .map(
         (a) =>

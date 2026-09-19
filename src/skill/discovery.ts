@@ -1,5 +1,5 @@
 /**
- * Skill 发现：SKILL.md 发现（全局库 + 项目库)+ 目录注入 + 读取。与 opencode 同构：
+ * Skill 发现：SKILL.md 发现（全局库 + 项目库）+ 目录注入 + 读取。
  * system 只放 <available_skills>（name+description），正文由 skill 工具按名取。
  */
 import { readdir, readFile } from "node:fs/promises";

@@ -25,7 +25,7 @@ export class ToolRegistry {
 
   /**
    * 该 agent 可见的工具 schema（喂给模型选工具）。
-   * opts.taskCatalog：task 工具的动态 description——列出当前可委派的 subagent（describeTask，照 opencode registry）。
+   * opts.taskCatalog：task 工具的动态 description——列出当前可委派的 subagent。
    */
   schemasFor(agentTools: string[], opts?: { taskCatalog?: string }): ToolSchema[] {
     return agentTools

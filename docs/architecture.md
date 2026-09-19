@@ -36,8 +36,8 @@ skill/    SKILL.md 发现与注入
 
 | 项 | 选择 | 理由 |
 |---|---|---|
-| 语言 | **TypeScript** | 参考架构（OpenCode）同语言，借思路最顺 |
-| 运行时 | **Bun** | all-in-one：包管理 / TS 直接跑 / 测试器 / 打包器，零构建配置；OpenCode 也是 Bun 原生 |
+| 语言 | **TypeScript** | 类型系统覆盖整个 harness；Bun 原生执行，无需构建步骤 |
+| 运行时 | **Bun** | all-in-one：包管理 / 测试器 / 打包器齐备，原生执行 TS，零构建配置 |
 | 框架风格 | **不用 Effect** | 学习成本高、招人难，对独立产品是负担。用清晰的模块边界 + 直接代码 |
 | 存储 | **文件系统** | 无数据库；未来多用户/并发再评估 SQLite |
 
@@ -156,7 +156,7 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 
 ## 存储
 
-借鉴 opencode 的 "durable 事件 + 投影" 里"该落哪些值"的规则，落到文件：
+落盘只写**稳定态**（delta 不持久化，只落结束值）：
 
 - **`session.json`**：会话元（id / projectID / title / agent / model / cost / tokens / time）。
 - **`messages.jsonl`**：每行一条消息，**必须含 `seq`**；类型 `user / assistant / system / synthetic / compaction`。
@@ -172,15 +172,18 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 
 **模块边界必须让 server 能成为另一个薄外壳，核心不感知 UI**。为此"事件广播"已经是核心内部接口（`onEvent(evt)`）——CLI 先打印，将来接 SSE。
 
-未来稳定契约（借鉴 opencode 最小子集，暂不实现）：`POST /api/session` · `POST /api/session/:id/prompt` · `GET /api/session/:id/message`（投影）· `GET /api/session/:id/event?after=seq`（SSE replay-then-live）· `POST /interrupt`。届时薄 TUI = "先拉投影 + 事件增量更新本地读模型"。
+未来稳定契约（暂不实现）：`POST /api/session` · `POST /api/session/:id/prompt` · `GET /api/session/:id/message`（投影）· `GET /api/session/:id/event?after=seq`（SSE replay-then-live）· `POST /interrupt`。届时薄 TUI = "先拉投影 + 事件增量更新本地读模型"。
 
-## 从 OpenCode 借的与剥掉的
+## 刻意不做的
 
-| 借 | 剥 |
+写作是纯文本世界，通用 coding agent 的许多机制在这里没有位置。**明确不做**，免得被当成"还没做"：
+
+| 不做 | 因为 |
 |---|---|
-| agent 循环形状（工具结果先落再喂下一轮） | bash / fs-edit / pty / grep / glob / LSP / MCP |
-| task 子会话 = 独立 Session、只传 prompt、限深 | allow/ask/deny 权限级联 → 简化为"默认放行 + 工具自声明 confirm" |
-| Agent 纯声明 + 无导演 + 消息绑角色 | SQLite + 事件溯源 + projector → 文件系统 + jsonl |
-| Skill 目录注入（system 只放 name+description） | V1/V2 双栈、双协议、迁移债 |
-| 规则文件常驻全量注入 | OTel / 云同步 / todo |
-| 事件分类：delta live-only、ended durable | |
+| bash / 文件编辑 / pty / grep / glob / LSP / MCP | 只需要读写 `design/` 与 `chapters/` 下的文本 |
+| 权限级联（allow/ask/deny 队列） | 简化为"默认放行 + 工具自声明是否需 confirm" |
+| 数据库 / 事件溯源 / projector | 文件系统 + jsonl（`seq` 单调）够用 |
+| 多版本协议栈 / 迁移债 | 自研只有一份实现，不留双栈 |
+| 遥测 / 云同步 / todo 工具 | 与产品无关 |
+
+> 判据：**"这个机制服务于代码编辑，还是服务于小说创作？"** 前者一律不做。

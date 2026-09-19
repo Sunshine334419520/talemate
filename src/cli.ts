@@ -82,7 +82,7 @@ const PROPOSAL_TOOLS = new Set(["propose-design", "apply-design"]);
 // ─────────────────────────── REPL 状态 ───────────────────────────
 
 let verbose = true;
-/** 思考显示：hide = 收起成一行摘要（默认，照 opencode 的 thinking_mode）；show = 流式打印全文。 */
+/** 思考显示：hide = 收起成一行摘要（默认）；show = 流式打印全文。 */
 let reasoningMode: "hide" | "show" = "hide";
 let curSpaceId: string | undefined;
 let curTitle: string | undefined;
