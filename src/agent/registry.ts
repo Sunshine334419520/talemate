@@ -1,5 +1,5 @@
 /**
- * Agent 注册表 + 默认角色声明（规范化，见 05-agent-spec.md / prompts/README.md）。
+ * Agent 注册表 + 默认角色声明（规范化，见 docs/agents.md / prompts/README.md）。
  *
  * persona（system）全部放 prompts/*.txt，readPrompt 加载（英文）；description 内联于此（短数据，路由契约）。
  * 语义：
@@ -36,10 +36,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "skill",
       "ask-user",
       "confirm",
-      "add-character",
-      "update-character",
       "remove-character",
-      "character-brief",
       "design-spec",
       "webfetch",
       "websearch",

@@ -9,11 +9,16 @@
  * 注意：`AgentDef.tools` 白名单只决定模型看到哪些 schema，**不是执行边界**（session 传的是全局 registry）。
  * 撤一个工具必须真删定义，只从白名单拿掉等于没拿掉。
  */
-import { missingSkeletonSections, nameFromPath, rejectShallowHeading } from "../framework/characters";
+import {
+  CHARACTER_FIELDS,
+  missingSkeletonSections,
+  nameFromPath,
+  rejectShallowHeading,
+} from "../framework/characters";
 import { applyDesignOp, designNotFound } from "../framework/design_ops";
 import { DESIGN_SPECS } from "../framework/design_spec";
 import type { LayerId } from "../framework/layers";
-import { getSection } from "../framework/markdown";
+import { getSection, listHeadings } from "../framework/markdown";
 import { isBlankBody, renderProposal, reviewable } from "../framework/proposal";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
@@ -26,7 +31,7 @@ const MAIN_LAYERS = ["core", "world", "outline"] as const;
 /**
  * 定这次要写哪个文件：固定层用 `layer`（路径由代码定），自由命名的文档用 `name`。
  *
- * 固定层的主文档路径不能由模型拼：`RESIDENT_DESIGNS` 只认 `wiki/world.md`，写到 `design/world.md`
+ * 固定层的主文档路径不能由模型拼：常驻表只认 `wiki/world.md`，写到 `design/world.md`
  * 的世界层不会被常驻注入、且用户看不出来。
  * `name` 分支同样要拦——模型可以绕开 layer 直接给 `name:"world.md"`。
  */
@@ -39,7 +44,7 @@ function resolveDoc(args: { layer?: unknown; name?: unknown }): { name: string }
   if (layer) {
     if (!(MAIN_LAYERS as readonly string[]).includes(layer)) {
       return {
-        error: `layer 应为 core / world / outline（收到：${layer}）。角色是一角色一卡、主文档不是一个文件——加/改角色请用 add-character / update-character。`,
+        error: `layer 应为 core / world / outline（收到：${layer}）。角色是一角色一卡、主文档不是一个文件——建/改角色卡请用 name:"characters/<名>.md"。`,
       };
     }
     return { name: DESIGN_SPECS[layer as LayerId].file };
@@ -72,20 +77,46 @@ function cardHeadingError(name: string, text: string): string | undefined {
 }
 
 /**
- * 角色卡的**整篇**提案必须带齐骨架（常驻四格 + 「当前」），缺则拒绝并列出缺哪几格。
+ * 角色卡的**整篇**提案必须带齐必有五格（`characters.CHARACTER_FIELDS`），缺则拒绝并列出缺哪几格。
  * 单格提案（带 section）不适用——它的 content 是小节正文，本来就没有标题。
  *
- * 为什么拦：真实会话里模型走 propose-design 写整张卡，结果**没写「当前」**（`add-character`
- * 会恒定建出来，propose 不会）。两条落卡入口的骨架保证必须一致，否则就是半身卡。
+ * 为什么拦：`add-character` 删掉之后（2026-09-19），再没有任何构造器会替模型把空格子建出来，
+ * 骨架保证只剩这一道。它只看**标题在不在**；内容空不空由名单行的「待补」判（pendingRequiredLabels）
+ * ——写个空标题能过这里，但会在 `list-designs` 里显示为待补。
  */
 function cardSkeletonError(name: string, content: string, section?: string): string | undefined {
   if (section || !nameFromPath(name)) return undefined;
   const missing = missingSkeletonSections(content);
   if (!missing.length) return undefined;
   return (
-    `角色卡缺这几格：${missing.join("、")}——整篇提案必须带齐「常驻四格 + 当前」，没定的写（待定）。` +
+    `角色卡缺这几格：${missing.join("、")}——整篇提案必须带齐必有五格，没定的写（待定）。` +
     "补齐后重新 propose-design。"
   );
+}
+
+/**
+ * 整篇提案打到**已存在**的角色卡上时给用户的告警（不阻断，只摆在提案前面）。
+ *
+ * 这是 `add-character` 那条查重逻辑的替代品：从前重复建卡会被工具直接拒绝，现在"创建"与
+ * "重写"是同一条通道，只能靠把后果摆出来区分。提案渲染只列**新**内容——不显式说一句，
+ * 用户看不出来旧卡上哪些小节会被抹掉。
+ */
+function cardRewriteWarn(current: string | undefined, section?: string): string | undefined {
+  if (section || current === undefined) return undefined;
+  const heads = listHeadings(current, 3).map((h) => h.title);
+  return (
+    `⚠️ 这张角色卡已存在（${heads.length} 个小节：${heads.join("、")}）——本提案会**整篇重写**它，` +
+    "上面没出现的旧小节都会消失。只想改一格的话请带 section 重新提案。"
+  );
+}
+
+/** 角色卡上不许删**必有格**——删掉会造出半身卡，绕过 cardSkeletonError 守的不变量。自由长尾随便删。 */
+function cardRequiredSectionError(name: string, section: string): string | undefined {
+  if (!nameFromPath(name)) return undefined;
+  const hit = CHARACTER_FIELDS.find((f) => f.label === section.trim());
+  return hit
+    ? `「${hit.label}」是角色卡的必有格，不能删——删了会造出半身卡。要清空这一格，请用 propose-design 带 section 把正文改成（待定）。`
+    : undefined;
 }
 
 /** read-design：读整篇或按小节读 */
@@ -163,7 +194,7 @@ export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; 
         name: {
           type: "string",
           description:
-            "Document path under design/ for documents that are not one of the three main layers (e.g. wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md)",
+            "Document path under design/ for documents that are not one of the three main layers (e.g. wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md — the last one is how a character card is created and edited; there is no character-specific tool)",
         },
         content: {
           type: "string",
@@ -219,20 +250,21 @@ export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; 
 
       const prev = ctx.getProposal(name);
       ctx.setProposal({ name, content, section, base: current, approved: false, at: Date.now() });
-      ctx.showProposal(
-        renderProposal({
-          name,
-          content,
-          section,
-          oldBody,
-          previous: prev?.content,
-        }),
-      );
+      const rendered = renderProposal({
+        name,
+        content,
+        section,
+        oldBody,
+        previous: prev?.content,
+      });
+      const warn = cardRewriteWarn(current, section);
+      ctx.showProposal(warn ? `${warn}\n\n${rendered}` : rendered);
 
       return {
         output:
           "提案已交给用户审阅（尚未写入任何文件）。本回合已结束，等用户回话：用户认可 → apply-design；" +
-          "用户要改 → 用新内容再 propose-design（改了内容必须重新提案）。",
+          "用户要改 → 用新内容再 propose-design（改了内容必须重新提案）。" +
+          (warn ? `\n\n${warn}` : ""),
         metadata: { name, section },
       };
     },
@@ -337,6 +369,8 @@ export const removeDesignSectionTool: RegisteredTool<{ name: string; section: st
     required: ["name", "section"],
   },
   async execute(args, ctx) {
+    const requiredErr = cardRequiredSectionError(args.name, args.section);
+    if (requiredErr) return { output: requiredErr };
     const r = await applyDesignOp(ctx, {
       kind: "cut",
       name: args.name,

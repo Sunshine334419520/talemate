@@ -1,9 +1,0 @@
-Return the 常驻带 (resident slice) + 当前 of one or more characters — the minimal slice carried into
-any scene they appear in. On-demand sections (语录 / 关联角色 / 能力 · 机制 …) are not included; read
-those with read-design when a scene needs them.
-
-names: e.g. ["沈越","周渡"]. Each block is headed 【名字】身份（常驻齐 / 待补：…）; a 待补 flag or a
-"没有找到" line means that character is not ready — fill or create it first.
-
-Use this when preparing a chapter: pass the characters that appear in it, and put the result into
-the writer's task prompt.

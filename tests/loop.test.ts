@@ -5,11 +5,11 @@
  * 只会静默产出形状坏掉的请求（assemble 只回放 completed/error 的 part，而消息登记了全部 toolCalls）。
  */
 import { describe, test, expect } from "bun:test";
-import type { AgentDef, AssistantPart, PendingProposal, ToolCall } from "../core/types";
-import { toNeutralMessages } from "../context/assemble";
-import type { AssistantTurn, NeutralMsg } from "../llm/types";
-import { runLoop, type LoopDeps } from "./loop";
-import { isAgreement, renderPendingNote } from "./session";
+import type { AgentDef, AssistantPart, PendingProposal, ToolCall } from "../src/core/types";
+import { toNeutralMessages } from "../src/context/assemble";
+import type { AssistantTurn, NeutralMsg } from "../src/llm/types";
+import { runLoop, type LoopDeps } from "../src/session/loop";
+import { isAgreement, renderPendingNote } from "../src/session/session";
 
 const AGENT: AgentDef = {
   id: "editor",

@@ -476,7 +476,7 @@ async function main(): Promise<void> {
     const title = cmd === "new" ? sub ?? rest[0] : rest[0];
     const genre = cmd === "new" ? rest.join(" ") : rest.slice(1).join(" ");
     if (!title) {
-      console.error('用法：talemate new <书名> [题材]');
+      console.error("用法：talemate new <书名> [题材]");
       process.exit(1);
     }
     const meta = await createProject({ title, genre: genre || undefined });

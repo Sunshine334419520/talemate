@@ -1,21 +1,6 @@
 # talemate
 
-AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系统。把企划做厚、写正文章节前先做规划(节拍)+ 用户当主编拍板;不设事后打分/评判循环。
-
-```
-受管根目录（TALEMATE_HOME，默认 ~/.talemate/）
-└── novels/<project-id>/        ← 一小说一目录（用户只认书名）
-    ├── talemate.json           # 项目元信息（id/书名/题材/创建时间/角色覆盖）
-    ├── AGENTS.md               # 用户自己的项目规矩（不预建，可空；存在才每轮注入）
-    ├── design/                 # 企划活文档（懒建，按需 design-spec 成稿）
-    │   ├── core.md             #   核心层：小说介绍（常驻）
-    │   ├── wiki/world.md       #   世界层总纲（常驻）；wiki/<题>.md 专题页按需读
-    │   ├── characters/         #   人物层：一角色一卡 <名>.md（无派生总表，名单现算）
-    │   └── outline/            #   情节层：outline.md 整本 + plan_ch<N>.md 章节细纲
-    ├── chapters/               # 成品正文 chapter_ch<N>_v<M>.md
-    ├── skills/                 # 项目级 SKILL.md（可选）
-    └── .talemate/sessions/<id> # 会话元 + messages.jsonl
-```
+AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系统。设计段把企划做厚、写作段结构先行（先出节拍再写正文），用户当主编拍板；**不设事后打分/评判循环**。
 
 ## 运行
 
@@ -24,28 +9,48 @@ bun install
 
 bun run cli          # 进入 REPL
 bun run smoke        # mock provider 离线冒烟（无需 API key）
-bun run test         # bun test
+bun test             # 单元测试
 bun run typecheck    # tsc --noEmit
 ```
 
 CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use <id|书名>`；REPL 内 `/help` 看命令。
 
-## 结构
+模型配置走环境变量（`TALEMATE_PROVIDER` / `TALEMATE_MODEL` / `TALEMATE_REASONING` / `TALEMATE_MAX_TOKENS` / `TALEMATE_API_KEY` …），mock provider 无需 key。
+
+## 一次创作长什么样
+
+```
+talemate new 我的小说 悬疑
+  → 进 editor 会话，聊想法 → 企划长成 design/ 四层活文档
+  → "写第 1 章" → 先出节拍（planner），你拍板 → 再写正文（writer）→ 落 chapters/
+```
+
+项目落在 `~/.talemate/novels/<id>/`（可用 `TALEMATE_HOME` 改），目录结构见 `docs/architecture.md`。
+
+## 代码结构
 
 | 模块 | 职责 |
 |---|---|
-| `src/cli.ts` | CLI + REPL 入口 |
-| `src/agent/registry.ts` | Agent 注册表：editor(primary) / planner / writer(subagent) / summarizer(hidden) |
-| `src/session/*` | 会话接线、agent 循环(runLoop)、上下文压缩(compaction) |
-| `src/tool/*` | 工具框架 + 19 个内置工具(design/character/framework/core/web) |
-| `src/framework/*` | 写作领域层：design_spec 层规范 / design_ops 写盘唯一实现 / proposal 提案渲染 / markdown 区块手术 / characters 角色卡 / layers 层元信息 / search 引用 / report 现状卡 / anchor 常驻设定 |
-| `src/llm/*` | provider 抽象(anthropic / openai 兼容 / mock) + 流式多轮 + 工具循环 |
-| `src/storage/*` | 文件系统项目/会话存储 |
-| `src/skill/*` | SKILL.md 发现与解析 |
-| `src/prompts.ts` | 加载 `prompts/*.txt` 提示词 |
-
-模型配置走环境变量（`TALEMATE_PROVIDER / TALEMATE_MODEL / TALEMATE_REASONING / TALEMATE_MAX_TOKENS / TALEMATE_API_KEY …`），mock 无需 key。
+| `src/cli.ts` `src/smoke.ts` | CLI + REPL 入口 / 离线冒烟 |
+| `src/agent/` | Agent 注册表：editor(primary) / planner / writer / summarizer(hidden) |
+| `src/session/` | 会话接线、agent 循环、上下文压缩 |
+| `src/tool/` | 工具框架 + 内置工具（design / character / framework / core / web 五个领域） |
+| `src/framework/` | 写作领域层：层规范、写盘唯一实现、提案渲染、markdown 手术、角色卡、引用搜索 |
+| `src/llm/` | provider 抽象（anthropic / openai 兼容 / mock）+ 流式多轮 |
+| `src/storage/` | 文件系统项目 / 会话存储 |
+| `src/skill/` | SKILL.md 发现与解析 |
+| `src/prompts.ts` | 加载 `prompts/*.txt` |
+| `src/probe/` `src/legacy/` | 消融实验工具、遗留代码（开发用，不属产品路径） |
 
 ## 文档
 
-当前基准：**`08-architecture.md`**（当前架构与流程总览）、`05-agent-spec.md`（Agent/工具规范，与代码一致）、`prompts/README.md`。设计演进记录：`04-harness-design.md`（harness 顶层，工具清单已过期）、`09-character-layer-design.md`（人物层：卡的骨架/连续性/章末回写，**含未实现部分，看 §7 状态**）、`02-product-definition.md`（产品定义）、`03-implementation-plan.md`（注意 §3/§4 已成历史）。
+| 想知道 | 去哪 |
+|---|---|
+| 这个产品为什么存在、不做什么 | [`docs/product.md`](docs/product.md) |
+| 代码怎么组织、一次交互怎么走 | [`docs/architecture.md`](docs/architecture.md) |
+| Agent / 工具 / Skill 怎么分类与触发 | [`docs/agents.md`](docs/agents.md) |
+| 企划的四层活文档与两段式落盘 | [`docs/design-docs.md`](docs/design-docs.md) |
+| 角色卡长什么样、怎么维护 | [`docs/characters.md`](docs/characters.md) |
+| 还没做什么 | [`docs/roadmap.md`](docs/roadmap.md) |
+| prompt 怎么组织、怎么写 | [`prompts/README.md`](prompts/README.md) |
+| 写代码的约定与硬约束 | [`CLAUDE.md`](CLAUDE.md) |

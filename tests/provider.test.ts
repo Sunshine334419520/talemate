@@ -4,7 +4,7 @@
  * 未转义换行、尾逗号、双层转义。解析失败必须回退空对象，让工具的必填守卫把错误报回模型。
  */
 import { describe, test, expect } from "bun:test";
-import { safeParseArgs } from "./provider";
+import { safeParseArgs } from "../src/llm/provider";
 
 describe("safeParseArgs（tool arguments 容错解析）", () => {
   test("合法对象直接解析", () => {

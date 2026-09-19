@@ -11,7 +11,7 @@
  *
  * 边界（别把这层做胖）：
  * - **错误文案由调用方给**（`notFound` / `refScope`）：它们是给模型的**路由线索**
- *   （"可用 add-character 新建" / "可用小节：…"），统一化会抹掉模型自我纠正的依据。
+ *   （"可用小节：…" / "没有找到角色「X」"），统一化会抹掉模型自我纠正的依据。
  * - **成功文案由调用方拼**：各工具的句子本来就不同（"已追加到" vs "已改写 … › …"）。
  * - confirm 只有**两种**正文标签：`将写入的内容` / `将删除的内容`。
  */
@@ -19,7 +19,7 @@ import type { ToolContext } from "../core/types";
 import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "./markdown";
 
 export type DesignOp =
-  /** 整篇写/覆盖。confirm:false 用于"新建、无破坏性"的入口（如 add-character）。 */
+  /** 整篇写/覆盖。confirm:false 用于"内容已经过提案回合、用户已过目"的入口（apply-design）。 */
   | { kind: "write"; name: string; content: string; action?: string; meta?: string; confirm?: boolean }
   /** 按小节标题换掉一格，其余原样。confirm:false 用于"内容已经过提案回合、用户已过目"的入口（apply-design）。 */
   | { kind: "edit"; name: string; section: string; content: string; notFound?: string; confirm?: boolean }

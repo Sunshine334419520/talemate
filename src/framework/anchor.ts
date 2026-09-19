@@ -7,18 +7,32 @@
  * characters/outline 仍按需 read-design，索引由 list-designs 给出。
  */
 import { readDesign, listDesigns } from "../storage/project";
-import { cardIdentity, nameFromPath, pendingResidentLabels } from "./characters";
+import { cardIdentity, nameFromPath, pendingRequiredLabels, tailSections } from "./characters";
 import { listHeadings } from "./markdown";
-import { LAYERS, RESIDENT_DESIGNS } from "./layers";
+import { LAYERS, RESIDENT_LAYERS } from "./layers";
+import { DESIGN_SPECS } from "./design_spec";
+
+/** 「另有」最多列几个自由小节标题——超出截断，免得一行吃掉整个名单。 */
+const TAIL_LIMIT = 5;
 
 /**
- * 角色卡在名单里的一行：`身份（常驻齐）` / `身份（待补：想要 · 最怕、底线 · 绝不做）`。
- * 只报**常驻带**——按需格是"按戏份补"的，放进名单是噪音。
+ * 角色卡在名单里的一行，三段现算：
+ *   `身份（必有齐）` / `身份（待补：底线 · 绝不做）`，有自由长尾时再缀「另有：回响、能力 · 机制」。
+ *
+ * 「另有」是 2026-09-19 加的。从前每张卡都铺同样的 12 个固定小节，列出来是纯噪音，
+ * 所以那时的规矩是"不铺小节标题"。现在长尾**每张卡都不同**——它才是信号：
+ * 不把卡读进上下文，也能看出"这张卡上除了必有格还有什么"。
+ * 目录要廉价，正文才昂贵；这一行是目录那一半。
  */
 function characterLine(content: string): string {
   const identity = cardIdentity(content) ?? "（待定）";
-  const missing = pendingResidentLabels(content);
-  return missing.length ? `${identity}（待补：${missing.join("、")}）` : `${identity}（常驻齐）`;
+  const missing = pendingRequiredLabels(content);
+  const status = missing.length ? `待补：${missing.join("、")}` : "必有齐";
+  const tail = tailSections(content);
+  const extra = tail.length
+    ? `；另有：${tail.slice(0, TAIL_LIMIT).join("、")}${tail.length > TAIL_LIMIT ? "…" : ""}`
+    : "";
+  return `${identity}（${status}${extra}）`;
 }
 
 /** 每个文档的一级小节（list-designs 工具返回；用于一眼看出有哪些材料与填充度）。按目录分组。 */
@@ -44,8 +58,9 @@ export async function buildDesignIndex(projectId: string): Promise<string> {
       const content = await readDesign(projectId, f);
       const fileIndent = g ? "    " : "  ";
       const headIndent = g ? "      " : "    ";
-      // 角色卡一人一行，不铺 12 个小节标题——排章时要看的是"这个人能不能写了"。
-      // 名单**现算**（读卡），不存派生文件：副本会脱节，曾经那个 _index.md 就漏过。
+      // 角色卡一人一行（必有齐没齐 + 自由长尾有哪些），不铺必有格的标题——排章时要看的是
+      // "这个人能不能写了、他卡上有什么"。名单**现算**（读卡），不存派生文件：副本会脱节，
+      // 曾经那个 _index.md 就漏过。
       const cardName = nameFromPath(f);
       if (cardName) {
         lines.push(`${fileIndent}- ${cardName} · ${content === undefined ? "（缺）" : characterLine(content)}`);
@@ -71,7 +86,9 @@ export async function buildDesignIndex(projectId: string): Promise<string> {
 /** core + world 总纲常驻设定全文。editor 每轮注入；文件不存在（懒建未产出）则跳过该块。 */
 export async function buildResidentDesigns(projectId: string): Promise<string> {
   const blocks: string[] = [];
-  for (const name of RESIDENT_DESIGNS) {
+  // 常驻表标的是**层**，路径从 DESIGN_SPECS 现取——层改了路径，常驻注入自动跟着改。
+  for (const id of RESIDENT_LAYERS) {
+    const name = DESIGN_SPECS[id].file;
     const content = await readDesign(projectId, name);
     if (content === undefined) continue;
     blocks.push(`【常驻设定 · design/${name}】（每轮注入，写作不得违背）\n${content}`);
@@ -79,4 +96,4 @@ export async function buildResidentDesigns(projectId: string): Promise<string> {
   return blocks.join("\n\n");
 }
 
-export { LAYERS, RESIDENT_DESIGNS };
+export { LAYERS, RESIDENT_LAYERS };

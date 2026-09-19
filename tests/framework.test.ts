@@ -6,23 +6,23 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createProject, listDesigns, readDesign, removeDesign, writeDesign } from "../storage/project";
-import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "./markdown";
-import { RESIDENT_DESIGNS } from "./layers";
-import { renderDesignSpec } from "./design_spec";
-import { renderHits, searchDesigns } from "./search";
-import { buildResidentDesigns, buildDesignIndex } from "./anchor";
+import { createProject, listDesigns, readDesign, removeDesign, writeDesign } from "../src/storage/project";
+import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "../src/framework/markdown";
+import { RESIDENT_LAYERS } from "../src/framework/layers";
+import { renderDesignSpec } from "../src/framework/design_spec";
+import { renderHits, searchDesigns } from "../src/framework/search";
+import { buildResidentDesigns, buildDesignIndex } from "../src/framework/anchor";
+import { removeCharacterTool } from "../src/tool/character_tools";
 import {
-  addCharacterTool,
-  characterBriefTool,
-  removeCharacterTool,
-  updateCharacterTool,
-} from "../tool/character_tools";
-import { appendDesignTool, applyDesignTool, proposeDesignTool } from "../tool/design_tools";
-import { defineTool } from "../tool/define";
-import { ToolRegistry } from "../tool/registry";
-import { executeToolPart } from "../tool/runner";
-import type { PendingProposal, ToolContext } from "../core/types";
+  appendDesignTool,
+  applyDesignTool,
+  proposeDesignTool,
+  removeDesignSectionTool,
+} from "../src/tool/design_tools";
+import { defineTool } from "../src/tool/define";
+import { ToolRegistry } from "../src/tool/registry";
+import { executeToolPart } from "../src/tool/runner";
+import type { PendingProposal, ToolContext } from "../src/core/types";
 
 let HOME: string;
 let pid: string;
@@ -124,7 +124,7 @@ describe("markdown 区块手术", () => {
 
 describe("design-spec（结构规范）", () => {
   test("常驻设定文档枚举：core + wiki/world 总纲", () => {
-    expect(RESIDENT_DESIGNS).toEqual(["core.md", "wiki/world.md"]);
+    expect(RESIDENT_LAYERS).toEqual(["core", "world"]);
   });
   test("core 规范 = 小说介绍四格；world = 空间/规则/术语三格（旧格移除）", () => {
     expect(renderDesignSpec("core")).toContain("## 一句话简介");
@@ -138,7 +138,13 @@ describe("design-spec（结构规范）", () => {
     expect(renderDesignSpec("world")).not.toContain("世界观一句话");
     expect(renderDesignSpec("world")).not.toContain("势力与人物群像");
     expect(renderDesignSpec("world")).not.toContain("历史痕迹与秘密");
-    expect(renderDesignSpec("characters")).toContain("add-character");
+    // 人物层没有规范小节（一角色一卡），形状在 guide 里；必有格枚举由 CHARACTER_FIELDS 派生
+    const chars = renderDesignSpec("characters");
+    expect(chars).toContain("### 基本档案");
+    expect(chars).toContain("### 说话方式");
+    expect(chars).toContain("自由长尾");
+    expect(chars).toContain("propose-design");
+    expect(chars).not.toContain("add-character"); // 角色专用写工具已删
   });
 
   test("每格三件齐备（写/别写/写成）+ 通篇形制 + 写入 key", () => {
@@ -228,130 +234,150 @@ function makeCtx(projectId: string): ToolContext & { pending: Map<string, Pendin
   };
 }
 
-describe("character-tools（分层骨架 / 外科改 / 总表同步）", () => {
+describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-design）", () => {
   const CARD = (name: string) => `characters/${name}.md`;
 
-  test("add-character：建规范卡（常驻四格 + 「当前」，不铺按需格空架子）+ 同步总表", async () => {
-    const r = await addCharacterTool.execute(
-      {
-        name: "林晚",
-        profile: "空乘，与江屿困在同一座岛",
-        want_fear: "想要体面地活着回去；最怕成为拖累",
-        bottom_line: "绝不对同岛的人动手",
-        idiolect: "嘴硬心软，关心反着说；原话『你死了我可不会埋你』",
-      },
-      makeCtx(pid) as never,
-    );
-    expect(r.output).toContain("林晚");
-    expect(r.output).toContain("常驻带四格都填了");
+  /**
+   * 一张合规的卡：必有五格齐全。卡不再由任何构造器生成——`add-character` 已删除，
+   * 建卡与改卡都走 propose-design。所以测试自己拼卡文本，就像模型会做的那样。
+   * `hollow` 把四个段落格写成（待定）——用来验"骨架只盯标题在不在"。
+   */
+  const cardText = (name: string, identity: string, opts: { extra?: string[]; hollow?: boolean } = {}) => {
+    const f = (s: string) => (opts.hollow ? "（待定）" : s);
+    return [
+      `# 角色：${name}`,
+      "",
+      "### 基本档案",
+      "",
+      `姓名：${name}`,
+      "性别：（待定）",
+      `身份 · 所属：${identity}`,
+      "",
+      "### 性格与矛盾",
+      "",
+      f("既认命又不认。"),
+      "",
+      "### 想要 · 最怕",
+      "",
+      f("想要一个说法。"),
+      "",
+      "### 底线 · 绝不做",
+      "",
+      f("不动女人和孩子。"),
+      "",
+      "### 说话方式",
+      "",
+      f("短句、直给。"),
+      "",
+      ...(opts.extra ?? []),
+    ].join("\n");
+  };
+
+  /** 走完整两段式：propose（不写盘）→ 标记用户同意 → apply。被拒时不落盘。 */
+  async function land(name: string, content: string) {
+    const ctx = makeCtx(pid);
+    const proposed = await proposeDesignTool.execute({ name: CARD(name), content }, ctx as never);
+    if (ctx.pending.has(CARD(name))) {
+      ctx.pending.get(CARD(name))!.approved = true;
+      await applyDesignTool.execute({ name: CARD(name) }, ctx as never);
+    }
+    return { proposed, ctx };
+  }
+
+  test("建卡：两段式提案落盘——角色没有专用工具，创建就是 propose-design 带 name", async () => {
+    const { proposed } = await land("林晚", cardText("林晚", "空乘，与江屿困在同一座岛"));
+    expect(proposed.output).toContain("尚未写入");
 
     const content = (await readDesign(pid, CARD("林晚")))!;
     expect(content).toContain("# 角色：林晚");
-    for (const label of ["基本档案", "想要 · 最怕", "底线 · 绝不做", "说话方式", "当前"]) {
+    for (const label of ["基本档案", "性格与矛盾", "想要 · 最怕", "底线 · 绝不做", "说话方式"]) {
       expect(content).toContain(`### ${label}`);
     }
-    // 按需格「给了才写」：没传的不该被铺成空架子
-    expect(content).not.toContain("### 性格与矛盾");
-    expect(content).not.toContain("### 语录");
-
-    // 名单现算（读卡），不存派生文件
-    expect(await buildDesignIndex(pid)).toContain("- 林晚 · 空乘，与江屿困在同一座岛（常驻齐）");
+    // 名单现算（读卡），不存派生文件；身份取「身份 · 所属」那一行
+    expect(await buildDesignIndex(pid)).toContain("- 林晚 · 空乘，与江屿困在同一座岛（必有齐）");
   });
 
-  test("add-character：只给 name 时只催常驻格，不催按需格（填充度自由）", async () => {
-    const r = await addCharacterTool.execute({ name: "船医" }, makeCtx(pid) as never);
-    // 只看"待补清单"本身——尾部那句列举按需格是提示，不算催
-    const pending = r.output.split("仍待补（常驻带）：")[1]?.split("——")[0] ?? "";
-    expect(pending).toContain("基本档案");
-    expect(pending).toContain("说话方式");
-    expect(pending).not.toContain("性格与矛盾");
-    expect(pending).not.toContain("语录");
-    expect(pending).not.toContain("关联角色");
+  test("缺任一必有格 → 整篇提案被拒并列出缺哪几格（不再有构造器替模型补格）", async () => {
+    const thin = "# 角色：某人\n\n### 基本档案\n\n身份 · 所属：某人\n";
+    const { proposed, ctx } = await land("某人", thin);
+    expect(proposed.output).toContain("缺这几格");
+    expect(proposed.output).toContain("性格与矛盾");
+    expect(proposed.output).toContain("说话方式");
+    expect(ctx.pending.size).toBe(0); // 没登记任何提案
+    expect(await readDesign(pid, CARD("某人"))).toBeUndefined(); // 更没落盘
   });
 
-  test("按需格：传（待定）= 留着待填（留格 + 该格自己的提示）；完全不给 = 这一格不出现", async () => {
-    await addCharacterTool.execute(
-      { name: "船长", profile: "「白鲸号」船长，出海三十年没回过家", quotes: "（待定）" },
-      makeCtx(pid) as never,
-    );
-    const card = (await readDesign(pid, CARD("船长")))!;
-    expect(card).toContain("### 语录"); // 给了（待定）→ 留格
-    expect(card).toContain("（待定：原话，不是转述"); // 且写的是该格自己的占位提示
-    expect(card).not.toContain("### 来历 · 成因"); // 没给 → 不出现
-    // 两个工具口径一致：update 传（待定）同样留格
-    await updateCharacterTool.execute({ name: "船长", relations: "（待定）" }, makeCtx(pid) as never);
-    expect((await readDesign(pid, CARD("船长")))!).toContain("### 关联角色");
-  });
-
-  test("基本档案：键值行；总表取「身份 · 所属」而不是首行（首行是姓名）", async () => {
-    await addCharacterTool.execute(
-      {
-        name: "陆青",
-        profile: "姓名：陆青（暂用）\n性别：男\n年龄段：五十上下\n身份 · 所属：七个吊唁者共同的旧友\n出身：（待定）",
-      },
-      makeCtx(pid) as never,
-    );
-    // 名单行取「身份 · 所属」，不是首行的「姓名：陆青（暂用）」
+  test("骨架只盯标题在不在：空标题能过校验，但名单里显示为待补", async () => {
+    await land("空壳", cardText("空壳", "某人的身份", { hollow: true }));
     const roster = await buildDesignIndex(pid);
-    expect(roster).toContain("- 陆青 · 七个吊唁者共同的旧友（待补：");
-    expect(roster).not.toContain("姓名：陆青（暂用）");
+    expect(roster).toContain("- 空壳 · 某人的身份（待补：性格与矛盾、想要 · 最怕、底线 · 绝不做、说话方式）");
   });
 
-  test("键值待定也算待定：全待定会被催；部分填了则保留未定的那几行", async () => {
-    const r = await addCharacterTool.execute(
-      { name: "无名", profile: "姓名：（待定）\n性别：（待定）\n身份 · 所属：（待定）" },
-      makeCtx(pid) as never,
-    );
-    // 整格全是键值待定 → 仍算缺，要被催（旧写法会被误判成"填了"）
-    const pending = r.output.split("仍待补（常驻带）：")[1]?.split("——")[0] ?? "";
-    expect(pending).toContain("基本档案");
-    expect((await readDesign(pid, CARD("无名")))!).toContain("（待定：逐行写「键：值」"); // 回落到整格提示
+  test("名单行取「身份 · 所属」而不是首行（首行是姓名）", async () => {
+    await land("陆青", cardText("陆青", "七个吊唁者共同的旧友"));
+    const roster = await buildDesignIndex(pid);
+    expect(roster).toContain("- 陆青 · 七个吊唁者共同的旧友（");
+    expect(roster).not.toContain("姓名：陆青");
+  });
 
-    await updateCharacterTool.execute(
-      { name: "无名", profile: "姓名：无名\n性别：男\n身份 · 所属：（待定）" },
-      makeCtx(pid) as never,
+  test("基本档案整格全待定也算缺（旧写法会误判成「填了」）；部分填了则保留未定的那几行", async () => {
+    const allPending = cardText("无名", "占位", { hollow: true }).replace(
+      "姓名：无名\n性别：（待定）\n身份 · 所属：占位",
+      "姓名：（待定）\n性别：（待定）\n身份 · 所属：（待定）",
     );
-    const card = (await readDesign(pid, CARD("无名")))!;
-    expect(card).toContain("姓名：无名");
+    await land("无名", allPending);
+    expect(await buildDesignIndex(pid)).toContain("- 无名 · （待定）（待补：基本档案、");
+
+    const partial = cardText("半填", "占位").replace(
+      "姓名：半填\n性别：（待定）\n身份 · 所属：占位",
+      "姓名：半填\n性别：男\n身份 · 所属：（待定）",
+    );
+    await land("半填", partial);
+    const card = (await readDesign(pid, CARD("半填")))!;
+    expect(card).toContain("姓名：半填");
     expect(card).toContain("身份 · 所属：（待定）"); // 未定的那一项留在卡上
   });
 
-  test("「当前」：update-character 碰不到它，但 propose-design 单格提案（两段式）能写", async () => {
+  test("整篇提案打到已存在的卡上 → 带「整篇重写」告警（add-character 查重的替代）", async () => {
     const ctx = makeCtx(pid);
-    await proposeDesignTool.execute(
-      { name: CARD("船长"), section: "当前", content: "已故——生前把葬礼地点定在这座废弃度假岛上。" },
+    const r = await proposeDesignTool.execute(
+      { name: CARD("林晚"), content: cardText("林晚", "换了个身份") },
       ctx as never,
     );
-    ctx.pending.get(CARD("船长"))!.approved = true;
-    const r = await applyDesignTool.execute({ name: CARD("船长") }, ctx as never);
-    expect(r.output).toContain("已按提案改写");
-    const card = (await readDesign(pid, CARD("船长")))!;
-    expect(card).toContain("已故——生前把葬礼地点定在这座废弃度假岛上。");
-    // 之后普通更新不会踩掉它
-    await updateCharacterTool.execute({ name: "船长", idiolect: "话少，句子短" }, makeCtx(pid) as never);
-    expect((await readDesign(pid, CARD("船长")))!).toContain("已故——生前把葬礼地点定在这座废弃度假岛上。");
-  });
-
-  test("add-character：重复名被拒（自愈提示）", async () => {
-    const r = await addCharacterTool.execute({ name: "林晚", profile: "x" }, makeCtx(pid) as never);
     expect(r.output).toContain("已存在");
+    expect(r.output).toContain("整篇重写");
+    // 旧卡的小节标题被列出来——用户看得出哪些会消失
+    expect(r.output).toContain("5 个小节：基本档案、性格与矛盾、想要 · 最怕、底线 · 绝不做、说话方式");
   });
 
-  test("update-character：只改说话方式，其余保留", async () => {
-    const r = await updateCharacterTool.execute(
-      { name: "林晚", idiolect: "新版：越在乎越呛，反话里藏担心" },
-      makeCtx(pid) as never,
+  test("section 级提案：只换那一格，其余字节不动", async () => {
+    const ctx = makeCtx(pid);
+    await proposeDesignTool.execute(
+      { name: CARD("林晚"), section: "说话方式", content: "新版：越在乎越呛，反话里藏担心" },
+      ctx as never,
     );
-    expect(r.output).toContain("说话方式");
+    ctx.pending.get(CARD("林晚"))!.approved = true;
+    const r = await applyDesignTool.execute({ name: CARD("林晚") }, ctx as never);
+    expect(r.output).toContain("已按提案改写");
+
     const content = (await readDesign(pid, CARD("林晚")))!;
     expect(content).toContain("新版：越在乎越呛");
-    expect(content).toContain("空乘，与江屿困在同一座岛"); // 未传字段保留
+    expect(content).toContain("空乘，与江屿困在同一座岛"); // 别的格没被碰
   });
 
-  // ── 回归：修掉"静默丢数据"（旧实现走 parseCardBody → buildCardMarkdown 整卡重建，
-  //    规范外的小节会被无声抹掉，confirm 文案却写着"其余保留"） ──
+  test("section 级提案改不了不存在的格——缺必有格的卡只能靠整篇提案补齐", async () => {
+    const ctx = makeCtx(pid);
+    const r = await proposeDesignTool.execute(
+      { name: CARD("林晚"), section: "回响", content: "破万法。" },
+      ctx as never,
+    );
+    expect(r.output).toContain("回响");
+    expect(ctx.pending.size).toBe(0); // 没登记提案
+  });
 
-  test("[回归] 自定义长尾小节、别名格、老卡小节在 update 后一字不丢", async () => {
+  // ── 回归：自由长尾与老卡的废止小节，任何写入之后都必须一字不丢 ──
+
+  test("[回归] 自由长尾小节、老卡的废止小节在 section 级提案后一字不丢", async () => {
     await writeDesign(
       pid,
       CARD("乔家劲"),
@@ -367,159 +393,92 @@ describe("character-tools（分层骨架 / 外科改 / 总表同步）", () => {
         "### 习惯动作",
         "紧张时数东西够不够用",
         "",
+        "### 当前",
+        "已故",
+        "",
         "### 一句话定位",
         "空姐，与江屿困同一座岛",
         "",
       ].join("\n"),
     );
-    const r = await updateCharacterTool.execute(
-      { name: "乔家劲", idiolect: "短句、直给，不绕弯", body_habit: "动手前先解袖扣" },
-      makeCtx(pid) as never,
+    const ctx = makeCtx(pid);
+    await proposeDesignTool.execute(
+      {
+        name: CARD("乔家劲"),
+        section: "回响",
+        content: "「破万法」：契机「想要公平地进行对决」。\n触发条件由性格导出。",
+      },
+      ctx as never,
     );
-    expect(r.output).toContain("说话方式");
+    ctx.pending.get(CARD("乔家劲"))!.approved = true;
+    await applyDesignTool.execute({ name: CARD("乔家劲") }, ctx as never);
 
     const after = (await readDesign(pid, CARD("乔家劲")))!;
-    // 规范外的小节连同正文原样保留
-    expect(after).toContain("### 回响");
-    expect(after).toContain("「破万法」：契机「想要公平地进行对决」。");
-    // 别名命中写回**原格**，不产生重复的「身体 · 习惯」
-    expect(after).toContain("动手前先解袖扣");
-    expect(after).not.toContain("紧张时数东西够不够用");
-    const habitHeads = (after.match(/^### (身体 · 习惯|习惯动作)$/gm) ?? []).length;
-    expect(habitHeads).toBe(1);
-    // 老卡的小节也活着；新格按规范序插入
-    expect(after).toContain("### 一句话定位");
-    expect(after).toContain("### 说话方式");
-    // 名单现算，取「基本档案」的「身份 · 所属」；按需格/自定义格的状态不进名单
+    expect(after).toContain("触发条件由性格导出。");
+    // 其余小节连同正文原样保留——「习惯动作」「当前」「一句话定位」都是已废止的格，
+    // 现在算自由长尾，同样一字不动
+    for (const line of [
+      "钵兰街阿劲，自诩四二六红棍",
+      "紧张时数东西够不够用",
+      "### 当前",
+      "已故",
+      "### 一句话定位",
+      "空姐，与江屿困同一座岛",
+    ]) {
+      expect(after).toContain(line);
+    }
+    expect((after.match(/^### /gm) ?? []).length).toBe(5); // 没有多出/重复的小节
+  });
+
+  test("名单的「另有」列出自由长尾小节（每张卡都不同，所以它是信号不是噪音）", async () => {
     const roster = await buildDesignIndex(pid);
     expect(roster).toContain("- 乔家劲 · 钵兰街阿劲，自诩四二六红棍（待补：");
-    expect(roster).not.toContain("语录");
-    expect(roster).not.toContain("回响");
+    expect(roster).toContain("另有：回响、习惯动作、当前、一句话定位");
   });
 
-  test("[回归] 正文里带标题行被拒（卡上出现 ## 会让全部 ### 从提案审阅里消失）", async () => {
-    const r = await updateCharacterTool.execute(
-      { name: "林晚", idiolect: "## 说话方式\n她说……" },
-      makeCtx(pid) as never,
+  test("缺格的卡：整篇提案补齐必有五格，自由长尾原样留在卡上", async () => {
+    const before = (await readDesign(pid, CARD("乔家劲")))!;
+    const filled = before.replace(
+      "### 回响",
+      "### 性格与矛盾\n\n既认命又不认。\n\n### 想要 · 最怕\n\n想要一个说法；最怕欠人。\n\n### 底线 · 绝不做\n\n不动女人和孩子。\n\n### 说话方式\n\n短句、直给，不绕弯\n\n### 回响",
     );
-    expect(r.output).toContain("不要带标题行");
-    expect(await readDesign(pid, CARD("林晚"))).toContain("新版：越在乎越呛"); // 没被写坏
+    await land("乔家劲", filled);
+
+    const after = (await readDesign(pid, CARD("乔家劲")))!;
+    expect(after).toContain("既认命又不认。");
+    expect(after).toContain("紧张时数东西够不够用"); // 长尾还在
+    expect(await buildDesignIndex(pid)).toContain(
+      "- 乔家劲 · 钵兰街阿劲，自诩四二六红棍（必有齐；另有：回响、习惯动作、当前、一句话定位）",
+    );
   });
 
-  test("「当前」是工具托管格：update 碰不到它，它在普通更新后原样存活", async () => {
-    const card = (await readDesign(pid, CARD("林晚")))!;
-    await writeDesign(pid, CARD("林晚"), card.replace(/### 当前\n[\s\S]*$/, "### 当前\n在场（岛上）\n"));
+  test("守卫：remove-design-section 拒删必有格，自由长尾随便删", async () => {
+    const ctx = makeCtx(pid);
+    const bad = await removeDesignSectionTool.execute(
+      { name: CARD("乔家劲"), section: "底线 · 绝不做" },
+      ctx as never,
+    );
+    expect(bad.output).toContain("必有格");
+    expect((await readDesign(pid, CARD("乔家劲")))!).toContain("### 底线 · 绝不做");
 
-    const r = await updateCharacterTool.execute({ name: "林晚", current: "已故" }, makeCtx(pid) as never);
-    expect(r.output).toContain("可改："); // 没有任何可改的键 → 明确拒绝
-    expect(await readDesign(pid, CARD("林晚"))).toContain("在场（岛上）");
+    const ok = await removeDesignSectionTool.execute(
+      { name: CARD("乔家劲"), section: "一句话定位" },
+      ctx as never,
+    );
+    expect(ok.output).toContain("已删除");
+    expect((await readDesign(pid, CARD("乔家劲")))!).not.toContain("一句话定位");
   });
 
   test("名单：只有老「一句话定位」的卡也能出身份，不立刻退化成（待定）", async () => {
     await writeDesign(pid, CARD("老卡"), "# 角色：老卡\n\n### 一句话定位\n从前的一句定位\n");
-    await updateCharacterTool.execute({ name: "老卡", idiolect: "x" }, makeCtx(pid) as never);
     expect(await buildDesignIndex(pid)).toContain("- 老卡 · 从前的一句定位");
   });
 
-  test("[回归] 走 propose-design 落的卡也进名单（旧的派生总表在这条路上会漏）", async () => {
-    const ctx = makeCtx(pid);
-    const content = [
-      "# 角色：沈越",
-      "",
-      "### 基本档案",
-      "",
-      "姓名：沈越",
-      "性别：男",
-      "身份 · 所属：婚礼／殡仪主持",
-      "",
-      "### 想要 · 最怕",
-      "",
-      "（待定）",
-      "",
-      "### 底线 · 绝不做",
-      "",
-      "不替周渡改口。",
-      "",
-      "### 说话方式",
-      "",
-      "（待定）",
-      "",
-      "### 当前",
-      "",
-      "（待定）",
-      "",
-    ].join("\n");
-    await proposeDesignTool.execute({ name: CARD("沈越"), content }, ctx as never);
-    ctx.pending.get(CARD("沈越"))!.approved = true;
-    await applyDesignTool.execute({ name: CARD("沈越") }, ctx as never);
-
+  test("[回归] 走 propose-design 落的卡进名单（旧的派生总表在这条路上会漏）", async () => {
+    await land("沈越", cardText("沈越", "婚礼／殡仪主持"));
     const roster = await buildDesignIndex(pid);
-    expect(roster).toContain("- 沈越 · 婚礼／殡仪主持（待补：想要 · 最怕、说话方式）"); // 名单现算 → 不会漏
-    expect(roster).not.toContain("characters/沈越.md:"); // 角色卡不再铺小节标题
-  });
-
-  test("守卫：角色卡整篇提案缺骨架被拒（免得落出没有「当前」的半身卡）", async () => {
-    const ctx = makeCtx(pid);
-    const thin = "# 角色：某人\n\n### 基本档案\n\n身份 · 所属：某人\n";
-    const bad = await proposeDesignTool.execute({ name: CARD("某人"), content: thin }, ctx as never);
-    expect(bad.output).toContain("缺这几格");
-    expect(bad.output).toContain("想要 · 最怕");
-    expect(bad.output).toContain("当前");
-    expect(ctx.pending.size).toBe(0); // 没登记任何提案
-
-    const full = [
-      "# 角色：某人",
-      "",
-      "### 基本档案",
-      "",
-      "身份 · 所属：某人",
-      "",
-      "### 想要 · 最怕",
-      "",
-      "（待定）",
-      "",
-      "### 底线 · 绝不做",
-      "",
-      "（待定）",
-      "",
-      "### 说话方式",
-      "",
-      "（待定）",
-      "",
-      "### 当前",
-      "",
-      "（待定）",
-      "",
-    ].join("\n");
-    const ok = await proposeDesignTool.execute({ name: CARD("某人"), content: full }, ctx as never);
-    expect(ok.output).toContain("尚未写入");
-    expect(ctx.pending.has(CARD("某人"))).toBe(true);
-  });
-
-  test("character-brief：只取常驻带 + 当前，按需格不进去；缺卡如实报", async () => {
-    await addCharacterTool.execute(
-      {
-        name: "报务员",
-        profile: "身份 · 所属：船上的报务员",
-        want_fear: "想上岸；最怕再听见求救信号",
-        bottom_line: "不伪造求救记录",
-        idiolect: "只报事实，不加形容词",
-        quotes: "「我听见了。就这些。」",
-      },
-      makeCtx(pid) as never,
-    );
-    const r = await characterBriefTool.execute({ names: ["报务员", "查无此人"] }, makeCtx(pid) as never);
-
-    expect(r.output).toContain("【报务员】船上的报务员（常驻齐）");
-    for (const label of ["基本档案", "想要 · 最怕", "底线 · 绝不做", "说话方式", "当前"]) {
-      expect(r.output).toContain(`### ${label}`);
-    }
-    expect(r.output).not.toContain("### 语录"); // 按需格不进简报
-    expect(r.output).not.toContain("我听见了"); // 它的正文也不进
-    expect(r.output).toContain("没有找到角色卡：查无此人");
-
-    const empty = await characterBriefTool.execute({ names: [] }, makeCtx(pid) as never);
-    expect(empty.output).toContain("需要 names");
+    expect(roster).toContain("- 沈越 · 婚礼／殡仪主持（必有齐）"); // 名单现算 → 不会漏
+    expect(roster).not.toContain("characters/沈越.md:"); // 角色卡不铺必有格标题，只有一行
   });
 
   test("remove-character：删卡；名单随之消失（现算，不用额外同步）", async () => {
@@ -669,7 +628,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   test("守卫：characters 不是可写的 layer；layer 与 name 不能同时给", async () => {
     const ctx = makeCtx(pid);
     const a = await proposeDesignTool.execute({ layer: "characters", content: "# x\n\n## a\nb\n" }, ctx as never);
-    expect(a.output).toContain("add-character");
+    expect(a.output).toContain('name:"characters/<名>.md"');
 
     const b = await proposeDesignTool.execute(
       { layer: "world", name: "wiki/x.md", content: "# x\n\n## a\nb\n" },

@@ -89,22 +89,6 @@ export function getSection(content: string, title: string, minLevel = 2): Sectio
   return { found: true, heading: h, body, block: blockLines.join("\n") };
 }
 
-/** 是否"这个文档基本是空骨架"（只有 heading + 待定占位/注释）。用于填充度判断。 */
-export function isSkeleton(content: string | undefined): boolean {
-  if (!content) return true;
-  const body = content
-    .split("\n")
-    .filter((l) => !/^#/.test(l.trim()) && !/^<!--/.test(l.trim()) && !/^-->/.test(l.trim()))
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .join(" ");
-  // 只余“待定”占位/引用块引导语 → 视为未填充
-  const meaningful = body
-    .replace(/（待定[^）]*）/g, "")
-    .replace(/^>.*$/gm, "")
-    .trim();
-  return meaningful.length === 0;
-}
 
 /**
  * 空行 / 说明行 / （待定…）占位 —— 都不算"填了"。

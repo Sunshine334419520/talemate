@@ -6,8 +6,31 @@
  * 哪天有人为某一层加了 `if (layer === …)`，这些用例会先炸。
  */
 import { describe, test, expect } from "bun:test";
-import { buildCardMarkdown } from "./characters";
-import { itemsOf, labelOf, renderProposal, reviewable, specFor } from "./proposal";
+import { itemsOf, labelOf, renderProposal, reviewable, specFor } from "../src/framework/proposal";
+
+/**
+ * 一张手写的角色卡。卡不再由任何构造器生成（`buildCardMarkdown` 已随 `add-character` 删除），
+ * 它就是模型按 design-spec 写出来、经 propose-design 落盘的文本——所以这里手写。
+ */
+const card = [
+  "# 角色：林晚",
+  "",
+  "### 基本档案",
+  "空姐，与江屿困同一座岛",
+  "",
+  "### 性格与矛盾",
+  "（待定）",
+  "",
+  "### 想要 · 最怕",
+  "（待定）",
+  "",
+  "### 底线 · 绝不做",
+  "（待定）",
+  "",
+  "### 说话方式",
+  "（待定）",
+  "",
+].join("\n");
 
 const core = [
   "# 核心设定",
@@ -31,21 +54,20 @@ describe("itemsOf · 一个函数、两个数据源", () => {
     ]);
   });
 
-  test("角色卡走兜底（在规范之外）：H1 + 常驻四格 + 「当前」逐格列出", () => {
+  test("角色卡走兜底（在规范之外）：H1 + 必有五格逐格列出", () => {
     expect(specFor("characters/林晚.md")).toBeUndefined(); // 规范的 file 是目录 characters/
-    const card = buildCardMarkdown("林晚", { profile: "空姐，与江屿困同一座岛" });
     expect(itemsOf("characters/林晚.md", card).map((i) => i.heading)).toEqual([
       "基本档案",
+      "性格与矛盾",
       "想要 · 最怕",
       "底线 · 绝不做",
       "说话方式",
-      "当前",
     ]);
   });
 
-  test("卡上的自定义长尾小节也逐格列出（开放长尾也能被审阅，不需要任何渲染分支）", () => {
-    const card = buildCardMarkdown("乔家劲", { profile: "钵兰街阿劲" }) + "\n\n### 回响\n破万法：契机「想要公平地进行对决」。\n";
-    const heads = itemsOf("characters/乔家劲.md", card).map((i) => i.heading);
+  test("卡上的自由长尾小节也逐格列出（开放长尾也能被审阅，不需要任何渲染分支）", () => {
+    const withTail = `${card}\n### 回响\n破万法：契机「想要公平地进行对决」。\n`;
+    const heads = itemsOf("characters/乔家劲.md", withTail).map((i) => i.heading);
     expect(heads).toContain("回响");
     expect(heads).toContain("基本档案");
   });
@@ -67,7 +89,7 @@ describe("labelOf · 对用户不出现路径", () => {
   test("有规范 → 层名；没有 → 文档自己的 H1", () => {
     expect(labelOf("core.md", core)).toBe("核心层");
     expect(labelOf("wiki/world.md", "# x\n")).toBe("世界层");
-    expect(labelOf("characters/林晚.md", buildCardMarkdown("林晚", {}))).toBe("角色：林晚");
+    expect(labelOf("characters/林晚.md", card)).toBe("角色：林晚");
     expect(labelOf("wiki/岛屿地图.md", "# 岛屿地图\n")).toBe("岛屿地图");
   });
 });
@@ -120,11 +142,10 @@ describe("renderProposal", () => {
   });
 
   test("角色卡也能审阅（不需要为它写任何渲染代码）", () => {
-    const card = buildCardMarkdown("林晚", { profile: "空姐，与江屿困同一座岛" });
     const text = renderProposal({ name: "characters/林晚.md", content: card });
     expect(text).toContain("提案 · 角色：林晚");
     expect(text).toContain("1. 基本档案");
     expect(text).toContain("空姐，与江屿困同一座岛");
-    expect(text).toContain("第 2、3、4、5 格还没定"); // 只有基本档案填了，其余常驻格与「当前」是占位
+    expect(text).toContain("第 2、3、4、5 格还没定"); // 只有基本档案填了，其余四格是（待定）
   });
 });

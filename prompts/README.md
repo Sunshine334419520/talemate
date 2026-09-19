@@ -35,7 +35,7 @@ prompts/
 
 ## 归属纪律（重要——决定哪些内容根本不进 prompt）
 
-凡能由以下载体承载的，一律归位，不进常驻 prompt（详见 `../08-architecture.md` §7「强制纪律进工具」）：
+凡能由以下载体承载的，一律归位，不进常驻 prompt（详见 `../docs/design-docs.md`「文档级的守卫」与 `../docs/agents.md`「工具框架」）：
 
 - **数据**：项目是什么 / 文档结构 → 常驻设定注入（core/world 全文，`framework/anchor.ts` `buildResidentDocs`）+ 文档文件骨架（模型每轮看得到，别在 persona 重复）。
 - **工具**：能做什么 / 覆盖要 confirm / 删前查引用 → 工具实现 + 工具 description。

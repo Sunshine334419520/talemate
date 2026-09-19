@@ -12,7 +12,7 @@
  * ## 判定（只认硬证据，不读文本）
  *
  * 窗口 = **最后一次落盘之后**（哪一轮 `design/` 多了层文件，以真落盘为准，不猜）。
- *   advanced = 从那一轮起对角色层动手了：`design-spec(characters)` / `add-character` / 提案到 `characters/`
+ *   advanced = 从那一轮起对角色层动手了：`design-spec(characters)` / 提案到 `characters/` / `remove-character`
  *   stopped  = 落完盘没对角色层动手（把球交回用户）
  *   diverged = 一层都没落上盘（场景没复现，先查探针而不是查产品）
  *
@@ -83,28 +83,17 @@ const P_DESIGNSPEC_PAIR: Patch = {
   after: "",
 };
 
-/** add-character 描述把角色卡两层的格列全了——模型自己说「我已知道字段」，这是它的常驻来源。 */
-const P_ADDCHAR_FIELDS: Patch = {
-  kind: "describe",
-  tool: "add-character",
-  note: "add-character.txt：去掉两层格的枚举（只留「有固定小节」）",
-  before:
-    "A card is `# 角色：<name>` plus fixed `###` sections, in two tiers.\n" +
-    "\n" +
-    "常驻带 — carried into every scene this character is in; fill these four first:\n" +
-    "基本档案 (lead with identity/affiliation) / 想要 · 最怕 / 底线 · 绝不做 / 说话方式 (give a\n" +
-    "verbatim sample line, not trait adjectives).\n" +
-    "\n" +
-    "按需格 — for later, by screen time; omitting them is not a defect: 性格与矛盾 / 来历 · 成因 /\n" +
-    "语录 / 身体 · 习惯 / 关联角色 / 能力 · 机制 / 转变 · 走向 / 在故事中的功能.",
-  after: "A card is `# 角色：<name>` with its fixed `###` fields.",
-};
+/**
+ * 曾经的 `P_ADDCHAR_FIELDS`（把 add-character 描述里的两层格枚举抹掉，看行为变不变）已随
+ * `add-character` 本身一起删除（2026-09-19）——那个 patch 的替换目标不复存在，留着会让
+ * `--check` 直接抛。角色层现在的写入靠 `propose-design`，它的描述不列格。
+ */
 
-/** 角色工具在不在手边。 */
+/** 角色专用工具在不在手边。只剩 remove-character 一个（add/update-character 已于 2026-09-19 删除）。 */
 const P_NO_CHAR_TOOLS: Patch = {
   kind: "dropTools",
-  note: "editor 白名单去掉 add/update/remove-character",
-  names: ["add-character", "update-character", "remove-character"],
+  note: "editor 白名单去掉 remove-character",
+  names: ["remove-character"],
 };
 
 /**
@@ -122,12 +111,11 @@ const VARIANTS: Variant[] = [
   { id: "baseline", note: "原样 = 当前产品（persona 那条规则已在里面，所以它就是新基线）", patches: [] },
   { id: "apply-handback", note: "【加】落盘结果里补交回契约", patches: [P_APPLY_HANDBACK] },
   { id: "designspec-no-pair", note: "去掉「核心设定与世界观」那句暗示", patches: [P_DESIGNSPEC_PAIR] },
-  { id: "addchar-no-fields", note: "add-character 不再列两层格", patches: [P_ADDCHAR_FIELDS] },
-  { id: "no-char-tools", note: "editor 没有角色工具", patches: [P_NO_CHAR_TOOLS] },
+  { id: "no-char-tools", note: "editor 没有角色工具（现在只剩 remove-character）", patches: [P_NO_CHAR_TOOLS] },
   {
     id: "all-off",
-    note: "这三个全关（仍 advanced → 原因不在这几处工具/描述里）",
-    patches: [P_DESIGNSPEC_PAIR, P_ADDCHAR_FIELDS, P_NO_CHAR_TOOLS],
+    note: "这两个全关（仍 advanced → 原因不在这几处工具/描述里）",
+    patches: [P_DESIGNSPEC_PAIR, P_NO_CHAR_TOOLS],
   },
 ];
 
@@ -221,7 +209,12 @@ interface RunResult {
   dir: string;
 }
 
-const CHAR_TOOLS = new Set(["add-character", "update-character", "remove-character"]);
+/**
+ * 角色专用工具——只剩 remove-character（add/update-character 已于 2026-09-19 删除）。
+ * 「对角色层动手」现在主要表现为 `design-spec(characters)` 与打到 `characters/` 的提案，
+ * 见下面 isCharTool 的另两个分支——它们才是这条实验里真正的主信号。
+ */
+const CHAR_TOOLS = new Set(["remove-character"]);
 
 /** 硬证据：真的对角色层动手了（加载它的规范 / 建卡 / 提案到 characters/）。 */
 const isCharTool = (t: { name: string; input: string }): boolean =>

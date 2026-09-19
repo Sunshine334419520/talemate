@@ -3,7 +3,7 @@
  * 只测纯函数；真联网行为不打测试。
  */
 import { describe, test, expect } from "bun:test";
-import { htmlToText, htmlToMarkdown, parseDuckDuckGo } from "./web_tools";
+import { htmlToText, htmlToMarkdown, parseDuckDuckGo } from "../src/tool/web_tools";
 
 const HTML = `<!doctype html><html><head><title>T</title>
 <style>body{color:red}</style><script>alert(1)</script></head>

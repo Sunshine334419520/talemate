@@ -1,45 +1,32 @@
 /**
- * Layer：四层企划文档的元信息（排序/路径/一句话）。
+ * Layer：四层的**显示名与顺序**。
+ *
+ * 这里只有两件事：`id`（键）与 `title`（给人看的短名）。**路径不在这里**——层的路径是
+ * `design_spec.ts` 的事（`DESIGN_SPECS[id].file`），一处定义。
+ *
+ * 曾经这里还带 `file` 与 `blurb` 两个字段：`file` 与 `DESIGN_SPECS` 的四条完全相同（副本，
+ * 且没有任何代码读它），`blurb` 从头到尾没人读过。两个都已删除——层该是什么，看
+ * `docs/design-docs.md`；层往哪写，看 `DESIGN_SPECS`。
  *
  * 结构规范（每层该有哪些小节）见 design_spec.ts，按需取（懒建）；目标文档平时不存在。
- * 目录：core.md 单文件；world = wiki 总纲入口 + 专题页；characters = 一角色一卡；outline = 整本 + 分卷/章节细纲。
  */
 export type LayerId = "core" | "world" | "characters" | "outline";
 
 export interface Layer {
   id: LayerId;
-  file: string; // design/ 下相对路径（入口；characters 为目录）
-  title: string; // 中文层名
-  blurb: string; // 一层一句话（用于列表/锚点）
+  title: string; // 短名，给用户看（DESIGN_SPECS 里的是带说明的长名）
 }
 
 /** 四层元信息（排序 = 依赖序：core 最先，outline 最后）。 */
 export const LAYERS: Layer[] = [
-  {
-    id: "core",
-    file: "core.md",
-    title: "核心层",
-    blurb: "小说介绍：题材·频道/一句话简介/金手指·边界/基调·情绪——写作方向不变量，常驻，一切层依赖它",
-  },
-  {
-    id: "world",
-    file: "wiki/world.md",
-    title: "世界层",
-    blurb: "wiki/world.md 总纲入口（空间与舞台/规则与秩序/术语表）常驻；长尾设定拆 wiki/<题>.md 专题页按需读、可自由新增",
-  },
-  {
-    id: "characters",
-    file: "characters/",
-    title: "人物层",
-    blurb: "一角色一卡 characters/<名>.md（常驻带：基本档案/想要·最怕/底线/说话方式；其余按戏份补）；名单由 list-designs 现算，无派生总表",
-  },
-  {
-    id: "outline",
-    file: "outline/outline.md",
-    title: "情节层",
-    blurb: "outline.md 整本（主线/开篇钩子/分卷/结局/伏笔登记）；章节细纲 plan_ch<N>.md、分卷 vol_*.md 同目录",
-  },
+  { id: "core", title: "核心层" },
+  { id: "world", title: "世界层" },
+  { id: "characters", title: "人物层" },
+  { id: "outline", title: "情节层" },
 ];
 
-/** 常驻注入 editor 的设定文档（core + world 总纲），见 framework/anchor buildResidentDesigns。 */
-export const RESIDENT_DESIGNS = ["core.md", "wiki/world.md"];
+/**
+ * 常驻注入 editor 的文档（core + world 总纲），见 framework/anchor buildResidentDesigns。
+ * 条目标的是**层**；具体路径由 `DESIGN_SPECS[id].file` 给（`tests/layers.test.ts` 钉住这条对应）。
+ */
+export const RESIDENT_LAYERS: LayerId[] = ["core", "world"];

@@ -2,7 +2,8 @@ Present a draft of a design doc for the user to review. Nothing is saved and the
 can approve or ask for changes. This is the only way to write a design doc.
 
 Name the target with layer (core | world | outline — the path is fixed by the tool) or, for any other
-document, with name (topic pages, chapter plans, character cards).
+document, with name (topic pages, chapter plans, character cards — characters/<name>.md is how a
+character card is created; there is no character-specific tool for that).
 
 Pass section to rewrite one section; omit it for a whole document. The draft must carry the layer's
 own section headings (see design-spec) — a draft with no headings is refused, since the user would

@@ -1,0 +1,98 @@
+# 设计文档体系：四层活文档与两段式落盘
+
+> **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
+> **读者**：要改 `src/framework/`（design_spec / design_ops / proposal / layers）或 `src/tool/design_tools.ts` 的人。
+> **对齐代码**：2026-09-19 · 层元信息在 `framework/layers.ts`，结构规范在 `framework/design_spec.ts`
+> 相邻：`characters.md`（人物层单独一份）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
+
+## 四层
+
+设计段的产物是**一组分层、持续迭代、随时可改的活文档**。分层的意义：层间**变化频率、影响范围、再生成范围**不同，维护与注入都按层处理。
+
+| 层 | 文档 | 变化特征 | 注入方式 |
+|---|---|---|---|
+| **核心层** | `design/core.md` | 极少变、一改牵全身、用户必须拍板 | **常驻**注入 |
+| **世界层** | `design/wiki/world.md` + `wiki/<题>.md` | 慢变、追加为主；长尾拆专题页 | 总纲**常驻**；专题页按需读 |
+| **人物层** | `design/characters/<名>.md` | 慢变 | 按需读（见 `characters.md`） |
+| **情节层** | `design/outline/outline.md` + `plan_ch<N>.md` + `vol_*.md` | 快变、最局部 | 按需读（当前章/卷切片） |
+
+**常驻只有两份**：`core.md` 与 `wiki/world.md`（`RESIDENT_LAYERS` 标的是层 id，路径由 `DESIGN_SPECS` 现取）。其余按需 `read-design`。常驻注入只给可见的 primary（editor）。
+
+**文档格式**：Markdown，`##` 即一格。可寻址粒度 = "文件名 + 小节标题"。不做条目级 ID 引用。
+
+## 懒建：文件不预种
+
+`createProject` 只建目录、不种文件——`design/` 初始为空。用户要完善某层时，editor 调 `design-spec` 拿该层的结构规范（该有哪些小节、每格装什么、成稿做法），据此成稿。
+
+**结构与内容分离**：`design_spec.ts` 只定义"长什么样"；文件一旦建立即内容与真相。所以 `design-spec` 是**参考**，不是校验器——文档不按规范组织也能存在，只是模型没拿到引导。
+
+## 两段式落盘
+
+> **用户看过的字节 == 落盘的字节**，由构造保证。
+
+```
+propose-design（不写盘 + halt 结束本回合）
+   → 渲染提案给用户看（逐格编号、待定格点出、改动打标）
+   → 用户回话
+apply-design（只落提案那一份，**不接受正文**）
+```
+
+- **`propose-design` 的 `halt`**：结束本回合，把控制权交回用户。同回合剩下的 tool call 不再执行——但必须补 `error` part（见 `architecture.md` 的 halt 说明）。
+- **"同意"由 harness 判**：`Session.markPendingApproval` 按用户回话匹配同意词置位，**模型自述无效**。fail-closed：措辞不常见就多走一轮，绝不写用户没认可的东西。
+- **并发保护**：提案登记 `base` 快照，`apply-design` 时若文件已变则拒绝。
+- **因此 `apply-design` 用 `confirm:false`**——用户已在提案里看过内容，再弹一次确认是多余的。
+
+**为什么必须两段**：一段式（工具直接写盘）等于让模型自己声称"用户同意了"。改成两段后，`apply-design` 拿不到正文、`approved` 由 harness 置位，模型**想夹带用户没看过的字也夹带不了**。
+
+## 寻址：`layer` 与 `name`
+
+| 参数 | 用于 | 路径 |
+|---|---|---|
+| `layer` | core / world / outline 三个**主文档是一个文件**的层 | 由 `DESIGN_SPECS[layer].file` 定，**模型拼不出错** |
+| `name` | 真正开放的文档：`wiki/<题>.md`、`outline/plan_ch<N>.md`、`characters/<名>.md` | 模型自报 `design/` 相对路径 |
+
+两条守卫：
+
+- **`layer` 与 `name` 互斥**，且 `characters` **不是**可写的 layer（它的 file 是目录）——给了会指回 `name:"characters/<名>.md"`。
+- **某一层的主文档不许写到别处**：给 `name:"world.md"` 会被拒并把正确路径给回去让它自纠。起因是实测模型把世界层写成 `design/world.md`，而常驻表只认 `DESIGN_SPECS.world.file`（今天就是 `wiki/world.md`）——**写错位置的世界层不会被常驻注入，等于白写且用户看不出来**。
+
+## 文档级的守卫
+
+- **可审阅性**：正文里没有小节标题（或没按该层规范组织）→ 拒绝提案。否则用户会看到一页空白却照样落盘。
+- **角色卡的 `##` 陷阱**：`proposal.ownItems` 取**最浅**标题层。角色卡上冒出任意一个 `##`，卡里**所有** `###` 都从逐格审阅里消失。所以 `propose-design` 与 `append-design` 对角色卡都拒收 `##`（`cardHeadingError`）——详见 `characters.md`。
+- **删除**：`remove-design-section` 与 `remove-character` 内置 `search-designs` 引用检查，命中结果摆进 confirm。
+
+## 章节生产
+
+```mermaid
+flowchart TD
+    W[用户: 写第 N 章] --> W1[read-design 取当前 core + 相关切片 + plan_ch 若有]
+    W1 --> W2{已有细纲?}
+    W2 -- 否 --> W3[task planner 出节拍 → 用户拍板]
+    W3 --> W4
+    W2 -- 是 --> W4[task writer 带切片 + 节拍写正文]
+    W4 --> W5[writer 落 chapters/ + task_result 回传]
+    W5 --> W6[editor 面向用户确认，拍板定稿]
+```
+
+**纪律（软约束，存于 editor 协议）**：写某章前先有已批准的细纲（`design/outline/plan_ch<N>.md`），没有就先 `task(planner)` 出节拍再写。
+
+> 这是 editor 的**工作纪律，不是 harness 硬门禁**。理由是它属于"什么时候该派活"的判断，钉死成硬门禁会让正常对话处处撞墙。
+
+**editor 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善核心设定"就走企划成型，说"写第 N 章"就走章节生产。
+
+## 写作依赖当前版本
+
+每次 task 委派写手，prompt 里带"当前 core 切片 + 相关 world/characters 切片 + 细纲切片"——**绝不缓存旧设定**。写作/task 委派时一律现读。
+
+## 相关源码
+
+| 文件 | 职责 |
+|---|---|
+| `framework/layers.ts` | 层的**显示名与顺序**（id / title）＋常驻表（标的是层 id）。**路径不在这里**——见 `design_spec.ts` |
+| `framework/design_spec.ts` | 每层的结构规范（写什么 / 别写什么 / 写成什么样）+ 成稿工作法 |
+| `framework/design_ops.ts` | **写盘唯一实现**：`write`/`edit`/`append`/`cut`/`drop` 五种 op + confirm |
+| `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `reviewable` / `renderProposal`） |
+| `framework/markdown.ts` | 区块手术（`getSection` / `replaceSection` / `appendBlock` / `removeSection` / `listHeadings`） |
+| `framework/anchor.ts` | 常驻注入 + `list-designs` 的索引 |
+| `tool/design_tools.ts` | 上面这些的工具壳（校验与守卫都在这里） |
