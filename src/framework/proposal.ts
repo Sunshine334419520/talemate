@@ -231,3 +231,20 @@ export function renderProposal(v: ProposalView): string {
   out.push(`回复「没问题」就写入${label}；要改直接说第几格。`);
   return out.join("\n");
 }
+
+/**
+ * 渲染一份**节拍计划**（`propose-plan` 用）。
+ *
+ * 与 `renderProposal` 的区别：节拍**不落盘**，所以没有逐格编号、没有"第 N 格"、没有待定格——
+ * 它批准的是**动作**（去写正文），不是一份文档。用户要么说"没问题"，要么说要改哪儿。
+ */
+export function renderPlan(chapter: string | undefined, content: string): string {
+  const label = chapter?.trim();
+  return [
+    `──── ${label ? `${label} · ` : ""}节拍 ────`,
+    "",
+    ...indentLines(content),
+    "",
+    "回复「没问题」就按这个写正文；要改直接说。",
+  ].join("\n");
+}

@@ -7,7 +7,9 @@
  */
 import { randomUUID } from "node:crypto";
 import { AgentRegistry } from "../agent/registry";
+import { MODES } from "../agent/modes";
 import { loadModelConfig } from "../core/config";
+import { PLAN_KEY } from "../core/types";
 import type {
   AgentDef,
   AssistantPart,
@@ -73,6 +75,14 @@ export function isAgreement(text: string): boolean {
 export function renderPendingNote(pending: Map<string, PendingProposal>): string | undefined {
   if (!pending.size) return undefined;
   const lines = [...pending.values()].map((p) => {
+    // 节拍没有目标文件：它批准的是"去写正文"这个动作，不是一份文档。
+    if (p.name === PLAN_KEY) {
+      const what = p.chapter ? `${p.chapter}的节拍` : "这一章的节拍";
+      const state = p.approved
+        ? "用户已表示同意 → 可以带它 task(writer)"
+        : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
+      return `- ${what}：${state}`;
+    }
     const what = p.section ? `只改「${p.section}」这一格` : "整篇";
     const state = p.approved
       ? "用户已表示同意 → 可以 apply-design"
@@ -81,7 +91,7 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
   });
   return [
     "<pending-proposal>",
-    "有一份提案已经摆给用户看过、但还没写进任何文件。能落盘的只有这一份（apply-design 不接受新正文），且必须等用户同意。",
+    "有一份东西已经摆给用户看过、但还没执行。执行必须等用户同意——同意由 harness 按他的回话判定，你自己说了不算。",
     ...lines,
     "</pending-proposal>",
   ].join("\n");
@@ -118,6 +128,12 @@ export class Session {
    * 只在内存里：重启即失效，apply 会要求重新提案。
    */
   readonly pending = new Map<string, PendingProposal>();
+
+  /**
+   * 当前会话模式（见 agent/modes.ts）。**只在内存里**——和 pending 同生命周期，进程重启即回到
+   * 普通模式。硬保证不靠它（写正文那道门挂在 task(writer) 上），所以丢了也不漏。
+   */
+  private mode?: string;
 
   constructor(deps: SessionDeps & { meta: ProjectMeta; agents: AgentRegistry; tools: ToolRegistry; model: ModelConfig }) {
     this.projectId = deps.projectId;
@@ -212,11 +228,18 @@ export class Session {
   private async buildRequest(agent: AgentDef): Promise<{ system: string; messages: NeutralMsg[]; tools?: ToolSchema[] }> {
     const neutral = toNeutralMessages(await this.messageWindow());
     const system = await this.buildSystem(agent);
+    const tools = this.allowedTools(agent);
     const toolSchemas = this.tools.schemasFor(
-      agent.tools,
-      agent.tools.includes("task") ? { taskCatalog: this.agents.subagentCatalog() } : undefined,
+      tools,
+      tools.includes("task") ? { taskCatalog: this.agents.subagentCatalog() } : undefined,
     );
     return { system, messages: neutral, tools: toolSchemas.length ? toolSchemas : undefined };
+  }
+
+  /** 当前模式允许的工具：agent 白名单**减去**模式声明要藏的那些（模式不在 → 原样）。 */
+  private allowedTools(agent: AgentDef): string[] {
+    const mode = this.mode ? MODES[this.mode] : undefined;
+    return mode ? agent.tools.filter((t) => !mode.deny.includes(t)) : agent.tools;
   }
 
   /**
@@ -236,8 +259,10 @@ export class Session {
       skills: renderSkillCatalog(skills),
       resident,
     });
+    // 模式纪律排在角色壳之后、状态注记之前：它是"眼下在干什么"，压过角色的默认姿态。
+    const mode = this.mode ? MODES[this.mode] : undefined;
     const note = renderPendingNote(this.pending);
-    return note ? `${base}\n\n${note}` : base;
+    return [base, mode?.discipline, note].filter(Boolean).join("\n\n");
   }
 
   /** 构造工具执行上下文（ToolContext），供 execute 获取读写/确认/委派等能力 */
@@ -251,6 +276,9 @@ export class Session {
       askUser: (q, options) => this.io.askUser(q, options),
       showProposal: (text) => this.io.onEvent({ type: "proposal", text }),
       // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
+      setMode: (m) => {
+        this.mode = m;
+      },
       getProposal: (name) => this.pending.get(name),
       setProposal: (p) => {
         this.pending.set(p.name, p);

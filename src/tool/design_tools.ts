@@ -26,10 +26,8 @@ import { defineTool, type RegisteredTool } from "./define";
 const P = (id: string) => readPrompt(`tools/${id}`);
 
 /**
- * 主文档是**一个文件**的层。`characters` 不在内（它的 file 是目录 `characters/`）。
- * `outline` 也不在（2026-09-20 起）——它变成"一卷一个文件"，没有"整本大纲"这个文档可写，
- * 卷纲/序列纲各走 `name`。**漏掉这一步 `DESIGN_SPECS["outline"].file` 会取到 `"outline/"`
- * 这个目录，写盘会写到一个目录名上。**
+ * 主文档是**一个文件**的层。`characters` 与 `outline` 不在内——它们的 `file` 是目录（`characters/`、
+ * `outline/`），会取到目录名本身。角色卡走 `name:"characters/<名>.md"`，卷纲/序列纲各走 `name`。
  */
 const MAIN_LAYERS = ["core", "world"] as const;
 

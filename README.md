@@ -22,7 +22,7 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 ```
 talemate new 我的小说 悬疑
   → 进 editor 会话，聊想法 → 企划长成 design/ 四层活文档
-  → "写第 1 章" → 先出节拍（planner），你拍板 → 再写正文（writer）→ 落 chapters/
+  → "写第 1 章" → 先出节拍，你拍板 → 再写正文（writer）→ 落 chapters/
 ```
 
 项目落在 `~/.talemate/novels/<id>/`（可用 `TALEMATE_HOME` 改），目录结构见 `docs/architecture.md`。
@@ -32,7 +32,7 @@ talemate new 我的小说 悬疑
 | 模块 | 职责 |
 |---|---|
 | `src/cli.ts` `src/smoke.ts` | CLI + REPL 入口 / 离线冒烟 |
-| `src/agent/` | Agent 注册表：editor(primary) / planner / writer / summarizer(hidden) |
+| `src/agent/` | Agent 注册表：editor(primary) / writer / summarizer(hidden) |
 | `src/session/` | 会话接线、agent 循环、上下文压缩 |
 | `src/tool/` | 工具框架 + 内置工具（design / character / framework / core / web 五个领域） |
 | `src/framework/` | 写作领域层：层规范、写盘唯一实现、提案渲染、markdown 手术、角色卡、引用搜索 |

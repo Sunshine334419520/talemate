@@ -45,10 +45,9 @@ export function compactThreshold(env = process.env): number {
 /**
  * 窗口是否超预算（用内存消息判断，避免每次读盘）。
  *
- * **传进来的必须是模型实际会看到的那个窗口**——即 `loadModelWindow(messages)` 之后的那一段，
- * 不是整份会话文件。2026-09-21 之前传的是整份文件，而文件只增不减：累计一旦越过阈值，
- * 此后**每一回合**都判超预算。实测一份 67 条消息的会话被压了 12 次，全部发生在越线之后，
- * 而那时真实窗口只有一两百字符——每压一次就把上下文洗掉一次，模型只能把刚读过的文档重读一遍。
+ * **参数必须是模型实际会看到的那个窗口**——即 `loadModelWindow(messages)` 之后的那一段，不是整份
+ * 会话文件。文件只增不减，量它就等于**越过阈值一次就永远超预算**：此后每回合压一次，而每压一次
+ * 就把上下文洗掉一次，模型只能把刚读过的文档重读一遍。
  */
 export function isOverBudget(messages: StoredMessage[], threshold = compactThreshold()): boolean {
   return estimateChars(messages) > threshold;

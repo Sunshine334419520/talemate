@@ -9,8 +9,8 @@ prompts/
 ├── README.md                 本规范
 ├── editor.system.txt         editor(主编) persona
 ├── writer.system.txt         writer subagent persona
-├── planner.system.txt        planner subagent persona
 ├── summarizer.system.txt     内部 hidden summarizer（compaction）
+├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md「会话模式」）
 └── tools/<tool_id>.txt       每个工具的 description
 ```
 

@@ -21,6 +21,11 @@ import {
 } from "../src/tool/design_tools";
 import { defineTool } from "../src/tool/define";
 import { designSpecTool } from "../src/tool/framework_tools";
+import { enterPlanTool, exitPlanTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
+import { MODES } from "../src/agent/modes";
+import { AgentRegistry } from "../src/agent/registry";
+import { PLAN_KEY } from "../src/core/types";
+import { renderPendingNote } from "../src/session/session";
 import { ToolRegistry } from "../src/tool/registry";
 import { executeToolPart } from "../src/tool/runner";
 import type { PendingProposal, ToolContext } from "../src/core/types";
@@ -223,9 +228,12 @@ describe("项目懒建 / 搜索 / 锚点", () => {
 // ─── 角色卡工具（离线：假 ctx 走真实 storage） ───
 
 /** 测试用 ctx：pending 与"给用户看的文本"都挂在外面，测试要能直接查看。 */
-function makeCtx(projectId: string): ToolContext & { pending: Map<string, PendingProposal>; shown: string[] } {
+function makeCtx(
+  projectId: string,
+): ToolContext & { pending: Map<string, PendingProposal>; shown: string[]; modeLog: (string | undefined)[] } {
   const pending = new Map<string, PendingProposal>();
   const shown: string[] = [];
+  const modeLog: (string | undefined)[] = [];
   return {
     projectId,
     sessionId: "test-session",
@@ -243,8 +251,12 @@ function makeCtx(projectId: string): ToolContext & { pending: Map<string, Pendin
     clearProposal: (name) => {
       pending.delete(name);
     },
+    setMode: (m) => {
+      modeLog.push(m);
+    },
     pending,
     shown,
+    modeLog,
     readDesign: (name) => readDesign(projectId, name),
     writeDesign: (name, content) => writeDesign(projectId, name, content),
     removeDesign: (name) => removeDesign(projectId, name),
@@ -677,6 +689,132 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
 });
 
 // ─── runner：halt 只在成功时置位 ───
+
+// ─── propose-plan：写正文前的那道门 ───
+
+describe("propose-plan · 写正文前的门", () => {
+  const BEATS = "上岛第一晚。\n\n入夜前先把七个人点一遍，谁跟谁不熟要露出来。\n\n钩子：退路断在谁也没看见的时候。";
+
+  test("摆出节拍、halt、且不写任何文件", async () => {
+    const ctx = makeCtx(pid);
+    const before = await listDesigns(pid);
+
+    const r = await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
+
+    expect(proposePlanTool.halt).toBe(true); // 门靠它：摆出来就停，不靠模型自觉
+    expect(r.output).toContain("节拍已摆给用户");
+    expect(ctx.shown[0]).toContain("──── 第 1 章 · 节拍 ────");
+    expect(ctx.shown[0]).toContain("上岛第一晚。");
+    expect(ctx.shown[0]).toContain("钩子：退路断在谁也没看见的时候。");
+    expect(ctx.shown[0]).toContain("回复「没问题」就按这个写正文");
+    // 节拍不落盘——批准的是动作，不是文档
+    expect(await listDesigns(pid)).toEqual(before);
+    // 但要在**内存里**登记成"待执行的节拍"：用户回话后由 harness 置 approved，task(writer) 才放行
+    expect(ctx.pending.get(PLAN_KEY)?.content).toContain("上岛第一晚。");
+    expect(ctx.pending.get(PLAN_KEY)?.approved).toBe(false);
+  });
+
+  test("chapter 缺省时抬头不带标签", async () => {
+    const ctx = makeCtx(pid);
+    await proposePlanTool.execute({ content: BEATS }, ctx as never);
+    expect(ctx.shown[0]).toContain("──── 节拍 ────");
+  });
+
+  test("content 为空 → 抛错而不是 return（return 会被 runner 置 halt，把回合停在可自愈的错误上）", async () => {
+    const ctx = makeCtx(pid);
+    await expect(proposePlanTool.execute({ content: "   " }, ctx as never)).rejects.toThrow("缺少 content");
+    expect(ctx.shown.length).toBe(0); // 什么都没摆
+  });
+
+  test("task(writer) 的硬门：没有拍板过的节拍就不放行，且文案能自愈", async () => {
+    const ctx = makeCtx(pid);
+    const blocked = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
+    expect(blocked.output).toContain("没有一份用户已拍板的节拍");
+    expect(blocked.output).toContain("propose-plan"); // 自愈：告诉它下一步调什么
+  });
+
+  test("摆过但用户还没回话 → 仍然不放行（approved 由 harness 置，模型自述无效）", async () => {
+    const ctx = makeCtx(pid);
+    await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
+    const blocked = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
+    expect(blocked.output).toContain("没有一份用户已拍板的节拍");
+  });
+
+  test("用户回话同意 → 放行；且一次批准只换一次写作（用掉即清）", async () => {
+    const ctx = makeCtx(pid);
+    await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
+    ctx.pending.get(PLAN_KEY)!.approved = true; // 等价于用户回了一句"没问题"（Session 侧的动作）
+
+    const ok = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
+    expect(ok.output).toContain('<task agent="writer" state="completed">');
+    expect(ctx.pending.has(PLAN_KEY)).toBe(false); // 写完了，批准也一并作废
+
+    const again = await taskTool.execute({ agent: "writer", prompt: "再写一遍" }, ctx as never);
+    expect(again.output).toContain("没有一份用户已拍板的节拍"); // 下一章要重新摆、重新拍板
+  });
+
+  test("待办注记能说清是哪一章的节拍（压缩之后靠它，不靠消息历史）", async () => {
+    const ctx = makeCtx(pid);
+    await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
+    const note = renderPendingNote(ctx.pending)!;
+    expect(note).toContain("第 1 章的节拍");
+    expect(note).toContain("用户还没同意");
+
+    ctx.pending.get(PLAN_KEY)!.approved = true;
+    expect(renderPendingNote(ctx.pending)!).toContain("可以带它 task(writer)");
+  });
+});
+
+// ─── 会话模式 ───
+
+describe("会话模式 · plan", () => {
+  test("enter-plan / exit-plan 进出模式", async () => {
+    const ctx = makeCtx(pid);
+    await enterPlanTool.execute({}, ctx as never);
+    expect(ctx.modeLog).toEqual(["plan"]);
+    await exitPlanTool.execute({}, ctx as never);
+    expect(ctx.modeLog).toEqual(["plan", undefined]);
+  });
+
+  test("propose-plan 成功后自动退出模式——正常路径用不着 exit-plan", async () => {
+    const ctx = makeCtx(pid);
+    await enterPlanTool.execute({}, ctx as never);
+    await proposePlanTool.execute({ chapter: "第 1 章", content: "上岛第一晚。" }, ctx as never);
+    expect(ctx.modeLog).toEqual(["plan", undefined]);
+  });
+
+  test("计划模式下 editor 手里没有任何能写文件的工具", () => {
+    // 拿**真实白名单**查，不另抄一份——加了写作工具却忘了加进 deny，这里会红。
+    // deny 是失败时放行的形状，所以这条用例是它唯一的兜底。
+    const editor = new AgentRegistry().get("editor");
+    const writers = [
+      "task", // 子代理（writer 落 chapters/）
+      "apply-design",
+      "append-design",
+      "remove-design-section",
+      "remove-character",
+      "save-chapter",
+    ];
+    const available = editor.tools.filter((t) => !MODES.plan.deny.includes(t));
+    const leaked = writers.filter((t) => available.includes(t));
+    expect(leaked).toEqual([]);
+  });
+
+  test("但只读工具与 propose-plan 都还在（模式不是把人关死）", () => {
+    const editor = new AgentRegistry().get("editor");
+    const available = editor.tools.filter((t) => !MODES.plan.deny.includes(t));
+    const missing = ["read-design", "list-designs", "design-spec", "propose-plan", "exit-plan", "ask-user"].filter(
+      (t) => !available.includes(t),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  test("模式纪律必须与领域无关——绑死成「章节计划模式」就换不了场景", () => {
+    const d = MODES.plan.discipline.toLowerCase();
+    const bound = ["节拍", "beat", "chapter", "sequence", "outline"].filter((w) => d.includes(w));
+    expect(bound).toEqual([]);
+  });
+});
 
 describe("tool runner · halt", () => {
   test("成功才 halt；抛错/校验失败不能停轮（否则循环死在可自愈的错误上）", async () => {

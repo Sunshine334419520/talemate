@@ -13,6 +13,7 @@ import { openSession, type UserIO } from "./session/session";
 import { createProject, listDesigns, readProjectRules } from "./storage/project";
 import { loadMessages, listSessionIds, loadSessionMeta } from "./storage/session-store";
 import { loadModelConfig } from "./core/config";
+import { PLAN_KEY } from "./core/types";
 
 const HOME = await mkdtemp(join(tmpdir(), "talemate-smoke-"));
 process.env.TALEMATE_HOME = HOME;
@@ -37,15 +38,45 @@ try {
   const model = loadModelConfig();
   console.log(`[1] 项目已建：${meta.id}`);
 
-  // 2) 开主编会话并 post
+  // 2) 硬门：写正文前必须有一份用户拍板过的节拍。没拍板就派 writer，会被拒
   const session = await openSession({ projectId: meta.id, model, io });
-  const reply = await session.post("帮我写第 1 章：主角在都市醒来。");
-  console.log(`[2] editor post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
+  await session.post("帮我写第 1 章：主角在都市醒来。");
+  const gatedMsgs = await loadMessages(meta.id, session.sessionId);
+  const refusedPart = gatedMsgs.flatMap((m) => m.parts ?? []).find((p) => p.type === "tool" && p.name === "task");
+  const gated = refusedPart?.type === "tool" && /没有一份用户已拍板的节拍/.test(refusedPart.output ?? "");
+  console.log(`[2] 硬门：没拍板的节拍 → task(writer) 被拒：${gated ? "✓" : "✗"}`);
+  if (!gated) throw new Error(`写正文的硬门没起作用：${truncate(JSON.stringify(refusedPart ?? null), 200)}`);
 
-  // 3) 验证父会话消息链：user → assistant(task) → assistant(text)
-  const msgs = await loadMessages(meta.id, session.sessionId);
+  // 3) 拍板过之后同一条委派放行——走真实的两回合
+  const s2write = await openSession({ projectId: meta.id, model, io });
+  process.env.TALEMATE_MOCK_TOOL = "propose-plan";
+  await s2write.post("帮我写第 1 章：主角在都市醒来。");
+  const pendingPlan = s2write.pending.get(PLAN_KEY);
+  console.log(`[3] propose-plan 已登记待执行的节拍（未获同意）：${pendingPlan && !pendingPlan.approved ? "✓" : "✗"}`);
+  if (!pendingPlan || pendingPlan.approved) throw new Error("节拍未被登记为待拍板");
+
+  process.env.TALEMATE_MOCK_TOOL = "task";
+  const reply = await s2write.post("没问题");
+  // 一次批准只换一次写作：task(writer) 成功后那份登记即清
+  console.log(`[3b] 用户回话「没问题」→ 放行、且用掉即清：${s2write.pending.has(PLAN_KEY) ? "✗ 还留着" : "✓"}`);
+  console.log(`[3c] editor post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
+
+  // 3d) 计划模式：task 从 schema 里消失，连 mock 都演不出来（模式唯一的工具效果）
+  const s3 = await openSession({ projectId: meta.id, model, io });
+  process.env.TALEMATE_MOCK_TOOL = "enter-plan";
+  await s3.post("写第 2 章。");
+  process.env.TALEMATE_MOCK_TOOL = "task"; // 想演 task，但它已经不在工具列表里了
+  await s3.post("继续。");
+  const s3Msgs = await loadMessages(meta.id, s3.sessionId);
+  const s3Tools = s3Msgs.flatMap((m) => m.parts ?? []).filter((p) => p.type === "tool").map((p) => p.name);
+  const hidden = s3Tools.includes("enter-plan") && !s3Tools.includes("task");
+  console.log(`[3d] 计划模式下 task 不可见（工具序列 ${s3Tools.join(" → ")}）：${hidden ? "✓" : "✗"}`);
+  if (!hidden) throw new Error("计划模式没有藏掉 task");
+
+  // 4) 验证父会话消息链：user → assistant(task) → assistant(text)
+  const msgs = await loadMessages(meta.id, s2write.sessionId);
   const roles = msgs.map((m) => m.role).join(" → ");
-  console.log(`[3] 父会话消息链：${roles}`);
+  console.log(`[4] 父会话消息链：${roles}`);
 
   const taskPart = msgs.flatMap((m) => m.parts ?? []).find((p) => p.type === "tool" && p.name === "task");
   const hasTaskOk = taskPart?.type === "tool" && taskPart.state === "completed" && /task_result/.test(taskPart.output ?? "");

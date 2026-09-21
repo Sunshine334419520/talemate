@@ -1,8 +1,10 @@
 /**
- * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / save-chapter）。
+ * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / save-chapter / propose-plan）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
  */
+import { PLAN_KEY } from "../core/types";
 import { confirmBody } from "../framework/design_ops";
+import { renderPlan } from "../framework/proposal";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
 
@@ -27,7 +29,22 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
     return `委派 ${args.agent} 子代理执行（prompt ${args.prompt.length} 字）`;
   },
   async execute(args, ctx) {
+    // 写正文这一支有**硬门**：用户没拍板过这一章的节拍就不放行。它和 apply-design 是同一套机制——
+    // propose-* 登记 → harness 按用户回话置 approved → 执行工具查它。门开在"执行"这一头而不是给
+    // 整个会话加个模式，是为了让设计流程与正文流程共用一种"用户拍板"的语义。
+    if (args.agent === "writer") {
+      const plan = ctx.getProposal(PLAN_KEY);
+      if (!plan?.approved) {
+        return {
+          output:
+            "还没到写正文的时候：没有一份用户已拍板的节拍。先把这一章的节拍写出来，用 propose-plan 摆给" +
+            "用户看、等他回话；他认可之后再调 task(writer)，把切片和节拍一起放进 prompt。",
+        };
+      }
+    }
     const result = await ctx.runSubagent(args.agent, args.prompt);
+    // 一次批准 = 一次写作：用掉就清，免得写下一章时凭一份旧批准就开写。
+    if (args.agent === "writer") ctx.clearProposal(PLAN_KEY);
     return {
       output: `<task agent="${args.agent}" state="completed">\n<task_result>\n${result}\n</task_result>\n</task>`,
       metadata: { agent: args.agent },
@@ -134,4 +151,108 @@ export const saveChapterTool: RegisteredTool<{ filename: string; content: string
   },
 });
 
-export const CORE_TOOLS: RegisteredTool[] = [skillTool, taskTool, askUserTool, confirmTool, saveChapterTool];
+/**
+ * propose-plan：把**这一章**的节拍摆给用户拍板，并**结束本回合**等他回话。
+ *
+ * **与 propose-design 的区别：没有 apply 那一半。** 节拍不落盘——它批准的是**动作**（去写正文），
+ * 不是一份文档。所以这里不登记提案、不留 base 快照、不判"同意"：用户说"没问题"之后，editor 直接
+ * 带着这份节拍去 `task(writer)`。用户要改 → 改完再摆一次，这是个循环。
+ *
+ * `halt` 是它存在的全部理由：光靠纪律，editor 可能拿着没批准的节拍直接叫 writer。而"摆出来就停"
+ * 正是计划模式里 ExitPlanMode 干的事——这里不要 mode（`design-docs.md` 明确否决过阶段状态机），
+ * 只要一个会停的工具。
+ */
+export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string }> = defineTool<{
+  content: string;
+  chapter?: string;
+}>({
+  id: "propose-plan",
+  description: P("propose-plan"),
+  halt: true, // 计划摆出来了，接下来该用户拍板——不靠模型自觉
+  input: {
+    type: "object",
+    properties: {
+      content: {
+        type: "string",
+        description:
+          "The beat plan itself — what the user reviews and what the writer will follow. Plan text only: no notes to the user, no rationale, no questions.",
+      },
+      chapter: {
+        type: "string",
+        description: "Short label for the header, e.g. 第 1 章 / 序章. Optional.",
+      },
+    },
+    required: ["content"],
+  },
+  async execute(args, ctx) {
+    const content = (args.content ?? "").trim();
+    // **这里必须 throw，不能 return**：runner 对任何 return 都置 halt，return 一个校验错误等于
+    // 把回合停在一个本可自愈的错误上。throw 会变成 error part，模型同轮就能补上重调。
+    // （`tests/framework.test.ts` 的 "tool runner · halt" 钉的就是这条。）
+    if (!content) {
+      throw new Error(
+        `propose-plan 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带这一章的节拍正文重新调用。`,
+      );
+    }
+    // 登记成"待执行的节拍"。**只在会话内存里，不落盘**——用户回话后由 harness 置 approved，
+    // task(writer) 靠它判断"这一章用户拍过板了没有"。改了内容重新提案即覆盖，approved 归零。
+    ctx.setProposal({
+      name: PLAN_KEY,
+      content,
+      chapter: args.chapter?.trim() || undefined,
+      approved: false,
+      at: Date.now(),
+    });
+    ctx.showProposal(renderPlan(args.chapter, content));
+    // 计划出来了，模式就该退——它管的是"还没计划好之前别乱动"。批准与否由下面那条登记表达，
+    // 不靠模式（模式只是纪律，硬门在 task(writer) 上）。
+    ctx.setMode(undefined);
+    return {
+      output:
+        "节拍已摆给用户（尚未写任何正文）。本回合已结束，等用户回话：认可 → 带这份节拍 task(writer)；" +
+        "要改 → 改完再 propose-plan 一次（改了内容必须重新摆）。",
+      metadata: { chapter: args.chapter },
+    };
+  },
+});
+
+/**
+ * enter-plan / exit-plan：会话模式的进出口（见 `agent/modes.ts`）。
+ *
+ * **模式的边界感全在这两个工具上**：它必须有始有终，所以进入之后只有两条路——`propose-plan`
+ * 成功（正常路径，自动退出）、或者 `exit-plan`（用户改主意不做了）。没有第二条会把 editor
+ * 关在"能读能问、但派不了活"的笼子里。
+ *
+ * 进入不弹 confirm：用户刚说了"写第 1 章"，再问一句"要不要先规划"是噪音。
+ */
+export const enterPlanTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
+  id: "enter-plan",
+  description: P("enter-plan"),
+  input: { type: "object", properties: {} },
+  async execute(_args, ctx) {
+    ctx.setMode("plan");
+    return { output: "已进入计划模式（task 起不可用）。做出计划后用 propose-plan 摆给用户拍板。" };
+  },
+});
+
+/** exit-plan：用户改主意不做了 → 离开计划模式。正常路径不需要它（propose-plan 会退出）。 */
+export const exitPlanTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
+  id: "exit-plan",
+  description: P("exit-plan"),
+  input: { type: "object", properties: {} },
+  async execute(_args, ctx) {
+    ctx.setMode(undefined);
+    return { output: "已离开计划模式。" };
+  },
+});
+
+export const CORE_TOOLS: RegisteredTool[] = [
+  skillTool,
+  taskTool,
+  askUserTool,
+  confirmTool,
+  saveChapterTool,
+  proposePlanTool,
+  enterPlanTool,
+  exitPlanTool,
+];

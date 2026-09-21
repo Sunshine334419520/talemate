@@ -2,8 +2,10 @@ Delegate a job to one subagent. The subagent runs in its own fresh context, rece
 your prompt, and returns a final text or finished piece.
 
 - Make the prompt self-contained: include the material / doc slices it needs.
-- Say exactly what it must return (prose? a beat table? an outline?) and whether it should
-  write prose or only plan.
+- Say exactly what it must return.
+
+Writing prose has a gate: task(writer) is refused until the user has approved this chapter's beat
+plan through propose-plan. Present the plan first; one approval covers one chapter.
 
 Use for focused, isolated work that should not clutter your context. The delegable agents
 and when to use each are listed below.

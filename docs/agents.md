@@ -32,11 +32,10 @@
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
 | **editor 主编** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **planner 规划** | subagent | 通用结构师：章节节拍（`plan_ch<N>.md`）、结构重排——尺度是 task 参数，不是角色。**大纲不归它**：卷纲 / 序列纲是 editor 与用户的设计工作 | editor 经 `task` | `read-design` `list-designs` `skill` |
-| **writer 写手** | subagent | 按"当前设定切片 + 细纲/节拍"写一章正文；**不自创设定、只输出正文** | editor 经 `task` | `read-design` `list-designs` `skill` `save-chapter` |
+| **writer 写手** | subagent | 按"当前设定切片 + 节拍"写一章正文；**不自创设定、只输出正文** | editor 经 `task` | `read-design` `list-designs` `skill` `save-chapter` |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
-- editor **不亲自写正文**；planner/writer **不能直接对话**，只被 `task` 派生。
+- editor **不亲自写正文**（节拍不是正文——它自己出，见下）；writer **不能直接对话**，只被 `task` 派生。
 - persona 在 `prompts/*.txt`（英文，`readPrompt()` 载入）；agent 的 `description`（路由契约）内联在 `registry.ts`，写法见 `prompts/README.md`。
 
 ### 显式不做的角色（防回归）
@@ -81,9 +80,12 @@
 
 | id | 用途 |
 |---|---|
-| `task` | 委派 subagent（可派列表由运行时拼进 description） |
+| `task` | 委派 subagent（可派列表由运行时拼进 description）；**派 writer 时有硬门**——没有用户拍板过的节拍就拒 |
 | `skill` | 按名注入 SKILL.md 正文 |
 | `ask-user` | 向用户提问要**创作裁决**（不是权限审批） |
+| `propose-plan` | 把**一章**的节拍摆给用户拍板并结束本回合；**不落盘**（批准的是"去写正文"这个动作）。它登记的那份 `approved` 就是 `task(writer)` 的门，成功后自动退出计划模式 |
+| `enter-plan` | 进入**计划模式**（注入纪律 + 藏掉一切会落盘的，只剩只读 + `propose-plan`） |
+| `exit-plan` | 用户改主意不做了 → 离开计划模式 |
 | `confirm` | 落盘前征求用户确认 |
 | `save-chapter` | 把成品正文落 `chapters/` |
 
@@ -93,6 +95,20 @@
 |---|---|
 | `webfetch` | 抓一个 URL → text/markdown/html |
 | `websearch` | 搜索（默认 tavily；无 key 回退 bocha/exa/duckduckgo） |
+
+### 会话模式（`agent/modes.ts`）
+
+**模式 = 临时叠在 primary agent 上的一层：注入一段纪律 + 从白名单里减掉几个工具。**
+
+与 agent 的分工：agent 回答"你是谁"（长期），模式回答"眼下在干什么"（一次一仗）。所以模式**必须有界**——像"写某一章"：进去、做完、出来。开放式的谈话（和用户聊设计）**不套模式**，那会把人关在里面出不来——`design-docs.md` 的「editor 没有阶段状态机」讲的正是这件事。
+
+现在只有一种：**`plan`**（`prompts/modes/plan.txt`，八行通用纪律，零领域知识）。它 deny 掉**一切会落盘的**：`task`（子代理里就是写手）加上设计文档的四个写入口。
+
+**判据是"这个工具能不能写文件"，不是"它是不是写正文"。** 计划模式的全部意义就是**期间不动世界**——规划某一章时顺手改设定是范围漂移，而且改的正是你据以规划的那份材料。真需要改就先 `exit-plan`，改完再进来；那是一次看得见的中断，不是偷偷发生的。
+
+它的纪律正文刻意**不讲节拍**——节拍的事归 `propose-plan` 的 description（那是那个工具的输入契约）。绑死成"章节计划模式"会让它换个场景就用不了，有一条用例钉着。
+
+**模式只在会话内存里**，和待执行提案同生命周期：进程重启即回到普通模式。**硬保证不靠它**——写正文那道门挂在 `task(writer)` 上（查一份 approved 的节拍）。模式只是把"计划期间别乱动"也变成结构性的，外加给纪律正文一个该在的地方。
 
 ### 白名单不是执行边界
 
@@ -114,7 +130,7 @@
 | 触发源 | 例子 | 机制 |
 |---|---|---|
 | **用户** | 进项目、"写第 N 章" | 用户输入绑定当前 primary；"要触发子代理"的话术由 editor 识别后转成工具调用 |
-| **Agent（模型自决）** | editor 判断"该规划了" → `task(planner)` | 模型调 `task`；可派清单由 `subagentCatalog()` 动态拼进描述 |
+| **Agent（模型自决）** | editor 判断"这一章够了" → `task(writer)` | 模型调 `task`；可派清单由 `subagentCatalog()` 动态拼进描述 |
 | **harness** | 上下文超预算 | 内部自动跑 hidden agent |
 
 > **关键认知**：在 agentic 世界里，"用户要写一章"**不会直接启动 writer**。输入进 editor 的会话，editor 按它的工作协议 + 手上的材料**决定**要不要、先调谁。所以触发时机由两件事决定：**editor system prompt 里的工作协议** + **task 工具的动态描述**。我们没有也不应该有一张"关键词 → 直接 spawn"的硬表。
@@ -122,17 +138,19 @@
 ### editor 的工作协议
 
 1. **企划对话（含大纲）**：editor 直接答；查 = `list-designs`/`read-design`/`search-designs`，增 = `append-design`，改/成稿 = **`propose-design` → 用户回话 → `apply-design`**，删 = `remove-design-section`。**落盘必须走这两段，不派子代理。**
-   **卷纲与序列纲就在这一条里**——它们是设计文档，不是"派给 planner 的结构活"。planner 只在第 2 条出现。
-2. **某章要做节拍规划** → `task(planner, { prompt: core + 相关切片 + 本章任务 })`；planner 回节拍文本，用户拍板后由 **editor** 落 `plan_ch<N>.md`。
-3. **要写某章正文** → editor 先 `read-design` 拿当前切片 + （若有）`plan_ch<N>.md` → `task(writer, { prompt: writer 规范 + 切片 + 节拍 })` → writer 产出 → 回到 editor 面向用户确认、落盘。
-   - 允许合并 2+3：**同一个循环里连续两次 task 调用**，不需要任何编排代码。
-4. **作品级取舍**（"要不要写残酷点"）→ `ask-user`。
-5. **什么时候必须派**：需要隔离上下文或独立专注才 `task`；editor 自己能一两步查完的绝不派。
+   **卷纲与序列纲就在这一条里**——它们是设计文档，走同一套两段式。
+2. **要写某章正文**（一条链，四步）：
+   ① `read-design` 取切片（core 常驻 + 当前**序列纲** + 相关人物/世界）→ ② **editor 自己写这一章的节拍** → ③ **`propose-plan` 摆给用户拍板**（它带 `halt`，回合到此为止）→ ④ 用户认可后 `task(writer, { prompt: 切片 + 节拍 })`，writer 产出回到 editor 面向用户确认、落 `chapters/`。
+   - **节拍是 editor 自己的工作，不派子代理**：材料本来就在它手里（core 常驻、序列纲刚读过），派出去等于把已有的东西抄一遍；而用户改节拍是常态，留在自己的上下文里改是免费的，派出去则每次都要重发切片、还可能整份漂移。
+   - ③ **有两道门**：摆出来就停（`halt`）；以及**没拍板就不许写**——`task(writer)` 查那份登记的 `approved`，没有就拒。用户要改 → 改完再摆一次（循环，不是一次性提案）。
+   - **节拍不落盘**（登记只在会话内存里），**一次批准只换一次写作**。所以 ③ 与 ④ **不能合并成一个回合**：③ 之后必须结束，等用户说话。
+3. **作品级取舍**（"要不要写残酷点"）→ `ask-user`。
+4. **什么时候必须派**：需要隔离上下文或独立专注才 `task`；editor 自己能一两步查完的绝不派。
 
 ### task 契约
 
 ```
-task { agent: "planner" | "writer", prompt: string }
+task { agent: "writer", prompt: string }
   → 校验 agent 存在且 mode=subagent；depth 检查（≤1 层）
   → 新建 child Session（model = sub.model ?? 父 model，同项目）
   → child.post(prompt) 跑完整子循环

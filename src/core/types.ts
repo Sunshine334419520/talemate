@@ -22,7 +22,7 @@ export type AgentMode = "primary" | "subagent";
 
 /** 声明式角色定义（纯数据，注册表持有；talemate.json 可覆盖 model 等字段） */
 export interface AgentDef {
-  id: string; // "editor" | "planner" | "writer" | …
+  id: string; // "editor" | "writer" | …
   name: string; // 显示名（主编 / 规划 / 写手）
   description: string; // 何时选它（task 路由 / 用户可见）
   mode: AgentMode;
@@ -51,15 +51,23 @@ export type JsonSchema = {
  * 一份待用户拍板的设计提案（propose → apply 的中转态）。
  * apply-design 不收正文、只写这里存的那份，所以"用户看过的 == 落盘的"由构造保证。
  */
+/**
+ * `propose-plan` 登记的章节节拍在待执行表里的键。节拍**没有目标文件**（不落盘），所以它占一个
+ * 保留键；设计文档的键一定是 design/ 下的路径，撞不上。
+ */
+export const PLAN_KEY = "__plan__";
+
 export interface PendingProposal {
-  /** 目标活文档（design/ 下相对路径） */
+  /** 目标活文档（design/ 下相对路径）；节拍提案是 `PLAN_KEY` */
   name: string;
-  /** 将落盘的正文：整篇提案=全文；单格提案=该小节正文（不含标题行） */
+  /** 将落盘的正文：整篇提案=全文；单格提案=该小节正文（不含标题行）；节拍=节拍全文 */
   content: string;
   /** 单格提案的小节标题；整篇提案缺省 */
   section?: string;
   /** 单格提案的提案时整篇快照——落盘前校验文档未被改过，变了要求重新提案 */
   base?: string;
+  /** 仅节拍提案：这一章在用户面前叫什么（如"第 1 章"）。让待办注记在压缩之后还能自己说清是哪一章 */
+  chapter?: string;
   /** 用户已回话表示同意。**由 harness 判定**（见 Session 里按用户回话匹配同意词），不由模型自述 */
   approved: boolean;
   at: number;
@@ -80,6 +88,8 @@ export interface ToolContext {
   /** 替换时 approved 一律重置为 false——用户没见过新版就不算同意 */
   setProposal(p: PendingProposal): void;
   clearProposal(name: string): void;
+  /** 切换会话模式（见 agent/modes.ts）；undefined = 回到普通模式 */
+  setMode(mode: string | undefined): void;
   /** 读取一个活文档文件内容（design/ 下相对路径），不存在返回 undefined */
   readDesign(name: string): Promise<string | undefined>;
   /** 写/覆盖活文档（design/ 下），返回完整路径 */

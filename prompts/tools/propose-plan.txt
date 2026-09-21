@@ -1,0 +1,16 @@
+Present one chapter's beat plan for the user's approval, and end the turn. Nothing is written and no
+prose is generated yet — this is the gate before writing: task(writer) stays refused until the user
+approves a plan through this tool.
+
+Call it once you have written the plan for ONE chapter yourself, and before task(writer). If the user
+asks for changes, revise and call it again — a loop, not a one-shot. One approval covers one chapter.
+
+content — the beat plan. Three things make it usable, each because of who reads it:
+- the beats in order, so the user can point at one (改第 2 条) and the writer can follow them;
+- what this chapter pays off from the sequence outline, so the writer knows why it happens;
+- the constraints the writer cannot derive from the slices — what must not break, which character has
+  to land, where the pace must hold. Only you can supply these.
+Text only: no notes to the user, no rationale, no questions — say those in your message before this.
+chapter — short label for the header, e.g. 第 1 章.
+
+After the user approves, pass this same plan to task(writer) yourself — nothing was saved to disk.

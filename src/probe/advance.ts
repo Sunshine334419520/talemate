@@ -227,8 +227,8 @@ const charAction = (log: TurnLog): boolean => log.tools.some(isCharTool);
 const blank = (): TurnLog => ({ tools: [], reasoning: "", text: "", landedHere: false });
 
 /**
- * design/ 里已有的层文档。core/world 是单文件；情节层自 2026-09-20 起是"一卷一个文件"，
- * 所以认 `outline/vol_<N>.md`——**不认序列纲**，那是卷内的下一层，探针只关心"走到哪一层了"。
+ * design/ 里已有的层文档。core/world 是单文件；情节层是"一卷一个文件"，所以认 `outline/vol_<N>.md`——
+ * **不认序列纲**，那是卷内的下一层，探针只关心"走到哪一层了"。
  */
 const layerFiles = (all: string[]): string[] => all.filter((f) => /(^|\/)(core|world)\.md$|^outline\/vol_\d+\.md$/.test(f));
 
