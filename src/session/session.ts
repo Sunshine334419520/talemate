@@ -334,7 +334,8 @@ export class Session {
   /** 压缩前检查：用内存消息判断是否超阈值，是则压缩并把 compaction 消息同步回缓存 */
   private async maybeCompact(): Promise<void> {
     const all = await this.ensureLoaded();
-    if (!isOverBudget(all)) return;
+    // 量**窗口**，不是文件：文件只增不减，量它等于过了阈值就永远超预算（见 isOverBudget 的注释）。
+    if (!isOverBudget(loadModelWindow(all))) return;
     const summarizer = this.agents.get("summarizer");
     const m = await compact({
       projectId: this.projectId,

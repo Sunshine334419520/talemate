@@ -1,15 +1,16 @@
 Present a draft of a design doc for the user to review. Nothing is saved and the turn ends, so they
 can approve or ask for changes. This is the only way to write a design doc.
 
-Name the target with layer (core | world | outline — the path is fixed by the tool) or, for any other
-document, with name (topic pages, chapter plans, character cards — characters/<name>.md is how a
-character card is created; there is no character-specific tool for that).
+Name the target with layer (core | world — the path is fixed by the tool) or, for every other
+document, with name: outline/vol_<N>.md and outline/vol_<N>/s<M>.md (volume and sequence outlines),
+wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md (a character card is created and edited
+this way; there is no character-specific tool for that).
 
-Pass section to rewrite one section; omit it for a whole document. A draft for one of the three main
-layers must carry that layer's own section headings (see design-spec) — without them the user would
-be shown a page of blanks while the prose landed anyway, so it is refused. Other documents (topic
-pages, sequence outlines, character cards) may be plain prose: a draft with no `##` is shown whole,
-as a single block. Fields you cannot fill yet get （待定）.
+Pass section to rewrite one section; omit it for a whole document. A draft is refused only when its
+kind has a fixed shape (see design-spec — it holds both the layers and the document kinds) and the
+draft does not fill it, since the user would then be shown blanks while the prose landed anyway.
+Kinds that are free-form (sequence outlines, character cards, topic pages, chapter plans) are shown
+whole, as a single block. Fields you cannot fill yet get （待定）.
 
 **The draft IS the file**: on approval it is written byte for byte. So the content holds document
 text and nothing else — no notes to the user ("暂用名，待你定"), no rationale ("这句是配的试镜台词，

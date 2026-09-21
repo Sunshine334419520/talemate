@@ -32,7 +32,7 @@
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
 | **editor 主编** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **planner 规划** | subagent | 通用结构师：章节节拍、整本/分卷大纲、结构重排——尺度是 task 参数，不是角色 | editor 经 `task` | `read-design` `list-designs` `skill` |
+| **planner 规划** | subagent | 通用结构师：章节节拍（`plan_ch<N>.md`）、结构重排——尺度是 task 参数，不是角色。**大纲不归它**：卷纲 / 序列纲是 editor 与用户的设计工作 | editor 经 `task` | `read-design` `list-designs` `skill` |
 | **writer 写手** | subagent | 按"当前设定切片 + 细纲/节拍"写一章正文；**不自创设定、只输出正文** | editor 经 `task` | `read-design` `list-designs` `skill` `save-chapter` |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
@@ -121,7 +121,8 @@
 
 ### editor 的工作协议
 
-1. **企划对话**：editor 直接答；查 = `list-designs`/`read-design`/`search-designs`，增 = `append-design`，改/成稿 = **`propose-design` → 用户回话 → `apply-design`**，删 = `remove-design-section`。**落盘必须走这两段，不派子代理。**
+1. **企划对话（含大纲）**：editor 直接答；查 = `list-designs`/`read-design`/`search-designs`，增 = `append-design`，改/成稿 = **`propose-design` → 用户回话 → `apply-design`**，删 = `remove-design-section`。**落盘必须走这两段，不派子代理。**
+   **卷纲与序列纲就在这一条里**——它们是设计文档，不是"派给 planner 的结构活"。planner 只在第 2 条出现。
 2. **某章要做节拍规划** → `task(planner, { prompt: core + 相关切片 + 本章任务 })`；planner 回节拍文本，用户拍板后由 **editor** 落 `plan_ch<N>.md`。
 3. **要写某章正文** → editor 先 `read-design` 拿当前切片 + （若有）`plan_ch<N>.md` → `task(writer, { prompt: writer 规范 + 切片 + 节拍 })` → writer 产出 → 回到 editor 面向用户确认、落盘。
    - 允许合并 2+3：**同一个循环里连续两次 task 调用**，不需要任何编排代码。

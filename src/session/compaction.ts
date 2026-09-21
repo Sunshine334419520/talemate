@@ -24,17 +24,33 @@ export function estimateChars(messages: StoredMessage[]): number {
         if (p.type === "tool") n += (p.output?.length ?? 0) + (p.input?.length ?? 0);
       }
     } else {
-      n += (m.text?.length ?? 0) + (m.summary?.length ?? 0);
+      // compaction 的正文分两块：summary 与 recent，**两块都要算**。只算 summary 会让窗口估算偏低
+      // （实测 recent 有几百到两千多字），阈值就白设了。
+      n += (m.text?.length ?? 0) + (m.summary?.length ?? 0) + (m.recent?.length ?? 0);
     }
   }
   return n;
 }
 
-/** 触发压缩的粗略字符阈值（中文 ~1 字符/token 近似；取"明显变长"的门槛，避免小会话被误伤） */
-const COMPACT_THRESHOLD_CHARS = 30_000;
+/**
+ * 触发压缩的粗略字符阈值。**默认 20 万**（中文 ~1 字符/token 近似，即约 20 万 token 的窗口）。
+ * 可用 `TALEMATE_COMPACT_CHARS` 覆盖——与其余可调项同一套约定（见 `core/config.ts`）。
+ */
+const COMPACT_THRESHOLD_CHARS = 200_000;
 
-/** 累计文本量是否超压缩阈值（用内存消息判断，避免每次读盘） */
-export function isOverBudget(messages: StoredMessage[], threshold = COMPACT_THRESHOLD_CHARS): boolean {
+export function compactThreshold(env = process.env): number {
+  return Number(env.TALEMATE_COMPACT_CHARS) || COMPACT_THRESHOLD_CHARS;
+}
+
+/**
+ * 窗口是否超预算（用内存消息判断，避免每次读盘）。
+ *
+ * **传进来的必须是模型实际会看到的那个窗口**——即 `loadModelWindow(messages)` 之后的那一段，
+ * 不是整份会话文件。2026-09-21 之前传的是整份文件，而文件只增不减：累计一旦越过阈值，
+ * 此后**每一回合**都判超预算。实测一份 67 条消息的会话被压了 12 次，全部发生在越线之后，
+ * 而那时真实窗口只有一两百字符——每压一次就把上下文洗掉一次，模型只能把刚读过的文档重读一遍。
+ */
+export function isOverBudget(messages: StoredMessage[], threshold = compactThreshold()): boolean {
   return estimateChars(messages) > threshold;
 }
 

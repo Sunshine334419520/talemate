@@ -47,8 +47,9 @@ const DEFAULT_AGENTS: AgentDef[] = [
     id: "planner",
     name: "规划",
     description:
-      "The structural designer. Turns source material into a usable plan: chapter beat sheets, volume or sequence outlines, or cascading restructures across the design docs.\n" +
-      "Use this when you need a chapter's beat plan (细纲 / 节拍), a volume outline (design/outline/vol_<N>.md) or a sequence outline (design/outline/vol_<N>/s<M>.md) built from the existing docs, or when a setting change must cascade and re-consolidate several docs — jobs that require reading the full material and returning one consistent structure.",
+      "The structural designer. Turns source material into a usable plan: chapter beat sheets, or cascading restructures across the design docs.\n" +
+      "Use this when you need a chapter's beat plan (design/outline/plan_ch<N>.md) built from the current design slices, or when a setting change must cascade and re-consolidate several docs — jobs that require reading the full material and returning one consistent structure.\n" +
+      "Do NOT use it for the design docs themselves. The outlines — volume (卷纲) and sequence (序列纲) — are the editor's own work with the user, exactly like every other design doc: propose it, the user reads it, then apply it.",
     mode: "subagent",
     tools: ["read-design", "list-designs", "skill", "webfetch", "websearch"],
     system: PLANNER_SYSTEM,
