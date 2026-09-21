@@ -75,6 +75,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | Agents, tools, skills — how to classify and add them | `docs/agents.md` |
 | The four design layers; two-phase writes; chapter production | `docs/design-docs.md` |
 | Character cards | `docs/characters.md` |
+| Volumes and sequences; why there is no whole-book outline | `docs/outline.md` |
 | What isn't built yet | `docs/roadmap.md` |
 | How prompts are organised and written | `prompts/README.md` |
 

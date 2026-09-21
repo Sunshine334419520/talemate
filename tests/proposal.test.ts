@@ -43,9 +43,52 @@ const core = [
   "",
 ].join("\n");
 
+/**
+ * 整篇散文、只有 H1——序列纲的形状。它**不该被逼着分格**，但字节必须摆得出来：
+ * 从前这种草稿被 reviewable 直接拒收，理由是"渲染成 0 格 = 用户看到空白页"。
+ * 现在改成兜底成"整篇一格"，拒绝的理由就没了。
+ */
+const prose = [
+  "# 序列 2 · 夜宴",
+  "",
+  "主角混进沈家的夜宴，为的是拿到那本账册。",
+  "",
+  "写的时候：别太顺，中间至少失手一次。",
+  "",
+  "预估 5-7 万字。",
+  "",
+].join("\n");
+
+/** 一份卷纲：五格里填了两格，其余留空。 */
+const vol = [
+  "# 卷 2 · 内城",
+  "",
+  "## 本卷在全局的位置",
+  "主角从外围走到台面上。",
+  "",
+  "## 卷末状态",
+  "从没人知道他在查，变成沈家知道他在查。",
+  "",
+].join("\n");
+
+/**
+ * 提案的**唯一不变量**：会落盘的字节，用户必须都看得到。逐行查，缺哪行报哪行
+ * （标题行按它的标题文本算——标题在提案里就是那个编号标签）。
+ */
+function unseenLines(rendered: string, content: string): string[] {
+  return content
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => {
+      const heading = l.match(/^#{1,6}\s+(.*)$/);
+      return heading ? !rendered.includes(heading[1]) : !rendered.includes(l);
+    });
+}
+
 describe("itemsOf · 一个函数、两个数据源", () => {
   test("有规范登记的文件：按规范的小节与**规范顺序**取，不按正文顺序", () => {
-    expect(specFor("core.md")?.id).toBe("core");
+    expect(specFor("core.md")?.layer).toBe("core");
     expect(itemsOf("core.md", core).map((i) => i.heading)).toEqual([
       "题材 · 频道",
       "一句话简介",
@@ -77,6 +120,26 @@ describe("itemsOf · 一个函数、两个数据源", () => {
     expect(itemsOf("outline/plan_ch3.md", "## 节拍\n1. 醒来\n").map((i) => i.heading)).toEqual(["节拍"]);
   });
 
+  test("情节层按**路径模式**登记：同一个层下的卷纲与序列纲靠模式分开，章计划仍无规范", () => {
+    expect(specFor("outline/vol_2.md")?.title).toBe("卷纲");
+    expect(specFor("outline/vol_2/s3.md")?.title).toBe("序列纲");
+    expect(specFor("outline/vol_2.md")?.kind).toBe("doc");
+    expect(specFor("outline/plan_ch3.md")).toBeUndefined();
+    expect(specFor("outline/vol_.md")).toBeUndefined(); // 模式不放水：卷号必须是数字
+  });
+
+  test("卷纲按它的五格取；序列纲不分格，一格都没有", () => {
+    expect(itemsOf("outline/vol_2.md", vol).map((i) => i.heading)).toEqual([
+      "本卷在全局的位置",
+      "本卷目标与阻力",
+      "本卷的情绪曲线",
+      "卷末状态",
+      "本卷的序列",
+    ]);
+    expect(specFor("outline/vol_2/s2.md")?.sections).toEqual([]);
+    expect(itemsOf("outline/vol_2/s2.md", prose)).toEqual([]); // 交给 reviewOf 兜底成"整篇一格"
+  });
+
   test("规范之外的小节也列出来（凡要落盘的字节用户都得看得到）", () => {
     const extra = "# 核心设定\n\n## 题材 · 频道\n男频\n\n## 自创的一格\n谁也没规定过这个。\n";
     const items = itemsOf("core.md", extra);
@@ -86,21 +149,41 @@ describe("itemsOf · 一个函数、两个数据源", () => {
 });
 
 describe("labelOf · 对用户不出现路径", () => {
-  test("有规范 → 层名；没有 → 文档自己的 H1", () => {
+  test("层的规范 → 层名；文档的规范与开放文档 → 文档自己的 H1", () => {
     expect(labelOf("core.md", core)).toBe("核心层");
     expect(labelOf("wiki/world.md", "# x\n")).toBe("世界层");
     expect(labelOf("characters/林晚.md", card)).toBe("角色：林晚");
     expect(labelOf("wiki/岛屿地图.md", "# 岛屿地图\n")).toBe("岛屿地图");
+    // 卷纲/序列纲的 H1（「卷 2 · 内城」）比"卷纲"这三个字有信息量
+    expect(labelOf("outline/vol_2.md", vol)).toBe("卷 2 · 内城");
+    expect(labelOf("outline/vol_2/s2.md", prose)).toBe("序列 2 · 夜宴");
+    expect(labelOf("outline/vol_2/s2.md", "没有标题的草稿")).toBe("序列纲"); // 无 H1 → 退回规范名
   });
 });
 
 describe("reviewable · 防「渲染成空页却照样落盘」", () => {
-  test("没标题 / 有规范却没按规范组织 → 不能审阅", () => {
+  test("规范规定了小节的文档：没按规范组织 → 不能审阅（几格全待定，散文却会原样落盘）", () => {
     expect(reviewable("core.md", core)).toBe(true);
-    expect(reviewable("wiki/x.md", "## A\n内容")).toBe(true);
     expect(reviewable("core.md", "整段散文，一个标题都没有。")).toBe(false);
-    expect(reviewable("wiki/x.md", "整段散文，一个标题都没有。")).toBe(false);
-    expect(reviewable("core.md", "## 随便一个标题\n内容")).toBe(false); // 四格全空，正文却会原样落盘
+    expect(reviewable("core.md", "## 随便一个标题\n内容")).toBe(false);
+    expect(reviewable("wiki/world.md", prose)).toBe(false); // 规范按文件登记，wiki/world.md 也算有规范
+    expect(reviewable("outline/vol_2.md", vol)).toBe(true); // 卷纲走同一条判据
+    expect(reviewable("outline/vol_2.md", "整段散文，一个标题都没有。")).toBe(false);
+  });
+
+  test("规范说「不分格」的文档：落到开放文档那条判据（空 sections 不许把提案一律拒掉）", () => {
+    // 序列纲的 sections 为空。少了 reviewable 里 `spec.sections.length` 那一半，`[].some()` 恒为
+    // false，**所有序列纲提案都会提不出来**——这条用例就是钉住那一半的。
+    expect(specFor("outline/vol_2/s2.md")?.sections).toEqual([]);
+    expect(reviewable("outline/vol_2/s2.md", prose)).toBe(true);
+    expect(reviewable("outline/vol_2/s2.md", "（待定）")).toBe(false); // 整篇只有占位：什么都看不到
+    expect(reviewable("characters/林晚.md", card)).toBe(true); // 角色卡同走这条路
+  });
+
+  test("无规范登记的文档：有 level ≥ 2 标题就逐格，没有就整篇一格——两种都看得到字节", () => {
+    expect(reviewable("wiki/x.md", "## A\n内容")).toBe(true);
+    expect(reviewable("wiki/岛屿地图.md", prose)).toBe(true);
+    expect(reviewable("outline/plan_ch3.md", prose)).toBe(true);
   });
 });
 
@@ -147,5 +230,58 @@ describe("renderProposal", () => {
     expect(text).toContain("1. 基本档案");
     expect(text).toContain("空姐，与江屿困同一座岛");
     expect(text).toContain("第 2、3、4、5 格还没定"); // 只有基本档案填了，其余四格是（待定）
+  });
+
+  test("序列纲（规范说「不分格」）→ 整篇一格摆出来，要落盘的字节一字不少", () => {
+    const text = renderProposal({ name: "outline/vol_2/s2.md", content: prose });
+
+    expect(text).toContain("提案 · 序列 2 · 夜宴"); // 标签取文档自己的 H1
+    expect(text).toContain("整篇草稿 · 1 格");
+    expect(text).toContain("1. 全文");
+    expect(unseenLines(text, prose)).toEqual([]); // 兜底存在的全部理由
+    expect(text).not.toContain(".md");
+  });
+
+  test("卷纲走逐格：五格齐出，没填的点成（待定）", () => {
+    const text = renderProposal({ name: "outline/vol_2.md", content: vol });
+
+    expect(text).toContain("提案 · 卷 2 · 内城");
+    expect(text).toContain("1. 本卷在全局的位置");
+    expect(text).toContain("主角从外围走到台面上。");
+    expect(text).toContain("4. 卷末状态");
+    expect(text).toContain("第 2、3、5 格还没定"); // 只填了位置与卷末状态
+    expect(unseenLines(text, vol)).toEqual([]);
+  });
+
+  test("有规范登记的层：`##` 之外的字节（文档标题、导语）也摆出来——从前它们是隐形落盘", () => {
+    const text = renderProposal({ name: "core.md", content: core });
+
+    expect(text).toContain("另有不在小节里的部分");
+    expect(text).toContain("不在任何小节里");
+    expect(text).toContain("核心设定"); // core 的 H1，规范里没有这一格，却会原样写入
+    expect(unseenLines(text, core)).toEqual([]);
+  });
+
+  test("不在格里的部分改了也要标★（否则改稿会漏看一处）", () => {
+    const v2 = core.replace("# 核心设定", "# 核心设定（改过）");
+    const text = renderProposal({ name: "core.md", content: v2, previous: core });
+    expect(text).toMatch(/不在任何小节里\s*★本版改动/);
+  });
+
+  test("正文中间的 `#` 会截断 `##` 的区块——被漏掉的那段也不许隐形（uncoveredText 取补集的原因）", () => {
+    const mid = "# 标题\n\n## A\n甲。\n# 半路冒出来的标题\n乙。\n## B\n丙。\n";
+    const text = renderProposal({ name: "wiki/x.md", content: mid });
+
+    // 「甲。」进 A 格；「乙。」在区块之外、又不在开头——只取"首个 ## 之前"是捞不到它的
+    expect(text).toContain("乙。");
+    expect(unseenLines(text, mid)).toEqual([]);
+  });
+
+  test("整篇一格重提时照样标出「本版改动」（diff 不被兜底打断）", () => {
+    const v2 = prose.replace("预估 5-7 万字。", "预估 3-4 万字。");
+    const text = renderProposal({ name: "outline/vol_2/s2.md", content: v2, previous: prose });
+
+    expect(text).toMatch(/全文\s*★本版改动/);
+    expect(text).toContain("已替换上一版提案");
   });
 });

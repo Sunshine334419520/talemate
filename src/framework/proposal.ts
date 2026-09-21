@@ -8,7 +8,7 @@
  * 离散的创作抉择走 ask-user，不走这里。
  */
 import type { DesignSpec } from "./design_spec";
-import { DESIGN_SPECS } from "./design_spec";
+import { DESIGN_SPECS, DOC_SPECS } from "./design_spec";
 import { LAYERS } from "./layers";
 import { getSection, listHeadings } from "./markdown";
 import { isFiller } from "./report";
@@ -29,12 +29,16 @@ export interface ProposalItem {
 }
 
 /**
- * 这一篇有没有结构规范。规范按**文件**登记（core.md / wiki/world.md / outline/outline.md）——
- * 精确匹配，不做目录/前缀推断：`characters` 的 file 是目录 `characters/`，永远匹配不上，
- * 于是角色卡、`wiki/<题>.md` 专题页、`plan_ch<N>.md` 细纲自动落到 itemsOf 的兜底分支。
+ * 这一篇有没有结构规范。**两个匹配键，先精确、后模式**：
+ *
+ *   层的规范（`DESIGN_SPECS`）按**文件名精确**匹配（core.md / wiki/world.md），不做目录/前缀
+ *   推断——`characters` 与 `outline` 的 file 是目录（以 "/" 结尾），永远匹配不上，于是角色卡、
+ *   `wiki/<题>.md` 专题页、`plan_ch<N>.md` 细纲自动落到 `itemsOf` 的兜底分支。
+ *   文档的规范（`DOC_SPECS`）按**路径模式**匹配（卷纲 / 序列纲）——同一个层下有几种文档时，
+ *   只有模式分得开它们。
  */
 export function specFor(name: string): DesignSpec | undefined {
-  return Object.values(DESIGN_SPECS).find((s) => s.file === name);
+  return Object.values(DESIGN_SPECS).find((s) => s.file === name) ?? DOC_SPECS.find((d) => d.match.test(name));
 }
 
 /**
@@ -67,23 +71,83 @@ export function itemsOf(name: string, content: string): ProposalItem[] {
   return [...items, ...own.filter((o) => !known.has(o.heading))];
 }
 
+/** 整篇没有 level ≥ 2 标题时，那一格的格名。 */
+const WHOLE_DOC_HEADING = "全文";
+
 /**
- * 这份草稿能不能逐格审阅。不能 = 用户会看到一页「待定」却照样落盘——最难发现的那类坑：
- *   - 正文里一个标题都没有（渲染出 0 格）
- *   - 有规范，但内容没按规范的小节组织（几格全显示"待定"，而正文其实是整段散文，会原样落盘）
+ * 一份草稿里**没有落进任何格**的字节——它们照样写进文件，所以照样得摆给用户看。
+ *
+ * 典型是文档标题行和 `##` 之前的导语。但不能简单写成"首个 `##` 之前那一段"：markdown 的区块
+ * 语义是"到下一个 level ≤ 它的 heading 之前"（见 `markdown.ts`），所以正文中间冒出一个 `#`
+ * 时，被漏掉的是它自己以及它之后到下一个 `##` 之间的内容——根本不在开头。按"被覆盖的行取补集"
+ * 算，两种情况一起覆盖住。
  */
-export function reviewable(name: string, content: string): boolean {
-  if (!ownItems(content).length) return false;
-  const spec = specFor(name);
-  if (!spec) return true;
-  return spec.sections.some((s) => !isBlankBody(getSection(content, s.heading).body ?? ""));
+function uncoveredText(content: string): string {
+  const lines = content.split("\n");
+  const covered = lines.map(() => false);
+  for (const h of listHeadings(content, 2)) {
+    for (let i = h.line; i < h.end; i++) covered[i] = true;
+  }
+  return lines
+    .filter((_, i) => !covered[i])
+    .join("\n")
+    .trim();
 }
 
-/** 展示用标签：有规范 → 层名；没有 → 文档自己的 H1 标题。**都不出现文件路径。** */
+/** 审阅视图：格 + 不在格里的字节。**两者合起来 == 会落盘的全部内容**。 */
+interface Review {
+  items: ProposalItem[];
+  /** 不在任何格里的部分；整篇没有格时为空——那时整篇就是那一格 */
+  loose: string;
+}
+
+/**
+ * 取这一篇的审阅视图。
+ *
+ * **有格**：按 `itemsOf` 分格，另把不在格里的字节单独捞出来（`uncoveredText`）。从前渲染只认
+ * `items[].body`，这些字节被整个跳过——于是"用户看过的字节 == 落盘的字节"在三个主层上是假的：
+ * 模型成稿时随手加的 `# 标题` 和导语会隐形落盘。
+ *
+ * **无格**：整篇兜底成"全文"那一格。序列纲这类文档整篇散文就是正当形状，硬逼它分格是削足适履；
+ * 有了兜底，拒绝它的理由（"会渲染成 0 格"）也就没了。两种文档走得到这里：**无规范登记的**
+ * （`wiki/<题>.md`）与**规范说"不分格"的**（`sections` 为空的序列纲、角色卡）——后者的
+ * `itemsOf` 落到 `ownItems`，整篇散文时同样为空。
+ */
+function reviewOf(name: string, content: string): Review {
+  const items = itemsOf(name, content);
+  if (items.length) return { items, loose: uncoveredText(content) };
+  return { items: [{ heading: WHOLE_DOC_HEADING, body: content.trim() }], loose: "" };
+}
+
+/**
+ * 这份草稿能不能审阅。不能 = 用户看到一页空白（或一页全「待定」）却照样落盘——最难发现的那类坑。
+ *
+ * 判据是"**字节摆得到用户眼前吗**"，不是"分不分格"：
+ *   - 有规范登记的层：内容得按规范的小节组织（否则几格全「待定」，整段散文却原样落盘）
+ *   - 无规范登记的文档：整篇散文也放行——它会被 `reviewItems` 兜底成"整篇一格"，照样看得见
+ */
+export function reviewable(name: string, content: string): boolean {
+  const spec = specFor(name);
+  // 规范**规定了小节**才走这条：至少得有一格真的填了。几格全显示「待定」、而正文原样落盘是最难
+  // 发现的那类坑，这种**不放行**。
+  // `sections` 为空（角色卡、序列纲）意思是"这份文档不分格"，落到下面那条判据去——少了
+  // `spec.sections.length` 这一半，`[].some()` 恒为 false，会把它们一律拒掉。
+  if (spec && spec.sections.length) {
+    return spec.sections.some((s) => !isBlankBody(getSection(content, s.heading).body ?? ""));
+  }
+  // 有 level ≥ 2 标题就逐格，整篇没有标题就整篇一格（见 reviewOf）——两种都看得到字节。
+  // 唯独整篇都是空行/占位不算：那不是"看得到"，是什么都没得看。
+  return ownItems(content).length > 0 || !isBlankBody(content);
+}
+
+/**
+ * 展示用标签：**层的**规范 → 层名（"核心层"）；**文档的**规范与开放文档 → 文档自己的 H1。
+ * 卷纲/序列纲都有自己的 H1（`# 卷 2 · 内城`），比"卷纲"这三个字有信息量。**都不出现文件路径。**
+ */
 export function labelOf(name: string, content: string): string {
   const spec = specFor(name);
-  if (spec) return LAYERS.find((l) => l.id === spec.id)?.title ?? spec.title;
-  return listHeadings(content, 1)[0]?.title || "草稿";
+  if (spec?.kind === "layer") return LAYERS.find((l) => l.id === spec.layer)?.title ?? spec.title;
+  return listHeadings(content, 1)[0]?.title || spec?.title || "草稿";
 }
 
 /** 这一格是不是还没填（空 / 只有（待定…）占位 / 只有引用块引导语）。 */
@@ -124,18 +188,30 @@ export function renderProposal(v: ProposalView): string {
     return out.join("\n");
   }
 
-  const items = itemsOf(v.name, v.content);
-  const prevItems = v.previous !== undefined ? itemsOf(v.name, v.previous) : undefined;
+  const review = reviewOf(v.name, v.content);
+  const prevReview = v.previous !== undefined ? reviewOf(v.name, v.previous) : undefined;
+  const items = review.items;
   const prevBody = (heading: string): string | undefined =>
-    prevItems?.find((p) => p.heading === heading)?.body;
+    prevReview?.items.find((p) => p.heading === heading)?.body;
+  const looseChanged = prevReview !== undefined && prevReview.loose !== review.loose;
 
   const blanks = items.map((it, i) => (isBlankBody(it.body) ? i + 1 : 0)).filter(Boolean);
-  const head = [`整篇草稿 · ${items.length} 格`, blanks.length ? `${blanks.length} 格待定` : undefined]
+  const head = [
+    `整篇草稿 · ${items.length} 格`,
+    blanks.length ? `${blanks.length} 格待定` : undefined,
+    review.loose ? "另有不在小节里的部分" : undefined,
+  ]
     .filter(Boolean)
     .join(" · ");
   out.push(head);
   if (v.previous !== undefined) out.push("已替换上一版提案（标★的是本版改动过的格）。");
   out.push("");
+  // 不在格里的字节先摆：它们在文档里的位置也在格之前
+  if (review.loose) {
+    out.push(`不在任何小节里${looseChanged ? "　★本版改动" : ""}（没有格子，但同样会原样写入）：`);
+    out.push(...indentLines(review.loose));
+    out.push("");
+  }
 
   items.forEach((it, i) => {
     const changed = prevBody(it.heading) !== undefined && prevBody(it.heading) !== it.body;

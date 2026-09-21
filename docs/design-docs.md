@@ -2,8 +2,8 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / design_ops / proposal / layers）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-09-19 · 层元信息在 `framework/layers.ts`，结构规范在 `framework/design_spec.ts`
-> 相邻：`characters.md`（人物层单独一份）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
+> **对齐代码**：2026-09-20 · 层元信息在 `framework/layers.ts`，结构规范在 `framework/design_spec.ts`
+> 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
 
@@ -14,7 +14,7 @@
 | **核心层** | `design/core.md` | 极少变、一改牵全身、用户必须拍板 | **常驻**注入 |
 | **世界层** | `design/wiki/world.md` + `wiki/<题>.md` | 慢变、追加为主；长尾拆专题页 | 总纲**常驻**；专题页按需读 |
 | **人物层** | `design/characters/<名>.md` | 慢变 | 按需读（见 `characters.md`） |
-| **情节层** | `design/outline/outline.md` + `plan_ch<N>.md` + `vol_*.md` | 快变、最局部 | 按需读（当前章/卷切片） |
+| **情节层** | `design/outline/vol_<N>.md`（卷纲）+ `vol_<N>/s<序号>.md`（序列纲） | 快变、最局部 | 按需读（当前卷 / 序列切片） |
 
 **常驻只有两份**：`core.md` 与 `wiki/world.md`（`RESIDENT_LAYERS` 标的是层 id，路径由 `DESIGN_SPECS` 现取）。其余按需 `read-design`。常驻注入只给可见的 primary（editor）。
 
@@ -48,17 +48,18 @@ apply-design（只落提案那一份，**不接受正文**）
 
 | 参数 | 用于 | 路径 |
 |---|---|---|
-| `layer` | core / world / outline 三个**主文档是一个文件**的层 | 由 `DESIGN_SPECS[layer].file` 定，**模型拼不出错** |
-| `name` | 真正开放的文档：`wiki/<题>.md`、`outline/plan_ch<N>.md`、`characters/<名>.md` | 模型自报 `design/` 相对路径 |
+| `layer` | core / world 两个**主文档是一个文件**的层 | 由 `DESIGN_SPECS[layer].file` 定，**模型拼不出错** |
+| `name` | 其余全部：`outline/vol_<N>.md`、`outline/vol_<N>/s<序号>.md`、`wiki/<题>.md`、`outline/plan_ch<N>.md`、`characters/<名>.md` | 模型自报 `design/` 相对路径 |
 
 两条守卫：
 
-- **`layer` 与 `name` 互斥**，且 `characters` **不是**可写的 layer（它的 file 是目录）——给了会指回 `name:"characters/<名>.md"`。
+- **`layer` 与 `name` 互斥**，且 `characters` 与 `outline` **都不是**可写的 layer（它们的 file 是目录）——给了会指回 `name:"characters/<名>.md"` / `name:"outline/vol_<N>.md"`。
 - **某一层的主文档不许写到别处**：给 `name:"world.md"` 会被拒并把正确路径给回去让它自纠。起因是实测模型把世界层写成 `design/world.md`，而常驻表只认 `DESIGN_SPECS.world.file`（今天就是 `wiki/world.md`）——**写错位置的世界层不会被常驻注入，等于白写且用户看不出来**。
 
 ## 文档级的守卫
 
-- **可审阅性**：正文里没有小节标题（或没按该层规范组织）→ 拒绝提案。否则用户会看到一页空白却照样落盘。
+- **可审阅性**：判据是"**字节摆得到用户眼前吗**"，不是"分不分格"。有规范登记的层，没按该层规范的小节组织 → 拒绝提案（否则几格全显示「待定」，整段散文却照样落盘）；**无规范登记的文档放行**——整篇散文会被兜底成"整篇一格"摆出来。这一条是 2026-09-20 改的：原先是"没有 `##` 一律拒"，把序列纲这类"整篇散文才是正当形状"的文档也一起拒了。
+- **不在任何格里的字节也单独摆一段**（`proposal.uncoveredText`）：文档标题行、`##` 之前的导语。从前渲染只认 `items[].body`，这些字节被整个跳过——于是"用户看过的字节 == 落盘的字节"在**三个主层上是假的**：模型成稿时随手加的 `# 标题` 和导语会隐形落盘。同一次改的。
 - **角色卡的 `##` 陷阱**：`proposal.ownItems` 取**最浅**标题层。角色卡上冒出任意一个 `##`，卡里**所有** `###` 都从逐格审阅里消失。所以 `propose-design` 与 `append-design` 对角色卡都拒收 `##`（`cardHeadingError`）——详见 `characters.md`。
 - **删除**：`remove-design-section` 与 `remove-character` 内置 `search-designs` 引用检查，命中结果摆进 confirm。
 
@@ -90,9 +91,9 @@ flowchart TD
 | 文件 | 职责 |
 |---|---|
 | `framework/layers.ts` | 层的**显示名与顺序**（id / title）＋常驻表（标的是层 id）。**路径不在这里**——见 `design_spec.ts` |
-| `framework/design_spec.ts` | 每层的结构规范（写什么 / 别写什么 / 写成什么样）+ 成稿工作法 |
+| `framework/design_spec.ts` | 结构规范的**两张表**：`DESIGN_SPECS` 按层（`file` 精确匹配）+ `DOC_SPECS` 按路径模式（卷纲 / 序列纲）。每份规范 = 写什么 / 别写什么 / 写成什么样 + 成稿工作法 |
 | `framework/design_ops.ts` | **写盘唯一实现**：`write`/`edit`/`append`/`cut`/`drop` 五种 op + confirm |
-| `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `reviewable` / `renderProposal`） |
+| `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `specFor` / `reviewable` / `renderProposal`）。**`specFor` 先精确后模式**——层的规范按文件名，文档的规范按路径 |
 | `framework/markdown.ts` | 区块手术（`getSection` / `replaceSection` / `appendBlock` / `removeSection` / `listHeadings`） |
 | `framework/anchor.ts` | 常驻注入 + `list-designs` 的索引 |
 | `tool/design_tools.ts` | 上面这些的工具壳（校验与守卫都在这里） |

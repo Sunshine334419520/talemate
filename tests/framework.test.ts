@@ -20,6 +20,7 @@ import {
   removeDesignSectionTool,
 } from "../src/tool/design_tools";
 import { defineTool } from "../src/tool/define";
+import { designSpecTool } from "../src/tool/framework_tools";
 import { ToolRegistry } from "../src/tool/registry";
 import { executeToolPart } from "../src/tool/runner";
 import type { PendingProposal, ToolContext } from "../src/core/types";
@@ -159,6 +160,29 @@ describe("design-spec（结构规范）", () => {
     expect(core).not.toContain("货架与读者预期契约");
     // 角色层是一角色一卡，不套通篇形制（它的字段规范在 characters.ts）
     expect(renderDesignSpec("characters")).not.toContain("通篇：");
+  });
+
+  test("情节层 = 卷纲 + 序列纲两种文档；「整本大纲」连同它的五格一起没了", () => {
+    const outline = renderDesignSpec("outline");
+    // 一次调用取全这一层的两个尺度
+    expect(outline).toContain("## 本卷在全局的位置");
+    expect(outline).toContain("## 卷末状态");
+    expect(outline).toContain("## 本卷的序列");
+    expect(outline).toContain("name: outline/vol_<N>.md");
+    expect(outline).toContain("name: outline/vol_<N>/s<序号>.md");
+    expect(outline).toContain("整篇散文，不分小节"); // 序列纲不分格
+    // 旧「整本大纲」的五格随文档一起删掉——它们各自有更好的家（core / 卷纲 / 状态层）
+    expect(outline).not.toContain("## 一句话主线");
+    expect(outline).not.toContain("## 伏笔与回收登记");
+    // 情节层的主文档不是一个文件，所以不给 layer 写入口（给了会写到目录名上）
+    expect(outline).not.toContain("layer: outline");
+  });
+
+  test("design-spec 的 name 入口：登记过的给规范，没登记的明说自由成稿", async () => {
+    expect((await designSpecTool.execute({ name: "outline/vol_1.md" })).output).toContain("## 本卷的序列");
+    expect((await designSpecTool.execute({ name: "outline/vol_1/s2.md" })).output).toContain("整篇散文，不分小节");
+    expect((await designSpecTool.execute({ name: "wiki/岛屿地图.md" })).output).toContain("没有单独登记结构规范");
+    expect((await designSpecTool.execute({ layer: "nope" })).output).toContain("layer 应为");
   });
 });
 
@@ -569,10 +593,15 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(after).toContain("## 规则与秩序"); // 标题也没被吃掉
   });
 
-  test("守卫：没标题的正文 / section 带标题行 都被拒", async () => {
+  test("守卫：无规范登记的散文放行（兜底成整篇一格），有规范登记的散文仍被拒", async () => {
     const ctx = makeCtx(pid);
+    // wiki 专题页 / 序列纲这类：整篇散文是正当形状，摆成"整篇一格"用户照样看得到字节
     const flat = await proposeDesignTool.execute({ name: "wiki/x.md", content: "整段散文，一个标题都没有。" }, ctx as never);
-    expect(flat.output).toContain("没法逐格审阅");
+    expect(flat.output).toContain("提案已交给用户审阅");
+
+    // 有规范登记的层：同样的散文会被渲染成"四格全（待定）"，正文却照样落盘——这才是要拒的
+    const layered = await proposeDesignTool.execute({ layer: "core", content: "整段散文，一个标题都没有。" }, ctx as never);
+    expect(layered.output).toContain("没法逐格审阅");
 
     await writeDesign(pid, DOC2, "# X\n\n## 第一节\n（待定）\n");
     const headed = await proposeDesignTool.execute({ name: DOC2, content: "## 第一节\n正文", section: "第一节" }, ctx as never);
@@ -635,6 +664,15 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
       ctx as never,
     );
     expect(b.output).toContain("只能给一个");
+  });
+
+  test("守卫：outline 也不再是可写的 layer——一卷一个文件，改走 name", async () => {
+    const ctx = makeCtx(pid);
+    const r = await proposeDesignTool.execute({ layer: "outline", content: "## 随便\n内容" }, ctx as never);
+    // 放行的话 DESIGN_SPECS["outline"].file 是目录 "outline/"，会往目录名上写盘
+    expect(r.output).toContain("layer 只收 core / world");
+    expect(r.output).toContain('name:"outline/vol_<N>.md"'); // 自愈文案把正确路径给回去
+    expect(ctx.pending.size).toBe(0); // 没登记任何提案
   });
 });
 

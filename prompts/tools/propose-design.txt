@@ -5,9 +5,11 @@ Name the target with layer (core | world | outline — the path is fixed by the 
 document, with name (topic pages, chapter plans, character cards — characters/<name>.md is how a
 character card is created; there is no character-specific tool for that).
 
-Pass section to rewrite one section; omit it for a whole document. The draft must carry the layer's
-own section headings (see design-spec) — a draft with no headings is refused, since the user would
-be shown a blank page. Fields you cannot fill yet get （待定）.
+Pass section to rewrite one section; omit it for a whole document. A draft for one of the three main
+layers must carry that layer's own section headings (see design-spec) — without them the user would
+be shown a page of blanks while the prose landed anyway, so it is refused. Other documents (topic
+pages, sequence outlines, character cards) may be plain prose: a draft with no `##` is shown whole,
+as a single block. Fields you cannot fill yet get （待定）.
 
 **The draft IS the file**: on approval it is written byte for byte. So the content holds document
 text and nothing else — no notes to the user ("暂用名，待你定"), no rationale ("这句是配的试镜台词，

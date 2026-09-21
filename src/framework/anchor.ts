@@ -8,9 +8,10 @@
  */
 import { readDesign, listDesigns } from "../storage/project";
 import { cardIdentity, nameFromPath, pendingRequiredLabels, tailSections } from "./characters";
-import { listHeadings } from "./markdown";
+import { isFiller, listHeadings } from "./markdown";
 import { LAYERS, RESIDENT_LAYERS } from "./layers";
 import { DESIGN_SPECS } from "./design_spec";
+import { specFor } from "./proposal";
 
 /** 「另有」最多列几个自由小节标题——超出截断，免得一行吃掉整个名单。 */
 const TAIL_LIMIT = 5;
@@ -33,6 +34,19 @@ function characterLine(content: string): string {
     ? `；另有：${tail.slice(0, TAIL_LIMIT).join("、")}${tail.length > TAIL_LIMIT ? "…" : ""}`
     : "";
   return `${identity}（${status}${extra}）`;
+}
+
+/**
+ * 整篇散文文档的"一句话"：全文第一句有效内容（跳过标题行、空行、占位、引用）。
+ * 序列纲这类文档没有小节可铺，首句才是它在目录里的信号。
+ */
+function proseLead(content: string): string {
+  const line = content
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith("#") && !isFiller(l));
+  if (line === undefined) return "空";
+  return line.length > 40 ? `${line.slice(0, 40)}…` : line;
 }
 
 /** 每个文档的一级小节（list-designs 工具返回；用于一眼看出有哪些材料与填充度）。按目录分组。 */
@@ -58,6 +72,9 @@ export async function buildDesignIndex(projectId: string): Promise<string> {
       const content = await readDesign(projectId, f);
       const fileIndent = g ? "    " : "  ";
       const headIndent = g ? "      " : "    ";
+      // 组名已经单独占了一行，行内不再重复这个前缀——情节层是三层路径（outline/vol_1/s1.md），
+      // 重复一次就吃掉半行。
+      const label = g && f.startsWith(`${g}/`) ? f.slice(g.length + 1) : f;
       // 角色卡一人一行（必有齐没齐 + 自由长尾有哪些），不铺必有格的标题——排章时要看的是
       // "这个人能不能写了、他卡上有什么"。名单**现算**（读卡），不存派生文件：副本会脱节，
       // 曾经那个 _index.md 就漏过。
@@ -68,15 +85,22 @@ export async function buildDesignIndex(projectId: string): Promise<string> {
       }
       if (f === "characters/_index.md") continue; // 2026-09-18 删掉的派生总表；老项目里可能还留着，不再呈现
       if (content === undefined) {
-        lines.push(`${fileIndent}${f}（缺）`);
+        lines.push(`${fileIndent}${label}（缺）`);
+        continue;
+      }
+      // 规范说"这份文档不分格"（sections 为空，如序列纲）→ 目录也只给一行：它的**首句**才是信号，
+      // 小节标题不是。与角色卡一人一行同一个道理——目录要廉价，正文才昂贵。
+      const spec = specFor(f);
+      if (spec !== undefined && spec.sections.length === 0) {
+        lines.push(`${fileIndent}${label}（${proseLead(content)}）`);
         continue;
       }
       const heads = listHeadings(content, 2);
       if (!heads.length) {
-        lines.push(`${fileIndent}${f}（空/无小节）`);
+        lines.push(`${fileIndent}${label}（空/无小节）`);
         continue;
       }
-      lines.push(`${fileIndent}${f}:`);
+      lines.push(`${fileIndent}${label}:`);
       for (const h of heads) lines.push(`${headIndent}- ${h.title}`);
     }
   }

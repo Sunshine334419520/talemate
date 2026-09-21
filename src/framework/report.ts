@@ -51,13 +51,36 @@ function buildGuidance(core: string | undefined, world: string | undefined): str
   return `${first.label}还差${first.missing.map((h) => `「${h}」`).join("、")}——现在聊聊，还是先记着？`;
 }
 
+/** 卷号：`outline/vol_<N>.md` → N；不是卷纲就 undefined。 */
+function volumeNumber(rel: string): number | undefined {
+  const m = rel.match(/^outline\/vol_(\d+)\.md$/);
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * 大纲现状：**现算**。情节层没有"整本大纲"这个文档（见 `docs/outline.md`），能报的是走到哪一卷——
+ * 卷号从已有的文件列表里挑，再读最新那卷的「本卷在全局的位置」首句。
+ * 卡片仍只出现层名与格名，不出现路径。
+ */
+async function outlineBrief(projectId: string, designPaths: string[]): Promise<string> {
+  const volumes = designPaths
+    .map(volumeNumber)
+    .filter((n): n is number => n !== undefined)
+    .sort((a, b) => a - b);
+  const latest = volumes[volumes.length - 1];
+  if (latest === undefined) return "（空）";
+  const seqs = designPaths.filter((p) => p.startsWith(`outline/vol_${latest}/`)).length;
+  const doc = await readDesign(projectId, `outline/vol_${latest}.md`);
+  const lead = firstLine(doc, "本卷在全局的位置");
+  return `✓ 第 ${latest} 卷 / 共 ${volumes.length} 卷${seqs ? ` · ${seqs} 个序列` : ""}：${lead ?? "（已有一版）"}`;
+}
+
 /** 生成四层现状文本（给 CLI 进入空间 / 或会话内 /status 复用）。 */
 export async function buildProjectStatus(projectId: string): Promise<string> {
   const meta = await loadProjectMeta(projectId).catch(() => undefined);
-  const [core, world, outline, designPaths] = await Promise.all([
+  const [core, world, designPaths] = await Promise.all([
     readDesign(projectId, "core.md"),
     readDesign(projectId, "wiki/world.md"),
-    readDesign(projectId, "outline/outline.md"),
     listDesigns(projectId),
   ]);
 
@@ -72,7 +95,7 @@ export async function buildProjectStatus(projectId: string): Promise<string> {
   lines.push(`◇ 核心设定  ${layerBrief(core !== undefined, firstLine(core, "一句话简介"), "（已有一版）")}`);
   lines.push(`◇ 世界观    ${layerBrief(world !== undefined, firstLine(world, "空间与舞台"), "（已有一版）")}`);
   lines.push(`◇ 角色现状  ${charBrief}`);
-  lines.push(`◇ 大纲现状  ${layerBrief(outline !== undefined, firstLine(outline, "一句话主线"), "（已有一版）")}`);
+  lines.push(`◇ 大纲现状  ${await outlineBrief(projectId, designPaths)}`);
 
   const guidance = buildGuidance(core, world);
   if (guidance) {

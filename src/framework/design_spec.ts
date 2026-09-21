@@ -1,7 +1,15 @@
 /**
- * design-spec：每层"结构规范"——该层目标文档该有哪些小节、每格装什么、成稿做法。
+ * design-spec：结构规范——哪份文档该有哪些小节、每格装什么、成稿做法。
  *
- * - 懒建：目标文档平时不存在，用户要完善某层时才取规范、成稿落盘。
+ * **两张表，两个匹配键**：
+ *   `DESIGN_SPECS` 按 `LayerId` 登记，`file` 是**精确文件名**——主文档是一个固定文件的层。
+ *   `DOC_SPECS`    按**路径模式**登记——一个层下面有几种文档时用（情节层：卷纲 / 序列纲）。
+ *
+ * 分成两张是因为两者答的不是同一个问题：层的规范还要说"这层是什么"（`layers.ts` 管显示名
+ * 与顺序，这里管结构）；文档的规范只关心"这条路径的文档长什么样"。混成一张的代价，看
+ * `proposal.specFor` 就明白——它得同时回答"这份文档按哪几格审阅"。
+ *
+ * - 懒建：目标文档平时不存在，用户要完善时才取规范、成稿落盘。
  * - 结构与内容分离：这里只定义"长什么样"；文档文件一旦建立即内容与真相。
  */
 import { CHARACTER_FIELDS, IDENTITY_KEY, PROFILE_KEYS } from "./characters";
@@ -29,13 +37,31 @@ const DOC_STYLE =
   "通篇：断言式、条目优先。不写剧情事件、不写台词、不写抒情和解释性铺陈，不出现自我评价（「极具张力」「令人震撼」这类）。这是给写手当约束用的，不是给读者看的简介。";
 
 export interface DesignSpec {
-  id: LayerId;
-  file: string;
+  /**
+   * 判别式。两处靠它分支：`proposal.labelOf` 决定标签取层名还是文档自己的 H1；
+   * `renderOne` 决定写入口给 `layer: <id>` 还是 `name: <路径>`。
+   */
+  kind: "layer" | "doc";
+  /** 归属层——`design-spec` 按层聚合、取层名都用它 */
+  layer: LayerId;
   title: string;
   sections: DesignSection[];
   /** 通篇形制（见 DOC_STYLE）；只有"文档型"的层有 */
   style?: string;
   guide: string; // 成稿/补缺做法（给模型看的工作法）
+}
+
+/** 主文档是一个固定文件的层。`file` 是**精确**匹配键；目录型的层以 "/" 结尾，永不匹配真实文件。 */
+export interface LayerSpec extends DesignSpec {
+  kind: "layer";
+  file: string;
+}
+
+/** 按**路径模式**登记的文档。`match` 是匹配键，`target` 给人看的路径式样（design/ 相对）。 */
+export interface DocSpec extends DesignSpec {
+  kind: "doc";
+  match: RegExp;
+  target: string;
 }
 
 const WORK_METHOD = [
@@ -48,11 +74,12 @@ const WORK_METHOD = [
   "5) 文档文件一旦建立，后续以文件当前内容为准（先 read-design 再动）。",
 ].join("\n");
 
-export const DESIGN_SPECS: Record<LayerId, DesignSpec> = {
+export const DESIGN_SPECS: Record<LayerId, LayerSpec> = {
   // core：小说介绍（写作方向不变量），常驻、一切层依赖它。
   // 主角内核（想要/最怕/为什么是他）归 characters 主角卡；爽点排布归 outline；世界观归 wiki/world.md，均不并入本层。
   core: {
-    id: "core",
+    kind: "layer",
+    layer: "core",
     file: "core.md",
     title: "核心层（小说介绍）",
     sections: [
@@ -89,7 +116,8 @@ export const DESIGN_SPECS: Record<LayerId, DesignSpec> = {
   // world：这本书"当下"的静态舞台与规则（总纲常驻注入；长尾拆 wiki/<题>.md 专题页按需读）。
   // 势力归 characters；悬念/未解之谜归 outline「伏笔与回收登记」。
   world: {
-    id: "world",
+    kind: "layer",
+    layer: "world",
     file: "wiki/world.md",
     title: "世界层（舞台与规则 · wiki）",
     sections: [
@@ -125,7 +153,8 @@ export const DESIGN_SPECS: Record<LayerId, DesignSpec> = {
     ].join("\n"),
   },
   characters: {
-    id: "characters",
+    kind: "layer",
+    layer: "characters",
     file: "characters/",
     title: "人物层（一角色一卡）",
     // 本层不是"一个文档若干 ##"，所以没有规范小节——卡的形状在 guide 里（卡内是 ###）。
@@ -149,53 +178,163 @@ export const DESIGN_SPECS: Record<LayerId, DesignSpec> = {
       "5) 一角色一卡；名单（有哪些人、必有格齐没齐、卡上还有哪些自由小节）由 list-designs 现算，没有需要手改的总表；删角色用 remove-character。",
     ].join("\n"),
   },
+  // outline：**没有"整本大纲"这个文档**。全本走向是 core 的一句话简介加上各卷卷纲**能算出来的**
+  // 东西，另存一份就是迟早脱节的缓存——脱节的缓存比没有更糟，它会误导写手。所以本层的 file 是目录、
+  // sections 为空，真正的形状在 DOC_SPECS 里按路径登记（卷纲 / 序列纲）。与 characters 同构。
   outline: {
-    id: "outline",
-    file: "outline/outline.md",
-    title: "情节层（主线到章节）",
-    sections: [
-      { heading: "一句话主线", write: "从开场到结局要完成什么、代价是什么。" },
-      { heading: "开篇钩子（前 3 章）", write: "每章一个钩子。" },
-      { heading: "分卷方向", write: "每卷：目标 / 冲突升级 / 卷末。" },
-      { heading: "结局方向", write: "止于什么；可暂留余地。" },
-      { heading: "伏笔与回收登记", write: "埋点 | 章节 | 状态：埋 / 已回收 / 放弃。" },
-    ],
-    style: DOC_STYLE,
+    kind: "layer",
+    layer: "outline",
+    file: "outline/",
+    title: "情节层（卷纲 + 序列纲）",
+    sections: [],
     guide: [
-      "工作法：",
-      "1) 整本结构写 outline/outline.md（本节五格）；章节细纲 plan_ch<N>.md、分卷细纲 vol_*.md 与它同目录；",
-      "2) 先让用户用自己的话讲 → 按小节整理成草稿（没讲到的写（待定））→ propose-design 摆给他看、等回话 → 认可后 apply-design；",
-      "3) 之后只 propose-design 那一格（带 section），补细节给建议/选项、一次可答多个；",
-      "4) 文档文件一旦建立，后续以文件当前内容为准（先 read-design 再动）。",
+      "本层不是单个文档，是两个尺度、各一个文件：",
+      "  · **卷纲** design/outline/vol_<N>.md —— 一卷 = 一个完整的故事（自己的目标、冲突、收束）。",
+      "  · **序列纲** design/outline/vol_<N>/s<序号>.md —— 一个序列 = 一个情节单元。",
+      "  两者的形状见下（design-spec 带 name 可单独取其一）。",
+      "没有「整本大纲」这个文档：主线是什么归核心层的一句话简介，走到哪了归各卷卷纲——都由它们",
+      "算出来。章计划（这一批写哪几章）也不进 design/：它不经过用户拍板，是拍板之后的执行细节。",
+      "工作法与其余层同：先让用户用自己的话讲 → 整理成草稿 → propose-design 摆给他看、本回合到此",
+      "为止 → 认可后 apply-design。文档一旦建立，后续以文件当前内容为准（先 read-design 再动）。",
     ].join("\n"),
   },
 };
 
-/** 渲染成给模型的规范文本（design-spec 工具返回用）。目标路径留着——propose-design 靠它知道往哪写。 */
-export function renderDesignSpec(id: LayerId): string {
-  const spec = DESIGN_SPECS[id];
-  // 每格三行（写 / 别写 / 写成）。
-  const head = spec.sections.flatMap((s) => [
+/** 卷纲：一卷一个文件。五格，见下。 */
+const VOL_SPEC: DocSpec = {
+  kind: "doc",
+  layer: "outline",
+  match: /^outline\/vol_\d+\.md$/,
+  target: "outline/vol_<N>.md",
+  title: "卷纲",
+  style: DOC_STYLE,
+  sections: [
+    {
+      heading: "本卷在全局的位置",
+      write: "承接上一卷的什么、把主线推到哪。一两句。",
+      avoid: "复述上一卷的剧情；解释主线是什么（核心层里已有）。",
+      form: "断言句，不展开。",
+    },
+    {
+      heading: "本卷目标与阻力",
+      write: "主角这一卷要拿到 / 达成什么 + 谁或什么挡着 + 阻力比上一卷强在哪。",
+      avoid: "具体场次、谁在第几章出场；主角会怎么做（那是序列的事）。",
+      form: "目标一句、阻力一句、升级一句。",
+    },
+    {
+      heading: "本卷的情绪曲线",
+      write:
+        "读者这一卷的情绪怎么走（起 / 压 / 爆 / 落大致落在哪几段）+ 爽点是哪种类型（打脸 / 获得 / 被认可 / 成长）。",
+      avoid: "「高潮迭起」「爽点密集」这类评价词——要写就写清是哪种爽、落在哪一段。",
+      form: "条目式，一条一段。",
+    },
+    {
+      heading: "卷末状态",
+      write: "写完这一卷，主角和世界处于什么状态，与卷首比变了什么。",
+      avoid: "事件（「主角打败了 X」）。事件可以换，状态必须保住。也别写悬念怎么解。",
+      form: "「从…变成…」这类状态断言。",
+    },
+    {
+      heading: "本卷的序列",
+      write: "大致分几段、每段一句话方向；末尾给本卷的预估字数。",
+      avoid: "展开每段细节（写到那个序列再展开，各自一个文件）；不写章号——章数是写出来的结果。",
+      form: "一段一行，最后一行给体量范围。",
+    },
+  ],
+  guide: WORK_METHOD,
+};
+
+/**
+ * 序列纲：整篇散文，**不分小节**。所以 `sections` 为空、形状全在 guide 里——与角色卡同路。
+ * 逼它分格是削足适履：一个序列本来就该一口气说完，而"必含 A、B、C"式的清单会把事件钉死，
+ * 偏偏只有功能稳定、事件随时可换。
+ */
+const SEQ_SPEC: DocSpec = {
+  kind: "doc",
+  layer: "outline",
+  match: /^outline\/vol_\d+\/s\d+\.md$/,
+  target: "outline/vol_<N>/s<序号>.md",
+  title: "序列纲",
+  sections: [],
+  guide: [
+    "序列纲：一个情节单元一个文件。**整篇散文，不分小节**——一个序列本来就该一口气说完。",
+    "",
+    "写四件事，用大白话，别铺陈：",
+    "1) 这个序列讲什么、在卷里承担什么。一两句。",
+    "2) 大致怎么走。松散的事件线——写到哪一场具体怎么演，留给写手。",
+    "3) 写的时候哪几处不能写坏（哪个人物要立住、哪里的节奏要压住、哪里别太顺）。",
+    "4) 预估体量（多少字，给范围）。",
+    "",
+    "别写：",
+    "- 别列「必含 A、B、C」的清单。清单把事件钉死，而事件随时可以换、只有功能稳定。要写就写功能",
+    "  （「给主角一个进内城的理由」），别写事件（「主角遇到老乞丐」）。",
+    "- 别写具体台词、场景调度、章号。",
+    "- 别抄核心层 / 世界观 / 人物卡里已有的设定——引用，别复制。",
+    "- 别写评价词（「精彩」「有张力」）。这是给写手当约束的，不是给读者看的简介。",
+    "- 没想好的写（待定），别编。",
+    "",
+    "长度：几百字到一千字。写到两千字，说明你在替写手写正文了。",
+    "",
+    "工作法：先让用户用自己的话讲 → 整段写成草稿 → propose-design 摆给他看、本回合到此为止 →",
+    "认可后 apply-design。改一处也是整篇重提（它不分格）；文档一旦建立先 read-design 再动。",
+  ].join("\n"),
+};
+
+/** 情节层的两种文档。**顺序即推荐顺序**：先有卷，才有卷里的序列。 */
+export const DOC_SPECS: DocSpec[] = [VOL_SPEC, SEQ_SPEC];
+
+/** 一格的规范：三行（写 / 别写 / 写成）。 */
+function renderSection(s: DesignSection): string[] {
+  return [
     `  ## ${s.heading}`,
     `     写：${s.write}`,
     ...(s.avoid ? [`     别写：${s.avoid}`] : []),
     ...(s.form ? [`     写成：${s.form}`] : []),
-  ]);
-  // 主文档是一个文件的层，把写入用的 key 就地给它（propose-design/apply-design 收 layer）；
-  // characters 的 file 是目录、不是写入目标，所以不给 key（它走 name:"characters/<名>.md"）。
-  const isDir = spec.file.endsWith("/");
-  const layerKey = isDir ? "" : ` · layer: ${spec.id}`;
+  ];
+}
+
+/**
+ * 渲染一份规范。`writeKey` 是**写入口**——propose-design/apply-design 靠它知道往哪写：
+ * 层的规范给 `layer: <id> · 目标 <路径>`，文档的规范给 `name: <路径>`；目录型的层没有固定目标文件，不给。
+ */
+function renderOne(spec: DesignSpec, writeKey: string): string {
+  const shape = spec.sections.length
+    ? [
+        "该文档应含以下小节（每个 ## 即一格，后续可单独 propose-design 那一格）：",
+        ...spec.sections.flatMap(renderSection),
+      ]
+    : // 不分格的文档（角色卡、序列纲）：形状全在 guide 里。**不能**只说"应含以下小节"然后空着。
+      ["本文档不分小节——形状见下。"];
   return [
-    `【${spec.title}${layerKey} · 目标 design/${spec.file}】`,
-    // 目录型（人物层）不是"一个文档若干 ##"——它的形状在 guide 里（一角色一卡，卡内是 ###）。
-    isDir
-      ? "本层不是单个文档：一角色一卡，形状见下（名单——有哪些人、必有格齐没齐——由 list-designs 现算）。"
-      : "该层文档应含以下小节（每个 ## 即一格，后续可单独 propose-design 那一格）：",
-    ...head,
+    `【${spec.title}${writeKey ? ` · ${writeKey}` : ""}】`,
+    ...shape,
     ...(spec.style ? ["", spec.style] : []),
     "",
     spec.guide,
   ].join("\n");
+}
+
+/** 层的写入口。目录型的层（characters / outline）主文档不是一个文件，没有固定路径可给。 */
+function layerWriteKey(spec: LayerSpec): string {
+  return spec.file.endsWith("/") ? "" : `layer: ${spec.layer} · 目标 design/${spec.file}`;
+}
+
+/**
+ * 某一层的全部规范：层自己的 + **它名下的文档规范**（情节层 → 层级说明 + 卷纲 + 序列纲）。
+ * 一次调用就让模型看清这一层有哪几种文档，不用它自己猜有几个。
+ */
+export function renderDesignSpec(id: LayerId): string {
+  const blocks = [renderOne(DESIGN_SPECS[id], layerWriteKey(DESIGN_SPECS[id]))];
+  for (const doc of DOC_SPECS.filter((d) => d.layer === id)) {
+    blocks.push(renderOne(doc, `name: ${doc.target}`));
+  }
+  return blocks.join("\n\n────\n\n");
+}
+
+/** 按路径取**某一份文档**的规范（design-spec 的 name 入口）。没登记 → undefined，由调用方给自愈文案。 */
+export function renderNamedSpec(name: string): string | undefined {
+  const doc = DOC_SPECS.find((d) => d.match.test(name));
+  return doc ? renderOne(doc, `name: ${name}`) : undefined;
 }
 
 export { LAYERS };

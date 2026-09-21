@@ -1,5 +1,6 @@
-Return the structural spec for one novel layer: its exact section headings, and what belongs in
-each. Every other tool addresses sections by name (read-design, propose-design, the status card) —
+Return the structural spec for a design document kind: its exact section headings and what belongs in
+each — or, for kinds that are plain prose (character cards, sequence outlines), the writing method
+instead. Every other tool addresses sections by name (read-design, propose-design, the status card) —
 inventing your own headings breaks them.
 
 Call this whenever the conversation is about **designing the novel** — the user telling you what
@@ -12,4 +13,8 @@ about designing the story.
 Draft from the user's own words, not by interrogating field by field, then propose it with
 propose-design — the user reads the draft before anything is written to a file.
 
-layer: core | world | characters | outline.
+layer: core | world | characters | outline — a layer that holds several kinds of document returns
+all of them (outline → 卷纲 and 序列纲).
+name: one path under design/ whose kind has its own spec — outline/vol_<N>.md,
+outline/vol_<N>/s<M>.md. Give layer or name, not both. Documents with no spec (topic pages, chapter
+plans) are written free-form.

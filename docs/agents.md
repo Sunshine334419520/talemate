@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-09-19 · Agent 名册在 `src/agent/registry.ts`，工具在 `src/tool/`
+> **对齐代码**：2026-09-20 · Agent 名册在 `src/agent/registry.ts`，工具在 `src/tool/`
 > 相邻：`architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -58,7 +58,7 @@
 | id | 用途 |
 |---|---|
 | `read-design` | 读整篇或按小节读 |
-| `list-designs` | 列 design/ 各文档 + 小节索引（角色卡一人一行） |
+| `list-designs` | 列 design/ 各文档 + 小节索引（角色卡一人一行；**不分格的文档也只给一行 + 首句**，如序列纲） |
 | `search-designs` | 跨 design/ 扫词，返回"文件 → 小节 + 行"（改/删前查影响面） |
 | `propose-design` | 摆提案给用户看，**不写盘**，并结束本回合 |
 | `apply-design` | 落盘**提案那一份**（不收正文） |
@@ -75,7 +75,7 @@
 
 | id | 用途 |
 |---|---|
-| `design-spec` | 按需返回某层"结构规范 + 成稿做法" |
+| `design-spec` | 按需返回"结构规范 + 成稿做法"：`layer` 取整层（情节层返回它的卷纲 + 序列纲两份），`name` 取某一份文档 |
 
 **`core_tools`** — 委派 / 知识 / 人机交互
 

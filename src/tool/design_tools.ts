@@ -25,8 +25,13 @@ import { defineTool, type RegisteredTool } from "./define";
 
 const P = (id: string) => readPrompt(`tools/${id}`);
 
-/** 有规范登记、且主文档是一个文件的层（`characters` 不在内——它的 file 是目录）。 */
-const MAIN_LAYERS = ["core", "world", "outline"] as const;
+/**
+ * 主文档是**一个文件**的层。`characters` 不在内（它的 file 是目录 `characters/`）。
+ * `outline` 也不在（2026-09-20 起）——它变成"一卷一个文件"，没有"整本大纲"这个文档可写，
+ * 卷纲/序列纲各走 `name`。**漏掉这一步 `DESIGN_SPECS["outline"].file` 会取到 `"outline/"`
+ * 这个目录，写盘会写到一个目录名上。**
+ */
+const MAIN_LAYERS = ["core", "world"] as const;
 
 /**
  * 定这次要写哪个文件：固定层用 `layer`（路径由代码定），自由命名的文档用 `name`。
@@ -39,25 +44,28 @@ function resolveDoc(args: { layer?: unknown; name?: unknown }): { name: string }
   const layer = typeof args.layer === "string" ? args.layer.trim().toLowerCase() : "";
   const name = typeof args.name === "string" ? args.name.trim() : "";
   if (layer && name) {
-    return { error: "layer 与 name 只能给一个：核心层/世界观/大纲用 layer（路径由工具定），专题页 / 章节细纲 / 角色卡用 name。" };
+    return { error: "layer 与 name 只能给一个：核心层/世界观用 layer（路径由工具定），其余文档一律用 name。" };
   }
   if (layer) {
     if (!(MAIN_LAYERS as readonly string[]).includes(layer)) {
       return {
-        error: `layer 应为 core / world / outline（收到：${layer}）。角色是一角色一卡、主文档不是一个文件——建/改角色卡请用 name:"characters/<名>.md"。`,
+        error:
+          `layer 只收 core / world（收到：${layer}）——这两个层的主文档是一个固定文件。` +
+          `大纲是一卷一个文件，没有"整本"可写，用 name:"outline/vol_<N>.md"（序列纲再下移一层）；` +
+          `角色是一角色一卡，用 name:"characters/<名>.md"。`,
       };
     }
     return { name: DESIGN_SPECS[layer as LayerId].file };
   }
   if (!name) {
-    return { error: "propose-design/apply-design 缺少 layer 或 name——核心层/世界观/大纲给 layer，其余文档给 name。" };
+    return { error: "propose-design/apply-design 缺少 layer 或 name——核心层/世界观给 layer，其余文档给 name。" };
   }
   // 守卫：某一层的主文档不许写到别处
   const base = name.split("/").pop() ?? name;
   const clash = Object.values(DESIGN_SPECS).find((s) => s.file !== name && s.file.split("/").pop() === base);
   if (clash) {
     return {
-      error: `${clash.title}的主文档是 design/${clash.file}，不是 ${name}——这一层请用 layer:"${clash.id}"（路径由工具定）；或者换个文件名。`,
+      error: `${clash.title}的主文档是 design/${clash.file}，不是 ${name}——这一层请用 layer:"${clash.layer}"（路径由工具定）；或者换个文件名。`,
     };
   }
   return { name };
@@ -189,12 +197,12 @@ export const proposeDesignTool: RegisteredTool<{ layer?: string; name?: string; 
         layer: {
           type: "string",
           description:
-            "Which main layer to write: core | world | outline. The path is fixed by the tool — prefer this over name for those three.",
+            "Which fixed-file layer to write: core | world. The path is fixed by the tool — prefer this over name for those two.",
         },
         name: {
           type: "string",
           description:
-            "Document path under design/ for documents that are not one of the three main layers (e.g. wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md — the last one is how a character card is created and edited; there is no character-specific tool)",
+            "Document path under design/ for every other document: outline/vol_<N>.md (volume outline), outline/vol_<N>/s<M>.md (sequence outline), wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md (a character card is created and edited this way; there is no character-specific tool)",
         },
         content: {
           type: "string",
@@ -283,10 +291,10 @@ export const applyDesignTool: RegisteredTool<{ layer?: string; name?: string }> 
   input: {
     type: "object",
     properties: {
-      layer: { type: "string", description: "Same key you proposed it with: core | world | outline" },
+      layer: { type: "string", description: "Same key you proposed it with: core | world" },
       name: {
         type: "string",
-        description: "Same document path you proposed it with, for documents that are not one of the three main layers",
+        description: "Same document path you proposed it with, for every document that is not core or world",
       },
     },
   },

@@ -6,3 +6,7 @@ Character cards are one line each: `名字 · 身份（必有齐／待补：…�
 required sections that are still empty; 「另有」lists the card's free-form sections beyond the
 five required ones, so you can see what is on a card without reading it. Read the card itself
 with read-design to get its content.
+
+Docs that carry no sections (sequence outlines, `outline/vol_<N>/s<M>.md`) also get one line:
+the path plus the first sentence of the prose, so you can tell which sequence is which without
+reading it. Volume outlines (`outline/vol_<N>.md`) do list their five sections.

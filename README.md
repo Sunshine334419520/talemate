@@ -51,6 +51,7 @@ talemate new 我的小说 悬疑
 | Agent / 工具 / Skill 怎么分类与触发 | [`docs/agents.md`](docs/agents.md) |
 | 企划的四层活文档与两段式落盘 | [`docs/design-docs.md`](docs/design-docs.md) |
 | 角色卡长什么样、怎么维护 | [`docs/characters.md`](docs/characters.md) |
+| 大纲由什么构成、为什么没有整本大纲 | [`docs/outline.md`](docs/outline.md) |
 | 还没做什么 | [`docs/roadmap.md`](docs/roadmap.md) |
 | prompt 怎么组织、怎么写 | [`prompts/README.md`](prompts/README.md) |
 | 写代码的约定与硬约束 | [`CLAUDE.md`](CLAUDE.md) |
