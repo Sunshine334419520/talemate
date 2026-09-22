@@ -7,7 +7,7 @@
 ```
 prompts/
 ├── README.md                 本规范
-├── editor.system.txt         editor(主编) persona
+├── mate.system.txt           mate(搭档) persona
 ├── writer.system.txt         writer subagent persona
 ├── summarizer.system.txt     内部 hidden summarizer（compaction）
 ├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md「会话模式」）
@@ -45,11 +45,11 @@ prompts/
 
 **因此 persona 只留"角色壳"；每份文件只讲一件事、只在其生效时刻以它自己的载体出现。**
 
-**一处已知例外**：`editor.system.txt` 的 `# The user leads`（2026-09-13）——"设计由用户主导；一件事落了地就结束这一回合，不自己开下一件"。它本该按纪律归"工具/方法"，但**触发时刻在 `apply-design` 之后**，而那个时刻只有 persona 每轮都在场（工具描述只在被调用的一瞬生效）。放到别处试过两次（`design-spec` 参数描述、多处工具描述）都无效。**这个例外是有意为之，别按纪律清理掉。**
+**一处已知例外**：`mate.system.txt` 的 `# The user leads`（2026-09-13）——"设计由用户主导；一件事落了地就结束这一回合，不自己开下一件"。它本该按纪律归"工具/方法"，但**触发时刻在 `apply-design` 之后**，而那个时刻只有 persona 每轮都在场（工具描述只在被调用的一瞬生效）。放到别处试过两次（`design-spec` 参数描述、多处工具描述）都无效。**这个例外是有意为之，别按纪律清理掉。**
 
 ## 描述 · agent `description` 路由规范
 
-`AgentDef.description` 是**路由契约**：它不进子代理自己的上下文，而是被 `AgentRegistry.subagentCatalog()` 拼进 `task` 工具的 description，给 **editor（主编）** 看，用来决定"派谁、何时派"。它直接决定模型能否准确路由——所以要按规范写，而不是随手写。
+`AgentDef.description` 是**路由契约**：它不进子代理自己的上下文，而是被 `AgentRegistry.subagentCatalog()` 拼进 `task` 工具的 description，给 **mate（搭档）** 看，用来决定"派谁、何时派"。它直接决定模型能否准确路由——所以要按规范写，而不是随手写。
 
 - **为什么英文**：属"操作/元层"（给模型、跨模型稳），照语言策略用英文；`name`（中文）才是给人看的显示名。
 - **为何不进 `.txt`**：它是短数据、跟 `mode/tools` 紧耦合，拆文件反而割裂 agent 定义（对比：长 persona 才进 `.txt`）。
@@ -69,7 +69,7 @@ prompts/
 **checklist（写完过一遍）**：
 - [ ] 英文；首句"它是什么"。
 - [ ] 有 "Use this when…" 且带**具体字面量/参数**。
-- [ ] 说清边界（何时不用 / 要它返回给主编什么）。
+- [ ] 说清边界（何时不用 / 要它返回给 mate 什么）。
 - [ ] 长度克制（≤ ~60 词），陈述句，不堆形容词。
 - [ ] 需要"只能手动调"的 subagent → 留空 description（而不是写一段"不让自动调"）。
 

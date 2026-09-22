@@ -125,6 +125,7 @@ export const webFetchTool: RegisteredTool<{ url: string; format?: FetchFormat; t
 }>({
   id: "webfetch",
   description: P("webfetch"),
+  permission: "extern",
   input: {
     type: "object",
     properties: {
@@ -134,7 +135,16 @@ export const webFetchTool: RegisteredTool<{ url: string; format?: FetchFormat; t
     },
     required: ["url"],
   },
-  async execute(args) {
+  async execute(args, ctx) {
+    // 联网是这个产品唯一"把内容送出去"的动作，所以它也要过权限（`extern`）
+    const verdict = await ctx.ask({
+      permission: "extern",
+      pattern: args.url,
+      always: "*",
+      summary: `抓取 ${args.url}`,
+    });
+    if (verdict === "deny") return { output: "当前模式不允许联网（extern 被禁）。" };
+    if (verdict === "reject") return { output: `用户已拒绝抓取 ${args.url}` };
     const content = await fetchUrl(args.url, args.format ?? "markdown", args.timeout);
     return { output: content, metadata: { url: args.url, format: args.format ?? "markdown" } };
   },
@@ -296,6 +306,7 @@ export const webSearchTool: RegisteredTool<{ query: string; numResults?: number 
 }>({
   id: "websearch",
   description: P("websearch"),
+  permission: "extern",
   input: {
     type: "object",
     properties: {
@@ -304,7 +315,15 @@ export const webSearchTool: RegisteredTool<{ query: string; numResults?: number 
     },
     required: ["query"],
   },
-  async execute(args) {
+  async execute(args, ctx) {
+    const verdict = await ctx.ask({
+      permission: "extern",
+      pattern: args.query,
+      always: "*",
+      summary: `联网搜索「${args.query}」`,
+    });
+    if (verdict === "deny") return { output: "当前模式不允许联网（extern 被禁）。" };
+    if (verdict === "reject") return { output: `用户已拒绝搜索「${args.query}」` };
     const { provider, results } = await searchWeb(args.query, args.numResults ?? 6);
     const body = results.length ? renderResults(results) : "没有搜到结果，换个搜索词试试。";
     return { output: `（搜索后端：${provider}）\n${body}`, metadata: { provider, count: results.length } };

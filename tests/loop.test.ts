@@ -12,7 +12,7 @@ import { runLoop, type LoopDeps } from "../src/session/loop";
 import { isAgreement, renderPendingNote } from "../src/session/session";
 
 const AGENT: AgentDef = {
-  id: "editor",
+  id: "mate",
   name: "主编",
   description: "",
   mode: "primary",
@@ -115,7 +115,7 @@ describe("halt 之后的消息仍是合法请求形状", () => {
       { type: "tool", id: "c2", name: "apply-design", state: "error", error: "本回合已结束，这次调用没有执行。" },
     ];
     const msgs = toNeutralMessages([
-      { seq: 1, role: "assistant", ts: 0, agent: "editor", parts, finish: "tool_calls" },
+      { seq: 1, role: "assistant", ts: 0, agent: "mate", parts, finish: "tool_calls" },
     ]);
 
     const assistant = msgs.find((m) => m.role === "assistant");

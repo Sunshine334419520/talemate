@@ -92,7 +92,7 @@ const P_DESIGNSPEC_PAIR: Patch = {
 /** 角色专用工具在不在手边。只剩 remove-character 一个（add/update-character 已于 2026-09-19 删除）。 */
 const P_NO_CHAR_TOOLS: Patch = {
   kind: "dropTools",
-  note: "editor 白名单去掉 remove-character",
+  note: "mate 白名单去掉 remove-character",
   names: ["remove-character"],
 };
 
@@ -111,7 +111,7 @@ const VARIANTS: Variant[] = [
   { id: "baseline", note: "原样 = 当前产品（persona 那条规则已在里面，所以它就是新基线）", patches: [] },
   { id: "apply-handback", note: "【加】落盘结果里补交回契约", patches: [P_APPLY_HANDBACK] },
   { id: "designspec-no-pair", note: "去掉「核心设定与世界观」那句暗示", patches: [P_DESIGNSPEC_PAIR] },
-  { id: "no-char-tools", note: "editor 没有角色工具（现在只剩 remove-character）", patches: [P_NO_CHAR_TOOLS] },
+  { id: "no-char-tools", note: "mate 没有角色工具（现在只剩 remove-character）", patches: [P_NO_CHAR_TOOLS] },
   {
     id: "all-off",
     note: "这两个全关（仍 advanced → 原因不在这几处工具/描述里）",
@@ -171,13 +171,13 @@ function buildHarness(variant: Variant): { agents: AgentRegistry; tools: ToolReg
     });
   }
 
-  const editor = DEFAULT_AGENTS.find((a) => a.id === "editor")!;
-  let system = editor.system;
+  const mate = DEFAULT_AGENTS.find((a) => a.id === "mate")!;
+  let system = mate.system;
   for (const p of variant.patches) {
     if (p.kind === "persona") system = mustReplace(system, p.before, p.after, `${variant.id}/persona: ${p.note}`);
   }
-  const patchedEditor: AgentDef = { ...editor, system, tools: editor.tools.filter((id) => !dropped.has(id)) };
-  const agents = new AgentRegistry(DEFAULT_AGENTS.map((a) => (a.id === "editor" ? patchedEditor : a)));
+  const patchedMate: AgentDef = { ...mate, system, tools: mate.tools.filter((id) => !dropped.has(id)) };
+  const agents = new AgentRegistry(DEFAULT_AGENTS.map((a) => (a.id === "mate" ? patchedMate : a)));
   return { agents, tools };
 }
 
@@ -248,7 +248,7 @@ async function runOnce(variant: Variant, run: number, outRoot: string, model: Mo
       else if (e.type === "reasoning.delta") cur.reasoning += e.text;
       else if (e.type === "text.delta") cur.text += e.text;
     },
-    confirm: async () => true,
+    confirm: async () => "once",
     // 中性：既不授权也不阻止——真实的用户被问到时未必答得上来。
     askUser: async () => "（探针：这个我还没想好）",
   };

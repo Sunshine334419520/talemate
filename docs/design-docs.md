@@ -16,13 +16,13 @@
 | **人物层** | `design/characters/<名>.md` | 慢变 | 按需读（见 `characters.md`） |
 | **情节层** | `design/outline/vol_<N>.md`（卷纲）+ `vol_<N>/s<序号>.md`（序列纲） | 快变、最局部 | 按需读（当前卷 / 序列切片） |
 
-**常驻只有两份**：`core.md` 与 `wiki/world.md`（`RESIDENT_LAYERS` 标的是层 id，路径由 `DESIGN_SPECS` 现取）。其余按需 `read-design`。常驻注入只给可见的 primary（editor）。
+**常驻只有两份**：`core.md` 与 `wiki/world.md`（`RESIDENT_LAYERS` 标的是层 id，路径由 `DESIGN_SPECS` 现取）。其余按需 `read-design`。常驻注入只给可见的 primary（mate）。
 
 **文档格式**：Markdown，`##` 即一格。可寻址粒度 = "文件名 + 小节标题"。不做条目级 ID 引用。
 
 ## 懒建：文件不预种
 
-`createProject` 只建目录、不种文件——`design/` 初始为空。用户要完善某层时，editor 调 `design-spec` 拿该层的结构规范（该有哪些小节、每格装什么、成稿做法），据此成稿。
+`createProject` 只建目录、不种文件——`design/` 初始为空。用户要完善某层时，mate 调 `design-spec` 拿该层的结构规范（该有哪些小节、每格装什么、成稿做法），据此成稿。
 
 **结构与内容分离**：`design_spec.ts` 只定义"长什么样"；文件一旦建立即内容与真相。所以 `design-spec` 是**参考**，不是校验器——文档不按规范组织也能存在，只是模型没拿到引导。
 
@@ -68,12 +68,12 @@ apply-design（只落提案那一份，**不接受正文**）
 ```mermaid
 flowchart TD
     W[用户: 根据序列 X 写第 N 章] --> W1[read-design 取当前序列纲 + 相关切片]
-    W1 --> W2[editor 自己写这一章的节拍]
+    W1 --> W2[mate 自己写这一章的节拍]
     W2 --> W3[propose-plan 摆给用户 —— halt，回合到此为止]
     W3 --> W4{用户拍板}
     W4 -- 要改 --> W2
     W4 -- 认可 --> W5[task writer 带切片 + 节拍写正文]
-    W5 --> W6[editor 面向用户确认 → save-chapter 落 chapters/]
+    W5 --> W6[mate 面向用户确认 → save-chapter 落 chapters/]
 ```
 
 **一次只规划一章**，因为节拍是**序列纲的投影**：序列纲说"这一节要兑现什么"，节拍说"这一章怎么兑现"。
@@ -85,7 +85,7 @@ flowchart TD
 
 节拍**不落盘**：它批准的是**动作**（去写正文），不是一份文档。那份登记只活在会话内存里（`Session.pending`，storage 层完全不认识它），靠 `renderPendingNote` 每轮注入 system 抵抗压缩。**一次批准只换一次写作**——`task(writer)` 成功后即清，下一章要重新摆、重新拍板。
 
-**editor 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善核心设定"就走企划成型，说"写第 N 章"就走章节生产。
+**mate 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善核心设定"就走企划成型，说"写第 N 章"就走章节生产。
 
 ## 写作依赖当前版本
 

@@ -9,9 +9,10 @@
  *
  * 空间内 REPL（默认 verbose——每一步都打印）：
  *   /help /quit /status /projects /use <id|书名> /new <书名> [题材]
- *   /sessions /open <n> /design <name> /verbose /quiet /reasoning（思考默认收起，一行摘要）
+ *   /sessions /open <n> /design <name> /permissions /verbose /quiet /reasoning
  *   - 单行回车即发送；行尾加反斜杠 `\` 续行（多行输入）。
  *   - 模型回复流式显示；工具调用/子代理边界/每轮落盘回放默认全打。
+ *   - 提示符挂当前模式与待写入提案：两者都改得了"下一步能做什么"，看不见不行。
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
@@ -23,6 +24,8 @@ import { buildProjectStatus } from "./framework/report";
 import { createProject, listChapters, loadProjectMeta, readDesign } from "./storage/project";
 import { listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
 import { openSession, type Session, type UserIO } from "./session/session";
+import { BASE_PERMISSIONS, evaluateWithSource } from "./permission";
+import type { Action, Ruleset } from "./permission";
 
 // ─────────────────────────── 受管根 / current 指针 ───────────────────────────
 
@@ -50,6 +53,8 @@ async function saveCurrent(id: string): Promise<void> {
 const DIM = "\x1b[2m";
 const CYAN = "\x1b[36m";
 const YELLOW = "\x1b[33m";
+const RED = "\x1b[31m";
+const GREEN = "\x1b[32m";
 const RESET = "\x1b[0m";
 
 function truncate(s: string, n: number): string {
@@ -76,7 +81,9 @@ let inChildScope = false;
 let rl: ReturnType<typeof createInterface>;
 
 function promptText(): string {
-  const base = `${curTitle ?? curSpaceId ?? "talemate"}/主编`;
+  // 模式挂在最前面：它决定下一步什么能做，而它自己在会话里是隐形的，不显示就没人知道还开着
+  const mode = curSession?.currentMode;
+  const base = `${mode ? `[${mode.title}] ` : ""}${curTitle ?? curSpaceId ?? "talemate"}/搭档`;
   // 有待落盘的提案 → 提示符上挂着，用户一眼看到"还有东西等我拍板"
   const pending = curSession?.pendingLabel;
   return pending ? `${base}（待写入：${pending}）> ` : `${base}> `;
@@ -91,7 +98,7 @@ function printBanner(projectId: string): Promise<void> {
     const status = await buildProjectStatus(projectId);
     // status 首行是“作品：…”与上面重复，展示四层现状即可
     console.log(status.split("\n").slice(1).join("\n"));
-    if (verbose) console.log(`   （core/world 常驻设定仍每轮注入 editor 上下文，这里不重复打印）`);
+    if (verbose) console.log(`   （core/world 常驻设定仍每轮注入 mate 上下文，这里不重复打印）`);
   })();
 }
 
@@ -139,6 +146,52 @@ async function printMessage(projectId: string, sessionId: string, seqText: strin
   } else {
     console.log(`[msg#${n} ${m.role}]\n${m.text ?? JSON.stringify(m, null, 2)}`);
   }
+}
+
+// ─────────────────────────── 权限表（/permissions） ───────────────────────────
+
+function paintAction(a: Action): string {
+  const color = a === "allow" ? GREEN : a === "ask" ? YELLOW : RED;
+  return `${color}${a.padEnd(5)}${RESET}`;
+}
+
+/** 一份规则集的紧凑写法：`edit: *→ask  design/core.md→allow`。 */
+function renderRuleset(rules: Ruleset): string {
+  if (!rules.length) return "（无）";
+  const byPerm = new Map<string, string[]>();
+  for (const r of rules) {
+    byPerm.set(r.permission, [...(byPerm.get(r.permission) ?? []), `${r.pattern}→${r.action}`]);
+  }
+  return [...byPerm].map(([p, list]) => `${p}: ${list.join("  ")}`).join("   ");
+}
+
+/**
+ * 打印当前生效的规则表。
+ *
+ * 先给**结论**（每类动作现在是什么、是**哪一层**定的），再给**分层**（每层各自贡献了什么）。
+ * 只有结论不够用：用户配了一条想放宽、看到的却还是 deny，得能一眼看出是被模式盖住了——
+ * `deny` 单调，不受层级顺序影响（见 docs/permissions.md）。
+ */
+function printPermissions(session: Session): void {
+  const view = session.permissionView();
+  const where = view.derived
+    ? `${view.agentName}（子会话）`
+    : `${view.agentName}${view.modeTitle ? ` · 模式：${view.modeTitle}` : " · 无模式"}`;
+  console.log(`\n规则表 · ${where}`);
+
+  const sets = [...view.layers.map((l) => l.rules), view.approved];
+  const labels = [...view.layers.map((l) => l.label), "会话已批准"];
+  console.log("  现在（按 `*` 算；点名到具体文件的例外见「分层」）：");
+  // 动作类别取自 BASE_PERMISSIONS 的键——那是这四个类别的唯一定义处，不在这里再抄一份
+  for (const p of Object.keys(BASE_PERMISSIONS)) {
+    const { rule, layer } = evaluateWithSource(p, "*", ...sets);
+    console.log(`    ${p.padEnd(10)}${paintAction(rule.action)} ← ${layer < 0 ? "没有规则匹配 → 默认问" : labels[layer]}`);
+  }
+
+  console.log(`\n  ${view.derived ? "派生" : "分层"}（后写的优先；deny 例外——任何一层说不许就是不许）：`);
+  for (const l of view.layers) console.log(`    · ${l.label} — ${renderRuleset(l.rules)}`);
+  if (!view.derived) console.log(`    · 会话已批准 — ${renderRuleset(view.approved)}`);
+  console.log();
 }
 
 // ─────────────────────────── io（详细打印渲染） ───────────────────────────
@@ -231,8 +284,10 @@ function makeIO(): UserIO {
     confirm: async (action, summary) => {
       console.log(`\n${YELLOW}⚠ 需要确认${RESET}：${action}`);
       console.log(summary.split("\n").map((l) => `   ${l}`).join("\n"));
-      const ans = (await rl.question("   [y/N] ")).trim().toLowerCase();
-      return ans === "y" || ans === "yes";
+      // 三档：这一次 / 这一类以后都别问 / 拒绝。中间那档进会话级 approved 表（见 docs/permissions.md）
+      const ans = (await rl.question("   [y] 这次允许 · [a] 这类都别再问 · [N] 拒绝 > ")).trim().toLowerCase();
+      if (ans === "a" || ans === "always") return "always";
+      return ans === "y" || ans === "yes" ? "once" : "no";
     },
     askUser: async (question, options) => {
       console.log(`\n${YELLOW}❓ 主编提问${RESET}：${question}`);
@@ -289,6 +344,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /new <书名> [题材]  新建空间并进入",
           "  /sessions      列出当前空间的历史会话",
           "  /open <n>      恢复当前空间第 n 个历史会话",
+          "  /permissions   当前生效的规则表：每类动作是什么、是哪一层定的、各层都贡献了什么",
           "  /design <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
@@ -300,8 +356,16 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
       return "continue";
     case "/status": {
       if (!curSpaceId || !curSession) return "continue";
-      console.log(`会话：${curSession.sessionId} · agent: ${curSession.agent.name}`);
+      const mode = curSession.currentMode;
+      console.log(
+        `会话：${curSession.sessionId} · agent: ${curSession.agent.name}${mode ? ` · 模式：${mode.title}（/permissions 看这个模式放行了什么）` : ""}`,
+      );
       console.log(await buildProjectStatus(curSpaceId));
+      return "continue";
+    }
+    case "/permissions": {
+      if (!curSession) return "continue";
+      printPermissions(curSession);
       return "continue";
     }
     case "/projects": {

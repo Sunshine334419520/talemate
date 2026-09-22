@@ -1,7 +1,7 @@
 /**
  * 常驻设定注入 + 文档索引。
  *
- * 常驻设定：core.md（小说介绍）+ wiki/world.md（世界层总纲）是每轮注入 editor 的固定基线——
+ * 常驻设定：core.md（小说介绍）+ wiki/world.md（世界层总纲）是每轮注入 mate 的固定基线——
  * 现读全文、**不带状态包装**。core/world 专题页（wiki/<题>.md）不常驻，按需 read-design。
  * 状态类信息（写作进度/伏笔/待定）不是静态基线，归 list-chapters 等工具与未来的状态块；
  * characters/outline 仍按需 read-design，索引由 list-designs 给出。
@@ -107,7 +107,7 @@ export async function buildDesignIndex(projectId: string): Promise<string> {
   return lines.join("\n");
 }
 
-/** core + world 总纲常驻设定全文。editor 每轮注入；文件不存在（懒建未产出）则跳过该块。 */
+/** core + world 总纲常驻设定全文。mate 每轮注入；文件不存在（懒建未产出）则跳过该块。 */
 export async function buildResidentDesigns(projectId: string): Promise<string> {
   const blocks: string[] = [];
   // 常驻表标的是**层**，路径从 DESIGN_SPECS 现取——层改了路径，常驻注入自动跟着改。

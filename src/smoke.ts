@@ -1,6 +1,6 @@
 /**
  * P0 冒烟：mock provider + 临时 TALEMATE_HOME，离线验证 harness 全链路：
- *   建项目 → openSession(editor) → post → LLM 首轮返回 task 工具调用
+ *   建项目 → openSession(mate) → post → LLM 首轮返回 task 工具调用
  *   → runner 执行 task → 委派 writer 子会话（独立上下文）→ 结果回填父 assistant part
  *   → 第二轮 LLM 返回正文 → 落盘。
  * 运行：bun run src/smoke.ts
@@ -10,9 +10,10 @@ import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openSession, type UserIO } from "./session/session";
-import { createProject, listDesigns, readProjectRules } from "./storage/project";
+import { createProject, listDesigns, readProjectRules, writeProjectMeta } from "./storage/project";
 import { loadMessages, listSessionIds, loadSessionMeta } from "./storage/session-store";
 import { loadModelConfig } from "./core/config";
+import { evaluateWithSource } from "./permission";
 import { PLAN_KEY } from "./core/types";
 
 const HOME = await mkdtemp(join(tmpdir(), "talemate-smoke-"));
@@ -28,7 +29,7 @@ const io: UserIO = {
     if (e.type === "text.delta") seen.push(e.text);
     if (e.type === "proposal") proposals.push(e.text);
   },
-  confirm: async () => true,
+  confirm: async () => "once",
   askUser: async (q) => `（自动答复：${q}）`,
 };
 
@@ -59,7 +60,7 @@ try {
   const reply = await s2write.post("没问题");
   // 一次批准只换一次写作：task(writer) 成功后那份登记即清
   console.log(`[3b] 用户回话「没问题」→ 放行、且用掉即清：${s2write.pending.has(PLAN_KEY) ? "✗ 还留着" : "✓"}`);
-  console.log(`[3c] editor post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
+  console.log(`[3c] mate post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
 
   // 3d) 计划模式：task 从 schema 里消失，连 mock 都演不出来（模式唯一的工具效果）
   const s3 = await openSession({ projectId: meta.id, model, io });
@@ -72,6 +73,36 @@ try {
   const hidden = s3Tools.includes("enter-plan") && !s3Tools.includes("task");
   console.log(`[3d] 计划模式下 task 不可见（工具序列 ${s3Tools.join(" → ")}）：${hidden ? "✓" : "✗"}`);
   if (!hidden) throw new Error("计划模式没有藏掉 task");
+
+  // 3d2) /permissions 的视图：只说"edit 是 deny"没用，得说得出是**模式**定的
+  const pv = s3.permissionView();
+  const verdict = evaluateWithSource("edit", "*", ...pv.layers.map((l) => l.rules), pv.approved);
+  const source = pv.layers[verdict.layer]?.label ?? "（未匹配）";
+  const sourced = verdict.rule.action === "deny" && source === pv.modeTitle;
+  console.log(`[3d2] 视图把 edit 的 deny 归到「${source}」（模式：${pv.modeTitle}）：${sourced ? "✓" : "✗"}`);
+  if (!sourced) throw new Error("规则表视图没能说清这条 deny 是哪一层定的");
+
+  // 3e) 项目级权限：talemate.json 的 permissions 真的接上了（规则表最后一层）
+  const meta3 = await createProject({ title: "冒烟权限书" });
+  await writeProjectMeta({ ...meta3, permissions: { edit: "deny" } });
+  const s4 = await openSession({ projectId: meta3.id, model, io });
+  process.env.TALEMATE_MOCK_TOOL = "append-design"; // 想演它，但 edit 被 deny → 它不在 schema 里
+  await s4.post("给我加一节。");
+  const s4Tools = (await loadMessages(meta3.id, s4.sessionId))
+    .flatMap((m) => m.parts ?? [])
+    .filter((p) => p.type === "tool")
+    .map((p) => p.name);
+  const pBlocked = !s4Tools.includes("append-design");
+  console.log(`[3e] talemate.json 的 permissions 生效（edit: deny → append-design 不可见）：${pBlocked ? "✓" : "✗"}`);
+  if (!pBlocked) throw new Error("项目级 permissions 没生效");
+
+  // 3f) 而且用户看得见这条去了哪：视图把 deny 归到"项目配置"那一层（/permissions 的输出就是这个）
+  const pv4 = s4.permissionView();
+  const v4 = evaluateWithSource("edit", "*", ...pv4.layers.map((l) => l.rules), pv4.approved);
+  const userLayer = pv4.layers[v4.layer]?.label ?? "（未匹配）";
+  const attributed = v4.rule.action === "deny" && userLayer.includes("talemate.json");
+  console.log(`[3f] 视图把它归到「${userLayer}」：${attributed ? "✓" : "✗"}`);
+  if (!attributed) throw new Error("项目级 permissions 的来源没在视图里显示出来");
 
   // 4) 验证父会话消息链：user → assistant(task) → assistant(text)
   const msgs = await loadMessages(meta.id, s2write.sessionId);

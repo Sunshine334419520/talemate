@@ -1,6 +1,9 @@
 Save a finished prose chapter into chapters/. filename follows the naming rules:
 chapter_ch<N>_v<M>.md. Use this for the actual prose you would rather persist to disk than
-dump back to the chief editor. Saving triggers user confirmation.
+dump back to the writing partner.
+
+Saving asks the user first, unless the edit permission says otherwise for this mode (see
+docs/permissions.md).
 
 This is for prose only. Beat plans are never saved anywhere: present them with propose-plan
 and pass them straight to task(writer).

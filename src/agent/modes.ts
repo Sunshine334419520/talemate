@@ -1,43 +1,45 @@
 /**
- * 会话模式：临时叠在 primary agent 上的一层——**注入一段纪律 + 从白名单里减掉几个工具**。
+ * 会话模式：临时叠在 primary agent 上的一层。**它管的是权限**——外加一句"这个模式是什么"。
  *
- * 与 `AgentDef` 的分工：agent 回答"你是谁"（长期），模式回答"眼下在干什么"（一次一仗）。
- * 所以模式**必须有界**——像"写某一章"：进去、做完、出来。开放式的谈话（比如和用户聊设计）
- * 不该套模式，那会把人关在里面出不来（`design-docs.md` 的「editor 没有阶段状态机」讲的是同一件事）。
+ * 模式**不装工作流**。"进了 plan 模式之后该怎么设计"不归它管，那归工具自己的输入契约与工作协议。
+ * 它只回答：现在是什么模式、这个模式下什么能做、什么要问、什么不能做。
  *
- * 模式**只活在会话内存里**，和待执行提案同生命周期：进程重启即回到普通模式。硬保证不靠它——
- * 写正文那道门挂在 `task(writer)` 上（查一份 approved 的节拍），模式只是把"计划期间别乱动"
- * 也变成结构性的，外加一个放纪律正文的地方。
+ * 与 `AgentDef` 的分工：agent 回答"你是谁"（长期），模式回答"眼下在干什么"（一次一仗）。所以模式
+ * **必须有界**——进去、做完、出来。开放式的谈话（和用户聊设计）不套模式，那会把人关在里面出不来。
+ *
+ * 模式**只活在会话内存里**，和待执行提案同生命周期：进程重启即回到默认。硬保证不靠模式——写正文
+ * 那道门挂在 `task(writer)` 上（查一份 approved 的节拍）。
  */
+import type { PermissionConfig } from "../permission";
 import { readPrompt } from "../prompts";
 
 export interface ModeDef {
   id: string;
-  /** 进入 system 的纪律正文，来自 `prompts/modes/<id>.txt` */
-  discipline: string;
-  /** 这个模式下从 agent 白名单里**减掉**的工具 */
-  deny: string[];
+  /** 这个模式是什么（一句话，给人看；模式切换工具的文案用它） */
+  title: string;
+  /** 进 system 的短注记（英文，面向模型）：这个模式是什么、为什么有些工具不见了。**不装工作流** */
+  note: string;
+  /** 模式对权限的覆盖（配置形）。`deny` 单调——不受层级顺序影响（见 `permission.evaluate` 第 1 步） */
+  permission: PermissionConfig;
 }
 
-/**
- * 现在是**一种**模式。表留着，因为模式的价值在于它是通用的一层——将来"规划下一卷"之类的
- * 有界流程可以复用同一套机制（换一份纪律、换一份 deny），而不是再发明一遍状态。
- */
 export const MODES: Record<string, ModeDef> = {
+  /**
+   * 只读。`deny` 而不是"从白名单里减掉名字"——所以它**自动覆盖所有声明了 `edit` 的工具**，
+   * 将来加了新的写作工具也不会破功，而且带 `*` 的 deny 会让它们从 schema 里消失（不是"有但会被拒"）。
+   */
   plan: {
     id: "plan",
-    discipline: readPrompt("modes/plan"),
-    /**
-     * 藏掉**一切会落盘的**：`task`（子代理里就是写手）、以及设计文档的四个写入口。
-     *
-     * 判据是"这个工具能不能写文件"，不是"它是不是写正文"——计划模式的全部意义就是**期间不动世界**。
-     * 所以设计文档也一起藏：规划某一章时顺手改设定是**范围漂移**，而且它改的正是你正在据以规划的
-     * 那份材料。真需要改就先 `exit-plan`，改完再进来——那是一次看得见的中断，不是偷偷发生的。
-     *
-     * `save-chapter` 现在不在 editor 白名单里，列在这里是为了**以后加进来时不会破功**。
-     * 这份表是 deny 式（失败时放行），所以`tests/framework.test.ts` 有一条用例拿 editor 的真实
-     * 白名单去查漏——加了写作工具却忘了加进来，那条会红。
-     */
-    deny: ["task", "apply-design", "append-design", "remove-design-section", "remove-character", "save-chapter"],
+    title: "计划模式",
+    note: readPrompt("modes/plan"),
+    permission: { edit: "deny", delegate: "deny" },
+  },
+
+  /** 落盘不问，其余照问。委派和联网仍然是 `ask`——"少问一类"不等于"什么都别问"。 */
+  "accept-edits": {
+    id: "accept-edits",
+    title: "免确认落盘",
+    note: readPrompt("modes/accept-edits"),
+    permission: { edit: "allow" },
   },
 };

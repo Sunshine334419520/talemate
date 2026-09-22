@@ -28,6 +28,7 @@ const P = (id: string) => readPrompt(`tools/${id}`);
 export const removeCharacterTool: RegisteredTool<{ name: string }> = defineTool<{ name: string }>({
   id: "remove-character",
   description: P("remove-character"),
+  permission: "edit",
   input: {
     type: "object",
     properties: { name: { type: "string", description: "Character name to delete" } },

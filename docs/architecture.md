@@ -132,7 +132,7 @@ messages = 按 compaction 截断后的历史 + 刚读的设定切片
 
 ### 常驻注入
 
-`buildResidentDesigns` 现读 `core.md` + `wiki/world.md` 全文，**只给可见的 primary（editor）**——subagent 不注入（省 token，靠 task prompt 切片）。无状态包装、不缓存。
+`buildResidentDesigns` 现读 `core.md` + `wiki/world.md` 全文，**只给可见的 primary（mate）**——subagent 不注入（省 token，靠 task prompt 切片）。无状态包装、不缓存。
 
 ## 上下文压缩
 

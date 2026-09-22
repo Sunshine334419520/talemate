@@ -3,25 +3,29 @@
  *
  * persona（system）全部放 prompts/*.txt，readPrompt 加载（英文）；description 内联于此（短数据，路由契约）。
  * 语义：
- * - editor = 唯一 primary（日常对话面 + 项目执掌）。无导演/评审 agent，拍板只属于人。
+ * - mate = 唯一 primary（日常对话面 + 项目执掌）。无导演/评审 agent，拍板只属于人（**人是主编**，
+ *   agent 是搭档——两者不能共用一个头衔）。
  * - writer = subagent，只能被 task 委派；"何时派"写在它的 description，
  *   由 subagentCatalog() 自动拼进 task 工具目录（照 opencode describeTask）。
  * - summarizer = hidden 内部 agent（compaction 用）。
  * - Agent 是数据：talemate.json 的 agents.<id> 可覆盖（model/system/steps…）。
+ * - permissions：`tools` 是**广告**（模型看得到哪些 schema），`permission` 才是**边界**（见
+ *   `docs/permissions.md`）。子代理派生时只继承父的 deny、不继承父的 allow。
  */
 import type { AgentDef, ProjectMeta } from "../core/types";
 import { readPrompt } from "../prompts";
 
 // persona 放角色壳（定语气）与必要的编排残差；机制/方法归数据与工具，见 prompts/README.md 归属纪律。
-const EDITOR_SYSTEM = readPrompt("editor.system");
+const MATE_SYSTEM = readPrompt("mate.system");
 const WRITER_SYSTEM = readPrompt("writer.system");
 const SUMMARIZER_SYSTEM = readPrompt("summarizer.system");
 
 const DEFAULT_AGENTS: AgentDef[] = [
   {
-    id: "editor",
-    name: "主编",
-    description: "The chief editor. Runs the project, maintains the design docs (design/), and orchestrates planning/writing via task.",
+    id: "mate",
+    name: "搭档",
+    description:
+      "The writing partner. Runs the project, maintains the design docs (design/), and orchestrates chapter production.",
     mode: "primary",
     tools: [
       "task",
@@ -43,16 +47,19 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "webfetch",
       "websearch",
     ],
-    system: EDITOR_SYSTEM,
+    system: MATE_SYSTEM,
   },
   {
     id: "writer",
     name: "写手",
     description:
       "The prose writer. Writes one chapter's prose strictly from the provided setting slices + beat plan.\n" +
-      "Use this when the user asks for a chapter's prose AND you hold a beat plan for that chapter the user has already approved via propose-plan; if there is no beat plan yet, write it yourself and propose-plan it first. It runs in an isolated context to focus on the draft; you (chief editor) review and approve the piece before it lands in chapters/.",
+      "Use this when the user asks for a chapter's prose AND you hold a beat plan for that chapter the user has already approved via propose-plan; if there is no beat plan yet, write it yourself and propose-plan it first. It runs in an isolated context to focus on the draft; you (the writing partner) review and approve the piece before it lands in chapters/.",
     mode: "subagent",
     tools: ["read-design", "list-designs", "skill", "save-chapter"],
+    // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
+    // 也不能委派（防链式 spawn）。其余按默认（落盘仍然问）。
+    permission: { question: "deny", delegate: "deny" },
     system: WRITER_SYSTEM,
   },
   {
@@ -117,4 +124,4 @@ export class AgentRegistry {
   }
 }
 
-export { DEFAULT_AGENTS, EDITOR_SYSTEM, WRITER_SYSTEM, SUMMARIZER_SYSTEM };
+export { DEFAULT_AGENTS, MATE_SYSTEM, WRITER_SYSTEM, SUMMARIZER_SYSTEM };

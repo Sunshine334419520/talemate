@@ -76,6 +76,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | The four design layers; two-phase writes; chapter production | `docs/design-docs.md` |
 | Character cards | `docs/characters.md` |
 | Volumes and sequences; why there is no whole-book outline | `docs/outline.md` |
+| Who may do what, and what needs asking | `docs/permissions.md` |
 | What isn't built yet | `docs/roadmap.md` |
 | How prompts are organised and written | `prompts/README.md` |
 

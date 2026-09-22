@@ -6,7 +6,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createProject, listDesigns, readDesign, removeDesign, writeDesign } from "../src/storage/project";
+import { createProject, listDesigns, loadProjectMeta, readDesign, removeDesign, writeDesign } from "../src/storage/project";
 import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "../src/framework/markdown";
 import { RESIDENT_LAYERS } from "../src/framework/layers";
 import { renderDesignSpec } from "../src/framework/design_spec";
@@ -23,12 +23,28 @@ import { defineTool } from "../src/tool/define";
 import { designSpecTool } from "../src/tool/framework_tools";
 import { enterPlanTool, exitPlanTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
 import { MODES } from "../src/agent/modes";
+import {
+  BASE_PERMISSIONS,
+  deriveSubagentPermission,
+  evaluate,
+  evaluateWithSource,
+  match,
+  merge,
+  mergeConfigs,
+  visibleTools,
+  fromConfig,
+  type PermissionConfig,
+  type Rule,
+  type Ruleset,
+} from "../src/permission";
+import { BUILTIN_TOOLS } from "../src/tool";
 import { AgentRegistry } from "../src/agent/registry";
 import { PLAN_KEY } from "../src/core/types";
-import { renderPendingNote } from "../src/session/session";
+import { renderPendingNote, Session } from "../src/session/session";
+import type { ModelConfig } from "../src/core/types";
 import { ToolRegistry } from "../src/tool/registry";
 import { executeToolPart } from "../src/tool/runner";
-import type { PendingProposal, ToolContext } from "../src/core/types";
+import type { ConfirmReply, PendingProposal, ToolContext } from "../src/core/types";
 
 let HOME: string;
 let pid: string;
@@ -228,18 +244,46 @@ describe("项目懒建 / 搜索 / 锚点", () => {
 // ─── 角色卡工具（离线：假 ctx 走真实 storage） ───
 
 /** 测试用 ctx：pending 与"给用户看的文本"都挂在外面，测试要能直接查看。 */
+/**
+ * 侧录 + 真求值的测试 ctx。
+ *
+ * `check`/`ask` **不是桩**——它们跑真正的 `evaluate`，所以"这个模式下工具该不该被挡住"这类断言
+ * 测的是产品逻辑，不是测试自己编的答案。`rulesets` 缺省 `[BASE_PERMISSIONS]`（= 没有模式）。
+ */
 function makeCtx(
   projectId: string,
-): ToolContext & { pending: Map<string, PendingProposal>; shown: string[]; modeLog: (string | undefined)[] } {
+  ...rulesets: Ruleset[]
+): ToolContext & {
+  pending: Map<string, PendingProposal>;
+  shown: string[];
+  modeLog: (string | undefined)[];
+  approved: Rule[];
+  /** 下一次 `ask` 弹窗时用户怎么答 */
+  setConfirmReply(reply: ConfirmReply): void;
+} {
   const pending = new Map<string, PendingProposal>();
   const shown: string[] = [];
   const modeLog: (string | undefined)[] = [];
+  const approved: Rule[] = [];
+  const rules = rulesets.length ? rulesets : [fromConfig(BASE_PERMISSIONS)];
+  let confirmReply: ConfirmReply = "once";
   return {
     projectId,
     sessionId: "test-session",
-    agent: "editor",
+    agent: "mate",
     signal: new AbortController().signal,
-    confirm: async () => true,
+    confirm: async () => confirmReply,
+    check: (permission, pattern) => evaluate(permission, pattern, ...rules, approved).action,
+    ask: async (req) => {
+      const rule = evaluate(req.permission, req.pattern, ...rules, approved);
+      if (rule.action === "deny") return "deny";
+      if (rule.action === "allow") return "allow";
+      if (confirmReply === "no") return "reject";
+      if (confirmReply === "always" && req.always) {
+        approved.push({ permission: req.permission, pattern: req.always, action: "allow" });
+      }
+      return "allow";
+    },
     askUser: async () => "（测试）",
     showProposal: (text) => {
       shown.push(text);
@@ -257,6 +301,10 @@ function makeCtx(
     pending,
     shown,
     modeLog,
+    approved,
+    setConfirmReply: (reply) => {
+      confirmReply = reply;
+    },
     readDesign: (name) => readDesign(projectId, name),
     writeDesign: (name, content) => writeDesign(projectId, name, content),
     removeDesign: (name) => removeDesign(projectId, name),
@@ -783,26 +831,24 @@ describe("会话模式 · plan", () => {
     expect(ctx.modeLog).toEqual(["plan", undefined]);
   });
 
-  test("计划模式下 editor 手里没有任何能写文件的工具", () => {
-    // 拿**真实白名单**查，不另抄一份——加了写作工具却忘了加进 deny，这里会红。
-    // deny 是失败时放行的形状，所以这条用例是它唯一的兜底。
-    const editor = new AgentRegistry().get("editor");
-    const writers = [
-      "task", // 子代理（writer 落 chapters/）
-      "apply-design",
-      "append-design",
-      "remove-design-section",
-      "remove-character",
-      "save-chapter",
-    ];
-    const available = editor.tools.filter((t) => !MODES.plan.deny.includes(t));
-    const leaked = writers.filter((t) => available.includes(t));
+  /** 某个规则集下，**整个注册表**里还剩哪些工具可见。 */
+  const visibleUnder = (...configs: PermissionConfig[]): string[] =>
+    visibleTools([...BUILTIN_TOOLS], mergeConfigs(...configs)).map((t) => t.id);
+
+  test("计划模式挡住一切会写文件的工具——**按类别挡，不是按名单**", () => {
+    // 断言的是"没有任何 edit/delegate 工具漏网"。将来加了新的写作工具、只要它声明了
+    // permission: "edit"，就自动被挡——不需要谁记得去改一份名单。
+    const available = visibleUnder(BASE_PERMISSIONS, MODES.plan.permission);
+    const leaked = BUILTIN_TOOLS.filter(
+      (t) => (t.permission === "edit" || t.permission === "delegate") && available.includes(t.id),
+    ).map((t) => t.id);
     expect(leaked).toEqual([]);
+    // 而且确实拦到了东西（否则上面那条空断言恒真）
+    expect(available.length).toBeLessThan(BUILTIN_TOOLS.length);
   });
 
-  test("但只读工具与 propose-plan 都还在（模式不是把人关死）", () => {
-    const editor = new AgentRegistry().get("editor");
-    const available = editor.tools.filter((t) => !MODES.plan.deny.includes(t));
+  test("但只读工具与两个出口都还在（模式不是把人关死）", () => {
+    const available = visibleUnder(BASE_PERMISSIONS, MODES.plan.permission);
     const missing = ["read-design", "list-designs", "design-spec", "propose-plan", "exit-plan", "ask-user"].filter(
       (t) => !available.includes(t),
     );
@@ -810,9 +856,214 @@ describe("会话模式 · plan", () => {
   });
 
   test("模式纪律必须与领域无关——绑死成「章节计划模式」就换不了场景", () => {
-    const d = MODES.plan.discipline.toLowerCase();
+    const d = MODES.plan.note.toLowerCase();
     const bound = ["节拍", "beat", "chapter", "sequence", "outline"].filter((w) => d.includes(w));
     expect(bound).toEqual([]);
+  });
+});
+
+// ─── 权限 ───
+
+describe("权限 · 求值", () => {
+  const R = fromConfig;
+
+  test("一条都没匹配 → ask（默认问，不是默认放行）", () => {
+    expect(evaluate("edit", "whatever", []).action).toBe("ask");
+    expect(evaluate("edit", "whatever", R({ delegate: "allow" })).action).toBe("ask");
+  });
+
+  test("顺序即优先级：后写的赢", () => {
+    expect(evaluate("edit", "a.md", R({ edit: "ask" }), R({ edit: "allow" })).action).toBe("allow");
+    expect(evaluate("edit", "a.md", R({ edit: "allow" }), R({ edit: "ask" })).action).toBe("ask");
+  });
+
+  test("deny 单调——不受顺序影响（我们和 opencode 的唯一分歧）", () => {
+    expect(evaluate("edit", "a.md", R({ edit: "deny" }), R({ edit: "allow" })).action).toBe("deny");
+    expect(evaluate("edit", "a.md", R({ edit: "allow" }), R({ edit: "deny" })).action).toBe("deny");
+  });
+
+  test("pattern 是通配的，`*` 跨 `/`", () => {
+    expect(match("design/wiki/world.md", "design/*")).toBe(true);
+    expect(match("chapters/ch1.md", "design/*")).toBe(false);
+    expect(match("design/core.md", "design/core.md")).toBe(true);
+  });
+
+  test("`deny *` 隐藏工具；具体 pattern 的 deny 不隐藏（那是「这一类里有一个例外」）", () => {
+    const tools = [
+      { id: "edit-tool", permission: "edit" as const },
+      { id: "read-tool" },
+    ];
+    expect(visibleTools(tools, R({ edit: "deny" })).map((t) => t.id)).toEqual(["read-tool"]);
+
+    const oneException = R({ edit: { "*": "allow", "design/secret.md": "deny" } });
+    expect(visibleTools(tools, oneException).map((t) => t.id)).toEqual(["edit-tool", "read-tool"]);
+    expect(evaluate("edit", "design/secret.md", oneException).action).toBe("deny");
+    expect(evaluate("edit", "design/other.md", oneException).action).toBe("allow");
+  });
+
+  test("四层拼装：内置默认 → agent → 模式 → 用户配置（顺序即优先级）", () => {
+    // 模式的 allow 压过内置默认的 ask；用户配置的 allow 又压过模式的 ask
+    expect(evaluate("edit", "*", mergeConfigs(BASE_PERMISSIONS, {}, { edit: "allow" }, {})).action).toBe("allow");
+    expect(evaluate("extern", "*", mergeConfigs(BASE_PERMISSIONS, {}, {}, { extern: "allow" })).action).toBe("allow");
+    // 但 deny 单调：模式的 deny 压得过用户配置的 allow（"不许"不该被别处的"允许"盖掉）
+    expect(evaluate("edit", "*", mergeConfigs(BASE_PERMISSIONS, {}, { edit: "deny" }, { edit: "allow" })).action).toBe(
+      "deny",
+    );
+    // agent 声明也在这条链上：writer 的 question: deny 压过内置默认的 allow
+    expect(evaluate("question", "*", mergeConfigs(BASE_PERMISSIONS, { question: "deny" }, {}, {})).action).toBe("deny");
+  });
+
+  test("子代理：父的 deny 继承，父的 allow 不继承", () => {
+    const parent = mergeConfigs(BASE_PERMISSIONS, { edit: "allow" }, { extern: "deny" });
+    const derived = deriveSubagentPermission(parent, { permission: { question: "deny" } });
+
+    expect(evaluate("extern", "*", derived).action).toBe("deny"); // 父的 deny → 继承
+    expect(evaluate("edit", "*", derived).action).toBe("ask"); // 父的 allow → **不**继承，回落默认
+    expect(evaluate("question", "*", derived).action).toBe("deny"); // 子自己的规则
+    expect(evaluate("delegate", "*", derived).action).toBe("deny"); // 没声明 → 禁委派
+  });
+});
+
+describe("权限 · 说清「这条是谁定的」", () => {
+  // 四层：内置默认 → agent → 模式 → 用户配置
+  const layers = [
+    fromConfig(BASE_PERMISSIONS),
+    fromConfig({}),
+    fromConfig({ edit: "deny", delegate: "deny" }),
+    fromConfig({ extern: "allow" }),
+  ];
+
+  test("命中的规则报出它所在的层号；一层都没有 → -1（走了默认 ask）", () => {
+    expect(evaluateWithSource("edit", "*", ...layers).layer).toBe(2);
+    expect(evaluateWithSource("extern", "*", ...layers).layer).toBe(3);
+    expect(evaluateWithSource("question", "*", ...layers).layer).toBe(0);
+    expect(evaluateWithSource("edit", "*", fromConfig({})).layer).toBe(-1);
+  });
+
+  test("[回归] deny 来自**前面**的层时，报的是那个前面的层，不是最后匹配的那个", () => {
+    // 顺序即优先级的写法会报第 3 层（用户配置的 allow），但实际生效的是第 2 层的 deny——
+    // 显示"是用户配置放行的"就完全说反了（deny 单调，见 evaluate 第 1 步）
+    const { rule, layer } = evaluateWithSource("edit", "*", ...layers);
+    expect(rule.action).toBe("deny");
+    expect(layer).toBe(2);
+  });
+});
+
+describe("权限 · 规则表视图（CLI 的 /permissions）", () => {
+  const model: ModelConfig = { provider: "mock", model: "test", maxTokens: 1, reasoning: "off" };
+
+  /** 一个真实 Session（不是假 ctx）——视图读的是会话自己的状态，得照着真东西测。 */
+  async function sessionWith(permissions?: PermissionConfig): Promise<Session> {
+    const meta = await loadProjectMeta(pid);
+    const agents = new AgentRegistry();
+    agents.applyProject(meta);
+    const tools = new ToolRegistry();
+    for (const t of BUILTIN_TOOLS) tools.register(t);
+    return new Session({ projectId: pid, meta: { ...meta, permissions }, agents, tools, model });
+  }
+
+  test("四层永远都在、顺序不变——用户配了也看得见自己在最后一层", async () => {
+    const view = (await sessionWith({ edit: "deny" })).permissionView();
+    expect(view.derived).toBe(false);
+    // 层名对不上很要紧：视图是用户判断"我的配置生效没有"的唯一入口
+    expect(view.layers.map((l) => l.label)).toEqual([
+      "内置默认",
+      "agent 搭档",
+      "模式",
+      "项目配置 talemate.json",
+    ]);
+    expect(view.layers[3].rules).toEqual([{ permission: "edit", pattern: "*", action: "deny" }]);
+  });
+
+  test("视图摊开的那几层，求值结果就是会话真正在执行的——显示和执行不会各说各话", async () => {
+    const session = await sessionWith({ edit: { "*": "allow", "design/core.md": "ask" } });
+    const view = session.permissionView();
+    const sets = [...view.layers.map((l) => l.rules), view.approved];
+
+    // 兜底那条 `*→allow` 生效
+    expect(evaluateWithSource("edit", "chapters/ch1.md", ...sets).rule.action).toBe("allow");
+    // 但被点名的那一个仍然要问，且来源是"项目配置"那一层
+    const guarded = evaluateWithSource("edit", "design/core.md", ...sets);
+    expect(guarded.rule.action).toBe("ask");
+    expect(view.layers[guarded.layer].label).toBe("项目配置 talemate.json");
+  });
+
+  test("没进模式时模式层是空的，但位子留着——层号不因为空而错位", async () => {
+    const view = (await sessionWith()).permissionView();
+    expect(view.modeTitle).toBeUndefined();
+    expect(view.layers[2].rules).toEqual([]);
+    // 空层不参与求值，`question` 仍然由第一层（内置默认）的 allow 定
+    expect(evaluateWithSource("question", "*", ...view.layers.map((l) => l.rules)).layer).toBe(0);
+  });
+});
+
+describe("权限 · 会话级行为", () => {
+  test("accept-edits：落盘不问，委派与联网照问", async () => {
+    const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES["accept-edits"].permission));
+    expect(await ctx.ask({ permission: "edit", pattern: "design/core.md", summary: "" })).toBe("allow");
+    expect(ctx.check("delegate", "writer")).toBe("ask");
+    expect(ctx.check("extern", "https://x")).toBe("ask");
+  });
+
+  test("plan：edit 与 delegate 都是 deny（只读）", async () => {
+    const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES.plan.permission));
+    expect(ctx.check("edit", "design/core.md")).toBe("deny");
+    expect(await ctx.ask({ permission: "edit", pattern: "design/core.md", summary: "" })).toBe("deny");
+    expect(ctx.check("extern", "https://x")).toBe("ask"); // 查资料仍然可以
+  });
+
+  test("reject 与 deny 是两回事：前者等人点头，后者得先离开模式", async () => {
+    const ctx = makeCtx(pid);
+    ctx.setConfirmReply("no");
+    expect(await ctx.ask({ permission: "edit", pattern: "design/a.md", summary: "" })).toBe("reject");
+  });
+
+  test("always：答一次「以后都允许」，同类不再问", async () => {
+    const ctx = makeCtx(pid);
+    ctx.setConfirmReply("always");
+    expect(await ctx.ask({ permission: "edit", pattern: "design/a.md", always: "design/*", summary: "" })).toBe("allow");
+    expect(ctx.approved).toEqual([{ permission: "edit", pattern: "design/*", action: "allow" }]);
+
+    // 同类**另一个文件** → 直接放行；把答复切成 no 来证明它真的没再弹窗
+    ctx.setConfirmReply("no");
+    expect(await ctx.ask({ permission: "edit", pattern: "design/b.md", summary: "" })).toBe("allow");
+  });
+
+  test("apply-design 走 confirm:false 也要过规则表——「不许」不因为问过一次就失效", async () => {
+    const doc = "wiki/guarded.md";
+    const before = "# X\n\n## 甲\n旧的一版。\n";
+    await writeDesign(pid, doc, before);
+    // 除这个文件外都放行——所以这条如果过了，一定是"被 deny 挡住"，不是"配置把一切关掉了"
+    const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, { edit: { "*": "allow", [doc]: "deny" } }));
+    // base 要对得上，否则先被并发保护拦下，测不到权限那一步
+    ctx.setProposal({ name: doc, content: "# X\n\n## 甲\n新的一版。\n", base: before, approved: true, at: Date.now() });
+
+    const r = await applyDesignTool.execute({ name: doc }, ctx as never);
+    expect(r.output).toContain("不允许改文件");
+    expect(await readDesign(pid, doc)).toContain("旧的一版。"); // 真的一个字没写进去
+  });
+
+  test("runner 兜底：被 `deny *` 盖住的工具，哪怕被幻觉调出来也拒", async () => {
+    const reg = new ToolRegistry();
+    reg.register(
+      defineTool<Record<string, never>>({
+        id: "t-edit",
+        description: "",
+        input: { type: "object" },
+        permission: "edit",
+        async execute() {
+          return { output: "不该跑到这里" };
+        },
+      }),
+    );
+    const part = await executeToolPart(
+      "mate",
+      { id: "1", name: "t-edit", input: {} },
+      reg,
+      makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES.plan.permission)) as never,
+    );
+    expect(part.type === "tool" && part.state).toBe("error");
+    expect(part.type === "tool" && part.error).toContain("不允许");
   });
 });
 
@@ -832,10 +1083,10 @@ describe("tool runner · halt", () => {
       }),
     );
 
-    const okPart = await executeToolPart("editor", { id: "1", name: "t-halt", input: {} }, reg, makeCtx(pid) as never);
+    const okPart = await executeToolPart("mate", { id: "1", name: "t-halt", input: {} }, reg, makeCtx(pid) as never);
     expect(okPart.type === "tool" && okPart.halt).toBe(true);
 
-    const badPart = await executeToolPart("editor", { id: "2", name: "t-halt", input: { fail: true } }, reg, makeCtx(pid) as never);
+    const badPart = await executeToolPart("mate", { id: "2", name: "t-halt", input: { fail: true } }, reg, makeCtx(pid) as never);
     expect(badPart.type === "tool" && badPart.state).toBe("error");
     expect(badPart.type === "tool" && badPart.halt).toBeFalsy();
   });

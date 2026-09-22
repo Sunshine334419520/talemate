@@ -26,7 +26,7 @@ export const LAYERS: Layer[] = [
 ];
 
 /**
- * 常驻注入 editor 的文档（core + world 总纲），见 framework/anchor buildResidentDesigns。
+ * 常驻注入 mate 的文档（core + world 总纲），见 framework/anchor buildResidentDesigns。
  * 条目标的是**层**；具体路径由 `DESIGN_SPECS[id].file` 给（`tests/layers.test.ts` 钉住这条对应）。
  */
 export const RESIDENT_LAYERS: LayerId[] = ["core", "world"];

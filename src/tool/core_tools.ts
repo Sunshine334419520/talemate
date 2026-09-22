@@ -3,7 +3,7 @@
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
  */
 import { PLAN_KEY } from "../core/types";
-import { confirmBody } from "../framework/design_ops";
+import { askWrite, writeBlocked } from "../framework/design_ops";
 import { renderPlan } from "../framework/proposal";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
@@ -25,11 +25,21 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
     },
     required: ["agent", "prompt"],
   },
-  needsConfirm(args) {
-    return `委派 ${args.agent} 子代理执行（prompt ${args.prompt.length} 字）`;
-  },
+  permission: "delegate",
   async execute(args, ctx) {
-    // 写正文这一支有**硬门**：用户没拍板过这一章的节拍就不放行。它和 apply-design 是同一套机制——
+    const verdict = await ctx.ask({
+      permission: "delegate",
+      pattern: args.agent,
+      always: "*",
+      summary: `委派 ${args.agent} 子代理执行`,
+      detail: `prompt ${args.prompt.length} 字。`,
+    });
+    if (verdict === "deny") {
+      return { output: `当前不允许委派子代理（${args.agent}）。若是计划模式挡住了，先 exit-plan。` };
+    }
+    if (verdict === "reject") return { output: `用户已拒绝委派 ${args.agent}。` };
+
+    // 写正文这一支还有**硬门**：用户没拍板过这一章的节拍就不放行。它和 apply-design 是同一套机制——
     // propose-* 登记 → harness 按用户回话置 approved → 执行工具查它。门开在"执行"这一头而不是给
     // 整个会话加个模式，是为了让设计流程与正文流程共用一种"用户拍板"的语义。
     if (args.agent === "writer") {
@@ -87,10 +97,16 @@ export const askUserTool: RegisteredTool<{ question: string; options?: string[] 
     },
     required: ["question"],
   },
+  permission: "question",
   async execute(args, ctx) {
     const question = args.question?.trim();
     if (!question) {
       return { output: `ask-user 缺少必填 question（收到：${JSON.stringify(args).slice(0, 200)}）——请用合法 JSON 带 question 重新调用。` };
+    }
+    // 这一个是"由我决定要不要开口问"，不是权限系统替你问——所以只求值、不弹窗
+    // （否则会先弹一句"允许提问吗"，再弹真正的问题）。
+    if (ctx.check("question", "*") === "deny") {
+      return { output: "当前不允许打断用户（子代理不在场，或模式禁了提问）——把问题留在返回值里带回去。" };
     }
     const answer = await ctx.askUser(question, args.options);
     return { output: `用户回答：${answer}`, metadata: { answer } };
@@ -112,12 +128,18 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
     },
     required: ["action", "summary"],
   },
+  permission: "question",
   async execute(args, ctx) {
     if (!args.action?.trim() || !args.summary?.trim()) {
       return { output: `confirm 缺少 action/summary（收到：${JSON.stringify(args).slice(0, 200)}）——请带完整字段重新调用。` };
     }
-    const ok = await ctx.confirm(args.action.trim(), args.summary.trim());
-    return ok ? { output: `用户已确认：${args.action}` } : { output: `用户已拒绝：${args.action}` };
+    if (ctx.check("question", "*") === "deny") {
+      return { output: "当前不允许打断用户（子代理不在场，或模式禁了提问）。" };
+    }
+    const reply = await ctx.confirm(args.action.trim(), args.summary.trim());
+    return reply === "no"
+      ? { output: `用户已拒绝：${args.action}` }
+      : { output: `用户已确认：${args.action}` };
   },
 });
 
@@ -136,16 +158,17 @@ export const saveChapterTool: RegisteredTool<{ filename: string; content: string
     },
     required: ["filename", "content"],
   },
-  // confirm 在 execute 里做：落盘前把正文摆给用户看（渲染器复用 design_ops 那一份）
+  permission: "edit",
   async execute(args, ctx) {
-    const ok = await confirmBody(
-      ctx,
-      `落盘 chapters/${args.filename}`,
-      `正文 ${args.content.length} 字。`,
-      "将写入的内容",
-      args.content,
-    );
-    if (!ok) return { output: `用户已拒绝落盘 chapters/${args.filename}` };
+    // 走同一道权限口（渲染器复用 design_ops 那一份）——chapters/ 的文件名就是 pattern
+    const verdict = await askWrite(ctx, {
+      pattern: `chapters/${args.filename}`,
+      action: `落盘 chapters/${args.filename}`,
+      meta: `正文 ${args.content.length} 字。`,
+      label: "将写入的内容",
+      body: args.content,
+    });
+    if (verdict !== "allow") return { output: writeBlocked(verdict, `落盘 chapters/${args.filename}`) };
     const file = await ctx.saveChapter(args.filename, args.content);
     return { output: `已保存 ${file}`, metadata: { file } };
   },
@@ -155,10 +178,10 @@ export const saveChapterTool: RegisteredTool<{ filename: string; content: string
  * propose-plan：把**这一章**的节拍摆给用户拍板，并**结束本回合**等他回话。
  *
  * **与 propose-design 的区别：没有 apply 那一半。** 节拍不落盘——它批准的是**动作**（去写正文），
- * 不是一份文档。所以这里不登记提案、不留 base 快照、不判"同意"：用户说"没问题"之后，editor 直接
+ * 不是一份文档。所以这里不登记提案、不留 base 快照、不判"同意"：用户说"没问题"之后，mate 直接
  * 带着这份节拍去 `task(writer)`。用户要改 → 改完再摆一次，这是个循环。
  *
- * `halt` 是它存在的全部理由：光靠纪律，editor 可能拿着没批准的节拍直接叫 writer。而"摆出来就停"
+ * `halt` 是它存在的全部理由：光靠纪律，mate 可能拿着没批准的节拍直接叫 writer。而"摆出来就停"
  * 正是计划模式里 ExitPlanMode 干的事——这里不要 mode（`design-docs.md` 明确否决过阶段状态机），
  * 只要一个会停的工具。
  */
@@ -220,7 +243,7 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
  * enter-plan / exit-plan：会话模式的进出口（见 `agent/modes.ts`）。
  *
  * **模式的边界感全在这两个工具上**：它必须有始有终，所以进入之后只有两条路——`propose-plan`
- * 成功（正常路径，自动退出）、或者 `exit-plan`（用户改主意不做了）。没有第二条会把 editor
+ * 成功（正常路径，自动退出）、或者 `exit-plan`（用户改主意不做了）。没有第二条会把 mate
  * 关在"能读能问、但派不了活"的笼子里。
  *
  * 进入不弹 confirm：用户刚说了"写第 1 章"，再问一句"要不要先规划"是噪音。

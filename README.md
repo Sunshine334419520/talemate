@@ -21,7 +21,7 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 
 ```
 talemate new 我的小说 悬疑
-  → 进 editor 会话，聊想法 → 企划长成 design/ 四层活文档
+  → 进 mate 会话，聊想法 → 企划长成 design/ 四层活文档
   → "写第 1 章" → 先出节拍，你拍板 → 再写正文（writer）→ 落 chapters/
 ```
 
@@ -32,7 +32,7 @@ talemate new 我的小说 悬疑
 | 模块 | 职责 |
 |---|---|
 | `src/cli.ts` `src/smoke.ts` | CLI + REPL 入口 / 离线冒烟 |
-| `src/agent/` | Agent 注册表：editor(primary) / writer / summarizer(hidden) |
+| `src/agent/` | Agent 注册表：mate(primary) / writer / summarizer(hidden) |
 | `src/session/` | 会话接线、agent 循环、上下文压缩 |
 | `src/tool/` | 工具框架 + 内置工具（design / character / framework / core / web 五个领域） |
 | `src/framework/` | 写作领域层：层规范、写盘唯一实现、提案渲染、markdown 手术、角色卡、引用搜索 |
@@ -52,6 +52,7 @@ talemate new 我的小说 悬疑
 | 企划的四层活文档与两段式落盘 | [`docs/design-docs.md`](docs/design-docs.md) |
 | 角色卡长什么样、怎么维护 | [`docs/characters.md`](docs/characters.md) |
 | 大纲由什么构成、为什么没有整本大纲 | [`docs/outline.md`](docs/outline.md) |
+| 谁能做什么、什么要问用户 | [`docs/permissions.md`](docs/permissions.md) |
 | 还没做什么 | [`docs/roadmap.md`](docs/roadmap.md) |
 | prompt 怎么组织、怎么写 | [`prompts/README.md`](prompts/README.md) |
 | 写代码的约定与硬约束 | [`CLAUDE.md`](CLAUDE.md) |

@@ -8,11 +8,15 @@
 import { randomUUID } from "node:crypto";
 import { AgentRegistry } from "../agent/registry";
 import { MODES } from "../agent/modes";
+import { BASE_PERMISSIONS, deriveSubagentPermission, evaluate, fromConfig, mergeConfigs, visibleTools } from "../permission";
 import { loadModelConfig } from "../core/config";
 import { PLAN_KEY } from "../core/types";
+import type { ModeDef } from "../agent/modes";
+import type { PermissionConfig, Rule, Ruleset } from "../permission";
 import type {
   AgentDef,
   AssistantPart,
+  ConfirmReply,
   LLMEvent,
   ModelConfig,
   PendingProposal,
@@ -38,15 +42,32 @@ import { runLoop } from "./loop";
 /** 用户交互口：CLI/TUI 提供；冒烟可用自动答复实现 */
 export interface UserIO {
   onEvent(e: LLMEvent): void;
-  confirm(action: string, summary: string): Promise<boolean>;
+  /** `always` = 这一类以后都别问（进会话级 approved 表）。这个答复是权限系统唯一的记忆来源。 */
+  confirm(action: string, summary: string): Promise<ConfirmReply>;
   askUser(question: string, options?: string[]): Promise<string>;
 }
 
-/** 自动 IO：默认放行确认、askUser 返回占位（供 mock/无人值守） */
+/**
+ * 规则表的展示视图（`Session.permissionView` 的产物）。给 CLI 的 `/permissions` 用——
+ * 它要回答的是"我配的那条生效没有"，所以除了结论还得有**每一层各自贡献了什么**。
+ */
+export interface PermissionView {
+  agentName: string;
+  /** 当前模式（没进模式 → undefined） */
+  modeTitle?: string;
+  /** 子会话：规则由父会话派生，不是四层叠加 */
+  derived: boolean;
+  /** 顺序即优先级 */
+  layers: { label: string; rules: Ruleset }[];
+  /** 会话级 approved：用户说过「以后都允许」的规则 */
+  approved: Ruleset;
+}
+
+/** 自动 IO：一律放行（`once`，不写 approved——无人值守时不该替用户改规则）、askUser 返回占位 */
 export const autoIO: UserIO = {
   onEvent() {},
   async confirm() {
-    return true;
+    return "once";
   },
   async askUser(q) {
     return `（自动答复：${q}）`;
@@ -108,6 +129,8 @@ export interface SessionDeps {
   title?: string;
   /** 子会话深度（task 委派限深用） */
   depth?: number;
+  /** 子会话专用：父会话当前生效的规则集，用来派生自己的（父的 deny 继承、allow 不继承） */
+  parentRuleset?: Ruleset;
 }
 
 export class Session {
@@ -131,14 +154,27 @@ export class Session {
 
   /**
    * 当前会话模式（见 agent/modes.ts）。**只在内存里**——和 pending 同生命周期，进程重启即回到
-   * 普通模式。硬保证不靠它（写正文那道门挂在 task(writer) 上），所以丢了也不漏。
+   * 默认模式。硬保证不靠它（写正文那道门挂在 task(writer) 上），所以丢了也不漏。
    */
   private mode?: string;
+
+  /** 用户说过「以后都允许」的规则（`ctx.ask` 答复为 `always` 时追加）。同样是会话内存。 */
+  private readonly approved: Rule[] = [];
+
+  /** `rulesetFor` 的缓存：键是 (agent, 模式)——两者不变时复用同一份规则数组。 */
+  private rulesetCache?: { key: string; rules: Ruleset };
+
+  /**
+   * 子会话的派生来源。有值 = 这是个子代理会话：规则集由 `deriveSubagentPermission` 从父的
+   * **deny** 派生（父的 allow 不继承），而不是自己从内置默认起算。
+   */
+  private readonly parentRuleset?: Ruleset;
 
   constructor(deps: SessionDeps & { meta: ProjectMeta; agents: AgentRegistry; tools: ToolRegistry; model: ModelConfig }) {
     this.projectId = deps.projectId;
     this.sessionId = deps.sessionId ?? randomUUID();
     this.depth = deps.depth ?? 0;
+    this.parentRuleset = deps.parentRuleset;
     this.agentId = deps.agentId ?? deps.agents.getDefaultPrimary().id;
     this.model = deps.model;
     this.io = deps.io ?? autoIO;
@@ -236,10 +272,71 @@ export class Session {
     return { system, messages: neutral, tools: toolSchemas.length ? toolSchemas : undefined };
   }
 
-  /** 当前模式允许的工具：agent 白名单**减去**模式声明要藏的那些（模式不在 → 原样）。 */
+  /**
+   * 四层来源，**顺序即优先级**：内置默认 → agent 声明 → 模式覆盖 → 用户配置。
+   * （`deny` 单调，**不受这个顺序影响**——见 `permission.evaluate` 第 1 步。）
+   *
+   * 求值与展示共用这一份定义：`rulesetFor` 把它拼起来跑，`permissionView` 把它摊开给人看。
+   * 各写一份的话，"看到的规则"迟早和"执行的规则"说两套话。
+   */
+  private permissionSources(agent: AgentDef): { label: string; config: PermissionConfig }[] {
+    return [
+      { label: "内置默认", config: BASE_PERMISSIONS },
+      { label: `agent ${agent.name}`, config: agent.permission ?? {} },
+      { label: this.mode ? MODES[this.mode].title : "模式", config: this.mode ? MODES[this.mode].permission : {} },
+      { label: "项目配置 talemate.json", config: this.meta.permissions ?? {} },
+    ];
+  }
+
+  /**
+   * 当前生效的规则集（见 `permissionSources`）。
+   * 子会话走另一条路：只从父的 deny 派生，父的 allow 不继承。
+   * 按 (agent, 模式) 缓存——`check`/`ask` 一轮里要跑好几次，不缓存等于反复转。
+   */
+  private rulesetFor(agent: AgentDef): Ruleset {
+    if (this.parentRuleset) return deriveSubagentPermission(this.parentRuleset, agent);
+    const key = `${agent.id}:${this.mode ?? ""}`;
+    if (this.rulesetCache?.key !== key) {
+      this.rulesetCache = { key, rules: mergeConfigs(...this.permissionSources(agent).map((s) => s.config)) };
+    }
+    return this.rulesetCache.rules;
+  }
+
+  /** 当前模式（没进模式 → undefined）。CLI 拿它显示在提示符上：模式改了能做什么，看不见不行。 */
+  get currentMode(): ModeDef | undefined {
+    return this.mode ? MODES[this.mode] : undefined;
+  }
+
+  /**
+   * 规则表的**给人看的视图**：每一层各自贡献了什么 + 会话级 approved。CLI 的 `/permissions` 用它回答
+   * "我配的那条生效没有、被谁盖住了"——同一个问题问 `rulesetFor` 只能得到结果，得不到来源。
+   */
+  permissionView(): PermissionView {
+    if (this.parentRuleset) {
+      // 子会话不是四层叠加，是从父的 deny 派生的（见 permission.deriveSubagentPermission）
+      return {
+        agentName: this.agent.name,
+        derived: true,
+        layers: [{ label: "由父会话派生：父的 deny 继承、allow 不继承", rules: this.rulesetFor(this.agent) }],
+        approved: [],
+      };
+    }
+    return {
+      agentName: this.agent.name,
+      modeTitle: this.currentMode?.title,
+      derived: false,
+      layers: this.permissionSources(this.agent).map((s) => ({ label: s.label, rules: fromConfig(s.config) })),
+      approved: [...this.approved],
+    };
+  }
+
+  /**
+   * 该 agent 可见的工具：白名单**减去**被 `deny *` 盖住的。那些是"这个模式下**没有**这个工具"
+   * （从 schema 里消失，不占上下文也不诱导模型去试），不是"有但会被拒"。
+   */
   private allowedTools(agent: AgentDef): string[] {
-    const mode = this.mode ? MODES[this.mode] : undefined;
-    return mode ? agent.tools.filter((t) => !mode.deny.includes(t)) : agent.tools;
+    const defs = agent.tools.flatMap((id) => (this.tools.has(id) ? [this.tools.get(id)] : []));
+    return visibleTools(defs, this.rulesetFor(agent)).map((t) => t.id);
   }
 
   /**
@@ -259,10 +356,10 @@ export class Session {
       skills: renderSkillCatalog(skills),
       resident,
     });
-    // 模式纪律排在角色壳之后、状态注记之前：它是"眼下在干什么"，压过角色的默认姿态。
+    // 模式注记排在角色壳之后、状态注记之前：它是"眼下在干什么"，压过角色的默认姿态。
     const mode = this.mode ? MODES[this.mode] : undefined;
     const note = renderPendingNote(this.pending);
-    return [base, mode?.discipline, note].filter(Boolean).join("\n\n");
+    return [base, mode?.note, note].filter(Boolean).join("\n\n");
   }
 
   /** 构造工具执行上下文（ToolContext），供 execute 获取读写/确认/委派等能力 */
@@ -272,7 +369,22 @@ export class Session {
       sessionId: this.sessionId,
       agent: agent.id,
       signal: this.abort.signal,
+      // 原始确认口：ask 拿它当弹窗，confirm 工具也用它。其余工具不该碰。
       confirm: (action, summary) => this.io.confirm(action, summary),
+      // 纯求值：给 runner 做粗粒度兜底（被幻觉调出来的工具也得挡住）。不打扰用户。
+      check: (permission, pattern) => evaluate(permission, pattern, this.rulesetFor(agent), this.approved).action,
+      // 唯一一道"改世界之前"的口。所有落盘/委派/联网的工具走这里，不再各自调 io.confirm。
+      ask: async (req) => {
+        const rule = evaluate(req.permission, req.pattern, this.rulesetFor(agent), this.approved);
+        if (rule.action === "deny") return "deny";
+        if (rule.action === "allow") return "allow";
+        const reply = await this.io.confirm(req.summary, req.detail ?? "");
+        if (reply === "no") return "reject";
+        if (reply === "always" && req.always) {
+          this.approved.push({ permission: req.permission, pattern: req.always, action: "allow" });
+        }
+        return "allow";
+      },
       askUser: (q, options) => this.io.askUser(q, options),
       showProposal: (text) => this.io.onEvent({ type: "proposal", text }),
       // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
@@ -299,14 +411,15 @@ export class Session {
         const names = await listChapters(this.projectId);
         return names.length ? names.join("\n") : "（尚无正文/规划落盘）";
       },
-      runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt),
+      // 把**当前生效的**规则集交给子会话去派生（父的 deny 继承、allow 不继承）
+      runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt, this.rulesetFor(agent)),
       loadSkill: (name) => loadSkillByName(this.projectId, name).then((s) => s?.body),
       saveChapter: (filename, content) => saveChapter(this.projectId, filename, content),
     };
   }
 
   /** task 委派：子会话独立上下文，只传 prompt，返回最终正文 */
-  private async runSubagent(agentId: string, prompt: string): Promise<string> {
+  private async runSubagent(agentId: string, prompt: string, parentRuleset: Ruleset): Promise<string> {
     const sub = this.agents.get(agentId);
     if (sub.mode !== "subagent") throw new Error(`agent ${agentId} 不是 subagent，不能 task 委派`);
     if (this.depth >= 1) throw new Error("子代理深度超限（task 最多嵌套 1 层）");
@@ -321,6 +434,7 @@ export class Session {
       meta: this.meta,
       agents: this.agents,
       tools: this.tools,
+      parentRuleset,
     });
     await child.saveMeta(`task:${sub.name}`);
     return child.post(prompt);

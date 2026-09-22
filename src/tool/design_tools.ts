@@ -286,6 +286,7 @@ export const applyDesignTool: RegisteredTool<{ layer?: string; name?: string }> 
 }>({
   id: "apply-design",
   description: P("apply-design"),
+  permission: "edit",
   input: {
     type: "object",
     properties: {
@@ -340,6 +341,7 @@ export const applyDesignTool: RegisteredTool<{ layer?: string; name?: string }> 
 export const appendDesignTool: RegisteredTool<{ name: string; block: string }> = defineTool<{ name: string; block: string }>({
   id: "append-design",
   description: P("append-design"),
+  permission: "edit",
   input: {
     type: "object",
     properties: {
@@ -365,6 +367,7 @@ export const removeDesignSectionTool: RegisteredTool<{ name: string; section: st
 }>({
   id: "remove-design-section",
   description: P("remove-design-section"),
+  permission: "edit",
   input: {
     type: "object",
     properties: {

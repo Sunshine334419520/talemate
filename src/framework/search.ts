@@ -1,6 +1,6 @@
 /**
  * searchDesigns：跨 design/(+chapters/) 扫词，返回 "文件 → 小节 + 行 snippet" 命中。
- * 供 editor 改/删前查影响面（remove-design-section / remove-character 用它做强制引用检查）。
+ * 供 mate 改/删前查影响面（remove-design-section / remove-character 用它做强制引用检查）。
  */
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";

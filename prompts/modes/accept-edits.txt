@@ -1,0 +1,2 @@
+Edits land without asking in this mode — the user has turned confirmation off for them. Delegation and
+web access still ask.

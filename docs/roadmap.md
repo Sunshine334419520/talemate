@@ -15,7 +15,7 @@
 |---|---|---|
 | `design/state/` 承载角色的点形快变量 | 在场/已故、此刻处境 | 走**开放文档**（`propose-design` 的 `name` 分支），按 `wiki/<题>.md` 的先例 |
 | `design/state/continuity.md` 承载边形 | 谁知道什么（角色×秘密） | 同上，只收一节 `## 此刻知道什么` |
-| **章末回写** | 每章定稿后把变化写回状态 | 契约挂在 `task` 结果上（仅 `agent === "writer"`）——章节在 writer 子会话里落盘，`save-chapter` 的结果到不了 editor，唯一到得了的是 `<task_result>` |
+| **章末回写** | 每章定稿后把变化写回状态 | 契约挂在 `task` 结果上（仅 `agent === "writer"`）——章节在 writer 子会话里落盘，`save-chapter` 的结果到不了 mate，唯一到得了的是 `<task_result>` |
 
 **不要做成第 5 个 `LayerId`**——会连带 `LayerId` 联合、`DESIGN_SPECS` 穷尽、`report.ts` 四层卡片、`resolveDoc` 的 `MAIN_LAYERS`、`design-spec` 白名单。
 
@@ -60,8 +60,8 @@
 
 两条路**二选一，不能都留**：
 
-- **拿掉 writer 的 `save-chapter`**：writer 只回传正文文本，editor 收到后落盘，confirm 落在 editor 层。代价：长章节整篇进 editor 上下文。
-- **保留**：writer 长文直接落盘、只回摘要，省 editor 上下文；但 confirm 在子会话里弹，editor 对成品的把关变弱。
+- **拿掉 writer 的 `save-chapter`**：writer 只回传正文文本，mate 收到后落盘，confirm 落在 mate 层。代价：长章节整篇进 mate 上下文。
+- **保留**：writer 长文直接落盘、只回摘要，省 mate 上下文；但 confirm 在子会话里弹，mate 对成品的把关变弱。
 
 当前保留 writer 的 `save-chapter`。折中落点（未采纳）：writer 落盘 + 回传短摘要 + 文件路径。
 

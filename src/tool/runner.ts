@@ -25,15 +25,16 @@ export async function executeToolPart(
   if (!tool) {
     return { ...base, state: "error", error: `未知工具 ${call.name}`, time: { ...base.time, completed: Date.now() } };
   }
-  // 极简权限：工具声明了 needsConfirm 就先问用户
-  if (tool.needsConfirm) {
-    const summary = tool.needsConfirm(call.input as never);
-    if (summary) {
-      const ok = await ctx.confirm(tool.id, summary);
-      if (!ok) {
-        return { ...base, state: "error", error: "用户拒绝了该操作", time: { ...base.time, completed: Date.now() } };
-      }
-    }
+  // 粗粒度兜底：`deny *` 盖住的类别一律拒——哪怕这个工具是被幻觉调出来的（它已经从 schema 里
+  // 消失了，但执行查的是全局 registry，所以这里必须再挡一次）。细粒度（具体 pattern 的
+  // allow/ask）由工具自己走 `ctx.ask`，因为只有它知道这次动的是哪个对象。
+  if (tool.permission && ctx.check(tool.permission, "*") === "deny") {
+    return {
+      ...base,
+      state: "error",
+      error: `当前模式不允许 ${tool.id}（这一类动作被禁用）`,
+      time: { ...base.time, completed: Date.now() },
+    };
   }
   try {
     const args = call.input as never;
