@@ -1,7 +1,0 @@
-Leave plan mode without a plan.
-
-Call it when the user drops the work you were planning, so you stop planning and go back to ordinary
-conversation.
-
-Approval exits the mode on its own — propose-plan does it — so you do not need this one on the happy
-path.

@@ -1,0 +1,7 @@
+Leave draft mode without presenting anything.
+
+Call it when the user drops the work you were preparing, so you stop drafting and go back to ordinary
+conversation.
+
+You do not need this on the happy path: the mode ends on its own once the user accepts or refuses what
+you presented.

@@ -138,16 +138,8 @@ async function walkDir(dir: string, prefix: string, acc: string[]): Promise<void
   }
 }
 
-/** 成品/规划落 chapters/（命名规约由调用方给文件名） */
-export async function saveChapter(projectId: string, filename: string, content: string): Promise<string> {
-  const safe = safeName(filename);
-  if (!safe) throw new Error(`非法文件名：${filename}`);
-  const pp = projectPaths(talemateHome(), projectId);
-  await mkdir(pp.chapters, { recursive: true });
-  const file = join(pp.chapters, safe);
-  await writeFile(file, content, "utf-8");
-  return file;
-}
+// **没有 saveChapter**：落 chapters/ 走通用的 `write`（`framework/write_ops`）——它只是
+// "整篇写，路径以 chapters/ 开头"，单开一个原语等于多一条能绕过 CAS 与原子写的路。
 
 /** 列 chapters/ 下已有文件（正文/规划/其他），排序返回；目录不存在返回 []。 */
 export async function listChapters(projectId: string): Promise<string[]> {

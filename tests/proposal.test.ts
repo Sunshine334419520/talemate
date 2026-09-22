@@ -202,18 +202,8 @@ describe("renderProposal", () => {
     expect(text).not.toContain("design/");
   });
 
-  test("单格：只摆那一格，带旧→新字数", () => {
-    const text = renderProposal({
-      name: "wiki/world.md",
-      content: "新的规则正文。",
-      section: "规则与秩序",
-      oldBody: "旧的。",
-    });
-    expect(text).toContain("提案 · 世界层 › 规则与秩序");
-    expect(text).toContain("其余格不动");
-    expect(text).toContain("回复「没问题」就写入；要改直接说。");
-    expect(text).not.toContain("第 1 格");
-  });
+  // 「只改一格」不再是一种提案：它走二向的 edit（用户看 diff，不看提案）。
+  // 提案只有整篇一种形态，所以这里没有再测"单格"渲染的用例。
 
   test("重提：标出本版改动过的格，并说明替换了上一版", () => {
     const v2 = core.replace("男频 · 都市异能", "女频 · 都市异能");

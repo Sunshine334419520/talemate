@@ -32,7 +32,7 @@
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
 | **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **writer 写手** | subagent | 按"当前设定切片 + 节拍"写一章正文；**不自创设定、只输出正文** | mate 经 `task` | `read-design` `list-designs` `skill` `save-chapter` |
+| **writer 写手** | subagent | 按"当前设定切片 + 节拍"写一章正文；**不自创设定、只输出正文** | mate 经 `task` | `read-design` `list-designs` `skill` `write`（被 `edit: {"design/*": "deny"}` 限死在 `chapters/`） |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
 - mate **不亲自写正文**（节拍不是正文——它自己出，见下）；writer **不能直接对话**，只被 `task` 派生。
@@ -50,7 +50,18 @@
 
 ## 工具
 
-按领域分五个模块（TS 文件名 snake_case，工具 id kebab-case）。**下面这张表由 `tests/docs.test.ts` 守着**——`BUILTIN_TOOLS` 里每个工具都必须出现在这里，删了工具没删文档、或加了工具忘了文档，测试都会红。所以这里不写数量。
+按领域分模块（TS 文件名 snake_case，工具 id kebab-case）。**下面这张表由 `tests/docs.test.ts` 守着**——`BUILTIN_TOOLS` 里每个工具都必须**以反引号形式**出现在这里（裸子串会误判成"提到了"，见那条测试的注释），删了工具没删文档、或加了工具忘了文档，测试都会红。所以这里不写数量。
+
+**`file_tools`** — 改文件的两个面
+
+| id | 用途 |
+|---|---|
+| `write` | 整篇写/覆盖一份文件（`design/…` 或 `chapters/…`）。**「这份文件整个是我的」**——旧文件不在场也能写 |
+| `edit` | 锚点式改一段（给原文片段 + 替换文本），其余字节原样。**「我在动它的一部分」** |
+
+两者分开而不是并成一个：合并就得靠"哪个参数给没给"来分辨，schema 对模型是含糊的；opencode 也是分开的，且它的 `edit` 明确拒绝在已存在的文件上用空锚点。
+
+**它们都不自己落盘**——拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，所以校验、权限、CAS、原子写、diff 全在那一处。某个 agent 能碰哪个根由权限表划：writer 配的是 `edit: {"design/*": "deny"}`，写得了 `chapters/`、碰不了 `design/`。
 
 **`design_tools`** — design/ 通用文档操作
 
@@ -83,11 +94,10 @@
 | `task` | 委派 subagent（可派列表由运行时拼进 description）；**派 writer 时有硬门**——没有用户拍板过的节拍就拒 |
 | `skill` | 按名注入 SKILL.md 正文 |
 | `ask-user` | 向用户提问要**创作裁决**（不是权限审批） |
-| `propose-plan` | 把**一章**的节拍摆给用户拍板并结束本回合；**不落盘**（批准的是"去写正文"这个动作）。它登记的那份 `approved` 就是 `task(writer)` 的门，成功后自动退出计划模式 |
-| `enter-plan` | 进入**计划模式**（`edit`/`delegate` 一律 deny，那些工具从 schema 里消失） |
-| `exit-plan` | 用户改主意不做了 → 离开计划模式 |
+| `propose-plan` | 把**一章**的节拍摆给用户拍板并结束本回合；**不落盘**（批准的是"去写正文"这个动作）。它登记的那份 `approved` 就是 `task(writer)` 的门。**要先进草稿模式**；模式由用户接受/拒绝退掉，不由它自己退 |
+| `enter-draft` | 进入**草稿模式**（`edit`/`delegate` 一律 deny，那些工具从 schema 里消失）。**三向审阅的唯一通道** |
+| `exit-draft` | 用户改主意不做了 → 离开草稿模式（正常路径不需要它：接受/拒绝会自己退） |
 | `confirm` | 模型主动要用户点头（受 `question` 权限管） |
-| `save-chapter` | 把成品正文落 `chapters/` |
 
 **`web_tools`** — 联网
 
@@ -98,7 +108,7 @@
 
 ### 会话模式（`agent/modes.ts`）
 
-**模式 = 临时叠在 primary agent 上的一层权限档**，外加一句"这个模式是什么"。它**不装工作流**——"进了 plan 模式之后该怎么设计"不归它管，那归工具自己的输入契约。
+**模式 = 临时叠在 primary agent 上的一层权限档**，外加一句"这个模式是什么"。它**不装工作流**——"进了草稿模式之后该怎么设计"不归它管，那归工具自己的输入契约。
 
 与 agent 的分工：agent 回答"你是谁"（长期），模式回答"眼下在干什么"（一次一仗）。所以模式**必须有界**——进去、做完、出来。开放式的谈话（和用户聊设计）**不套模式**，那会把人关在里面出不来——`design-docs.md` 的「mate 没有阶段状态机」讲的正是这件事。
 
@@ -107,11 +117,11 @@
 | 模式 | 规则 | 效果 |
 |---|---|---|
 | **`accept-edits`** | `edit: allow` | 落盘不问；委派与联网照问 |
-| **`plan`** | `edit: deny` · `delegate: deny` | 只读——那些工具**从 schema 里消失** |
+| **`draft`** | `edit: deny` · `delegate: deny` | 只读——那些工具**从 schema 里消失** |
 
-**按类别挡，不是按名单。** 将来加了新的写作工具、只要它声明了 `permission: "edit"`，就自动被 `plan` 挡住——不需要谁记得去改一份名单。这是旧写法（模式里硬编码一串工具名、加工具时靠一条测试兜底）修掉的病。
+**按类别挡，不是按名单。** 将来加了新的写作工具、只要它声明了 `permission: "edit"`，就自动被 `draft` 挡住——不需要谁记得去改一份名单。这是旧写法（模式里硬编码一串工具名、加工具时靠一条测试兜底）修掉的病。
 
-模式的纪律正文刻意**不讲节拍**——那归 `propose-plan` 的 description。绑死成"章节计划模式"会让它换个场景就用不了，有一条用例钉着。
+模式的纪律正文刻意**不讲节拍**——那归 `propose-plan` 的 description。绑死成"章节草稿模式"会让它换个场景就用不了，有一条用例钉着。
 
 **模式只在会话内存里**，和待执行提案同生命周期：进程重启即回到默认。**硬保证不靠它**——写正文那道门挂在 `task(writer)` 上（查一份 approved 的节拍）。
 
@@ -143,10 +153,13 @@
 
 ### mate 的工作协议
 
-1. **企划对话（含大纲）**：mate 直接答；查 = `list-designs`/`read-design`/`search-designs`，增 = `append-design`，改/成稿 = **`propose-design` → 用户回话 → `apply-design`**，删 = `remove-design-section`。**落盘必须走这两段，不派子代理。**
+1. **企划对话（含大纲）**：mate 直接答；查 = `list-designs`/`read-design`/`search-designs`，删 = `remove-design-section`。
+   - **局部改**（一句、一段、一格）= `edit`：用户看 diff 就够，二向（接受 / 拒绝）。
+   - **整篇成稿** = 进 `enter-draft` → **`propose-design` → 用户回话 → `apply-design`**：三向（接受 / 拒绝 / 提意见）。
+   - **改文件一律走这两个工具**（`write` / `edit`），不派子代理。
    **卷纲与序列纲就在这一条里**——它们是设计文档，走同一套两段式。
 2. **要写某章正文**（一条链，四步）：
-   ① `read-design` 取切片（core 常驻 + 当前**序列纲** + 相关人物/世界）→ ② **mate 自己写这一章的节拍** → ③ **`propose-plan` 摆给用户拍板**（它带 `halt`，回合到此为止）→ ④ 用户认可后 `task(writer, { prompt: 切片 + 节拍 })`，writer 产出回到 mate 面向用户确认、落 `chapters/`。
+   ① `read-design` 取切片（core 常驻 + 当前**序列纲** + 相关人物/世界）→ ② **mate 自己写这一章的节拍** → ③ **`enter-draft` → `propose-plan` 摆给用户拍板**（它带 `halt`，回合到此为止）→ ④ 用户接受后 `task(writer, { prompt: 切片 + 节拍 })`，writer 用 `write` 落 `chapters/`（二向：用户看 diff 点头）。
    - **节拍是 mate 自己的工作，不派子代理**：材料本来就在它手里（core 常驻、序列纲刚读过），派出去等于把已有的东西抄一遍；而用户改节拍是常态，留在自己的上下文里改是免费的，派出去则每次都要重发切片、还可能整份漂移。
    - ③ **有两道门**：摆出来就停（`halt`）；以及**没拍板就不许写**——`task(writer)` 查那份登记的 `approved`，没有就拒。用户要改 → 改完再摆一次（循环，不是一次性提案）。
    - **节拍不落盘**（登记只在会话内存里），**一次批准只换一次写作**。所以 ③ 与 ④ **不能合并成一个回合**：③ 之后必须结束，等用户说话。

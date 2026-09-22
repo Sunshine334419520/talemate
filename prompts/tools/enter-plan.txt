@@ -1,7 +1,0 @@
-Enter plan mode: plan first, execute later.
-
-Call it when the user asks for work that should be planned before it is done — writing a chapter, for
-instance. While the mode is on, every tool that would write or delegate is unavailable, so nothing
-changes until the user approves a plan.
-
-Leave with propose-plan (once they approve) or exit-plan (if they drop the work).

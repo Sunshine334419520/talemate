@@ -23,15 +23,32 @@ export interface ModeDef {
   permission: PermissionConfig;
 }
 
+/**
+ * 三向审阅所在的模式 id。
+ *
+ * 工具的前置判断（`propose-*` 不在它里面就回自愈文案）与 harness 的退出判断（接受/拒绝才退出）
+ * 都引这个常量，不各写一遍字面量——两边写岔了，模型会看见"工具说可以提案、harness 却不认"。
+ */
+export const DRAFT_MODE = "draft";
+
 export const MODES: Record<string, ModeDef> = {
   /**
-   * 只读。`deny` 而不是"从白名单里减掉名字"——所以它**自动覆盖所有声明了 `edit` 的工具**，
+   * 只读，产出一份东西交给用户审阅——**三向（接受 / 拒绝 / 提意见）的唯一通道**。
+   *
+   * 名字叫"草稿"而不是"计划"：它的本质是 produce-before-commit，出口有两个（`propose-design`
+   * 出设计草稿、`propose-plan` 出节拍），不是只有"做计划"。名字钉死在其中一半上，读的人就会
+   * 以为另一半不归它管——这个仓库已经因为这类漂移吃过几次亏。
+   *
+   * 出口条件是**用户接受或拒绝**，不是"提案成功"（见 `session.verdictEffect`）：提意见留在模式里
+   * 接着改，所以一次设计会话只进一次模式。
+   *
+   * 权限用 `deny` 而不是"从白名单里减掉名字"——所以它**自动覆盖所有声明了 `edit` 的工具**，
    * 将来加了新的写作工具也不会破功，而且带 `*` 的 deny 会让它们从 schema 里消失（不是"有但会被拒"）。
    */
-  plan: {
-    id: "plan",
-    title: "计划模式",
-    note: readPrompt("modes/plan"),
+  [DRAFT_MODE]: {
+    id: DRAFT_MODE,
+    title: "草稿模式",
+    note: readPrompt("modes/draft"),
     permission: { edit: "deny", delegate: "deny" },
   },
 

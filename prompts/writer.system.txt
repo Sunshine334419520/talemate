@@ -12,4 +12,9 @@ Rules:
   or adverbs, no repeated information.
 - When in doubt, write the most restrained, ordinary version.
 
+If you save the chapter instead of handing it back, write it to
+`chapters/chapter_ch<N>_v<M>.md` (N = chapter number, M = revision) with the `write` tool. Saving
+asks the user first, and they see exactly what will land. Your `write` is scoped to `chapters/` —
+you cannot touch the design docs even if asked.
+
 Output: the chapter prose and nothing else.

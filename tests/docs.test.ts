@@ -19,7 +19,7 @@ const DOCS = join(ROOT, "docs");
 const STATUS_KEYS = ["**职责**", "**读者**", "**对齐代码**"];
 
 /** 已删除的工具。docs/ 描述的是**当前状态**，不再提它们。 */
-const RETIRED_TOOLS = ["add-character", "update-character", "character-brief"];
+const RETIRED_TOOLS = ["add-character", "update-character", "character-brief", "save-chapter"];
 
 async function docNames(): Promise<string[]> {
   return (await readdir(DOCS)).filter((n) => n.endsWith(".md")).sort();
@@ -62,8 +62,23 @@ describe("文档守卫", () => {
 
   test("docs/ 覆盖了全部内置工具（加了工具忘了文档，在这里失败）", async () => {
     const text = await readAt("docs/agents.md");
-    const missing = BUILTIN_TOOLS.map((t) => t.id).filter((id) => !text.includes(id));
+    // **要反引号包着才算提到这个工具。** 裸子串匹配等于没测：`write`、`edit` 这类词在散文里
+    // 到处都是，随便哪句话带一个就"通过"了——守卫会静默失效，而它正是用来防静默失效的。
+    const missing = BUILTIN_TOOLS.map((t) => t.id).filter((id) => !text.includes(`\`${id}\``));
     expect(missing).toEqual([]);
+  });
+
+  test("docs/agents.md 的工具表里没有代码里不存在的 id（反方向）", async () => {
+    // 上面那条只管一个方向："代码里的工具都在文档里"。文档**多写**一个它抓不到——于是文档会
+    // 描述一个不存在的东西，而那正是这份守卫存在的理由之一（写这条时我自己就先踩了一次：
+    // 把 `edit` 写进表格，而 `edit` 还没建）。
+    const text = await readAt("docs/agents.md");
+    // 只认工具表那种"首格就是一个反引号 id"的行；别处的反引号（`design/*`、`writeDesign`）不在此列
+    const listed = [...text.matchAll(/^\| `([a-z][a-z0-9-]*)` \|/gm)].map((m) => m[1]);
+    // 模式一旦失效（改了表格写法）就会一行都取不到，于是下面那条断言会空着通过——先钉住它非空
+    expect(listed.length).toBeGreaterThan(0);
+    const known = new Set(BUILTIN_TOOLS.map((t) => t.id));
+    expect(listed.filter((id) => !known.has(id))).toEqual([]);
   });
 
   test("docs/ 不出现已删除的工具名（删了代码忘了文档，在这里失败）", async () => {

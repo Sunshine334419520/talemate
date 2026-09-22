@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject, listDesigns, loadProjectMeta, readDesign, removeDesign, writeDesign } from "../src/storage/project";
-import { appendBlock, getSection, listHeadings, removeSection, replaceSection } from "../src/framework/markdown";
+import { appendBlock, getSection, listHeadings, removeSection } from "../src/framework/markdown";
 import { RESIDENT_LAYERS } from "../src/framework/layers";
 import { renderDesignSpec } from "../src/framework/design_spec";
 import { renderHits, searchDesigns } from "../src/framework/search";
@@ -19,9 +19,10 @@ import {
   proposeDesignTool,
   removeDesignSectionTool,
 } from "../src/tool/design_tools";
+import { editTool } from "../src/tool/file_tools";
 import { defineTool } from "../src/tool/define";
 import { designSpecTool } from "../src/tool/framework_tools";
-import { enterPlanTool, exitPlanTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
+import { enterDraftTool, exitDraftTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
 import { MODES } from "../src/agent/modes";
 import {
   BASE_PERMISSIONS,
@@ -92,13 +93,8 @@ describe("markdown 区块手术", () => {
     expect(miss.available).toContain("第二节");
   });
 
-  test("replaceSection 只改一格，其余保留", () => {
-    const next = replaceSection(sample, "第一节", "空难后被困荒岛，只有脑子与自然你死我活。");
-    expect(next).toContain("你死我活");
-    expect(next).not.toContain("（待定）\n\n## 第二节");
-    expect(next).toContain("## 第二节"); // 第二节小节仍在
-    expect(getSection(next, "第二节").found).toBe(true);
-  });
+  // **没有 `replaceSection` 这条了**：改一格的正文现在走通用的 `edit`（锚点式替换），
+  // 别的字节一个不碰。它的覆盖在「角色卡 › 改一格走 edit」那几条里。
 
   test("removeSection 删掉一格", () => {
     const next = removeSection(sample, "第二节");
@@ -267,6 +263,8 @@ function makeCtx(
   const approved: Rule[] = [];
   const rules = rulesets.length ? rulesets : [fromConfig(BASE_PERMISSIONS)];
   let confirmReply: ConfirmReply = "once";
+  /** 当前模式。`getMode` 与 `setMode` 共用它——工具的前置判断（propose-* 要草稿模式）读它。 */
+  let mode: string | undefined;
   return {
     projectId,
     sessionId: "test-session",
@@ -296,8 +294,10 @@ function makeCtx(
       pending.delete(name);
     },
     setMode: (m) => {
+      mode = m;
       modeLog.push(m);
     },
+    getMode: () => mode,
     pending,
     shown,
     modeLog,
@@ -305,17 +305,27 @@ function makeCtx(
     setConfirmReply: (reply) => {
       confirmReply = reply;
     },
+    // 读口留着，写口一个都不留（改文件只能走 write/edit，见 core/types.ts）
     readDesign: (name) => readDesign(projectId, name),
-    writeDesign: (name, content) => writeDesign(projectId, name, content),
-    removeDesign: (name) => removeDesign(projectId, name),
     listDesigns: () => buildDesignIndex(projectId),
     listDesignPaths: () => listDesigns(projectId),
     searchDesigns: async (q) => renderHits(await searchDesigns(projectId, q), q),
     listChapters: async () => "（无）",
     runSubagent: async () => "（无）",
     loadSkill: async () => undefined,
-    saveChapter: async () => "（无）",
   };
+}
+
+/**
+ * 已经进了**草稿模式**的 ctx——提案类用例的起点。
+ *
+ * 三向（接受 / 拒绝 / 提意见）只有草稿模式那一条通道：不在里面 `propose-*` 会回一句自愈文案
+ * 而不是摆提案。所以凡是要走"提案 → 回话 → 落盘"的用例，都得先站到这个模式里。
+ */
+function makeDraftCtx(projectId: string, ...rulesets: Ruleset[]) {
+  const ctx = makeCtx(projectId, ...rulesets);
+  ctx.setMode("draft");
+  return ctx;
 }
 
 describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-design）", () => {
@@ -359,7 +369,7 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
 
   /** 走完整两段式：propose（不写盘）→ 标记用户同意 → apply。被拒时不落盘。 */
   async function land(name: string, content: string) {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const proposed = await proposeDesignTool.execute({ name: CARD(name), content }, ctx as never);
     if (ctx.pending.has(CARD(name))) {
       ctx.pending.get(CARD(name))!.approved = true;
@@ -423,7 +433,7 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
   });
 
   test("整篇提案打到已存在的卡上 → 带「整篇重写」告警（add-character 查重的替代）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const r = await proposeDesignTool.execute(
       { name: CARD("林晚"), content: cardText("林晚", "换了个身份") },
       ctx as never,
@@ -434,34 +444,35 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
     expect(r.output).toContain("5 个小节：基本档案、性格与矛盾、想要 · 最怕、底线 · 绝不做、说话方式");
   });
 
-  test("section 级提案：只换那一格，其余字节不动", async () => {
-    const ctx = makeCtx(pid);
-    await proposeDesignTool.execute(
-      { name: CARD("林晚"), section: "说话方式", content: "新版：越在乎越呛，反话里藏担心" },
+  // 改一格走**二向的 edit**（锚点式），不走提案——提案只有整篇一种形态（见 design-docs.md）。
+  test("改一格走 edit：只换那一格，其余字节一字不动", async () => {
+    const ctx = makeDraftCtx(pid);
+    const r = await editTool.execute(
+      { path: `design/${CARD("林晚")}`, find: "短句、直给。", replace: "新版：越在乎越呛，反话里藏担心" },
       ctx as never,
     );
-    ctx.pending.get(CARD("林晚"))!.approved = true;
-    const r = await applyDesignTool.execute({ name: CARD("林晚") }, ctx as never);
-    expect(r.output).toContain("已按提案改写");
+    expect(r.output).toContain("已改写");
 
     const content = (await readDesign(pid, CARD("林晚")))!;
     expect(content).toContain("新版：越在乎越呛");
     expect(content).toContain("空乘，与江屿困在同一座岛"); // 别的格没被碰
+    expect(content).toContain("### 说话方式"); // 标题也没被吃掉
   });
 
-  test("section 级提案改不了不存在的格——缺必有格的卡只能靠整篇提案补齐", async () => {
-    const ctx = makeCtx(pid);
-    const r = await proposeDesignTool.execute(
-      { name: CARD("林晚"), section: "回响", content: "破万法。" },
+  test("edit 改不了文件里没有的那段——拒绝文案要能自愈", async () => {
+    const ctx = makeDraftCtx(pid);
+    const r = await editTool.execute(
+      { path: `design/${CARD("林晚")}`, find: "卡上根本没有这一句。", replace: "x" },
       ctx as never,
     );
-    expect(r.output).toContain("回响");
-    expect(ctx.pending.size).toBe(0); // 没登记提案
+    expect(r.output).toContain("找不到");
+    // 原样，一个字节没写
+    expect(await readDesign(pid, CARD("林晚"))).toContain("空乘，与江屿困在同一座岛");
   });
 
   // ── 回归：自由长尾与老卡的废止小节，任何写入之后都必须一字不丢 ──
 
-  test("[回归] 自由长尾小节、老卡的废止小节在 section 级提案后一字不丢", async () => {
+  test("[回归] 自由长尾小节、老卡的废止小节在改一格之后一字不丢", async () => {
     await writeDesign(
       pid,
       CARD("乔家劲"),
@@ -485,17 +496,17 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
         "",
       ].join("\n"),
     );
-    const ctx = makeCtx(pid);
-    await proposeDesignTool.execute(
+    // 只改「回响」那一格：锚点给的是它当前的正文，替换成加了第二句的一版
+    const ctx = makeDraftCtx(pid);
+    const r = await editTool.execute(
       {
-        name: CARD("乔家劲"),
-        section: "回响",
-        content: "「破万法」：契机「想要公平地进行对决」。\n触发条件由性格导出。",
+        path: `design/${CARD("乔家劲")}`,
+        find: "「破万法」：契机「想要公平地进行对决」。",
+        replace: "「破万法」：契机「想要公平地进行对决」。\n触发条件由性格导出。",
       },
       ctx as never,
     );
-    ctx.pending.get(CARD("乔家劲"))!.approved = true;
-    await applyDesignTool.execute({ name: CARD("乔家劲") }, ctx as never);
+    expect(r.output).toContain("已改写");
 
     const after = (await readDesign(pid, CARD("乔家劲")))!;
     expect(after).toContain("触发条件由性格导出。");
@@ -537,7 +548,7 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
   });
 
   test("守卫：remove-design-section 拒删必有格，自由长尾随便删", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const bad = await removeDesignSectionTool.execute(
       { name: CARD("乔家劲"), section: "底线 · 绝不做" },
       ctx as never,
@@ -584,7 +595,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(proposeDesignTool.halt).toBe(true);
     expect(applyDesignTool.halt).toBeUndefined();
 
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const content = "# 舞台\n\n## 空间与舞台\n一座与世隔绝的岛。\n\n## 规则与秩序\n离开就死。\n";
     const r = await proposeDesignTool.execute({ name: DOC, content }, ctx as never);
 
@@ -601,7 +612,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   });
 
   test("apply-design：未同意不写；同意后落盘的字节 == 提案内容", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const content = "# 舞台\n\n## 空间与舞台\n一座与世隔绝的岛。\n\n## 规则与秩序\n离开就死。\n";
     await proposeDesignTool.execute({ name: DOC, content }, ctx as never);
 
@@ -623,7 +634,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   });
 
   test("单格提案：整篇快照被改过 → 拒绝落盘（不盲写）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     await writeDesign(pid, DOC2, "# 舞台\n\n## 空间与舞台\n旧的一版。\n\n## 规则与秩序\n（待定）\n");
     await proposeDesignTool.execute({ name: DOC2, content: "新的空间描述。", section: "空间与舞台" }, ctx as never);
     ctx.pending.get(DOC2)!.approved = true;
@@ -636,15 +647,16 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(await readDesign(pid, DOC2)).toContain("被别人改过了"); // 原样，没被覆盖
   });
 
-  test("单格提案落盘：只改那一格，其余原样（走 replaceSection）", async () => {
-    const ctx = makeCtx(pid);
+  test("改一格走 edit：只改那一格，其余原样", async () => {
+    const ctx = makeDraftCtx(pid);
     const before = "# 舞台\n\n## 空间与舞台\n旧的一版。\n\n## 规则与秩序\n离开就死。\n";
     await writeDesign(pid, DOC2, before);
-    await proposeDesignTool.execute({ name: DOC2, content: "北岸全是礁石；南岸有废弃码头。", section: "空间与舞台" }, ctx as never);
-    ctx.pending.get(DOC2)!.approved = true;
 
-    const r = await applyDesignTool.execute({ name: DOC2 }, ctx as never);
-    expect(r.output).toContain("已按提案改写");
+    const r = await editTool.execute(
+      { path: `design/${DOC2}`, find: "旧的一版。", replace: "北岸全是礁石；南岸有废弃码头。" },
+      ctx as never,
+    );
+    expect(r.output).toContain("已改写");
 
     const after = (await readDesign(pid, DOC2))!;
     expect(after).toContain("北岸全是礁石；南岸有废弃码头。");
@@ -654,7 +666,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   });
 
   test("守卫：无规范登记的散文放行（兜底成整篇一格），有规范登记的散文仍被拒", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     // wiki 专题页 / 序列纲这类：整篇散文是正当形状，摆成"整篇一格"用户照样看得到字节
     const flat = await proposeDesignTool.execute({ name: "wiki/x.md", content: "整段散文，一个标题都没有。" }, ctx as never);
     expect(flat.output).toContain("提案已交给用户审阅");
@@ -662,14 +674,10 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     // 有规范登记的层：同样的散文会被渲染成"四格全（待定）"，正文却照样落盘——这才是要拒的
     const layered = await proposeDesignTool.execute({ layer: "core", content: "整段散文，一个标题都没有。" }, ctx as never);
     expect(layered.output).toContain("没法逐格审阅");
-
-    await writeDesign(pid, DOC2, "# X\n\n## 第一节\n（待定）\n");
-    const headed = await proposeDesignTool.execute({ name: DOC2, content: "## 第一节\n正文", section: "第一节" }, ctx as never);
-    expect(headed.output).toContain("不要带标题行");
   });
 
   test("守卫：角色卡上出现 ## 被拒（否则卡里所有 ### 会从逐格审阅里消失）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const proposed = await proposeDesignTool.execute(
       { name: "characters/某人.md", content: "# 角色：某人\n\n## 基本档案\n来历不明。\n" },
       ctx as never,
@@ -677,14 +685,16 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(proposed.output).toContain("一律用 `###`");
     expect(ctx.pending.size).toBe(0); // 没登记任何提案
 
+    // 追加也拦得住。卡得先存在——追加不到一份不存在的文档上（那条另有更准的文案）。
+    await writeDesign(pid, "characters/某人.md", "# 角色：某人\n\n### 基本档案\n来历不明。\n");
     const appended = await appendDesignTool.execute(
       { name: "characters/某人.md", block: "## 回响\n破万法。" },
       ctx as never,
     );
     expect(appended.output).toContain("一律用 `###`");
+    expect(await readDesign(pid, "characters/某人.md")).not.toContain("## 回响"); // 一个字节没落
 
     // 反过来：`###` 的自由小节（开放长尾）畅通
-    await writeDesign(pid, "characters/某人.md", "# 角色：某人\n\n### 基本档案\n来历不明。\n");
     const ok = await appendDesignTool.execute(
       { name: "characters/某人.md", block: "### 回响\n破万法：契机「想要公平地进行对决」。" },
       ctx as never,
@@ -694,7 +704,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   });
 
   test("固定层用 layer：路径由工具定，模型不给路径", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const content = "# 舞台\n\n## 空间与舞台\n一座与世隔绝的岛。\n";
     const r = await proposeDesignTool.execute({ layer: "world", content }, ctx as never);
 
@@ -708,14 +718,14 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   });
 
   test("守卫：固定层的主文档不许写到别处（world.md → 指回 wiki/world.md）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const r = await proposeDesignTool.execute({ name: "world.md", content: "# x\n\n## a\nb\n" }, ctx as never);
     expect(r.output).toContain("design/wiki/world.md"); // 给回正确路径，让它自纠
     expect(ctx.pending.size).toBe(0); // 没有登记任何提案
   });
 
   test("守卫：characters 不是可写的 layer；layer 与 name 不能同时给", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const a = await proposeDesignTool.execute({ layer: "characters", content: "# x\n\n## a\nb\n" }, ctx as never);
     expect(a.output).toContain('name:"characters/<名>.md"');
 
@@ -727,7 +737,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   });
 
   test("守卫：outline 也不再是可写的 layer——一卷一个文件，改走 name", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const r = await proposeDesignTool.execute({ layer: "outline", content: "## 随便\n内容" }, ctx as never);
     // 放行的话 DESIGN_SPECS["outline"].file 是目录 "outline/"，会往目录名上写盘
     expect(r.output).toContain("layer 只收 core / world");
@@ -744,7 +754,7 @@ describe("propose-plan · 写正文前的门", () => {
   const BEATS = "上岛第一晚。\n\n入夜前先把七个人点一遍，谁跟谁不熟要露出来。\n\n钩子：退路断在谁也没看见的时候。";
 
   test("摆出节拍、halt、且不写任何文件", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const before = await listDesigns(pid);
 
     const r = await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
@@ -763,33 +773,33 @@ describe("propose-plan · 写正文前的门", () => {
   });
 
   test("chapter 缺省时抬头不带标签", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     await proposePlanTool.execute({ content: BEATS }, ctx as never);
     expect(ctx.shown[0]).toContain("──── 节拍 ────");
   });
 
   test("content 为空 → 抛错而不是 return（return 会被 runner 置 halt，把回合停在可自愈的错误上）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     await expect(proposePlanTool.execute({ content: "   " }, ctx as never)).rejects.toThrow("缺少 content");
     expect(ctx.shown.length).toBe(0); // 什么都没摆
   });
 
   test("task(writer) 的硬门：没有拍板过的节拍就不放行，且文案能自愈", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     const blocked = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
     expect(blocked.output).toContain("没有一份用户已拍板的节拍");
     expect(blocked.output).toContain("propose-plan"); // 自愈：告诉它下一步调什么
   });
 
   test("摆过但用户还没回话 → 仍然不放行（approved 由 harness 置，模型自述无效）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
     const blocked = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
     expect(blocked.output).toContain("没有一份用户已拍板的节拍");
   });
 
   test("用户回话同意 → 放行；且一次批准只换一次写作（用掉即清）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
     ctx.pending.get(PLAN_KEY)!.approved = true; // 等价于用户回了一句"没问题"（Session 侧的动作）
 
@@ -802,7 +812,7 @@ describe("propose-plan · 写正文前的门", () => {
   });
 
   test("待办注记能说清是哪一章的节拍（压缩之后靠它，不靠消息历史）", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
     const note = renderPendingNote(ctx.pending)!;
     expect(note).toContain("第 1 章的节拍");
@@ -815,30 +825,45 @@ describe("propose-plan · 写正文前的门", () => {
 
 // ─── 会话模式 ───
 
-describe("会话模式 · plan", () => {
-  test("enter-plan / exit-plan 进出模式", async () => {
+describe("会话模式 · draft", () => {
+  // 这三条**刻意从普通模式起步**（`makeCtx` 而不是 `makeDraftCtx`）——它们测的就是"进/出模式"
+  // 和"不在模式里会怎样"，起点已经在里面就没得测了。
+  test("enter-draft / exit-draft 进出模式", async () => {
     const ctx = makeCtx(pid);
-    await enterPlanTool.execute({}, ctx as never);
-    expect(ctx.modeLog).toEqual(["plan"]);
-    await exitPlanTool.execute({}, ctx as never);
-    expect(ctx.modeLog).toEqual(["plan", undefined]);
+    await enterDraftTool.execute({}, ctx as never);
+    expect(ctx.modeLog).toEqual(["draft"]);
+    await exitDraftTool.execute({}, ctx as never);
+    expect(ctx.modeLog).toEqual(["draft", undefined]);
   });
 
-  test("propose-plan 成功后自动退出模式——正常路径用不着 exit-plan", async () => {
+  test("propose-plan **不**自己退模式——出口是用户接受或拒绝（harness 判）", async () => {
+    // 旧行为是"提案成功即退出"。改成"接受/拒绝才退"之后，用户提意见可以留在模式里接着改，
+    // 一次设计会话只进一次模式；否则每提一版都要重新走一遍"提议进模式 + 用户点头"。
     const ctx = makeCtx(pid);
-    await enterPlanTool.execute({}, ctx as never);
+    await enterDraftTool.execute({}, ctx as never);
     await proposePlanTool.execute({ chapter: "第 1 章", content: "上岛第一晚。" }, ctx as never);
-    expect(ctx.modeLog).toEqual(["plan", undefined]);
+    expect(ctx.modeLog).toEqual(["draft"]); // 没有第二个 undefined
+    expect(ctx.getMode()).toBe("draft");
+    expect(ctx.pending.has(PLAN_KEY)).toBe(true); // 节拍已登记，等用户回话
+  });
+
+  test("不在草稿模式就摆不了提案——两个 propose 都拒，并指路 enter-draft", async () => {
+    const ctx = makeCtx(pid);
+    const plan = await proposePlanTool.execute({ content: "上岛第一晚。" }, ctx as never);
+    expect(plan.output).toContain("enter-draft");
+    const design = await proposeDesignTool.execute({ name: "wiki/x.md", content: "## 甲\n正文" }, ctx as never);
+    expect(design.output).toContain("enter-draft");
+    expect(ctx.pending.size).toBe(0); // 一份都没登记
   });
 
   /** 某个规则集下，**整个注册表**里还剩哪些工具可见。 */
   const visibleUnder = (...configs: PermissionConfig[]): string[] =>
     visibleTools([...BUILTIN_TOOLS], mergeConfigs(...configs)).map((t) => t.id);
 
-  test("计划模式挡住一切会写文件的工具——**按类别挡，不是按名单**", () => {
+  test("草稿模式挡住一切会写文件的工具——**按类别挡，不是按名单**", () => {
     // 断言的是"没有任何 edit/delegate 工具漏网"。将来加了新的写作工具、只要它声明了
     // permission: "edit"，就自动被挡——不需要谁记得去改一份名单。
-    const available = visibleUnder(BASE_PERMISSIONS, MODES.plan.permission);
+    const available = visibleUnder(BASE_PERMISSIONS, MODES.draft.permission);
     const leaked = BUILTIN_TOOLS.filter(
       (t) => (t.permission === "edit" || t.permission === "delegate") && available.includes(t.id),
     ).map((t) => t.id);
@@ -848,15 +873,15 @@ describe("会话模式 · plan", () => {
   });
 
   test("但只读工具与两个出口都还在（模式不是把人关死）", () => {
-    const available = visibleUnder(BASE_PERMISSIONS, MODES.plan.permission);
-    const missing = ["read-design", "list-designs", "design-spec", "propose-plan", "exit-plan", "ask-user"].filter(
+    const available = visibleUnder(BASE_PERMISSIONS, MODES.draft.permission);
+    const missing = ["read-design", "list-designs", "design-spec", "propose-plan", "exit-draft", "ask-user"].filter(
       (t) => !available.includes(t),
     );
     expect(missing).toEqual([]);
   });
 
-  test("模式纪律必须与领域无关——绑死成「章节计划模式」就换不了场景", () => {
-    const d = MODES.plan.note.toLowerCase();
+  test("模式纪律必须与领域无关——绑死成「章节草稿模式」就换不了场景", () => {
+    const d = MODES.draft.note.toLowerCase();
     const bound = ["节拍", "beat", "chapter", "sequence", "outline"].filter((w) => d.includes(w));
     expect(bound).toEqual([]);
   });
@@ -1006,20 +1031,20 @@ describe("权限 · 会话级行为", () => {
   });
 
   test("plan：edit 与 delegate 都是 deny（只读）", async () => {
-    const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES.plan.permission));
+    const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES.draft.permission));
     expect(ctx.check("edit", "design/core.md")).toBe("deny");
     expect(await ctx.ask({ permission: "edit", pattern: "design/core.md", summary: "" })).toBe("deny");
     expect(ctx.check("extern", "https://x")).toBe("ask"); // 查资料仍然可以
   });
 
   test("reject 与 deny 是两回事：前者等人点头，后者得先离开模式", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     ctx.setConfirmReply("no");
     expect(await ctx.ask({ permission: "edit", pattern: "design/a.md", summary: "" })).toBe("reject");
   });
 
   test("always：答一次「以后都允许」，同类不再问", async () => {
-    const ctx = makeCtx(pid);
+    const ctx = makeDraftCtx(pid);
     ctx.setConfirmReply("always");
     expect(await ctx.ask({ permission: "edit", pattern: "design/a.md", always: "design/*", summary: "" })).toBe("allow");
     expect(ctx.approved).toEqual([{ permission: "edit", pattern: "design/*", action: "allow" }]);
@@ -1029,13 +1054,18 @@ describe("权限 · 会话级行为", () => {
     expect(await ctx.ask({ permission: "edit", pattern: "design/b.md", summary: "" })).toBe("allow");
   });
 
-  test("apply-design 走 confirm:false 也要过规则表——「不许」不因为问过一次就失效", async () => {
+  test("落提案也要过规则表——「不许」不因为问过一次就失效", async () => {
     const doc = "wiki/guarded.md";
     const before = "# X\n\n## 甲\n旧的一版。\n";
     await writeDesign(pid, doc, before);
-    // 除这个文件外都放行——所以这条如果过了，一定是"被 deny 挡住"，不是"配置把一切关掉了"
-    const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, { edit: { "*": "allow", [doc]: "deny" } }));
-    // base 要对得上，否则先被并发保护拦下，测不到权限那一步
+    // pattern 是**项目相对路径**（`design/…`），与工具入参、与 docs/permissions.md 的例子同一口径。
+    // （旧代码给 design 写入传的是裸 `name`（`wiki/guarded.md`），于是文档里写的 `design/core.md`
+    //   这类规则从来没生效过——那是这次收口顺手修掉的一个 bug。）
+    const ctx = makeCtx(
+      pid,
+      mergeConfigs(BASE_PERMISSIONS, { edit: { "*": "allow", [`design/${doc}`]: "deny" } }),
+    );
+    // base 要对得上，否则先被 CAS 拦下，测不到权限那一步
     ctx.setProposal({ name: doc, content: "# X\n\n## 甲\n新的一版。\n", base: before, approved: true, at: Date.now() });
 
     const r = await applyDesignTool.execute({ name: doc }, ctx as never);
@@ -1060,7 +1090,7 @@ describe("权限 · 会话级行为", () => {
       "mate",
       { id: "1", name: "t-edit", input: {} },
       reg,
-      makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES.plan.permission)) as never,
+      makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES.draft.permission)) as never,
     );
     expect(part.type === "tool" && part.state).toBe("error");
     expect(part.type === "tool" && part.error).toContain("不允许");

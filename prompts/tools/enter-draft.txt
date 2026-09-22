@@ -1,0 +1,11 @@
+Enter draft mode: prepare something, then let the user review it before it lands.
+
+Call it when the work deserves a review round rather than a yes/no — writing or reworking a design doc,
+planning a chapter. While the mode is on, every tool that would write or delegate is unavailable, so
+nothing changes until the user accepts what you present.
+
+This is what buys the third option: they can accept, refuse, or ask for changes. Outside this mode a
+write is only accept-or-refuse.
+
+Leave by presenting something with propose-design or propose-plan. If they drop the work instead, leave
+with exit-draft.

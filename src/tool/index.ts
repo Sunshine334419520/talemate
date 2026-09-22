@@ -5,16 +5,18 @@
 import type { RegisteredTool } from "./define";
 import { CHARACTER_TOOLS } from "./character_tools";
 import { DESIGN_TOOLS } from "./design_tools";
+import { FILE_TOOLS } from "./file_tools";
 import { FRAMEWORK_TOOLS } from "./framework_tools";
 import { CORE_TOOLS } from "./core_tools";
 import { WEB_TOOLS } from "./web_tools";
 
-export { DESIGN_TOOLS, CHARACTER_TOOLS, FRAMEWORK_TOOLS, CORE_TOOLS, WEB_TOOLS };
+export { DESIGN_TOOLS, CHARACTER_TOOLS, FRAMEWORK_TOOLS, CORE_TOOLS, WEB_TOOLS, FILE_TOOLS };
 export * from "./define";
 export type { RegisteredTool };
 
 /** 全部内置工具（session 注册用）。顺序无意义，权限/可见由 AgentDef.tools 白名单决定。 */
 export const BUILTIN_TOOLS: RegisteredTool[] = [
+  ...FILE_TOOLS,
   ...DESIGN_TOOLS,
   ...CHARACTER_TOOLS,
   ...FRAMEWORK_TOOLS,

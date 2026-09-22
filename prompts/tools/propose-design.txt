@@ -1,19 +1,24 @@
-Present a draft of a design doc for the user to review. Nothing is saved and the turn ends, so they
-can approve or ask for changes. This is the only way to write a design doc.
+Present a whole draft of a design doc for the user to review. Nothing is saved and the turn ends, so
+they can approve, refuse, or ask for changes.
 
 Name the target with layer (core | world — the path is fixed by the tool) or, for every other
 document, with name: outline/vol_<N>.md and outline/vol_<N>/s<M>.md (volume and sequence outlines),
 wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md (a character card is created and edited
 this way; there is no character-specific tool for that).
 
-Pass section to rewrite one section; omit it for a whole document. A draft is refused only when its
-kind has a fixed shape (see design-spec — it holds both the layers and the document kinds) and the
-draft does not fill it, since the user would then be shown blanks while the prose landed anyway.
-Kinds that are free-form (sequence outlines, character cards, topic pages, chapter plans) are shown
-whole, as a single block. Fields you cannot fill yet get （待定）.
+**This is for whole documents only.** To change part of an existing doc — a sentence, one section —
+use `edit`: the user reviews a diff of just that piece instead of re-reading the whole document, and
+it costs you far fewer tokens. A draft is refused only when its kind has a fixed shape (see
+design-spec — it holds both the layers and the document kinds) and the draft does not fill it, since
+the user would then be shown blanks while the prose landed anyway. Kinds that are free-form (sequence
+outlines, character cards, topic pages, chapter plans) are shown whole, as a single block. Fields you
+cannot fill yet get （待定）.
 
 **The draft IS the file**: on approval it is written byte for byte. So the content holds document
 text and nothing else — no notes to the user ("暂用名，待你定"), no rationale ("这句是配的试镜台词，
 你可以换掉"), no questions ("他要的是真相还是道歉？"). Undecided things become （待定） and nothing
 more. Say all of that in your message BEFORE calling this, not inside the draft. Once the user
 answers, apply-design lands it.
+
+If the user asks for changes, revise the whole draft and call this again — it replaces the previous
+proposal, which is what you want: only the version they last saw can be landed.

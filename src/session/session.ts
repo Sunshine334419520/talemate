@@ -7,7 +7,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { AgentRegistry } from "../agent/registry";
-import { MODES } from "../agent/modes";
+import { DRAFT_MODE, MODES } from "../agent/modes";
 import { BASE_PERMISSIONS, deriveSubagentPermission, evaluate, fromConfig, mergeConfigs, visibleTools } from "../permission";
 import { loadModelConfig } from "../core/config";
 import { PLAN_KEY } from "../core/types";
@@ -31,7 +31,7 @@ import { renderHits, searchDesigns } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
 import { discoverSkills, loadSkillByName, renderSkillCatalog } from "../skill/discovery";
-import { listChapters, listDesigns, loadProjectMeta, readDesign, readProjectRules, removeDesign, saveChapter, writeDesign } from "../storage/project";
+import { listChapters, listDesigns, loadProjectMeta, readDesign, readProjectRules } from "../storage/project";
 import { appendMessage, createSession, loadMessages, loadModelWindow } from "../storage/session-store";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
@@ -74,19 +74,59 @@ export const autoIO: UserIO = {
   },
 };
 
+
 /**
- * 用户这轮回话算不算"同意待落盘的提案"。
+ * 用户这轮回话属于三向里的哪一种。
  *
- * 由 harness 判、不问模型：同意必须落在**用户真的说过的话**上，模型自述不算。
- * fail-closed：措辞不常见就多走一轮，不会写用户没认可的东西。
- * 「没问题，但第 3 格改成 X」不算同意——夹着改动要求，匹配不上。
+ * **核心只认这三种结局**，怎么问是**交付层**的事——今天在 REPL 里用文字问，将来 UI 用三个按钮，
+ * 这一层不动。所以判定留在这里（harness），而不在工具里。
+ */
+export type DraftVerdict = "accept" | "reject" | "refine";
+
+/**
+ * 词表必须**整句只由它们构成**才算数——这是 fail-closed 的关键：
+ * 「没问题，但第 3 格改成 X」夹着改动要求，匹配不上，于是走"提意见"那一路多绕一轮，
+ * 而不是被当成同意把用户没认可的东西落下去。
  */
 const AGREE_WORDS = "没问题|可以|行|好的|好|同意|确认|就这样|写吧|落盘|ok|okay|yes|y";
+const REJECT_WORDS = "不行|不要|不用|不好|不对|算了|不了|先不|拒绝|取消|否|no|n";
 const AGREE_CHAIN_RE = new RegExp(`^(?:(?:${AGREE_WORDS})[，,、。！!.…~\\s]*)+$`, "i");
+const REJECT_CHAIN_RE = new RegExp(`^(?:(?:${REJECT_WORDS})[，,、。！!.…~\\s]*)+$`, "i");
 
-/** 这句话是不是一个"同意"（见上；导出供测试）。 */
+/** 这句话是不是一个"同意"（导出供测试）。 */
 export function isAgreement(text: string): boolean {
   return AGREE_CHAIN_RE.test(text.trim());
+}
+
+/** 这句话是不是一个"拒绝"。 */
+export function isRejection(text: string): boolean {
+  return REJECT_CHAIN_RE.test(text.trim());
+}
+
+/** 三向判定。**认不出的一律算"提意见"**——留在模式里多走一轮，绝不误判成接受。 */
+export function draftVerdict(text: string): DraftVerdict {
+  const t = text.trim();
+  if (AGREE_CHAIN_RE.test(t)) return "accept";
+  if (REJECT_CHAIN_RE.test(t)) return "reject";
+  return "refine";
+}
+
+/**
+ * 这一种结局对协议状态意味着什么。
+ *
+ * 规则单独拎出来（纯函数）是为了能测：`Session.markPendingApproval` 走 `post()`，一测就要打 LLM。
+ * 突变留在 Session，规则在这里——分开之后两边都简单。
+ *
+ * `leaveDraft` 是**接受或拒绝都退**，不是"提案成功就退"：提意见是在模式里打转。
+ */
+export function verdictEffect(v: DraftVerdict): {
+  approved: boolean;
+  /** 拒绝了就把提案作废——留着的话 apply-design 还能把它落下去，而那正是用户刚说不的 */
+  dropProposal: boolean;
+  /** 要不要离开草稿模式 */
+  leaveDraft: boolean;
+} {
+  return { approved: v === "accept", dropProposal: v === "reject", leaveDraft: v !== "refine" };
 }
 
 /**
@@ -104,11 +144,10 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
         : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
       return `- ${what}：${state}`;
     }
-    const what = p.section ? `只改「${p.section}」这一格` : "整篇";
     const state = p.approved
       ? "用户已表示同意 → 可以 apply-design"
       : "用户还没同意 → 等他回话；他要改就重新 propose-design";
-    return `- ${p.name}（${what}）：${state}`;
+    return `- ${p.name}：${state}`;
   });
   return [
     "<pending-proposal>",
@@ -202,15 +241,28 @@ export class Session {
   }
 
   /**
-   * 用户这轮说了话 → 更新待落盘提案的"同意"标记（见 isAgreement）。
+   * 用户这轮说了话 → 判这是三向里的哪一种，并据此决定**要不要退出草稿模式**。
+   *
+   * **出口条件是"用户接受或拒绝"，不是"提案成功"。** 提意见是在模式里打转，不出——所以一次设计
+   * 会话只进一次模式，里面可以来回提很多版。退出的动作归这里（harness），不归 `propose-*`：
+   * 只有 harness 知道这轮回话属于哪一种。
+   *
    * 只认最近提交的那一份：halt 保证一回合只摆一份，更早的提案不能被顺带点亮。
    */
   private markPendingApproval(input: string): void {
     if (!this.pending.size) return;
-    const ok = isAgreement(input);
+    const verdict = draftVerdict(input);
     let latest: PendingProposal | undefined;
     for (const p of this.pending.values()) if (!latest || p.at > latest.at) latest = p;
-    if (latest) latest.approved = ok;
+    if (!latest) return;
+
+    const effect = verdictEffect(verdict);
+    latest.approved = effect.approved;
+    if (!effect.leaveDraft) return;
+
+    // 只出草稿模式：别的模式（accept-edits）底下不该有待审阅的提案。
+    if (this.mode === DRAFT_MODE) this.mode = undefined;
+    if (effect.dropProposal) this.pending.delete(latest.name);
   }
 
   /** 提示符用：待落盘提案的展示名（如"核心层"）。没有 pending → undefined。 */
@@ -391,6 +443,7 @@ export class Session {
       setMode: (m) => {
         this.mode = m;
       },
+      getMode: () => this.mode,
       getProposal: (name) => this.pending.get(name),
       setProposal: (p) => {
         this.pending.set(p.name, p);
@@ -398,9 +451,8 @@ export class Session {
       clearProposal: (name) => {
         this.pending.delete(name);
       },
+      // 读口留着，**写口一个都不留**——改文件只能走 tools 里的 write/edit（见 core/types.ts）
       readDesign: (name) => readDesign(this.projectId, name),
-      writeDesign: (name, content) => writeDesign(this.projectId, name, content),
-      removeDesign: (name) => removeDesign(this.projectId, name),
       listDesigns: () => buildDesignIndex(this.projectId),
       listDesignPaths: () => listDesigns(this.projectId),
       searchDesigns: async (query) => {
@@ -414,7 +466,6 @@ export class Session {
       // 把**当前生效的**规则集交给子会话去派生（父的 deny 继承、allow 不继承）
       runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt, this.rulesetFor(agent)),
       loadSkill: (name) => loadSkillByName(this.projectId, name).then((s) => s?.body),
-      saveChapter: (filename, content) => saveChapter(this.projectId, filename, content),
     };
   }
 

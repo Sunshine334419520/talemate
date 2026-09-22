@@ -1,6 +1,6 @@
 Write a reviewed proposal to disk. Takes only the target — the text is the version the user just read,
-so there is nothing to pass. Identify it exactly as you proposed it: layer for core | world | outline,
-name for any other document.
+so there is nothing to pass. Identify it exactly as you proposed it: layer for core | world, name for
+any other document.
 
 Call it once the user approves the proposal you presented. It is refused when no proposal is
 pending, when the user has not agreed (their reply must be an approval, not a request for changes),

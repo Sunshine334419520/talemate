@@ -13,12 +13,12 @@
  * 这条补丁——不再有两条入口。按需格与工具托管的「当前」也一并从 schema 删除（见 characters.ts）。
  *
  * remove-character 留下，是因为它的引用检查（searchDesigns）与 `drop` op 是通用通道没有的
- * 领域逻辑。写盘仍是薄壳：校验 / confirm / 落盘都在 framework/design_ops.ts。
+ * 领域逻辑。写盘是薄壳：拼出 `FileOp` 交给 `framework/write_ops.ts`（唯一写路径）。
  *
  * 一角色一卡（design/characters/<名>.md）；**没有派生总表**，名单由 list-designs 现算。
  */
-import { applyDesignOp } from "../framework/design_ops";
 import { cardPath } from "../framework/characters";
+import { writeFile } from "../framework/write_ops";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
 
@@ -36,15 +36,19 @@ export const removeCharacterTool: RegisteredTool<{ name: string }> = defineTool<
   },
   async execute(args, ctx) {
     const name = args.name.trim();
-    const r = await applyDesignOp(ctx, {
-      kind: "drop",
-      name: cardPath(name),
-      term: name,
-      action: `删除角色卡「${name}」（design/characters/${name}.md）`,
-      refScope: "含角色卡自身，请判断需否级联改 world/outline",
-      notFound: `没有找到角色「${name}」。`,
+    // 领域逻辑只留在这一处：删前查引用，把影响面摆进 confirm——通用通道给不出这个。
+    const refs = `引用检查「${name}」（含角色卡自身，请判断需否级联改 world/outline）：\n${await ctx.searchDesigns(name)}`;
+    const r = await writeFile(ctx, {
+      via: "confirm",
+      op: { kind: "delete", path: `design/${cardPath(name)}` },
+      action: `删除角色卡「${name}」`,
+      note: refs,
     });
-    if (!r.ok) return { output: r.output };
+    if (!r.ok) {
+      // 文案由调用方给：管线那句是通用的（"没有找到 <路径>，无法删除"），
+      // 而对模型来说"没有找到角色「X」"才是能自愈的那句（名字敲错了）。
+      return { output: r.reason === "notfound" ? `没有找到角色「${name}」。` : r.output };
+    }
     return { output: `已删除角色「${name}」。` };
   },
 });

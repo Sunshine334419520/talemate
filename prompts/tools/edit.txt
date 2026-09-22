@@ -1,0 +1,17 @@
+Replace exact text inside one file that already exists.
+
+- `path` is project-relative and must start with `design/` or `chapters/`.
+- `find` is the text to replace, copied from what you read. Give it enough surrounding context to
+  be unique. Keep the indentation exactly as it appears — and never include line-number prefixes.
+- `replace` is what goes in its place, and must differ from `find`.
+- If `find` matches more than one place the edit is refused: add surrounding lines to make it
+  unique, or set `all` to change every occurrence (a rename, say).
+- If `find` is not found, read the file again and copy the text from there. These differences are
+  tolerated without complaint — per-line leading/trailing whitespace, indentation, line endings,
+  and curly versus straight quotes; the match is fuzzy and it tells you when it had to be.
+- Refused outright if the fuzzy match would swallow far more than `find` describes — that means
+  the anchor was too loose; give a longer, more precise `find`.
+- `find` must not be empty. To create a file or replace one entirely, use `write` instead.
+- Editing asks the user first: they see a diff of just this change, and can accept or refuse. If
+  they refuse nothing is written — take their objection and try again.
+- Refused if the file moved on since you read it; read it again and redo the edit on the current text.

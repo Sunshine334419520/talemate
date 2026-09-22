@@ -123,22 +123,11 @@ export function matchesLevel2Heading(content: string): string | undefined {
 }
 
 /**
- * 替换一个区块的正文。newBody 不含 heading 行；返回新全文。
- * 找不到 → throw（消息带 available，工具层再包成自愈文案）。
+ * **没有 `replaceSection`**。改一格的正文从前走它，现在走通用的 `edit`（锚点式替换）。
+ * 顺手治了它一直有的一个毛病：它用 `trimEnd`/`trimStart` + 重拼 `\n\n` 重建**全文**，于是
+ * 未提及小节周边的空白也被改写了——"其余小节字节不动"那句承诺严格说不成立。
+ * 锚点替换只动被锚住的那一段，别处一个字节不碰。
  */
-export function replaceSection(content: string, title: string, newBody: string): string {
-  const h = findHeading(content, title);
-  if (!h) {
-    throw new Error(`没有找到小节「${title}」。可用小节：${listHeadings(content).map((x) => x.title).join("、")}`);
-  }
-  const lines = content.split("\n");
-  // 与 removeSection 同一套拼法：块与块之间恒为一个空行。
-  // （旧实现只补一个 "\n"，改完的小节会和下一节的标题黏在一起——整卡重建时看不出来，
-  //   外科改之后每次都会出现。）
-  const head = lines.slice(0, h.line).join("\n").trimEnd();
-  const tail = lines.slice(h.end).join("\n").trimStart();
-  return [head, `${lines[h.line]}\n\n${newBody.trim()}`, tail].filter((s) => s.length > 0).join("\n\n");
-}
 
 /** 删除一个区块（含其 heading）。找不到 → throw。 */
 export function removeSection(content: string, title: string): string {
@@ -153,10 +142,17 @@ export function removeSection(content: string, title: string): string {
   return [before, after].filter((s) => s.length > 0).join("\n\n");
 }
 
-/** 在文档末尾追加一个区块（blockText 通常自带 `## ` heading；无需 confirm 的非破坏操作）。 */
-export function appendBlock(content: string, blockText: string): string {
+/**
+ * 在文档末尾追加一个区块（blockText 通常自带 `## ` heading）。
+ *
+ * `ending` 是**文件自己的行尾写法**：追加进去的字节得跟正文本来的写法一致，否则一份 `\r\n`
+ * 的文档被追加一次就成了两种行尾混着。默认 `\n`——本产品自己写出来的文件就是这个写法。
+ * （区块内部的换行由调用方一并转好再传进来，这里只管"接缝"那一处。）
+ */
+export function appendBlock(content: string, blockText: string, ending: "\n" | "\r\n" = "\n"): string {
+  const sep = ending === "\r\n" ? "\r\n\r\n" : "\n\n";
   const base = content.trimEnd();
-  return base.length ? base + "\n\n" + blockText.trim() + "\n" : blockText.trim() + "\n";
+  return base.length ? base + sep + blockText.trim() + ending : blockText.trim() + ending;
 }
 
 /** 一行命中（供 search 展示） */

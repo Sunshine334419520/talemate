@@ -1,0 +1,9 @@
+You are in draft mode: read-only. Every tool that would write or delegate is unavailable, and that is
+deliberate — nothing changes until the user accepts what you put in front of them.
+
+This is the only way to get the three-way review: present, then the user accepts, refuses, or asks for
+changes. Their reply is what leaves the mode, not the presenting itself — so keep revising here as long
+as they keep asking.
+
+Leave by presenting something with propose-design or propose-plan. If they drop the work instead, leave
+with exit-draft.

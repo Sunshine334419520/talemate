@@ -50,6 +50,9 @@ try {
 
   // 3) 拍板过之后同一条委派放行——走真实的两回合
   const s2write = await openSession({ projectId: meta.id, model, io });
+  // 三向只有草稿模式那一条通道，所以先进模式再提案（propose-plan 的前置会拦）。
+  process.env.TALEMATE_MOCK_TOOL = "enter-draft";
+  await s2write.post("我要写第 1 章，先摆个节拍。");
   process.env.TALEMATE_MOCK_TOOL = "propose-plan";
   await s2write.post("帮我写第 1 章：主角在都市醒来。");
   const pendingPlan = s2write.pending.get(PLAN_KEY);
@@ -58,21 +61,23 @@ try {
 
   process.env.TALEMATE_MOCK_TOOL = "task";
   const reply = await s2write.post("没问题");
+  // 接受 = 退出草稿模式（出口是接受/拒绝，不是"提案成功"），所以随后的 task 才没被模式挡住
+  console.log(`[3b] 用户接受 → 退出草稿模式：${s2write.currentMode ? "✗ 还开着" : "✓"}`);
   // 一次批准只换一次写作：task(writer) 成功后那份登记即清
-  console.log(`[3b] 用户回话「没问题」→ 放行、且用掉即清：${s2write.pending.has(PLAN_KEY) ? "✗ 还留着" : "✓"}`);
+  console.log(`[3b2] task(writer) 放行、且用掉即清：${s2write.pending.has(PLAN_KEY) ? "✗ 还留着" : "✓"}`);
   console.log(`[3c] mate post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
 
-  // 3d) 计划模式：task 从 schema 里消失，连 mock 都演不出来（模式唯一的工具效果）
+  // 3d) 草稿模式：task 从 schema 里消失，连 mock 都演不出来（模式唯一的工具效果）
   const s3 = await openSession({ projectId: meta.id, model, io });
-  process.env.TALEMATE_MOCK_TOOL = "enter-plan";
+  process.env.TALEMATE_MOCK_TOOL = "enter-draft";
   await s3.post("写第 2 章。");
   process.env.TALEMATE_MOCK_TOOL = "task"; // 想演 task，但它已经不在工具列表里了
   await s3.post("继续。");
   const s3Msgs = await loadMessages(meta.id, s3.sessionId);
   const s3Tools = s3Msgs.flatMap((m) => m.parts ?? []).filter((p) => p.type === "tool").map((p) => p.name);
-  const hidden = s3Tools.includes("enter-plan") && !s3Tools.includes("task");
-  console.log(`[3d] 计划模式下 task 不可见（工具序列 ${s3Tools.join(" → ")}）：${hidden ? "✓" : "✗"}`);
-  if (!hidden) throw new Error("计划模式没有藏掉 task");
+  const hidden = s3Tools.includes("enter-draft") && !s3Tools.includes("task");
+  console.log(`[3d] 草稿模式下 task 不可见（工具序列 ${s3Tools.join(" → ")}）：${hidden ? "✓" : "✗"}`);
+  if (!hidden) throw new Error("草稿模式没有藏掉 task");
 
   // 3d2) /permissions 的视图：只说"edit 是 deny"没用，得说得出是**模式**定的
   const pv = s3.permissionView();
@@ -144,9 +149,12 @@ try {
   if (rules !== "") throw new Error("AGENTS.md 不应预种（是用户自己的文件）");
 
   // 9) 提案两段式：propose-design 不写盘、结束本回合，用户回话才决定"同意"
-  process.env.TALEMATE_MOCK_TOOL = "propose-design";
   const meta2 = await createProject({ title: "冒烟提案书" });
   const s2 = await openSession({ projectId: meta2.id, model, io });
+  // 三向的前置：先进草稿模式
+  process.env.TALEMATE_MOCK_TOOL = "enter-draft";
+  await s2.post("把核心设定整理一版出来。");
+  process.env.TALEMATE_MOCK_TOOL = "propose-design";
   const r2 = await s2.post("把核心设定整理一版出来。");
 
   const notWritten = (await listDesigns(meta2.id)).length === 0;

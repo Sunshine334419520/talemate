@@ -1,6 +1,6 @@
 /**
  * 工具执行：一次工具调用 → 对应的 assistant part（completed/error）。
- * 流程：查表 → 若声明了 needsConfirm 先向用户确认 → execute → 包成 part。
+ * 流程：查表 → 类别兜底（`deny *`）→ execute → 包成 part。权限判定在 execute 里走 `ctx.ask`。
  * 工具不存在 / 被拒 / 抛异常 → 包成 error part（不抛裸异常，让模型自纠）。
  * 这是纯工具层逻辑，不依赖 Session（上下文由调用方注入 ToolContext）。
  */

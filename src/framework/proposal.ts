@@ -7,6 +7,7 @@
  * 分工：逐格清单与收尾契约由这里出；模型的前言（这一版为什么这么定）在调用之前说。
  * 离散的创作抉择走 ask-user，不走这里。
  */
+import { PLAN_KEY, type FileOp, type PendingProposal } from "../core/types";
 import type { DesignSpec } from "./design_spec";
 import { DESIGN_SPECS, DOC_SPECS } from "./design_spec";
 import { LAYERS } from "./layers";
@@ -14,6 +15,20 @@ import { getSection, listHeadings } from "./markdown";
 import { isFiller } from "./report";
 
 const INDENT = "   ";
+
+/**
+ * 一份文档提案对应的写盘 op。节拍提案（`PLAN_KEY`）没有目标文件 → `undefined`。
+ *
+ * **落盘那条路只从这里取 op**（见 `write_ops.writeFile` 的 `via:"pending"` 分支）：
+ * `apply-design` 只收目标、不收正文，所以"模型夹带用户没看过的字节"是**写不出来**，
+ * 而不是"会被检查拦住"。这是两段式落盘那条不变量的落点。
+ *
+ * 提案永远是整篇（局部修改走二向的 `edit`，不进提案），所以这里恒为 `write`。
+ */
+export function proposalOp(p: PendingProposal): FileOp | undefined {
+  if (p.name === PLAN_KEY) return undefined;
+  return { kind: "write", path: `design/${p.name}`, content: p.content };
+}
 
 /** 正文按行缩进（与 confirm 摘要同一套 3 空格约定）。不截断——用户必须看到要落的全部字节。 */
 function indentLines(text: string): string[] {
@@ -158,12 +173,8 @@ export function isBlankBody(body: string): boolean {
 export interface ProposalView {
   /** 目标文档（design/ 下相对路径）——只用于取名/取格，**不进展示文本** */
   name: string;
-  /** 将落盘的正文：整篇提案=全文；单格提案=该小节正文（不含标题行） */
+  /** 将落盘的正文：**永远是整篇**（局部修改走二向的 edit，不进提案） */
   content: string;
-  /** 单格提案的小节标题；整篇提案缺省 */
-  section?: string;
-  /** 单格提案：该格当前正文（用于"旧 N 字 → 新 M 字"） */
-  oldBody?: string;
   /** 上一次提案的正文（同文档）；有则标出本版改动过的格，并提示替换了上一版 */
   previous?: string;
 }
@@ -171,22 +182,14 @@ export interface ProposalView {
 /**
  * 渲染一份提案（纯函数，无 IO）。输出即用户看到的全部——
  * 头部一行定位、逐格编号、待定格点出来问一句、收尾一行写清楚"怎么回话"。
+ *
+ * 提案**只有整篇一种**：局部修改走二向的 `edit`（用户看 diff，不看提案），所以这里没有
+ * "只改一格"的分支。想审阅的改动哪怕只涉及一格，也整篇摆出来——渲染里的 `★本版改动`
+ * 会指出动过哪几格，用户一眼看得到。
  */
 export function renderProposal(v: ProposalView): string {
   const label = labelOf(v.name, v.content);
-  const title = v.section ? `${label} › ${v.section}` : label;
-  const out: string[] = [`──── 提案 · ${title} ────`];
-
-  if (v.section) {
-    const oldLen = (v.oldBody ?? "").trim().length;
-    out.push(`改写这一格（旧 ${oldLen} 字 → 新 ${v.content.trim().length} 字），其余格不动`);
-    if (v.previous !== undefined) out.push("这是新的一版，已替换上一版提案。");
-    out.push("");
-    out.push(...indentLines(v.content));
-    out.push("");
-    out.push("回复「没问题」就写入；要改直接说。");
-    return out.join("\n");
-  }
+  const out: string[] = [`──── 提案 · ${label} ────`];
 
   const review = reviewOf(v.name, v.content);
   const prevReview = v.previous !== undefined ? reviewOf(v.name, v.previous) : undefined;

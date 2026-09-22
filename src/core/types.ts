@@ -63,11 +63,14 @@ export const PLAN_KEY = "__plan__";
 export interface PendingProposal {
   /** 目标活文档（design/ 下相对路径）；节拍提案是 `PLAN_KEY` */
   name: string;
-  /** 将落盘的正文：整篇提案=全文；单格提案=该小节正文（不含标题行）；节拍=节拍全文 */
+  /** 将落盘的正文：提案=整篇全文；节拍=节拍全文 */
   content: string;
-  /** 单格提案的小节标题；整篇提案缺省 */
-  section?: string;
-  /** 单格提案的提案时整篇快照——落盘前校验文档未被改过，变了要求重新提案 */
+  /**
+   * 提案时的整篇快照——落盘前校验文档未被改过，变了要求重新提案（CAS 的基准）。
+   *
+   * **提案永远是整篇**：局部修改走二向的 `edit`，不进提案。所以没有"只改一格"的提案这一说，
+   * 也就没有那个曾经的 `section` 字段——"我只动了第 3 格"由提案渲染里的 `★本版改动` 表达。
+   */
   base?: string;
   /** 仅节拍提案：这一章在用户面前叫什么（如"第 1 章"）。让待办注记在压缩之后还能自己说清是哪一章 */
   chapter?: string;
@@ -75,6 +78,25 @@ export interface PendingProposal {
   approved: boolean;
   at: number;
 }
+
+/**
+ * 一次文件改动的**字节级**描述。四个 kind，**零领域知识**——不认识"小节""角色卡""层"。
+ *
+ * 领域语义（"改某一格"）不占 op 种类：它在工具层派生成 `replace` 的 (find, replace)。
+ * 这样加一种新文档形状不必加新 op，写盘路径也只有一条。
+ *
+ * `path` 是**项目相对路径**（`design/core.md` / `chapters/chapter_ch1_v1.md`）——
+ * 与权限的 `pattern` 同一个口径，两者不会各说各话。
+ */
+export type FileOp =
+  /** 整篇：新建或覆盖。 */
+  | { kind: "write"; path: string; content: string }
+  /** 局部：把 find 换成 replace。find 必须非空且唯一（`all` 时例外）。 */
+  | { kind: "replace"; path: string; find: string; replace: string; all?: boolean }
+  /** 末尾追加。**不是 `replace` 的特例**：它没有锚点可验，模型也拿不到稳定的尾锚点。 */
+  | { kind: "append"; path: string; block: string }
+  /** 删掉整个文件。 */
+  | { kind: "delete"; path: string };
 
 /** 工具执行环境：循环提供给 execute 的能力（会话上下文） */
 export interface ToolContext {
@@ -100,12 +122,22 @@ export interface ToolContext {
   clearProposal(name: string): void;
   /** 切换会话模式（见 agent/modes.ts）；undefined = 回到普通模式 */
   setMode(mode: string | undefined): void;
-  /** 读取一个活文档文件内容（design/ 下相对路径），不存在返回 undefined */
+  /**
+   * 当前模式 id，没进模式 → undefined。
+   *
+   * 给"只在某种模式里才有意义"的工具做前置用：`propose-design` / `propose-plan` 是三向的出口，
+   * 不在草稿模式里就没有三向可谈——它们据此回一句自愈文案，让模型先把模式切过去。
+   */
+  getMode(): string | undefined;
+  /**
+   * 读一个活文档（design/ 下相对路径），不存在返回 undefined。
+   *
+   * **读口留着，写口没有**：改文件一律走 `write`（`framework/write_ops`）那一条路径。
+   * 从前这里还挂着 `writeDesign` / `removeDesign` / `saveChapter` 三个裸写方法，任何工具都能绕过
+   * 整套变换、CAS 与权限——`save-chapter` 当年就是那么绕过去的。删掉它们之后，"唯一写路径"
+   * 不再是一句约定，而是**类型上只有一个口**。
+   */
   readDesign(name: string): Promise<string | undefined>;
-  /** 写/覆盖活文档（design/ 下），返回完整路径 */
-  writeDesign(name: string, content: string): Promise<string>;
-  /** 删除活文档（design/ 下，如角色卡）；不存在静默 */
-  removeDesign(name: string): Promise<void>;
   /** 列项目 design/（含每个文档的一级小节标题——模型据此寻址/看骨架状态） */
   listDesigns(): Promise<string>;
   /** 列 design/ 下所有 .md 文档的相对路径（原始清单，供工具枚举/重建索引用） */
@@ -117,8 +149,6 @@ export interface ToolContext {
   /** 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文 */
   runSubagent(agentId: string, prompt: string): Promise<string>;
   loadSkill(name: string): Promise<string | undefined>;
-  /** 成品落 chapters/（返回完整路径） */
-  saveChapter(filename: string, content: string): Promise<string>;
   signal: AbortSignal;
 }
 

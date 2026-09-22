@@ -25,12 +25,12 @@
 
 | permission | 覆盖哪些工具 | pattern 是什么 |
 |---|---|---|
-| **`edit`** | `apply-design` · `append-design` · `remove-design-section` · `remove-character` · `save-chapter` | 目标文件在 `design/` 或 `chapters/` 下的相对路径 |
+| **`edit`** | `write` · `edit` · `apply-design` · `append-design` · `remove-design-section` · `remove-character` | 目标文件在 `design/` 或 `chapters/` 下的相对路径（**项目相对**，与工具入参同一口径） |
 | **`delegate`** | `task` | 子代理 id |
 | **`extern`** | `webfetch` · `websearch` | URL / 查询词 |
 | **`question`** | `ask-user` · `confirm` | `*`（这两个工具没有"对什么做"） |
 
-**刻意不设权限的**：`read-design` / `list-designs` / `search-designs`（读设计文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**两段式已经是一道更严的门**，见文末）· `enter-plan` / `exit-plan`（模式切换）。
+**刻意不设权限的**：`read-design` / `list-designs` / `search-designs`（读设计文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**两段式已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
 
 **少一类就少一处要维护的规则。** 真需要时再加是加法，不是改法。
 
@@ -50,7 +50,7 @@ evaluate(permission, pattern, ...rulesets): Rule
 
 这不是新发明——**opencode 自己在子代理那里就是这么做的**（父的 `deny` 继承、父的 `allow` 不继承）。我们只是把同一条原则推广到求值。
 
-好处：**`plan` 模式的只读不可绕过**——不管用户怎么配、不管层级顺序。想写就退出模式。
+好处：**`draft` 模式的只读不可绕过**——不管用户怎么配、不管层级顺序。想写就退出模式。
 
 ## 三档的真实语义
 
@@ -113,45 +113,46 @@ type PermissionConfig = Record<string, Action | Record<string, Action>>;
 REPL 里 `/permissions` 打印当前规则表——先给**结论**（每类动作现在是什么、**是哪一层定的**），再给**分层**（每层各自贡献了什么）：
 
 ```
-规则表 · 搭档 · 模式：计划模式
+规则表 · 搭档 · 模式：草稿模式
   现在（按 `*` 算；点名到具体文件的例外见「分层」）：
-    edit      deny   ← 计划模式
-    delegate  deny   ← 计划模式
+    edit      deny   ← 草稿模式
+    delegate  deny   ← 草稿模式
     extern    ask    ← 内置默认
     question  allow  ← 内置默认
 
   分层（后写的优先；deny 例外——任何一层说不许就是不许）：
     · 内置默认 — edit: *→ask   delegate: *→ask   extern: *→ask   question: *→allow
     · agent 搭档 — （无）
-    · 计划模式 — edit: *→deny   delegate: *→deny
+    · 草稿模式 — edit: *→deny   delegate: *→deny
     · 项目配置 talemate.json —（无）
     · 会话已批准 —（无）
 ```
 
 **来源那一列是重点。** 只显示结论没用：用户配了一条想放宽、看到的却还是 `deny`，得能一眼看出是被模式盖住了。
 
-提示符上也挂着当前模式（`[计划模式] 书名/搭档>`）——模式改了能做什么，而它在会话里是隐形的，不显示就没人知道还开着。
+提示符上也挂着当前模式（`[草稿模式] 书名/搭档>`）——模式改了能做什么，而它在会话里是隐形的，不显示就没人知道还开着。
 
 ## 工具侧怎么声明
 
-**只有一个入口：`ctx.ask`。** 今天那两处（`ToolDef.needsConfirm` 和工具内部的 `confirmBody`）合并成它一个。
+**只有一个入口：`ctx.ask`。** 从前那两处（`ToolDef.needsConfirm` 与工具内部的 `confirmBody`）已经并成它一个；
+而落盘类工具更进一步——**它们连 `ctx.ask` 都不直接调**，只把 op 交给 `write_ops`，由那一条路径统一去问。
 
 ```ts
 const verdict = await ctx.ask({
   permission: "edit",
-  pattern: "design/core.md",          // 这次动什么
-  always: "design/*",                 // 用户选「以后都允许」时，记下这条规则
-  summary: "改写 design/core.md › 题材 · 频道",
-  detail: "旧 120 字 → 新 140 字。\n\n──── 将写入的内容 ────\n…",
+  pattern: "design/characters/林晚.md",   // 这次动什么（**项目相对**，与工具入参同一口径）
+  always: "design/characters/*",          // 用户选「以后都允许」时，记下这条规则
+  summary: "改写 design/characters/林晚.md",
+  detail: "（引用检查等额外材料，可选）\n\n  ## 说话方式\n- 短句、直给。\n+ 越在乎越呛，反话里藏担心。",
 })
 // verdict: "allow" | "reject" | "deny"
 ```
 
 - `allow` → 做
-- `reject` → 工具返回 `用户已拒绝 …`（今天就是这个文案）
-- `deny` → 工具返回 `当前模式不允许修改 …（这个模式是只读的）` ← **新增的一档**
+- `reject` → 工具返回 `用户已拒绝 …`
+- `deny` → 工具返回 `当前模式不允许改文件。要改就先离开这个模式。`
 
-**`detail` 是给人做判断的材料。** opencode 在这里传的是 diff 和路径，我们传的是完整内容——这也是 `confirmBody` 今天已经在做的事，换个入口而已。
+**`detail` 是给人做判断的材料——传的是 diff。** 从前传的是**完整内容**；改成 diff 是因为局部修改要看的是"改了哪一段、落在哪"，而全文恰恰看不出这一点（还吵）。opencode 也是传 diff。
 
 ## `always`：会话级的"以后都允许"
 
@@ -182,21 +183,25 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 | **agent `mate`** | 无覆盖 | 同默认 |
 | **agent `writer`** | `question: deny *` · `delegate: deny *`（默认） | 不能烦用户、不能链式 spawn |
 | **模式 `accept-edits`** | `edit: allow` | **落盘不问**；委派与联网照问 |
-| **模式 `plan`** | `edit: deny *` · `delegate: deny *` | 只读：那些工具**不在 schema 里** |
+| **模式 `draft`** | `edit: deny *` · `delegate: deny *` | 只读：那些工具**不在 schema 里** |
 
 **模式用权限表达之后，"加了新工具忘了加进 deny 名单"这个洞从结构上消失了**——`deny *` 自动覆盖所有声明了该类权限的工具。
 
-## 与两段式落盘的关系
+## 与两种落盘形态的关系
 
-`propose-design` / `propose-plan` **不走权限**，因为它们是**更严的一道门**：
+**二向**（`write` / `edit`）走权限：`ctx.ask` 是它唯一那道门。
+**三向**（`propose-design` / `propose-plan`）**不走权限**，因为它们是**更严的一道门**：
 
-| | 权限系统 | 两段式落盘 |
+| | 权限系统（二向） | 三向（草稿模式的出口） |
 |---|---|---|
 | 问什么 | "这个动作现在能不能做" | "用户看过的字节，是不是就是落盘的字节" |
-| 谁判同意 | `ctx.ask` 的返回值 | harness 按用户回话匹配同意词，**模型自述无效** |
+| 谁判同意 | `ctx.ask` 的返回值 | harness 按用户回话判**三种结局**（`session.draftVerdict`），**模型自述无效** |
 | 记忆 | 会话级 `always`（可被覆盖） | 单份提案 + `base` 快照（并发保护） |
+| 出口 | 用户当场接受/拒绝 | **接受或拒绝**才退出草稿模式；提意见留在里面接着改 |
 
-所以 `apply-design` **不需要**再问一次——用户已经在提案里看过内容了。同理 `propose-plan` 之后的 `task(writer)` 不再问 `edit`：用户批的是那个动作。
+所以 `apply-design` **不需要**再问一次——用户已经在提案里看过内容了；但它**仍然过规则表**，
+"不许"不因为问过一次就失效（`write_ops` 的 `via:"pending"` 分支）。同理 `propose-plan` 之后的
+`task(writer)` 不再问 `edit`：用户批的是那个动作。
 
 ## 相关源码
 
@@ -206,5 +211,5 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 | `src/agent/registry.ts` | `AgentDef.permission`：每个角色自己的规则 |
 | `src/agent/modes.ts` | `ModeDef.permission`：每个模式的规则（取代今天的 `deny` 名单） |
 | `src/session/session.ts` | 持当前规则集；实现 `ctx.ask`；按 `visibleTools` 过滤 schema；`permissionView` 把规则表摊开给人看 |
-| `src/tool/runner.ts` | 只管执行——`needsConfirm` 那一支删掉 |
+| `src/tool/runner.ts` | 只管执行 + 类别兜底（`deny *`）；权限判定在工具里走 `ctx.ask`，落盘类工具走 `write_ops` |
 | `src/cli.ts` | `/permissions` 打印规则表；提示符挂当前模式与待写入提案 |

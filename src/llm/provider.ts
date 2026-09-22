@@ -333,7 +333,7 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
   const lastUser = [...opts.messages].reverse().find((m) => m.role === "user")?.text ?? "";
   const tools = opts.tools ?? [];
   // 供冒烟脚本注入剧本：env TALEMATE_MOCK_TOOL=<toolName> 时 mock 先调用一次该工具再收尾。
-  // 入参按该工具的 inputSchema.required 字段生成样例值（对 task 之类能通过 needsConfirm 校验）。
+  // 入参按该工具的 inputSchema.required 字段生成样例值（对 task 之类能通过入参校验）。
   // 「演过一次就收尾」按**工具名**判，不是"窗口里有没有任何 tool 消息"——冒烟要能演
   // "第一回合调 A、用户回话后第二回合调 B"这种两回合流程（如 propose-plan → task）。
   const mockTool = process.env.TALEMATE_MOCK_TOOL;

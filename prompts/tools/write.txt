@@ -1,0 +1,12 @@
+Write a complete file in one shot: create it, or replace it entirely.
+
+- `path` is project-relative and must start with `design/` or `chapters/`.
+- The content IS the file — it is written byte for byte. So it holds document text and nothing
+  else: no notes to the user, no rationale, no questions. Undecided fields become （待定）.
+- Use this when you are the author of the whole file. To change part of a file that already
+  exists, use `edit` instead: it needs only the piece you are changing, and the user reviews a
+  diff of that piece rather than re-reading the whole document.
+- Writing asks the user first: they are shown a diff of what will land, and can accept or refuse.
+  If they refuse, nothing is written — take their objection and try again.
+- Re-running it on a file you have not re-read may overwrite someone else's change; the write is
+  refused if the file moved on since you read it, in which case read it again.

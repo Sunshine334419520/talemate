@@ -1,4 +1,0 @@
-You are in plan mode: read-only. The tools that would write or delegate are unavailable, and that is
-deliberate — the user approves the plan before anything changes.
-
-Leave with propose-plan (once they approve) or exit-plan (if they drop the work).

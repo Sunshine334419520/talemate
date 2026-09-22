@@ -9,7 +9,7 @@ import type { AgentDef, AssistantPart, PendingProposal, ToolCall } from "../src/
 import { toNeutralMessages } from "../src/context/assemble";
 import type { AssistantTurn, NeutralMsg } from "../src/llm/types";
 import { runLoop, type LoopDeps } from "../src/session/loop";
-import { isAgreement, renderPendingNote } from "../src/session/session";
+import { draftVerdict, isAgreement, renderPendingNote, verdictEffect, type DraftVerdict } from "../src/session/session";
 
 const AGENT: AgentDef = {
   id: "mate",
@@ -147,6 +147,57 @@ describe("isAgreement · 同意由 harness 判，不问模型", () => {
   });
 });
 
+describe("draftVerdict · 三向：接受 / 拒绝 / 提意见", () => {
+  test("三种结局各归各家", () => {
+    const cases: [string, DraftVerdict][] = [
+      ["没问题", "accept"],
+      ["好的", "accept"],
+      ["ok", "accept"],
+      ["不行", "reject"],
+      ["算了", "reject"],
+      ["不要", "reject"],
+      ["no", "reject"],
+      ["第 2 格改成雨夜", "refine"],
+      ["主角名字再想想", "refine"],
+      ["", "refine"],
+      ["再想想", "refine"],
+    ];
+    const wrong = cases
+      .map(([s, want]) => {
+        const got = draftVerdict(s);
+        return got === want ? undefined : `${JSON.stringify(s)}：预期 ${want}，实际 ${got}`;
+      })
+      .filter((x): x is string => x !== undefined);
+    expect(wrong).toEqual([]);
+  });
+
+  test("**带内容的一律是提意见**，哪怕它是以拒绝词开头的", () => {
+    // 「不行，但第 3 格改成雨夜」既不是干净的同意，也不是干净的拒绝——用户还给了材料，
+    // 那就是"接着改"。误判成拒绝会把模式关掉，用户就被关在门外了。
+    for (const s of ["不行，但第 3 格改成雨夜", "算了，换个方向重写", "没问题，但第 3 格改成雨夜"]) {
+      expect(draftVerdict(s)).toBe("refine");
+    }
+  });
+
+  test("认不出的一律算提意见——绝不误判成接受（fail-closed）", () => {
+    expect(draftVerdict("嗯……你说呢")).toBe("refine");
+    expect(verdictEffect(draftVerdict("嗯……你说呢")).approved).toBe(false);
+  });
+
+  test("接受与拒绝都出模式，提意见留在里面", () => {
+    // 出口条件是"用户接受或拒绝"，不是"提案成功"——这条是"一次设计会话只进一次模式"的前提。
+    expect(verdictEffect("accept").leaveDraft).toBe(true);
+    expect(verdictEffect("reject").leaveDraft).toBe(true);
+    expect(verdictEffect("refine").leaveDraft).toBe(false);
+  });
+
+  test("只有拒绝才作废提案；接受要留着给 apply-design 落盘", () => {
+    expect(verdictEffect("accept").dropProposal).toBe(false);
+    expect(verdictEffect("reject").dropProposal).toBe(true);
+    expect(verdictEffect("refine").dropProposal).toBe(false);
+  });
+});
+
 describe("renderPendingNote · 协议状态独立于消息历史", () => {
   const p = (over: Partial<PendingProposal>): PendingProposal => ({
     name: "core.md",
@@ -164,12 +215,12 @@ describe("renderPendingNote · 协议状态独立于消息历史", () => {
     const note = renderPendingNote(
       new Map([
         ["core.md", p({})],
-        ["wiki/world.md", p({ name: "wiki/world.md", section: "规则与秩序", approved: true })],
+        ["wiki/world.md", p({ name: "wiki/world.md", approved: true })],
       ]),
     )!;
     expect(note).toContain("<pending-proposal>");
-    expect(note).toContain("core.md（整篇）：用户还没同意");
-    expect(note).toContain("wiki/world.md（只改「规则与秩序」这一格）：用户已表示同意 → 可以 apply-design");
+    expect(note).toContain("core.md：用户还没同意");
+    expect(note).toContain("wiki/world.md：用户已表示同意 → 可以 apply-design");
     expect(note).toContain("</pending-proposal>");
   });
 });

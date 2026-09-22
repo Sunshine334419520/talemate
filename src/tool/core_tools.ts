@@ -1,9 +1,13 @@
 /**
- * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / save-chapter / propose-plan）。
+ * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / propose-plan / enter-draft / exit-draft）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
+ *
+ * **落盘的工具不在这里**。`save-chapter` 曾在这里，它只是"`write` 加一个写死的 chapters/ 前缀"——
+ * 已删除，改由 `write` 承担，writer 的范围由权限表划（见 agent/registry.ts）。改文件的两个面在
+ * `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
  */
+import { DRAFT_MODE } from "../agent/modes";
 import { PLAN_KEY } from "../core/types";
-import { askWrite, writeBlocked } from "../framework/design_ops";
 import { renderPlan } from "../framework/proposal";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
@@ -35,7 +39,7 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
       detail: `prompt ${args.prompt.length} 字。`,
     });
     if (verdict === "deny") {
-      return { output: `当前不允许委派子代理（${args.agent}）。若是计划模式挡住了，先 exit-plan。` };
+      return { output: `当前不允许委派子代理（${args.agent}）。若是草稿模式挡住了，先 exit-draft。` };
     }
     if (verdict === "reject") return { output: `用户已拒绝委派 ${args.agent}。` };
 
@@ -143,37 +147,6 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
   },
 });
 
-/** save-chapter：写手把成品/规划落 chapters/ */
-export const saveChapterTool: RegisteredTool<{ filename: string; content: string }> = defineTool<{
-  filename: string;
-  content: string;
-}>({
-  id: "save-chapter",
-  description: P("save-chapter"),
-  input: {
-    type: "object",
-    properties: {
-      filename: { type: "string", description: "Filename incl. .md" },
-      content: { type: "string", description: "Full content" },
-    },
-    required: ["filename", "content"],
-  },
-  permission: "edit",
-  async execute(args, ctx) {
-    // 走同一道权限口（渲染器复用 design_ops 那一份）——chapters/ 的文件名就是 pattern
-    const verdict = await askWrite(ctx, {
-      pattern: `chapters/${args.filename}`,
-      action: `落盘 chapters/${args.filename}`,
-      meta: `正文 ${args.content.length} 字。`,
-      label: "将写入的内容",
-      body: args.content,
-    });
-    if (verdict !== "allow") return { output: writeBlocked(verdict, `落盘 chapters/${args.filename}`) };
-    const file = await ctx.saveChapter(args.filename, args.content);
-    return { output: `已保存 ${file}`, metadata: { file } };
-  },
-});
-
 /**
  * propose-plan：把**这一章**的节拍摆给用户拍板，并**结束本回合**等他回话。
  *
@@ -182,8 +155,9 @@ export const saveChapterTool: RegisteredTool<{ filename: string; content: string
  * 带着这份节拍去 `task(writer)`。用户要改 → 改完再摆一次，这是个循环。
  *
  * `halt` 是它存在的全部理由：光靠纪律，mate 可能拿着没批准的节拍直接叫 writer。而"摆出来就停"
- * 正是计划模式里 ExitPlanMode 干的事——这里不要 mode（`design-docs.md` 明确否决过阶段状态机），
- * 只要一个会停的工具。
+ * 正是草稿模式的出口干的事——这里不要阶段状态机（`design-docs.md` 明确否决过），只要一个会停的工具。
+ *
+ * **要先进草稿模式**：三向（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就没有"提意见"这一路。
  */
 export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string }> = defineTool<{
   content: string;
@@ -217,6 +191,9 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
         `propose-plan 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带这一章的节拍正文重新调用。`,
       );
     }
+    if (ctx.getMode() !== DRAFT_MODE) {
+      return { output: notInDraft("把这一章的节拍摆出来") };
+    }
     // 登记成"待执行的节拍"。**只在会话内存里，不落盘**——用户回话后由 harness 置 approved，
     // task(writer) 靠它判断"这一章用户拍过板了没有"。改了内容重新提案即覆盖，approved 归零。
     ctx.setProposal({
@@ -227,9 +204,8 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
       at: Date.now(),
     });
     ctx.showProposal(renderPlan(args.chapter, content));
-    // 计划出来了，模式就该退——它管的是"还没计划好之前别乱动"。批准与否由下面那条登记表达，
-    // 不靠模式（模式只是纪律，硬门在 task(writer) 上）。
-    ctx.setMode(undefined);
+    // **不在这里退模式**：出口条件是"用户接受或拒绝"，由 harness 判（`session.verdictEffect`）。
+    // 提意见是在模式里打转，退出去就等于把用户关在门外——他得重新进一次才能接着改。
     return {
       output:
         "节拍已摆给用户（尚未写任何正文）。本回合已结束，等用户回话：认可 → 带这份节拍 task(writer)；" +
@@ -240,32 +216,46 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
 });
 
 /**
- * enter-plan / exit-plan：会话模式的进出口（见 `agent/modes.ts`）。
+ * 「你不在草稿模式里」的自愈文案。`propose-design` / `propose-plan` 共用——它们的前置是同一条，
+ * 文案也该是同一条，否则模型会从两句不同的话里推出两条不同的规则。
+ */
+export function notInDraft(what: string): string {
+  return (
+    `还没进草稿模式——三向审阅（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就摆不出东西。` +
+    `请先 enter-draft，再${what}；用户接受或拒绝之后模式会自己退出。`
+  );
+}
+
+/**
+ * enter-draft / exit-draft：会话模式的进出口（见 `agent/modes.ts`）。
  *
- * **模式的边界感全在这两个工具上**：它必须有始有终，所以进入之后只有两条路——`propose-plan`
- * 成功（正常路径，自动退出）、或者 `exit-plan`（用户改主意不做了）。没有第二条会把 mate
- * 关在"能读能问、但派不了活"的笼子里。
+ * **模式的边界感全在这两个工具上**：进入之后只有两条路——用户接受或拒绝（正常路径，模式自己退）、
+ * 或者 `exit-draft`（用户改主意不做了）。没有第二条会把 mate 关在"能读能问、但派不了活"的笼子里。
  *
  * 进入不弹 confirm：用户刚说了"写第 1 章"，再问一句"要不要先规划"是噪音。
  */
-export const enterPlanTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
-  id: "enter-plan",
-  description: P("enter-plan"),
+export const enterDraftTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
+  id: "enter-draft",
+  description: P("enter-draft"),
   input: { type: "object", properties: {} },
   async execute(_args, ctx) {
-    ctx.setMode("plan");
-    return { output: "已进入计划模式（task 起不可用）。做出计划后用 propose-plan 摆给用户拍板。" };
+    ctx.setMode(DRAFT_MODE);
+    return {
+      output:
+        "已进入草稿模式（落盘与委派都不可用）。把要审的东西准备好，用 propose-design 或 propose-plan 摆给用户；" +
+        "他接受或拒绝之后模式自己退出，他提意见就留在模式里接着改。",
+    };
   },
 });
 
-/** exit-plan：用户改主意不做了 → 离开计划模式。正常路径不需要它（propose-plan 会退出）。 */
-export const exitPlanTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
-  id: "exit-plan",
-  description: P("exit-plan"),
+/** exit-draft：用户改主意不做了 → 离开草稿模式。正常路径不需要它（接受/拒绝会自己退）。 */
+export const exitDraftTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
+  id: "exit-draft",
+  description: P("exit-draft"),
   input: { type: "object", properties: {} },
   async execute(_args, ctx) {
     ctx.setMode(undefined);
-    return { output: "已离开计划模式。" };
+    return { output: "已离开草稿模式。" };
   },
 });
 
@@ -274,8 +264,7 @@ export const CORE_TOOLS: RegisteredTool[] = [
   taskTool,
   askUserTool,
   confirmTool,
-  saveChapterTool,
   proposePlanTool,
-  enterPlanTool,
-  exitPlanTool,
+  enterDraftTool,
+  exitDraftTool,
 ];

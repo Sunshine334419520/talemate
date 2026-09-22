@@ -30,11 +30,13 @@ const DEFAULT_AGENTS: AgentDef[] = [
     tools: [
       "task",
       "read-design",
+      "write",
+      "edit",
       "propose-design",
       "apply-design",
       "propose-plan",
-      "enter-plan",
-      "exit-plan",
+      "enter-draft",
+      "exit-draft",
       "append-design",
       "remove-design-section",
       "search-designs",
@@ -56,10 +58,20 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "The prose writer. Writes one chapter's prose strictly from the provided setting slices + beat plan.\n" +
       "Use this when the user asks for a chapter's prose AND you hold a beat plan for that chapter the user has already approved via propose-plan; if there is no beat plan yet, write it yourself and propose-plan it first. It runs in an isolated context to focus on the draft; you (the writing partner) review and approve the piece before it lands in chapters/.",
     mode: "subagent",
-    tools: ["read-design", "list-designs", "skill", "save-chapter"],
-    // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
-    // 也不能委派（防链式 spawn）。其余按默认（落盘仍然问）。
-    permission: { question: "deny", delegate: "deny" },
+    tools: ["read-design", "list-designs", "skill", "write"],
+    permission: {
+      // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
+      // 也不能委派（防链式 spawn）。其余按默认（落盘仍然问）。
+      question: "deny",
+      delegate: "deny",
+      // **写手的活动范围**：只写得了 chapters/，碰不了 design/。
+      //
+      // 从前这条边界是靠一个专用工具（save-chapter）表达的，现在是**一条数据**——加一个要保护的
+      // 目录就加一条规则，不用再造工具。注意用的是**具体 pattern 的 deny**，不是 `"*": "deny"`：
+      // 后者会让 `write` 整个从 schema 里消失（visibleTools 在 pattern `*` 上求值），
+      // 而这里要的是"工具还在，但有一个目录例外"。
+      edit: { "design/*": "deny" },
+    },
     system: WRITER_SYSTEM,
   },
   {

@@ -17,7 +17,7 @@
    ▼             ▼                                              ▼
 agent/         tool/       内置工具(按 agent 白名单可见)          framework/   领域层
 registry.ts  (define/registry/runner + 5 域模块)             anchor/report/characters/design_spec/
-角色声明                                                      markdown/search/layers/proposal/design_ops
+角色声明                                                      markdown/search/layers/proposal/write_ops/match
    │                                                                │
    ▼                                                                ▼
 context/  assemble(buildSystemPrompt, toNeutralMessages)         存储能力经 ToolContext 注入
@@ -90,7 +90,7 @@ sequenceDiagram
         LLM->>LLM: 流式 → onText/onReasoning 吐 delta
         LLM-->>L: AssistantTurn{text, toolCalls, finish}
         L->>L: parts = reasoning + text + 每 toolCall 一个 executeTool
-        T-->>L: executeTool → 查表/needsConfirm/执行 → assistant part
+        T-->>L: executeTool → 查表/类别兜底/执行 → assistant part
         alt 是 task 调用
             T->>T: runSubagent(新 Session) → 独立循环 → <task_result> 回填
         end

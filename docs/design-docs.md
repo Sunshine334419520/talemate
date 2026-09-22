@@ -1,8 +1,8 @@
 # 设计文档体系：四层活文档与两段式落盘
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
-> **读者**：要改 `src/framework/`（design_spec / design_ops / proposal / layers）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-09-20 · 层元信息在 `framework/layers.ts`，结构规范在 `framework/design_spec.ts`
+> **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / layers）或 `src/tool/design_tools.ts` 的人。
+> **对齐代码**：2026-09-22 · 层元信息在 `framework/layers.ts`，结构规范在 `framework/design_spec.ts`
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -18,7 +18,7 @@
 
 **常驻只有两份**：`core.md` 与 `wiki/world.md`（`RESIDENT_LAYERS` 标的是层 id，路径由 `DESIGN_SPECS` 现取）。其余按需 `read-design`。常驻注入只给可见的 primary（mate）。
 
-**文档格式**：Markdown，`##` 即一格。可寻址粒度 = "文件名 + 小节标题"。不做条目级 ID 引用。
+**文档格式**：Markdown，`##` 即一格。**读**按"文件名 + 小节标题"寻址（`read-design` 的 `section`）；**写**按**锚点**寻址（`edit` 给一段原文与替换文本，见"两种落盘形态"）。不做条目级 ID 引用。
 
 ## 懒建：文件不预种
 
@@ -26,23 +26,32 @@
 
 **结构与内容分离**：`design_spec.ts` 只定义"长什么样"；文件一旦建立即内容与真相。所以 `design-spec` 是**参考**，不是校验器——文档不按规范组织也能存在，只是模型没拿到引导。
 
-## 两段式落盘
+## 两种落盘形态
 
-> **用户看过的字节 == 落盘的字节**，由构造保证。
+> **用户看过的字节 == 落盘的字节。** 两条路各用各的材料来满足它，都走**同一条流水线**
+> （`framework/write_ops.ts`），区别只在**字节从哪来**：
 
-```
-propose-design（不写盘 + halt 结束本回合）
-   → 渲染提案给用户看（逐格编号、待定格点出、改动打标）
-   → 用户回话
-apply-design（只落提案那一份，**不接受正文**）
-```
+| | 字节从哪来 | 模型可见的工具 | 用户看到什么 |
+|---|---|---|---|
+| **二向** | 模型**当场组合**（它给 `content` 或 `find`/`replace`） | `write` · `edit` | 一段 **diff**，弹窗问 接受 / 拒绝 |
+| **三向** | **从已审阅的提案取**（模型给不了字节） | `apply-design` | 一份**逐格提案**，回话 接受 / 拒绝 / 提意见 |
+
+落盘那条路上，两者汇进同一个 `writeFile`：解析目标 → 读 → 算结果 → 算 diff → 取批准 → CAS + 原子写。
+
+**三向**（`propose-design` → 用户回话 → `apply-design`）：
 
 - **`propose-design` 的 `halt`**：结束本回合，把控制权交回用户。同回合剩下的 tool call 不再执行——但必须补 `error` part（见 `architecture.md` 的 halt 说明）。
-- **"同意"由 harness 判**：`Session.markPendingApproval` 按用户回话匹配同意词置位，**模型自述无效**。fail-closed：措辞不常见就多走一轮，绝不写用户没认可的东西。
-- **并发保护**：提案登记 `base` 快照，`apply-design` 时若文件已变则拒绝。
-- **因此 `apply-design` 用 `confirm:false`**——用户已在提案里看过内容，再弹一次确认是多余的。
+- **"同意"由 harness 判**：`Session.markPendingApproval` 按用户回话判**三种结局**（`draftVerdict`：接受 / 拒绝 / 提意见），**模型自述无效**。fail-closed：措辞不常见一律算"提意见"，多走一轮，绝不误判成接受。
+- **出口条件是"接受或拒绝"，不是"提案成功"**：提意见留在草稿模式里接着改，所以一次设计会话只进一次模式。
+- **并发保护**：提案登记 `base` 快照，落盘前若文件已变则拒绝（CAS）。
+- **`apply-design` 不弹窗**——用户已在提案里看过内容；但它**仍然过规则表**，"不许"不因为问过一次就失效。
 
-**为什么必须两段**：一段式（工具直接写盘）等于让模型自己声称"用户同意了"。改成两段后，`apply-design` 拿不到正文、`approved` 由 harness 置位，模型**想夹带用户没看过的字也夹带不了**。
+**为什么三向要这么设计**：一段式（模型当场给字节又自己声称"用户同意了"）等于没有门。三向里
+`apply-design` **拿不到正文**——字节只从提案登记取（`proposal.ProposalOp`）——所以模型**想夹带
+用户没看过的字也夹带不了**，是"写不出来"而不是"会被检查拦住"。
+
+**提案只有整篇一种形态。** 局部修改走二向的 `edit`：用户看 diff 就够，不必再读一遍全文。想让
+用户细看的那一版，哪怕只动了一格，也整篇提出来——渲染里的 `★本版改动` 会指出动过哪几格。
 
 ## 寻址：`layer` 与 `name`
 
@@ -73,7 +82,7 @@ flowchart TD
     W3 --> W4{用户拍板}
     W4 -- 要改 --> W2
     W4 -- 认可 --> W5[task writer 带切片 + 节拍写正文]
-    W5 --> W6[mate 面向用户确认 → save-chapter 落 chapters/]
+    W5 --> W6[writer 用 write 落 chapters/ —— 用户看 diff 后点头]
 ```
 
 **一次只规划一章**，因为节拍是**序列纲的投影**：序列纲说"这一节要兑现什么"，节拍说"这一章怎么兑现"。
@@ -97,8 +106,11 @@ flowchart TD
 |---|---|
 | `framework/layers.ts` | 层的**显示名与顺序**（id / title）＋常驻表（标的是层 id）。**路径不在这里**——见 `design_spec.ts` |
 | `framework/design_spec.ts` | 结构规范的**两张表**：`DESIGN_SPECS` 按层（`file` 精确匹配）+ `DOC_SPECS` 按路径模式（卷纲 / 序列纲）。每份规范 = 写什么 / 别写什么 / 写成什么样 + 成稿工作法 |
-| `framework/design_ops.ts` | **写盘唯一实现**：`write`/`edit`/`append`/`cut`/`drop` 五种 op + confirm |
-| `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `specFor` / `reviewable` / `renderProposal`）。**`specFor` 先精确后模式**——层的规范按文件名，文档的规范按路径 |
-| `framework/markdown.ts` | 区块手术（`getSection` / `replaceSection` / `appendBlock` / `removeSection` / `listHeadings`） |
+| `framework/write_ops.ts` | **写盘唯一路径**：解析目标 → 读 → 算结果 → diff → 取批准 → CAS + 原子写。二向与三向都走它 |
+| `framework/file_ops.ts` | `FileOp` → 新内容（纯函数）：整篇 / 锚点替换 / 末尾追加 / 删除。行尾适配在这一层 |
+| `framework/match.ts` | 锚点匹配的回退阶梯（唯一性、跨度失控兜底） |
+| `framework/invariants.ts` | **对算出来的结果做后验**（角色卡三条）。提案时也跑同一份，所以判据不会两处说两套 |
+| `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `specFor` / `reviewable` / `renderProposal`）＋ `proposalOp`（提案 → 写盘 op）。**`specFor` 先精确后模式**——层的规范按文件名，文档的规范按路径 |
+| `framework/markdown.ts` | 区块**读**手术（`getSection` / `appendBlock` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
 | `framework/anchor.ts` | 常驻注入 + `list-designs` 的索引 |
 | `tool/design_tools.ts` | 上面这些的工具壳（校验与守卫都在这里） |
