@@ -2,15 +2,13 @@
  * 提案渲染：把模型提交的草稿变成用户能逐格审阅、用"第 N 格"回话的展示文本。
  *
  * 不变量：**这里不认识任何一层**——签名里没有层，标签与格名全部来自数据
- * （DESIGN_SPECS 的小节，或正文自己的标题）。为某一层写渲染分支就是设计错了。
+ * （`design_spec.SPECS` 的小节，或正文自己的标题）。为某一层写渲染分支就是设计错了。
  *
  * 分工：逐格清单与收尾契约由这里出；模型的前言（这一版为什么这么定）在调用之前说。
  * 离散的创作抉择走 ask-user，不走这里。
  */
 import { PLAN_KEY, type FileOp, type PendingProposal } from "../core/types";
-import type { DesignSpec } from "./design_spec";
-import { DESIGN_SPECS, DOC_SPECS } from "./design_spec";
-import { LAYERS } from "./layers";
+import { specFor } from "./design_spec";
 import { getSection, listHeadings } from "./markdown";
 import { isFiller } from "./report";
 
@@ -18,6 +16,9 @@ const INDENT = "   ";
 
 /**
  * 一份文档提案对应的写盘 op。节拍提案（`PLAN_KEY`）没有目标文件 → `undefined`。
+ *
+ * `p.name` **就是项目相对路径**（`design/core.md`）——提案登记的名字与 `FileOp.path`、工具收的
+ * 路径、权限 pattern 全同一个口径，所以这里不再补前缀。
  *
  * **落盘那条路只从这里取 op**（见 `write_ops.writeFile` 的 `via:"pending"` 分支）：
  * `apply-design` 只收目标、不收正文，所以"模型夹带用户没看过的字节"是**写不出来**，
@@ -27,7 +28,7 @@ const INDENT = "   ";
  */
 export function proposalOp(p: PendingProposal): FileOp | undefined {
   if (p.name === PLAN_KEY) return undefined;
-  return { kind: "write", path: `design/${p.name}`, content: p.content };
+  return { kind: "write", path: p.name, content: p.content };
 }
 
 /** 正文按行缩进（与 confirm 摘要同一套 3 空格约定）。不截断——用户必须看到要落的全部字节。 */
@@ -43,18 +44,8 @@ export interface ProposalItem {
   body: string;
 }
 
-/**
- * 这一篇有没有结构规范。**两个匹配键，先精确、后模式**：
- *
- *   层的规范（`DESIGN_SPECS`）按**文件名精确**匹配（core.md / wiki/world.md），不做目录/前缀
- *   推断——`characters` 与 `outline` 的 file 是目录（以 "/" 结尾），永远匹配不上，于是角色卡、
- *   `wiki/<题>.md` 专题页、`plan_ch<N>.md` 细纲自动落到 `itemsOf` 的兜底分支。
- *   文档的规范（`DOC_SPECS`）按**路径模式**匹配（卷纲 / 序列纲）——同一个层下有几种文档时，
- *   只有模式分得开它们。
- */
-export function specFor(name: string): DesignSpec | undefined {
-  return Object.values(DESIGN_SPECS).find((s) => s.file === name) ?? DOC_SPECS.find((d) => d.match.test(name));
-}
+// `specFor`（这一篇按哪份规范看）住在 `design_spec.ts`——注册表本身所在的那一处。这里从前是它的家，
+// 还兼着"两个匹配键怎么合"的解释；合成一张表之后那套注解全部作废。
 
 /**
  * 正文自己的格：取**最浅一层**的标题。
@@ -156,12 +147,15 @@ export function reviewable(name: string, content: string): boolean {
 }
 
 /**
- * 展示用标签：**层的**规范 → 层名（"核心层"）；**文档的**规范与开放文档 → 文档自己的 H1。
+ * 展示用标签：规范带了 `label` 的（core / world）→ 那个短名；其余 → **文档自己的 H1**。
  * 卷纲/序列纲都有自己的 H1（`# 卷 2 · 内城`），比"卷纲"这三个字有信息量。**都不出现文件路径。**
+ *
+ * 判据是"规范给不给短名"，不是"它是不是层"：`core.md` 的 H1 可能就是 `core`，而用户该看到
+ * 「核心层」。短名与长名现在并排放在同一行（`design_spec.DocSpec.label`），不必跨两个文件才看得出区分。
  */
 export function labelOf(name: string, content: string): string {
   const spec = specFor(name);
-  if (spec?.kind === "layer") return LAYERS.find((l) => l.id === spec.layer)?.title ?? spec.title;
+  if (spec?.label) return spec.label;
   return listHeadings(content, 1)[0]?.title || spec?.title || "草稿";
 }
 
@@ -171,7 +165,7 @@ export function isBlankBody(body: string): boolean {
 }
 
 export interface ProposalView {
-  /** 目标文档（design/ 下相对路径）——只用于取名/取格，**不进展示文本** */
+  /** 目标文档（项目相对路径）——只用于取名/取格，**不进展示文本** */
   name: string;
   /** 将落盘的正文：**永远是整篇**（局部修改走二向的 edit，不进提案） */
   content: string;

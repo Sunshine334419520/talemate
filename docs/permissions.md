@@ -2,7 +2,7 @@
 
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
-> **对齐代码**：2026-09-22 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
+> **对齐代码**：2026-09-23 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
 > 相邻：`agents.md`（角色与工具名册）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
@@ -30,7 +30,7 @@
 | **`extern`** | `webfetch` · `websearch` | URL / 查询词 |
 | **`question`** | `ask-user` · `confirm` | `*`（这两个工具没有"对什么做"） |
 
-**刻意不设权限的**：`read-design` / `list-designs` / `search-designs`（读设计文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**两段式已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
+**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**两段式已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
 
 **少一类就少一处要维护的规则。** 真需要时再加是加法，不是改法。
 

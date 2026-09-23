@@ -10,7 +10,8 @@ import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openSession, type UserIO } from "./session/session";
-import { createProject, listDesigns, readProjectRules, writeProjectMeta } from "./storage/project";
+import { createProject, readProjectRules, writeProjectMeta } from "./storage/project";
+import { enumerateDocs } from "./storage/corpus";
 import { loadMessages, listSessionIds, loadSessionMeta } from "./storage/session-store";
 import { loadModelConfig } from "./core/config";
 import { evaluateWithSource } from "./permission";
@@ -132,7 +133,7 @@ try {
   if (!writerSession) throw new Error("writer 子会话未落盘");
 
   // 4b) design/ 懒建：初始为空（按需 design-spec 拿形状再成稿）
-  const seeded = await listDesigns(meta.id);
+  const seeded = await enumerateDocs(meta.id, "design/");
   console.log(`[5b] design/ 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空，按需 design-spec 成稿）"}`);
   if (seeded.length !== 0) throw new Error("design/ 应懒建为空");
 
@@ -157,7 +158,7 @@ try {
   process.env.TALEMATE_MOCK_TOOL = "propose-design";
   const r2 = await s2.post("把核心设定整理一版出来。");
 
-  const notWritten = (await listDesigns(meta2.id)).length === 0;
+  const notWritten = (await enumerateDocs(meta2.id, "design/")).length === 0;
   console.log(`[9] propose-design 不写盘：${notWritten ? "✓（design/ 仍为空）" : "✗ 竟然落盘了"}`);
   if (!notWritten) throw new Error("提案不该落盘");
 
@@ -170,17 +171,17 @@ try {
   const halted = r2.includes("等用户回话");
   console.log(`[9c] 本回合在提案处结束（halt）：${halted ? "✓" : `✗ ${truncate(r2, 80)}`}`);
 
-  const pending = s2.pending.get("core.md");
+  const pending = s2.pending.get("design/core.md");
   console.log(`[9d] 待落盘提案已登记且未获同意：${pending && !pending.approved ? "✓" : "✗"}`);
 
   // "同意"由 harness 按用户回话判定——模型自述无效
   await s2.post("没问题");
-  const agreed = s2.pending.get("core.md")?.approved === true;
+  const agreed = s2.pending.get("design/core.md")?.approved === true;
   console.log(`[10] 用户说「没问题」→ 记为用户已同意：${agreed ? "✓" : "✗"}`);
   if (!agreed) throw new Error("同意未被 harness 记下");
 
   await s2.post("等一下，第 3 格我想改成雨夜");
-  const revoked = s2.pending.get("core.md")?.approved === false;
+  const revoked = s2.pending.get("design/core.md")?.approved === false;
   console.log(`[10b] 用户改口要改内容 → 同意撤销：${revoked ? "✓" : "✗"}`);
   if (!revoked) throw new Error("带改动要求的回话不该算同意");
 

@@ -1,8 +1,8 @@
 # 情节层：卷纲与序列纲
 
 > **职责**：回答"大纲由什么构成、一卷的纲/一个序列的纲各写什么、为什么没有整本大纲"。
-> **读者**：要改 `framework/design_spec.ts` 的 `outline` 与 `DOC_SPECS`、或改情节层写入守卫的人。
-> **对齐代码**：2026-09-20 · 规范在 `framework/design_spec.ts` 的 `DOC_SPECS`，匹配在 `proposal.specFor`
+> **读者**：要改 `framework/design_spec.ts` 里卷纲/序列纲那两条规范、或改情节层写入守卫的人。
+> **对齐代码**：2026-09-23 · 规范在 `framework/design_spec.ts` 的 `SPECS`（按路径 glob 登记，具体者胜出）
 > 相邻：`design-docs.md`（四层与两段式落盘）· `characters.md`（另一个"主文档是目录"的层）· `roadmap.md`
 
 ## 一句话
@@ -64,7 +64,7 @@ derived」、角色名单现算、`design-docs.md` 的「绝不缓存旧设定�
 
 ## 目录与寻址
 
-`list-designs` 里，**卷纲列它的五格，序列纲只给一行 + 首句**：
+`list` 里，**卷纲列它的五格，序列纲只给一行 + 首句**：
 
 ```
   outline/
@@ -78,15 +78,15 @@ derived」、角色名单现算、`design-docs.md` 的「绝不缓存旧设定�
 ```
 
 判据：**只有当同一文档内部的小节会被分别读取时，目录才列小节。** 卷纲的五格会被单独
-`propose-design` 带 `section` 改，所以列；序列纲整份读，所以不列。角色卡一人一行是同一个道理。
+`read`（带 `section`）、单独 `edit`，所以列；序列纲整份读，所以不列。角色卡一人一行是同一个道理。
 
-**写入一律走 `name`（`outline/vol_<N>.md` / `outline/vol_<N>/s<序号>.md`），不走 `layer`**：
-`DESIGN_SPECS.outline.file` 是目录 `"outline/"`（和 `characters/` 一样永不精确匹配），
-所以 `layer:"outline"` 会被 `resolveDoc` 拒掉，并把正确路径给回去让它自纠。
+**写入一律走 `path`**：`design/outline/vol_<N>.md` / `design/outline/vol_<N>/s<序号>.md`。
+没有第二个词表——`layer:"outline"` 那个参数连同那份层短名表一起删了（见 `design-docs.md`
+的「寻址：只有路径」）。
 
-**规范按路径模式登记**（`DOC_SPECS`），不是按目录前缀推断——同一个层下有几种文档时，
-只有模式分得开卷纲与序列纲。取规范：`design-spec` 带 `layer:"outline"` 拿两份，
-带 `name` 拿其中一份。
+**规范按路径登记**（`SPECS`），而且**更具体的模式胜出**：`design/outline/vol_*.md` 与
+`design/outline/vol_*/s*.md` 同时命中一份序列纲，靠"模式更长者胜出"定胜负——**不靠表里的先后**。
+取规范：`design-spec` 带 `path: "design/outline/"`（目录路径）拿两份，带某一份文档的路径拿其中一份。
 
 ## 章计划不在这里
 
@@ -107,8 +107,9 @@ derived」、角色名单现算、`design-docs.md` 的「绝不缓存旧设定�
 
 | 文件 | 职责 |
 |---|---|
-| `framework/design_spec.ts` | `DOC_SPECS`：卷纲与序列纲的规范（按路径模式登记）；`outline` 层的 `file` 是目录 |
-| `framework/proposal.ts` | `specFor` 先精确（层）后模式（文档）；`reviewable` 对 `sections` 为空的规范落到开放文档那条判据 |
+| `framework/design_spec.ts` | 卷纲与序列纲的规范（按路径 glob 登记，具体者胜出） |
+| `framework/proposal.ts` | `specFor` 转发给注册表；`reviewable` 对 `sections` 为空的规范落到开放文档那条判据 |
 | `framework/report.ts` | 状态卡的「大纲现状」**现算**（最新一卷 + 序列数），不读任何"整本大纲" |
-| `framework/anchor.ts` | `list-designs`：不分格的文档一行 + 首句 |
-| `tool/design_tools.ts` | `MAIN_LAYERS` 只含 core / world——大纲没有"整本"可写 |
+| `framework/anchor.ts` | `buildIndex`：不分格的文档一行 + 首句 |
+| `storage/corpus.ts` | 枚举/读/扫词——`list` 与 `search` 的取数都出自这里 |
+| `tool/design_tools.ts` | `resolveDoc` 只拦"必须 `design/` 开头"——大纲本来就是 `design/` 下的路径，没有额外规则 |

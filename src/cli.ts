@@ -21,13 +21,24 @@ import { join } from "node:path";
 import { loadModelConfig, hasCredentials, talemateHome } from "./core/config";
 import type { LLMEvent, StoredMessage } from "./core/types";
 import { buildProjectStatus } from "./framework/report";
-import { createProject, listChapters, loadProjectMeta, readDesign } from "./storage/project";
+import { createProject, loadProjectMeta } from "./storage/project";
+import { enumerateDocs, readDoc } from "./storage/corpus";
 import { listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
 import { openSession, type Session, type UserIO } from "./session/session";
 import { BASE_PERMISSIONS, evaluateWithSource } from "./permission";
 import type { Action, Ruleset } from "./permission";
 
 // ─────────────────────────── 受管根 / current 指针 ───────────────────────────
+
+/**
+ * 章节文件名（CLI 展示用）。项目相对 → 根相对这一步只属于**给人看的输出**，所以在 CLI 里做，
+ * 不下沉到语料层——那一层只认项目相对路径。从前 storage 有个 `listChapters` 专管这件事，
+ * 那是"枚举章节"的第二条实现，已并入 `enumerateDocs`。
+ */
+async function chaptersOf(projectId: string): Promise<string[]> {
+  const all = await enumerateDocs(projectId, "chapters/");
+  return all.map((p) => p.slice("chapters/".length));
+}
 
 function currentFile(): string {
   return join(talemateHome(), "current.json");
@@ -92,7 +103,7 @@ function promptText(): string {
 function printBanner(projectId: string): Promise<void> {
   return (async () => {
     const meta = await loadProjectMeta(projectId);
-    const chapters = await listChapters(projectId);
+    const chapters = await chaptersOf(projectId);
     console.log(`\n${CYAN}◈ ${meta.title}${meta.genre ? `（${meta.genre}）` : ""}${RESET}  id: ${meta.id}`);
     console.log(`   chapters/: ${chapters.length ? chapters.join(", ") : "（空）"}`);
     const status = await buildProjectStatus(projectId);
@@ -377,7 +388,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
       }
       console.log(`共 ${all.length} 个空间：`);
       for (const p of all) {
-        const chapters = await listChapters(p.id);
+        const chapters = await chaptersOf(p.id);
         const mark = p.id === curSpaceId ? " *" : "";
         console.log(`  ${p.id}${mark}  ${p.title}${p.genre ? `（${p.genre}）` : ""}  章=${chapters.length}`);
       }
@@ -440,8 +451,10 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
     }
     case "/design": {
       if (!curSpaceId) return "continue";
+      // CLI 是**给人用的**：`/design <名>` 收的是 design/ 相对的简写（不是工具那套项目相对路径）——
+      // 用户在命令行里想说的是"设计那本里的哪一份"。
       const name = arg.includes(".md") ? arg : `${arg}.md`;
-      const c = await readDesign(curSpaceId, name);
+      const c = await readDoc(curSpaceId, `design/${name}`);
       console.log(c === undefined ? `没有 ${name}` : `# ${name}\n${c}`);
       return "continue";
     }
@@ -560,7 +573,7 @@ async function main(): Promise<void> {
     }
     console.log(`共 ${all.length} 个项目空间：`);
     for (const p of all) {
-      const chapters = await listChapters(p.id);
+      const chapters = await chaptersOf(p.id);
       console.log(`  ${p.id}\t${p.title}${p.genre ? `（${p.genre}）` : ""}\t章=${chapters.length}\t${new Date(p.createdAt).toLocaleDateString()}`);
     }
     return;

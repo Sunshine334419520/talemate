@@ -32,7 +32,7 @@
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
 | **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **writer 写手** | subagent | 按"当前设定切片 + 节拍"写一章正文；**不自创设定、只输出正文** | mate 经 `task` | `read-design` `list-designs` `skill` `write`（被 `edit: {"design/*": "deny"}` 限死在 `chapters/`） |
+| **writer 写手** | subagent | 按"当前设定切片 + 节拍"写一章正文；**不自创设定、只输出正文** | mate 经 `task` | `read` `list` `skill` `write`（被 `edit: {"design/*": "deny"}` 限死在 `chapters/`，读得到全部） |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
 - mate **不亲自写正文**（节拍不是正文——它自己出，见下）；writer **不能直接对话**，只被 `task` 派生。
@@ -68,13 +68,18 @@
 
 **三个都不自己落盘**——拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，所以校验、不变量后验、权限、CAS、原子写、diff 全在那一处。某个 agent 能碰哪个根由权限表划：writer 配的是 `edit: {"design/*": "deny"}`，写得了 `chapters/`、碰不了 `design/`。
 
-**`design_tools`** — design/ 通用文档操作
+**`read_tools`** — 项目语料的三个读口（**项目级**：`design/` 与 `chapters/` 通吃）
 
 | id | 用途 |
 |---|---|
-| `read-design` | 读整篇或按小节读 |
-| `list-designs` | 列 design/ 各文档 + 小节索引（角色卡一人一行；**不分格的文档也只给一行 + 首句**，如序列纲） |
-| `search-designs` | 跨 design/ 扫词，返回"文件 → 小节 + 行"（改/删前查影响面） |
+| `read` | 按项目相对路径读整篇，或读其中一个 `section` |
+| `list` | 目录索引（角色卡一人一行；**不分格的文档也只给一行 + 首句**，如序列纲）。`path` 限定范围，省略 = 整个项目 |
+| `search` | 跨文档扫词，返回"文件 → 小节 + 行"（改/删前查影响面）。`path` 同上 |
+
+**`design_tools`** — design/ 的三向提案
+
+| id | 用途 |
+|---|---|
 | `propose-design` | 摆提案给用户看，**不写盘**，并结束本回合 |
 | `apply-design` | 落盘**提案那一份**（不收正文） |
 
@@ -84,7 +89,7 @@
 
 | id | 用途 |
 |---|---|
-| `design-spec` | 按需返回"结构规范 + 成稿做法"：`layer` 取整层（情节层返回它的卷纲 + 序列纲两份），`name` 取某一份文档 |
+| `design-spec` | 按需返回"结构规范 + 成稿做法"。`path` 给一份文档的路径（`design/core.md`、`design/characters/林晚.md`、`design/outline/vol_1.md`）就取那一份的；给一个目录（`design/outline/`）就把名下每一种文档一并返回 |
 
 **`core_tools`** — 委派 / 知识 / 人机交互
 
@@ -152,14 +157,14 @@
 
 ### mate 的工作协议
 
-1. **企划对话（含大纲）**：mate 直接答；查 = `list-designs`/`read-design`/`search-designs`。
+1. **企划对话（含大纲）**：mate 直接答；查 = `list`/`read`/`search`。
    - **局部改**（一句、一段、一格、删一节）= `edit`：用户看 diff 就够，二向（接受 / 拒绝）。
    - **整篇成稿** = 进 `enter-draft` → **`propose-design` → 用户回话 → `apply-design`**：三向（接受 / 拒绝 / 提意见）。
    - **删整份文档**（角色卡、过期专题页）= `delete`：它先把引用摆出来，**级联清理由 mate 自己用 `edit` 做**。
    - **改文件一律走这三个工具**（`write` / `edit` / `delete`），不派子代理。
    **卷纲与序列纲就在这一条里**——它们是设计文档，走同一套两段式。
 2. **要写某章正文**（一条链，四步）：
-   ① `read-design` 取切片（core 常驻 + 当前**序列纲** + 相关人物/世界）→ ② **mate 自己写这一章的节拍** → ③ **`enter-draft` → `propose-plan` 摆给用户拍板**（它带 `halt`，回合到此为止）→ ④ 用户接受后 `task(writer, { prompt: 切片 + 节拍 })`，writer 用 `write` 落 `chapters/`（二向：用户看 diff 点头）。
+   ① `read` 取切片（core 常驻 + 当前**序列纲** + 相关人物/世界）→ ② **mate 自己写这一章的节拍** → ③ **`enter-draft` → `propose-plan` 摆给用户拍板**（它带 `halt`，回合到此为止）→ ④ 用户接受后 `task(writer, { prompt: 切片 + 节拍 })`，writer 用 `write` 落 `chapters/`（二向：用户看 diff 点头）。
    - **节拍是 mate 自己的工作，不派子代理**：材料本来就在它手里（core 常驻、序列纲刚读过），派出去等于把已有的东西抄一遍；而用户改节拍是常态，留在自己的上下文里改是免费的，派出去则每次都要重发切片、还可能整份漂移。
    - ③ **有两道门**：摆出来就停（`halt`）；以及**没拍板就不许写**——`task(writer)` 查那份登记的 `approved`，没有就拒。用户要改 → 改完再摆一次（循环，不是一次性提案）。
    - **节拍不落盘**（登记只在会话内存里），**一次批准只换一次写作**。所以 ③ 与 ④ **不能合并成一个回合**：③ 之后必须结束，等用户说话。

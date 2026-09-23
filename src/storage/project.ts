@@ -8,6 +8,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { talemateHome, paths, projectPaths } from "../core/config";
 import type { ProjectMeta } from "../core/types";
+import { docAbs } from "./corpus";
 import { rand4, safeName, safeRelPath, slugify } from "./util";
 
 export async function createProject(opts: { title: string; genre?: string }): Promise<ProjectMeta> {
@@ -79,74 +80,36 @@ export async function readProjectRules(projectId: string): Promise<string> {
   }
 }
 
-/** 读 design/ 下某个文档（相对路径，可含子目录如 wiki/地理.md；不存在返回 undefined） */
-export async function readDesign(projectId: string, name: string): Promise<string | undefined> {
-  const safe = safeRelPath(name);
-  if (!safe) return undefined;
-  const file = join(projectPaths(talemateHome(), projectId).design, safe);
-  try {
-    return await readFile(file, "utf-8");
-  } catch {
-    return undefined;
-  }
+// ── 文档语料的读写在 `storage/corpus.ts`（`readDoc` / `enumerateDocs` / `scanDocs`）──
+// 这里曾经还挂着 design/ 相对的 `readDesign` / `listDesigns` / `listChapters` 三个适配器，
+// 外加"读回一份文档"的第二条实现。路径口径统一成项目相对之后它们全没了：项目相对才是唯一的
+// 口径，所以调用方直接用 corpus，不需要任何一层转前缀的中间人。
+
+/**
+ * 按**项目相对路径**写/覆盖一份文档；返回完整路径。
+ *
+ * **生产里没有调用方**——改文件只能走 `framework/write_ops.ts` 那条唯一路径（类型上 `ToolContext`
+ * 只有一个写口）。留在这里是因为**测试要播种字节**：造夹具得能绕过权限弹窗与 CAS 直接把文件摆好，
+ * 否则每个用例都要先演一遍完整落盘流程。别在 `src/` 里用它。
+ *
+ * 它只挑得出 `design/` 与 `chapters/` 两个根之下的路径——与 `corpus.DOC_ROOTS`、`write_ops.WRITE_ROOTS`
+ * 同一套，绝对路径也由 `corpus.docAbs` 一处算（夹具与读口不会各走各的）。
+ */
+export async function writeDoc(projectId: string, path: string, content: string): Promise<string> {
+  const abs = docAbs(projectId, path);
+  if (abs === undefined) throw new Error(`非法文档路径：${path}`);
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(abs, content, "utf-8");
+  return abs;
 }
 
-/** 写/覆盖 design/ 下文档（相对路径，可含子目录）；返回完整路径 */
-export async function writeDesign(projectId: string, name: string, content: string): Promise<string> {
-  const safe = safeRelPath(name);
-  if (!safe) throw new Error(`非法文档名：${name}`);
-  const pp = projectPaths(talemateHome(), projectId);
-  const file = join(pp.design, safe);
-  await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, content, "utf-8");
-  return file;
-}
-
-/** 删 design/ 下单个文档（不存在静默）；角色卡删除等用 */
-export async function removeDesign(projectId: string, name: string): Promise<void> {
-  const safe = safeRelPath(name);
-  if (!safe) return;
-  const file = join(projectPaths(talemateHome(), projectId).design, safe);
+/** 删一份文档（不存在静默）。同 `writeDoc`：**仅测试夹具用**，删除走通用 `delete`。 */
+export async function removeDoc(projectId: string, path: string): Promise<void> {
+  const abs = docAbs(projectId, path);
+  if (abs === undefined) return;
   try {
-    await rm(file);
+    await rm(abs);
   } catch {
     /* 不存在则忽略 */
-  }
-}
-
-/** 递归列 design/ 下所有 .md 文档（返回相对路径，保序排序）；目录不存在 → [] */
-export async function listDesigns(projectId: string): Promise<string[]> {
-  const dir = projectPaths(talemateHome(), projectId).design;
-  const out: string[] = [];
-  await walkDir(dir, "", out);
-  return out.sort();
-}
-
-async function walkDir(dir: string, prefix: string, acc: string[]): Promise<void> {
-  let entries: { name: string; isDir: boolean }[] = [];
-  try {
-    entries = await readdir(dir, { withFileTypes: true }).then((ds) =>
-      ds.map((d) => ({ name: d.name, isDir: d.isDirectory() })),
-    );
-  } catch {
-    return;
-  }
-  for (const e of entries) {
-    const rel = prefix ? `${prefix}/${e.name}` : e.name;
-    if (e.isDir) await walkDir(join(dir, e.name), rel, acc);
-    else if (e.name.endsWith(".md")) acc.push(rel);
-  }
-}
-
-// **没有 saveChapter**：落 chapters/ 走通用的 `write`（`framework/write_ops`）——它只是
-// "整篇写，路径以 chapters/ 开头"，单开一个原语等于多一条能绕过 CAS 与原子写的路。
-
-/** 列 chapters/ 下已有文件（正文/规划/其他），排序返回；目录不存在返回 []。 */
-export async function listChapters(projectId: string): Promise<string[]> {
-  const dir = projectPaths(talemateHome(), projectId).chapters;
-  try {
-    return (await readdir(dir)).sort();
-  } catch {
-    return [];
   }
 }

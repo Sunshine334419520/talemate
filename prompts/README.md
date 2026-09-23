@@ -94,6 +94,6 @@ prompts/
 ## 新增一条提示词怎么做
 
 1. 判断它属于：人格 / 协议 / 工具说明，落在 `prompts/` 对应位置。
-2. 按骨架写 → 用 `readPrompt("…")` 接进 `src/agent/registry.ts` 或 `src/tool/（按领域模块：design_tools / character_tools / framework_tools / core_tools（工具 id 用 kebab））`。
+2. 按骨架写 → 用 `readPrompt("…")` 接进 `src/agent/registry.ts` 或 `src/tool/（按领域模块：file_tools / read_tools / design_tools / framework_tools / core_tools / web_tools；工具 id 用 kebab）`。
 3. 先过归属纪律：这份内容有没有更合适的载体（数据/工具/AGENTS/协议）？
 4. 过 checklist → `bun run typecheck && bun run smoke`。

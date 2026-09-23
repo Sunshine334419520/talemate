@@ -1,0 +1,8 @@
+Search a word (character / setting / term) across the project and return file + section + line hits.
+Hits are reported with project-relative paths (design/characters/沈越.md), the same form every other
+tool takes.
+
+path (optional): a project-relative prefix to scope the search — `design/` for the setting docs,
+`chapters/` for the prose. Omit it to search everything, which is what you want before renaming or
+removing a name: the prose under chapters/ mentions characters and settings too, and those references
+must be cleaned up as well.

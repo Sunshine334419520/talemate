@@ -75,14 +75,14 @@
 | 整篇重写告警 | `design_tools.ts` 的 `cardRewriteWarn` |
 | 名单行 | `framework/anchor.ts` 的 `characterLine` |
 
-三条不变量都判**算出来的结果**，所以 `edit` / `append` / `delete` 哪条路都绕不过——从前它们只对着
+三条不变量都判**算出来的结果**，所以 `write` / `edit` / `delete` 哪条路都绕不过——从前它们只对着
 `propose-design` 的提案文本跑，另外几条路是敞的。
 
 **骨架校验与内容判定是两个口径**：`characters.skeleton-complete` 只看**标题在不在**（写个空标题能过）；内容空不空由名单行的「待补」判（`pendingRequiredLabels`）。
 
 ## 名单行
 
-`list-designs` 对角色卡一人一行，三段全**现算**：
+`list` 对角色卡一人一行，三段全**现算**：
 
 ```
 - 沈越 · 码头搬运工（必有齐；另有：回响、能力 · 机制）

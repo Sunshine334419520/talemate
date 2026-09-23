@@ -29,7 +29,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
     mode: "primary",
     tools: [
       "task",
-      "read-design",
+      "read",
       "write",
       "edit",
       "delete",
@@ -38,8 +38,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "propose-plan",
       "enter-draft",
       "exit-draft",
-      "search-designs",
-      "list-designs",
+      "search",
+      "list",
       "skill",
       "ask-user",
       "confirm",
@@ -56,7 +56,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "The prose writer. Writes one chapter's prose strictly from the provided setting slices + beat plan.\n" +
       "Use this when the user asks for a chapter's prose AND you hold a beat plan for that chapter the user has already approved via propose-plan; if there is no beat plan yet, write it yourself and propose-plan it first. It runs in an isolated context to focus on the draft; you (the writing partner) review and approve the piece before it lands in chapters/.",
     mode: "subagent",
-    tools: ["read-design", "list-designs", "skill", "write"],
+    tools: ["read", "list", "skill", "write"],
     permission: {
       // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
       // 也不能委派（防链式 spawn）。其余按默认（落盘仍然问）。

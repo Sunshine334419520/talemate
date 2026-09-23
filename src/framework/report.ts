@@ -3,11 +3,15 @@
  * 真值 = design/ 文件（有没有、填没填都读出来）。
  * 卡片只出现层名与格名——文件名/路径属内部维护，不进用户视野。
  */
-import { listDesigns, loadProjectMeta, readDesign } from "../storage/project";
-import type { LayerId } from "./layers";
-import { DESIGN_SPECS } from "./design_spec";
+import { loadProjectMeta } from "../storage/project";
+import { enumerateDocs, readDoc } from "../storage/corpus";
+import { specFor } from "./design_spec";
 import { getSection, isFiller, leadLine } from "./markdown";
 import { nameFromPath } from "./characters";
+
+/** 状态卡上这两格各读哪份文档——**路径就是判据**，不再经过层 id。路径是项目相对口径。 */
+const CORE_DOC = "design/core.md";
+const WORLD_DOC = "design/wiki/world.md";
 
 // isFiller 已挪到 markdown.ts（characters 也要用，而本文件 → characters 已有依赖）。
 // 这里 re-export 保住原有调用点（proposal.ts 从本文件引它）。
@@ -26,9 +30,10 @@ function sectionFilled(content: string | undefined, heading: string): boolean {
   return (s.body ?? "").split("\n").some((l) => !isFiller(l));
 }
 
-/** 该层还差哪几个格（按 design-spec 的小节顺序；文档不存在 → 全部算缺）。 */
-function missingSections(content: string | undefined, id: LayerId): string[] {
-  return DESIGN_SPECS[id].sections.filter((s) => !sectionFilled(content, s.heading)).map((s) => s.heading);
+/** 这份文档还差哪几个格（按规范的节顺序；文档不存在 → 全部算缺）。 */
+function missingSections(content: string | undefined, name: string): string[] {
+  const sections = specFor(name)?.sections ?? [];
+  return sections.filter((s) => !sectionFilled(content, s.heading)).map((s) => s.heading);
 }
 
 /** 状态行右侧：文档不存在 →（空）；有内容 → ✓ 首句；存在但没写出首句 → fallback。 */
@@ -37,23 +42,23 @@ function layerBrief(exists: boolean, lead: string | undefined, fallback: string)
   return lead ? `✓ ${lead}` : fallback;
 }
 
-/** 引导语：只覆盖 core 与 world，只指向第一个还不齐的层；两层都齐 → 不引导。 */
+/** 引导语：只覆盖 core 与 world，只指向第一个还不齐的那一格所属的层；两层都齐 → 不引导。 */
 function buildGuidance(core: string | undefined, world: string | undefined): string | undefined {
   if (core === undefined && world === undefined) {
     return "想写个什么样的故事？直接讲给我听，我们边聊边把这些记下来。";
   }
   const layers: { label: string; missing: string[] }[] = [
-    { label: "核心设定", missing: missingSections(core, "core") },
-    { label: "世界观", missing: missingSections(world, "world") },
+    { label: "核心设定", missing: missingSections(core, CORE_DOC) },
+    { label: "世界观", missing: missingSections(world, WORLD_DOC) },
   ];
   const first = layers.find((l) => l.missing.length);
   if (!first) return undefined;
   return `${first.label}还差${first.missing.map((h) => `「${h}」`).join("、")}——现在聊聊，还是先记着？`;
 }
 
-/** 卷号：`outline/vol_<N>.md` → N；不是卷纲就 undefined。 */
+/** 卷号：`design/outline/vol_<N>.md` → N；不是卷纲就 undefined。 */
 function volumeNumber(rel: string): number | undefined {
-  const m = rel.match(/^outline\/vol_(\d+)\.md$/);
+  const m = rel.match(/^design\/outline\/vol_(\d+)\.md$/);
   return m ? Number(m[1]) : undefined;
 }
 
@@ -69,8 +74,8 @@ async function outlineBrief(projectId: string, designPaths: string[]): Promise<s
     .sort((a, b) => a - b);
   const latest = volumes[volumes.length - 1];
   if (latest === undefined) return "（空）";
-  const seqs = designPaths.filter((p) => p.startsWith(`outline/vol_${latest}/`)).length;
-  const doc = await readDesign(projectId, `outline/vol_${latest}.md`);
+  const seqs = designPaths.filter((p) => p.startsWith(`design/outline/vol_${latest}/`)).length;
+  const doc = await readDoc(projectId, `design/outline/vol_${latest}.md`);
   const lead = firstLine(doc, "本卷在全局的位置");
   return `✓ 第 ${latest} 卷 / 共 ${volumes.length} 卷${seqs ? ` · ${seqs} 个序列` : ""}：${lead ?? "（已有一版）"}`;
 }
@@ -79,9 +84,9 @@ async function outlineBrief(projectId: string, designPaths: string[]): Promise<s
 export async function buildProjectStatus(projectId: string): Promise<string> {
   const meta = await loadProjectMeta(projectId).catch(() => undefined);
   const [core, world, designPaths] = await Promise.all([
-    readDesign(projectId, "core.md"),
-    readDesign(projectId, "wiki/world.md"),
-    listDesigns(projectId),
+    readDoc(projectId, CORE_DOC),
+    readDoc(projectId, WORLD_DOC),
+    enumerateDocs(projectId, "design/"),
   ]);
 
   const cardNames = designPaths.map((rel) => nameFromPath(rel)).filter((n): n is string => !!n);

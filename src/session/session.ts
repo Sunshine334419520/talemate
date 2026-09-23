@@ -25,13 +25,14 @@ import type {
   ToolContext,
 } from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
-import { buildResidentDesigns, buildDesignIndex } from "../framework/anchor";
+import { buildResidentDesigns, buildIndex } from "../framework/anchor";
 import { labelOf } from "../framework/proposal";
-import { renderHits, searchDesigns } from "../framework/search";
+import { renderHits } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
 import { discoverSkills, loadSkillByName, renderSkillCatalog } from "../skill/discovery";
-import { listChapters, listDesigns, loadProjectMeta, readDesign, readProjectRules } from "../storage/project";
+import { loadProjectMeta, readProjectRules } from "../storage/project";
+import { readDoc, scanDocs } from "../storage/corpus";
 import { appendMessage, createSession, loadMessages, loadModelWindow } from "../storage/session-store";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
@@ -451,18 +452,11 @@ export class Session {
       clearProposal: (name) => {
         this.pending.delete(name);
       },
-      // 读口留着，**写口一个都不留**——改文件只能走 tools 里的 write/edit（见 core/types.ts）
-      readDesign: (name) => readDesign(this.projectId, name),
-      listDesigns: () => buildDesignIndex(this.projectId),
-      listDesignPaths: () => listDesigns(this.projectId),
-      searchDesigns: async (query) => {
-        const hits = await searchDesigns(this.projectId, query, "design");
-        return renderHits(hits, query);
-      },
-      listChapters: async () => {
-        const names = await listChapters(this.projectId);
-        return names.length ? names.join("\n") : "（尚无正文/规划落盘）";
-      },
+      // 三个读口，**写口一个都不留**——改文件只能走 tools 里的 write/edit（见 core/types.ts）。
+      // 都不预设管辖范围：`prefix` 由调用工具给。
+      readDoc: (path) => readDoc(this.projectId, path),
+      listIndex: (prefix) => buildIndex(this.projectId, prefix),
+      searchDocs: async (query, prefix) => renderHits(await scanDocs(this.projectId, query, prefix), query),
       // 把**当前生效的**规则集交给子会话去派生（父的 deny 继承、allow 不继承）
       runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt, this.rulesetFor(agent)),
       loadSkill: (name) => loadSkillByName(this.projectId, name).then((s) => s?.body),

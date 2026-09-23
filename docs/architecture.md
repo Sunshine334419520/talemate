@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-09-20 · 本文与代码冲突时**以代码为准**
+> **对齐代码**：2026-09-23 · 本文与代码冲突时**以代码为准**
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -16,8 +16,8 @@
    ┌─────────────┼──────────────────────────────────────────────┐
    ▼             ▼                                              ▼
 agent/         tool/       内置工具(按 agent 白名单可见)          framework/   领域层
-registry.ts  (define/registry/runner + 5 域模块)             anchor/report/characters/design_spec/
-角色声明                                                      markdown/search/layers/proposal/write_ops/match
+registry.ts  (define/registry/runner + 6 域模块)             anchor/report/characters/design_spec/summaries/
+角色声明                                                      markdown/search/proposal/write_ops/match
    │                                                                │
    ▼                                                                ▼
 context/  assemble(buildSystemPrompt, toNeutralMessages)         存储能力经 ToolContext 注入
@@ -26,7 +26,7 @@ context/  assemble(buildSystemPrompt, toNeutralMessages)         存储能力经
 llm/  provider(anthropic/openai/mock) + 工具循环 + 流式
    │
    ▼
-storage/  project.ts(project+design) · session-store.ts(session+messages) · util.ts
+storage/  corpus.ts(语料读写唯一实现) · project.ts(项目元/规则/测试夹具) · session-store.ts · atomic/bom/util.ts
 skill/    SKILL.md 发现与注入
 ```
 
@@ -104,7 +104,7 @@ sequenceDiagram
 
 - **每轮一条 assistant 消息**落盘（text / reasoning / tool 各一个 part）；工具内嵌 part，走 `pending→running→completed/error`。
 - **循环停 = 本轮无 tool-call / 有工具要求 `halt` / 达 steps**；有 tool-call → 下一轮把结果作为 `role:"tool"` 回放。
-- **`halt`**：工具在**成功**时可要求结束本回合（`ToolDef.halt`，目前只有 `propose-design` 用），把控制权交回用户。同回合剩下的 tool call 不再执行，但**必须补一个带各自 id 的 `error` part**——`assemble` 只回放 `completed`/`error` 的 part，而 assistant 消息登记了全部 `toolCalls`，少一个就是静默的坏请求。**工具失败时不能 halt**，否则循环死在一个本可自愈的错误上。
+- **`halt`**：工具在**成功**时可要求结束本回合（`ToolDef.halt`，目前 `propose-design` 与 `propose-plan` 用它），把控制权交回用户。同回合剩下的 tool call 不再执行，但**必须补一个带各自 id 的 `error` part**——`assemble` 只回放 `completed`/`error` 的 part，而 assistant 消息登记了全部 `toolCalls`，少一个就是静默的坏请求。**工具失败时不能 halt**，否则循环死在一个本可自愈的错误上。
 - **task 委派** = 独立 Session（depth+1），只传 prompt；结果 `<task_result>` 文本回传父会话；深度 ≤1。
 - **单队列**：busy 时新输入排队，不做 steer/queue 多级语义。
 

@@ -1,15 +1,16 @@
 Present a whole draft of a design doc for the user to review. Nothing is saved and the turn ends, so
 they can approve, refuse, or ask for changes.
 
-Name the target with layer (core | world — the path is fixed by the tool) or, for every other
-document, with name: outline/vol_<N>.md and outline/vol_<N>/s<M>.md (volume and sequence outlines),
-wiki/<topic>.md, outline/plan_ch<N>.md, characters/<name>.md (a character card is created and edited
-this way; there is no character-specific tool for that).
+Name the target with `path`: its project-relative path incl. root and extension —
+design/core.md, design/wiki/world.md, design/wiki/<topic>.md, design/outline/vol_<N>.md,
+design/outline/vol_<N>/s<M>.md (volume and sequence outlines), design/outline/plan_ch<N>.md,
+design/characters/<name>.md (a character card is created and rewritten this way; there is no
+character-specific tool for that). Same path form every other tool takes.
 
 **This is for whole documents only.** To change part of an existing doc — a sentence, one section —
 use `edit`: the user reviews a diff of just that piece instead of re-reading the whole document, and
 it costs you far fewer tokens. A draft is refused only when its kind has a fixed shape (see
-design-spec — it holds both the layers and the document kinds) and the draft does not fill it, since
+design-spec — it holds the shape of every document kind) and the draft does not fill it, since
 the user would then be shown blanks while the prose landed anyway. Kinds that are free-form (sequence
 outlines, character cards, topic pages, chapter plans) are shown whole, as a single block. Fields you
 cannot fill yet get （待定）.

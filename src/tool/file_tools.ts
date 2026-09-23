@@ -158,10 +158,11 @@ export const deleteTool: RegisteredTool<{ path: string; term?: string }> = defin
   async execute(args, ctx) {
     const path = args.path.trim();
     const term = args.term?.trim() || stemOf(path);
-    // 引用检查只覆盖 design/（chapters/ 的搜索还没通，见 docs/roadmap.md 的「章节读不回来」）
+    // 引用检查覆盖**整个项目**（`path: ""` = 不设前缀）：章节正文里也会提到角色与设定名，
+    // 只看 `design/` 会让模型删完之后留下悬空引用，而它压根不知道那些引用存在。
     const refs =
       `引用检查「${term}」——删它之前先看这个名字还在哪儿出现；` +
-      `有命中就自己判断要不要用 edit 一并清理，别留悬空引用：\n${await ctx.searchDesigns(term)}`;
+      `有命中就自己判断要不要用 edit 一并清理，别留悬空引用：\n${await ctx.searchDocs(term, "")}`;
 
     const r = await writeFile(ctx, {
       via: "confirm",

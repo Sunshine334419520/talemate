@@ -13,7 +13,7 @@
  * （没有任何切片 API），managed 的「当前」其写入方（章末回写）从未实现——两者都已删除。
  * 「当前」那类状态归后续的 `design/state/`，不再进卡。
  *
- * **没有派生总表**：名单（有哪些人 + 每人必有格齐没齐）由 `list-designs` **每次现算**，
+ * **没有派生总表**：名单（有哪些人 + 每人必有格齐没齐）由 `list` **每次现算**，
  * 数据源只有卡本身。曾经有过一个 `characters/_index.md`，它是卡的副本——副本会脱节
  * （走 propose-design 落卡就不更新），现算不会。
  *
@@ -63,15 +63,18 @@ export const IDENTITY_KEY = "身份 · 所属";
 
 const KEYED_LINE = /^([^:：]{1,12})[:：]\s*(.*)$/;
 
-/** 单卡文件的 design 相对路径。 */
-export function cardPath(name: string): string {
-  return `characters/${name}.md`;
-}
+/**
+ * 角色卡所在目录（**项目相对**，带尾斜杠）。
+ *
+ * `design_spec` 里那条规范与 `summaries` 里那条摘要器都指同一个地方，所以从**这里**取，
+ * 不各抄一份——这个仓库被"副本会脱节"烧过两次。
+ */
+export const CARD_DIR = "design/characters/";
 
-/** 从 characters/ 相对路径提取角色名；其它目录 → undefined。（`_index.md` 是历史遗留文件，也排除） */
+/** 从卡的项目相对路径提取角色名；其它目录 → undefined。（`_index.md` 是历史遗留文件，也排除） */
 export function nameFromPath(rel: string): string | undefined {
-  if (!rel.startsWith("characters/") || !rel.endsWith(".md")) return undefined;
-  const base = rel.slice("characters/".length, -".md".length);
+  if (!rel.startsWith(CARD_DIR) || !rel.endsWith(".md")) return undefined;
+  const base = rel.slice(CARD_DIR.length, -".md".length);
   return base && base !== "_index" ? base : undefined;
 }
 
@@ -150,7 +153,7 @@ export function tailSections(content: string): string[] {
 }
 
 /**
- * 名单（`list-designs` 的角色段）取这一行：「基本档案」里「身份 · 所属」的值。
+ * 名单（`list` 的角色段）取这一行：「基本档案」里「身份 · 所属」的值。
  *
  * 回退链（都是为了手写/旧卡不炸）：没有该键 → 第一条键值行的值 → 第一行正文（自由散文的老写法）
  * →「一句话定位」（更老的卡）。
@@ -171,4 +174,30 @@ export function cardIdentity(content: string): string | undefined {
     if (hit) return hit.value.length > 60 ? `${hit.value.slice(0, 60)}…` : hit.value;
   }
   return leadLine(content, "一句话定位");
+}
+
+/** 「另有」最多列几个自由小节标题——超出截断，免得一行吃掉整个名单。 */
+const TAIL_LIMIT = 5;
+
+/**
+ * 角色卡在名单里的那一行，三段全**现算**：
+ *   `身份（必有齐）` / `身份（待补：底线 · 绝不做）`，有自由长尾时再缀「另有：回响、能力 · 机制」。
+ *
+ * 「另有」是 2026-09-19 加的。从前每张卡都铺同样的 12 个固定小节，列出来是纯噪音，
+ * 所以那时的规矩是"不铺小节标题"。现在长尾**每张卡都不同**——它才是信号：
+ * 不把卡读进上下文，也能看出"这张卡上除了必有格还有什么"。
+ * 目录要廉价，正文才昂贵；这一行是目录那一半。
+ *
+ * 住在 `characters.ts` 而不是索引那一侧：它拼的是**卡**的三个领域事实（身份 / 必有齐没齐 / 自由长尾），
+ * 索引只负责把它摆进目录（见 `framework/summaries.ts` 的注册表）。
+ */
+export function characterLine(content: string): string {
+  const identity = cardIdentity(content) ?? "（待定）";
+  const missing = pendingRequiredLabels(content);
+  const status = missing.length ? `待补：${missing.join("、")}` : "必有齐";
+  const tail = tailSections(content);
+  const extra = tail.length
+    ? `；另有：${tail.slice(0, TAIL_LIMIT).join("、")}${tail.length > TAIL_LIMIT ? "…" : ""}`
+    : "";
+  return `${identity}（${status}${extra}）`;
 }

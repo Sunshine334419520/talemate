@@ -1,0 +1,13 @@
+Read one document, or a single section of it, by its project-relative path.
+
+path: a path incl. its root and extension — design/core.md, design/wiki/world.md,
+design/wiki/地理.md, design/characters/沈越.md, design/outline/vol_2.md, design/outline/vol_2/s1.md,
+chapters/chapter_ch2_v1.md. This is the same path form every other tool takes.
+section (optional): an exact heading title inside that doc, e.g. 一句话简介, 题材 · 频道, 角色：沈越,
+本卷在全局的位置 (sequence outlines have no sections — read those whole).
+
+Without section, returns the whole doc. Prefer a section read for a large doc. Run list first to see
+which docs and sections exist.
+
+The design docs (design/) hold the novel's setting; the chapter prose is under chapters/ — read the
+previous chapter there when you need continuity.

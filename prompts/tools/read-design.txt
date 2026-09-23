@@ -1,9 +1,0 @@
-Read one design doc, or a single section of it, by exact relative path under design/.
-
-name: a design/ relative path incl. extension (core.md / wiki/world.md / characters/沈越.md /
-outline/vol_2.md / outline/vol_2/s1.md / wiki/地理.md …).
-section (optional): an exact heading title inside that doc, e.g. 一句话简介, 题材 · 频道, 角色：沈越,
-本卷在全局的位置 (sequence outlines have no sections — read those whole).
-
-Without section, returns the whole doc. Prefer a section read for a large doc. Run list-designs
-first to see which docs and sections exist.

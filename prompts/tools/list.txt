@@ -1,0 +1,15 @@
+List the project's documents with, under each, its section headings — so you know what material
+exists, how to address sections, and which items are still placeholder （待定）. Call this before
+editing.
+
+path (optional): a project-relative prefix to scope the listing — `design/` for the setting docs,
+`chapters/` for the prose. Omit it for the whole project.
+
+Character cards are one line each: `名字 · 身份（必有齐／待补：…；另有：…）`. 「待补」lists
+required sections that are still empty; 「另有」lists the card's free-form sections beyond the
+five required ones, so you can see what is on a card without reading it. Read the card itself
+with read to get its content.
+
+Docs that carry no sections (sequence outlines, `design/outline/vol_<N>/s<M>.md`) also get one line:
+the path plus the first sentence of the prose, so you can tell which sequence is which without
+reading it. Volume outlines (`design/outline/vol_<N>.md`) do list their five sections.

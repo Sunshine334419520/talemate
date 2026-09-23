@@ -61,7 +61,10 @@ export type JsonSchema = {
 export const PLAN_KEY = "__plan__";
 
 export interface PendingProposal {
-  /** 目标活文档（design/ 下相对路径）；节拍提案是 `PLAN_KEY` */
+  /**
+   * 目标活文档的**项目相对路径**（`design/core.md`）；节拍提案是 `PLAN_KEY`——它**不是一个路径**，
+   * 所以这个字段叫 `name` 而不是 `path`：它装的是"这份提案的键"。
+   */
   name: string;
   /** 将落盘的正文：提案=整篇全文；节拍=节拍全文 */
   content: string;
@@ -130,22 +133,22 @@ export interface ToolContext {
    */
   getMode(): string | undefined;
   /**
-   * 读一个活文档（design/ 下相对路径），不存在返回 undefined。
+   * 读一份文档（**项目相对**路径：`design/core.md` / `chapters/chapter_ch1_v1.md`），不存在 → undefined。
    *
-   * **读口留着，写口没有**：改文件一律走 `write`（`framework/write_ops`）那一条路径。
+   * **读口留着，写口没有**：改文件一律走 `framework/write_ops` 那一条路径。
    * 从前这里还挂着 `writeDesign` / `removeDesign` / `saveChapter` 三个裸写方法，任何工具都能绕过
    * 整套变换、CAS 与权限——`save-chapter` 当年就是那么绕过去的。删掉它们之后，"唯一写路径"
    * 不再是一句约定，而是**类型上只有一个口**。
+   *
+   * 三个口都**不预设管辖范围**（没有"design 版"的方法）：`prefix` 由调用工具给。
+   * 从前它们分别叫 `readDesign` / `listDesigns` / `searchDesigns`，把"只管 design/"焊进了名字里，
+   * 于是章节读不到、`listChapters` 成了没人调的死方法。
    */
-  readDesign(name: string): Promise<string | undefined>;
-  /** 列项目 design/（含每个文档的一级小节标题——模型据此寻址/看骨架状态） */
-  listDesigns(): Promise<string>;
-  /** 列 design/ 下所有 .md 文档的相对路径（原始清单，供工具枚举/重建索引用） */
-  listDesignPaths(): Promise<string[]>;
-  /** 跨 design/ 扫词（framework.search）：改/删前查引用、看影响面 */
-  searchDesigns(query: string): Promise<string>;
-  /** 列 chapters/ 已有文件（正文/规划） */
-  listChapters(): Promise<string>;
+  readDoc(path: string): Promise<string | undefined>;
+  /** 某一段语料的目录（渲染好的文本，含每个文档的一级小节标题）。`prefix` 是项目相对前缀，如 `design/` */
+  listIndex(prefix: string): Promise<string>;
+  /** 跨一段语料扫词（渲染好的命中表）：改/删前查引用、看影响面。`prefix` 同上 */
+  searchDocs(query: string, prefix: string): Promise<string>;
   /** 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文 */
   runSubagent(agentId: string, prompt: string): Promise<string>;
   loadSkill(name: string): Promise<string | undefined>;

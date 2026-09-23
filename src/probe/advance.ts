@@ -34,7 +34,8 @@ import type { AgentDef, LLMEvent, ModelConfig } from "../core/types";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
 import { Session, type UserIO } from "../session/session";
-import { createProject, listDesigns, loadProjectMeta } from "../storage/project";
+import { createProject, loadProjectMeta } from "../storage/project";
+import { enumerateDocs } from "../storage/corpus";
 
 // ─────────────────────────── 被测场景 ───────────────────────────
 
@@ -272,7 +273,7 @@ async function runOnce(variant: Variant, run: number, outRoot: string, model: Mo
     cur = blank();
     await session.post(turn === 1 ? PITCH : APPROVE);
 
-    const layers = layerFiles(await listDesigns(projectId));
+    const layers = layerFiles(await enumerateDocs(projectId, "design/"));
     cur.landedHere = layers.length > prevLayers.length;
     prevLayers = layers;
     turns.push({ ...cur });

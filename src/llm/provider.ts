@@ -345,7 +345,7 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
       mockTool === "task"
         ? { agent: "writer", prompt: "照核心设定与细纲，把第 1 章正文写出来。" }
         : mockTool === "propose-design"
-          ? { layer: "core", content: MOCK_PROPOSAL }
+          ? { path: "design/core.md", content: MOCK_PROPOSAL }
           : sampleArgs(schema);
     return {
       text: "",

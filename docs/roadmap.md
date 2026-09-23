@@ -2,26 +2,10 @@
 
 > **职责**：回答"还没做什么、哪些地方是已知的坑、哪些决策还没拍板"。
 > **读者**：要决定下一步做什么的人。
-> **对齐代码**：2026-09-22 · 本文记的都是**当前不存在**的东西；写完就删掉对应条目
+> **对齐代码**：2026-09-23 · 本文记的都是**当前不存在**的东西；写完就删掉对应条目
 > 相邻：`product.md`（演进方向）· `characters.md` · `design-docs.md`
 
 ## 已确认的缺口
-
-### 章节读不回来（`read-design` 只读 `design/`）
-
-`read-design` 走 `storage/project.readDesign`，那个函数把根写死在 `design/`。而 `write` / `edit`
-的 `path` 已经能指 `chapters/…`——**模型能改章节，却读不到章节**。`edit` 是**锚点式**的，看不到
-当前字节就无从给出 `find`，所以"改一章正文"这条链现在是断的。
-
-同一处还缺另外两个：
-
-| 缺 | 现状 |
-|---|---|
-| **列** chapters | 没有工具。模型不知道已经写了哪些章（`ctx.listChapters` 实现了，但**没有任何工具调它**——死代码） |
-| **搜** chapters | `framework/search.ts` 的模块注释写着"跨 design/(+chapters/) 扫词"，但 `session.ts` 传的 scope 是 `"design"`——**注释与实现已经漂了** |
-
-**修法**：把这三个只读工具的**范围**从 `design/` 提到**项目级**（`design/` + `chapters/`），
-顺带正名——`-design` 这个后缀届时就不准了，而"名字与事实不符"正是这个仓库反复吃亏的地方。
 
 ### 状态层（长篇独有）
 
@@ -29,13 +13,18 @@
 
 | 项 | 目标 | 已知的落法 |
 |---|---|---|
-| `design/state/` 承载角色的点形快变量 | 在场/已故、此刻处境 | 走**开放文档**（`propose-design` 的 `name` 分支），按 `wiki/<题>.md` 的先例 |
+| `design/state/` 承载角色的点形快变量 | 在场/已故、此刻处境 | 走**开放文档**（`propose-design` 给一条 `design/state/…` 路径即可），按 `design/wiki/<题>.md` 的先例 |
 | `design/state/continuity.md` 承载边形 | 谁知道什么（角色×秘密） | 同上，只收一节 `## 此刻知道什么` |
 | **章末回写** | 每章定稿后把变化写回状态 | 契约挂在 `task` 结果上（仅 `agent === "writer"`）——章节在 writer 子会话里落盘，`write` 的结果到不了 mate，唯一到得了的是 `<task_result>` |
 
-**不要做成第 5 个 `LayerId`**——会连带 `LayerId` 联合、`DESIGN_SPECS` 穷尽、`report.ts` 四层卡片、`resolveDoc` 的 `MAIN_LAYERS`、`design-spec` 白名单。
+**加一种文档现在是一行数据。** 从前这件事要动五处（`LayerId` 联合、`DESIGN_SPECS` 穷尽、
+`report.ts` 的层卡片、`resolveDoc` 的 `MAIN_LAYERS`、`design-spec` 白名单），所以那时写着
+"不要做成第 5 个 `LayerId`"。现在没有层这个类型了：要给它一份结构规范就在 `design_spec.SPECS`
+加一行，要它在 `list` 里有自己的样子就在 `summaries.SUMMARIES` 加一行，都不必造新概念。
 
-**必须改 `framework/anchor.ts` 里 `buildDesignIndex` 的硬编码分组顺序** `["", "wiki", "characters", "outline"]`——不加 `"state"`，它在 `list-designs` 里**根本不出现**。写入本身不用改白名单：`writeDesign` 的 `mkdir recursive` 会自动建目录。
+**目录不显示的问题已经修了**：`buildIndex` 从前只列四个已知目录名，其余枚举到了也不显示；
+现在改成"已知的按固定次序在前、其余附在后面"，所以 `design/state/` 一出现就会显示。
+写入也不用改白名单：`writeDoc` 的 `mkdir recursive` 会自动建目录。
 
 **首次成稿必须是整篇提案**：小节级提案要求文档与小节都已存在。
 
@@ -60,7 +49,7 @@
 
 现在的前提是"卡被完整加载"，所以卡必须有尺寸纪律——**但没有任何机制约束它**。自由长尾是"用户提出来就加"，加多了整张卡就贵。
 
-可能的答案：`list-designs` 的名单行报个字数，或者给个软上限提示。目前只是记录，不做。
+可能的答案：`list` 的名单行报个字数，或者给个软上限提示。目前只是记录，不做。
 
 ## 已拍板但值得回看的取舍
 

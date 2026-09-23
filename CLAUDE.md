@@ -47,7 +47,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 });
 ```
 
-- **`description` always comes from `P(id)`** — i.e. from `prompts/tools/<id>.txt`, 1:1 with the tool id. The TS filename is the *domain* (`design_tools.ts` holds 7 tools); the id is the *action*.
+- **`description` always comes from `P(id)`** — i.e. from `prompts/tools/<id>.txt`, 1:1 with the tool id. The TS filename is the *domain* (`read_tools.ts` holds the three read verbs); the id is the *action*.
 - **Errors the model can fix go through `return`, not `throw`.** Bad argument, missing section, guard rejection — return `{ output: "..." }` with a message that lets the model correct its own call; that message *is* what recovers the turn. Failures it cannot fix by re-calling (HTTP status, size limit, binary content) may `throw` — `runner.ts` catches and turns it into an `error` part, so the message still reaches the model. What's forbidden is catching and re-throwing.
 - **Error messages have three shapes** — keep them: `"<tool> 缺少 <field>（收到：<JSON.stringify(args).slice(0, 200)>）——请…重新调用"`; `"没有找到 <X>「<名>」。可用小节：\n<list>"`; and `"<why not>——<what to do instead>。<next action>"`.
 - Optional hooks: `needsConfirm(args)` (returns a Chinese summary), `halt: true` (ends the turn — **only when the call succeeded**), `metadata` (only when there's machine-readable info).
@@ -63,8 +63,11 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 
 - **Agents are data.** Adding a role = one `AgentDef` + a whitelist. Don't touch the loop or registry code.
 - **Never hand-copy a list that can be derived.** This repo has been burned twice — a character index file that went stale, and a field list duplicated into `design_spec.ts` that was missed during a refactor. Either compute it or make a test guard it.
-- **A fifth `LayerId` is expensive** — it cascades through five whitelists and the status cards. New document directories go through "open documents" (`propose-design` with `name`) instead. Details: `docs/roadmap.md`.
+- **A new document kind is one registry row.** Want a structural spec for it? Add a row to `design_spec.SPECS`. Want it to look different in `list`? Add a row to `summaries.SUMMARIES`. Nothing else cascades — no new type, no whitelist, no tool. (This used to be expensive: a fifth `LayerId` touched five places.) Details: `docs/roadmap.md`.
 - **Design documents are written in two phases** (`propose-design` → user replies → `apply-design`). Nothing else may write to `design/` directly — the point is that the bytes the user saw are the bytes that land.
+- **Data-fetching knows no domain.** The read side takes *locations* and returns *content*; any judgment about "which part of this document matters" is policy, and policy is a registry selected by path — `INVARIANTS` (does the result still hold together), `SUMMARIES` (what this document looks like in `list`), `SPECS` (what shape this kind has). All three share one path-glob vocabulary. A per-kind `if` inside a reader is the bug they replaced.
+- **A rename must be forced by a fact, never by symmetry.** The three read tools lost `-design` because their scope widened past `design/`; `design-spec` kept it because its scope did not (chapters have no structural spec, so the name never lies). "The family should be consistent" is not a reason.
+- **An addressing convention only holds when every tool agrees.** The flip to project-relative paths landed on every tool at once, read and write together — flipping the write side first would have made `design-spec` advertise an address the read tools resolve wrongly (`design/design/core.md`). Never change a convention in halves.
 
 ## Navigation
 
@@ -73,7 +76,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | What is this product, and what is it deliberately *not*? | `docs/product.md` |
 | How is the code organised; what happens in one turn? | `docs/architecture.md` |
 | Agents, tools, skills — how to classify and add them | `docs/agents.md` |
-| The four design layers; two-phase writes; chapter production | `docs/design-docs.md` |
+| The four design doc families; two-phase writes; chapter production | `docs/design-docs.md` |
 | Character cards | `docs/characters.md` |
 | Volumes and sequences; why there is no whole-book outline | `docs/outline.md` |
 | Who may do what, and what needs asking | `docs/permissions.md` |
