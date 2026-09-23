@@ -91,14 +91,14 @@ try {
   const meta3 = await createProject({ title: "冒烟权限书" });
   await writeProjectMeta({ ...meta3, permissions: { edit: "deny" } });
   const s4 = await openSession({ projectId: meta3.id, model, io });
-  process.env.TALEMATE_MOCK_TOOL = "append-design"; // 想演它，但 edit 被 deny → 它不在 schema 里
+  process.env.TALEMATE_MOCK_TOOL = "write"; // 想演它，但 edit 被 deny → 它不在 schema 里
   await s4.post("给我加一节。");
   const s4Tools = (await loadMessages(meta3.id, s4.sessionId))
     .flatMap((m) => m.parts ?? [])
     .filter((p) => p.type === "tool")
     .map((p) => p.name);
-  const pBlocked = !s4Tools.includes("append-design");
-  console.log(`[3e] talemate.json 的 permissions 生效（edit: deny → append-design 不可见）：${pBlocked ? "✓" : "✗"}`);
+  const pBlocked = !s4Tools.includes("write");
+  console.log(`[3e] talemate.json 的 permissions 生效（edit: deny → write 不可见）：${pBlocked ? "✓" : "✗"}`);
   if (!pBlocked) throw new Error("项目级 permissions 没生效");
 
   // 3f) 而且用户看得见这条去了哪：视图把 deny 归到"项目配置"那一层（/permissions 的输出就是这个）

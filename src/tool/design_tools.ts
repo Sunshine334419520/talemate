@@ -1,5 +1,5 @@
 /**
- * design-tools：design/ 通用文档操作（read / list / search / propose / apply / append / remove）。
+ * design-tools：design/ 的**读**与**三向提案**（read / list / search / propose / apply）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt。
  *
  * 写侧是**两段式**：propose-design（不写盘，渲染提案并 halt 本回合）→ 用户回话 → apply-design
@@ -99,13 +99,10 @@ async function designNotFound(ctx: ToolContext, name: string): Promise<string> {
   return `没有找到文档 ${name}。可用：\n${await ctx.listDesigns()}`;
 }
 
-/** 要追加的块里，有哪个一级小节标题是文档里已经有的（有则返回那个标题）。 */
-function duplicateHeading(block: string, current: string): string | undefined {
-  const heads = listHeadings(block, 2);
-  if (!heads.length) return undefined;
-  const existing = new Set(listHeadings(current, 2).map((h) => h.title));
-  return heads.find((h) => existing.has(h.title))?.title;
-}
+// **没有 `append-design`**。它只是"末尾加一节"，而 `edit` 完全表达得了：读一下拿到尾锚点，
+// 把尾块换成"尾块 + 新节"即可（常驻的 core.md / wiki/world.md 本来每轮就在上下文里，连读都省了）。
+// 它独占的重名守卫搬去了 `invariants.ts` 的 `design.no-duplicate-heading`——**搬到结果上之后
+// `write` / `edit` 也一样受它管**，比只挡在追加那一处更严。
 
 /** read-design：读整篇或按小节读 */
 export const readDesignTool: RegisteredTool<{ name: string; section?: string }> = defineTool<{
@@ -283,47 +280,10 @@ export const applyDesignTool: RegisteredTool<{ layer?: string; name?: string }> 
   },
 });
 
-/** append-design：末尾追加一块（新设定小节等） */
-export const appendDesignTool: RegisteredTool<{ name: string; block: string }> = defineTool<{ name: string; block: string }>({
-  id: "append-design",
-  description: P("append-design"),
-  permission: "edit",
-  input: {
-    type: "object",
-    properties: {
-      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
-      block: { type: "string", description: "Markdown block to append (with its own ## / ### headings)" },
-    },
-    required: ["name", "block"],
-  },
-  async execute(args, ctx) {
-    const current = await ctx.readDesign(args.name);
-    if (current === undefined) return { output: await designNotFound(ctx, args.name) };
-
-    // **重名守卫留在这里、不做成不变量**：它需要"这次要追加的那一块"这个信息，而结果是
-    // before/after 两份全文，反推"新增了哪个重名标题"要绕一圈，还容易误伤原本就重名的老文档。
-    // 而且它是**前置**——在算之前就知道不行，比让管线算完再拒更早、文案也更准。
-    // 卡上 `##` 那类守卫不在这里：那几条判的是结果，归 invariants。
-    const dup = duplicateHeading(args.block, current);
-    if (dup) {
-      return { output: `「${dup}」已存在于 ${args.name}——想改它请用 edit 改那一节，别再追加一份。` };
-    }
-
-    const r = await writeFile(ctx, {
-      via: "confirm",
-      op: { kind: "append", path: `design/${args.name}`, block: args.block },
-      action: `追加到 design/${args.name}`,
-    });
-    if (!r.ok) return { output: r.output };
-    return { output: `已追加到 design/${args.name}（+${r.additions} 行）`, metadata: { name: args.name } };
-  },
-});
-
 export const DESIGN_TOOLS: RegisteredTool[] = [
   readDesignTool,
   listDesignsTool,
   searchDesignsTool,
   proposeDesignTool,
   applyDesignTool,
-  appendDesignTool,
 ];

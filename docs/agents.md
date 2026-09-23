@@ -62,7 +62,7 @@
 
 `write` 与 `edit` 分开而不是并成一个：合并就得靠"哪个参数给没给"来分辨，schema 对模型是含糊的；opencode 也是分开的，且它的 `edit` 明确拒绝在已存在的文件上用空锚点。
 
-**删一个段落/一节不归 `delete`**——那是 `edit`：给出那段原文、替换为空。`delete` 只管整份文件。
+**删一个段落/一节、末尾加一节，都不归 `delete`**——那都是 `edit`：给出原文片段与替换文本（删就替换为空）。`delete` 只管整份文件。
 
 **`delete` 不做级联。** 它把引用摆出来，清理由模型用 `edit` 逐处做——"该不该动 `world.md` 里那句话"是判断，不是机械操作。opencode 那边没有 delete 工具（删除折在 `apply_patch` 里），它能那样做是因为它还有 `bash`；talemate 把 shell 剥掉了，所以删除必须是一个工具。
 
@@ -77,7 +77,6 @@
 | `search-designs` | 跨 design/ 扫词，返回"文件 → 小节 + 行"（改/删前查影响面） |
 | `propose-design` | 摆提案给用户看，**不写盘**，并结束本回合 |
 | `apply-design` | 落盘**提案那一份**（不收正文） |
-| `append-design` | 末尾追加一块 |
 
 （`character_tools` 整个模块已删：它只剩一个"删角色卡"，而那只是 `delete` 的角色专用版。**角色专用工具现在一个都没有了**——建卡改卡走 `propose-design` / `edit`，删卡走 `delete`。）
 

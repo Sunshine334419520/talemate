@@ -44,7 +44,7 @@
 
 所以**任何**往卡上写 `##` 的动作都拒：这条落在 `invariants.ts` 的 `characters.no-shallow-heading`，
 判的是**算出来的结果**——于是 `write` / `edit` / `append` / `propose-design` 没有哪条绕得过
-（从前它只挡在 `propose-design` 与 `append-design` 两处，`edit` 是敞的）。
+（从前它只挡在 `propose-design` 那一处，`edit` / `write` 都是敞的）。
 
 ## 好卡的标尺
 

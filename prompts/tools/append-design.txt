@@ -1,8 +1,0 @@
-Append a block to the END of an **existing** doc — a new setting section, a topic page's new part.
-
-block must carry its own heading (a level matching that doc's structure). Existing text is not
-rewritten, but this still lands bytes, so the user is asked first and sees a diff. If the block's
-heading already exists in the doc, edit that section instead of appending a duplicate.
-
-The doc must already exist — this cannot create one. To create a doc, propose-design with name.
-(On a character card, `##` headings are refused: a card's sections are all `###`.)

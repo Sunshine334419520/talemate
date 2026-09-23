@@ -93,8 +93,8 @@ export type FileOp =
   | { kind: "write"; path: string; content: string }
   /** 局部：把 find 换成 replace。find 必须非空且唯一（`all` 时例外）。 */
   | { kind: "replace"; path: string; find: string; replace: string; all?: boolean }
-  /** 末尾追加。**不是 `replace` 的特例**：它没有锚点可验，模型也拿不到稳定的尾锚点。 */
-  | { kind: "append"; path: string; block: string }
+  // 没有 `append`。它一度在（"末尾加一节"），但**没有任何工具会产出它**——末尾追加拿尾块当锚点
+  // 就是一次普通的 `replace`，而进不了 op 的东西留着只会让"四个 kind"这句话不成立。
   /** 删掉整个文件。 */
   | { kind: "delete"; path: string };
 

@@ -62,23 +62,6 @@ describe("file_ops · replace", () => {
   });
 });
 
-describe("file_ops · append", () => {
-  test("追加到末尾：原有内容保留，块前空一行、文件以换行收尾", () => {
-    const r = next({ kind: "append", path: "design/wiki/world.md", block: "## 术语表\n（待定）" }, "## 空间与舞台\n一座荒岛。\n");
-    if (r.action === "write") {
-      expect(r.content).toBe("## 空间与舞台\n一座荒岛。\n\n## 术语表\n（待定）\n");
-    }
-  });
-
-  test("文档不存在 → 拒绝（追加只能加到已存在的文档上）", () => {
-    const out = rejected({ kind: "append", path: "design/wiki/world.md", block: "x" }, undefined);
-    expect(out).toContain("已存在");
-  });
-
-  test("空块 → 拒绝", () => {
-    expect(rejected({ kind: "append", path: "design/wiki/world.md", block: "   \n  " }, "已有\n")).toContain("空");
-  });
-});
 
 describe("file_ops · delete", () => {
   test("存在 → 产出 remove 动作", () => {

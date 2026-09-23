@@ -7,12 +7,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject, listDesigns, loadProjectMeta, readDesign, removeDesign, writeDesign } from "../src/storage/project";
-import { appendBlock, getSection, listHeadings, removeSection } from "../src/framework/markdown";
+import { getSection, listHeadings, removeSection } from "../src/framework/markdown";
 import { RESIDENT_LAYERS } from "../src/framework/layers";
 import { renderDesignSpec } from "../src/framework/design_spec";
 import { renderHits, searchDesigns } from "../src/framework/search";
 import { buildResidentDesigns, buildDesignIndex } from "../src/framework/anchor";
-import { appendDesignTool, applyDesignTool, proposeDesignTool } from "../src/tool/design_tools";
+import { applyDesignTool, proposeDesignTool } from "../src/tool/design_tools";
 import { deleteTool, editTool } from "../src/tool/file_tools";
 import { defineTool } from "../src/tool/define";
 import { designSpecTool } from "../src/tool/framework_tools";
@@ -96,12 +96,6 @@ describe("markdown 区块手术", () => {
     expect(next).toContain("## 第一节");
   });
 
-  test("appendBlock 追加 + 小节索引", () => {
-    const appended = appendBlock(sample, "## 角色：沈越\n\n（待定）");
-    expect(appended).toContain("## 角色：沈越");
-    const titles = listHeadings(appended).map((h) => h.title);
-    expect(titles).toEqual(expect.arrayContaining(["第一节", "第二节", "角色：沈越"]));
-  });
 
   test("listHeadings 跳过 HTML 注释里的模板 heading（防幽灵卡）", () => {
     const c = [
@@ -707,21 +701,30 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(proposed.output).toContain("一律用 `###`");
     expect(ctx.pending.size).toBe(0); // 没登记任何提案
 
-    // 追加也拦得住。卡得先存在——追加不到一份不存在的文档上（那条另有更准的文案）。
+    // `edit` 往卡上加一节时也拦得住——**同一份不变量，判的是结果**，所以哪条路都一样。
+    // （`append-design` 已删：末尾加一节就是一次普通的 `edit`，拿尾块当锚点。）
     await writeDesign(pid, "characters/某人.md", "# 角色：某人\n\n### 基本档案\n来历不明。\n");
-    const appended = await appendDesignTool.execute(
-      { name: "characters/某人.md", block: "## 回响\n破万法。" },
+    const bad = await editTool.execute(
+      {
+        path: "design/characters/某人.md",
+        find: "来历不明。",
+        replace: "来历不明。\n\n## 回响\n破万法。",
+      },
       ctx as never,
     );
-    expect(appended.output).toContain("一律用 `###`");
+    expect(bad.output).toContain("一律用 `###`");
     expect(await readDesign(pid, "characters/某人.md")).not.toContain("## 回响"); // 一个字节没落
 
     // 反过来：`###` 的自由小节（开放长尾）畅通
-    const ok = await appendDesignTool.execute(
-      { name: "characters/某人.md", block: "### 回响\n破万法：契机「想要公平地进行对决」。" },
+    const ok = await editTool.execute(
+      {
+        path: "design/characters/某人.md",
+        find: "来历不明。",
+        replace: "来历不明。\n\n### 回响\n破万法：契机「想要公平地进行对决」。",
+      },
       ctx as never,
     );
-    expect(ok.output).toContain("已追加到");
+    expect(ok.output).toContain("已改写");
     expect((await readDesign(pid, "characters/某人.md"))!).toContain("### 回响");
   });
 

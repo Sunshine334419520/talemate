@@ -16,6 +16,7 @@
 import type { FileOp } from "../core/types";
 import { match } from "../permission";
 import { CHARACTER_FIELDS, missingSkeletonSections, rejectShallowHeading } from "./characters";
+import { listHeadings } from "./markdown";
 
 export interface InvariantInput {
   /** 项目相对路径（`design/characters/林晚.md`）——与权限 pattern 同一口径 */
@@ -37,7 +38,41 @@ export interface Invariant {
 
 const CARD = ["design/characters/*.md"];
 
+/** 每个标题出现几次（level ≥ 2）。 */
+function headingCounts(text: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const h of listHeadings(text, 2)) counts.set(h.title, (counts.get(h.title) ?? 0) + 1);
+  return counts;
+}
+
 export const INVARIANTS: Invariant[] = [
+  {
+    id: "design.no-duplicate-heading",
+    match: ["design/*"],
+    /**
+     * 新造出一个**重名**小节 → 拒。
+     *
+     * 为什么算不变量：寻址是**按标题**的（`read-design` 的 `section`）。两个同名 `##` 之后，
+     * "读第 2 节"永远命中前一个——**此后工具都读不懂这份文档**，正是本条不变量该拦的那一类。
+     *
+     * 只看"**新造出来**的重名"：原本就重名的老文档不因为一次无关的改动被拦（那不是这次造成的）。
+     * 加一节从前挂在 `append-design` 的前置检查里，那个工具已删——搬到这里之后 `write` / `edit`
+     * 也一样受它管。
+     */
+    check: ({ before, after }) => {
+      const was = headingCounts(before ?? "");
+      for (const [title, n] of headingCounts(after)) {
+        const had = was.get(title) ?? 0;
+        if (n > had && had > 0) {
+          return (
+            `文档里已经有了小节「${title}」——再加一个同名的会让按标题寻址失效` +
+            `（读那一节永远命中前一个）。换个标题，或者去改已有的那一节（用 edit）。`
+          );
+        }
+      }
+      return undefined;
+    },
+  },
   {
     id: "characters.no-shallow-heading",
     match: CARD,

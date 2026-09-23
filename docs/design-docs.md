@@ -69,7 +69,8 @@
 
 - **可审阅性**：判据是"**字节摆得到用户眼前吗**"，不是"分不分格"。有规范登记的层，没按该层规范的小节组织 → 拒绝提案（否则几格全显示「待定」，整段散文却照样落盘）；**无规范登记的文档放行**——整篇散文会被兜底成"整篇一格"摆出来。
 - **不在任何格里的字节也单独摆一段**（`proposal.uncoveredText`）：文档标题行、`##` 之前的导语。渲染只认 `items[].body` 的话，这些字节会被整个跳过，而它们照样落盘——"用户看过的字节 == 落盘的字节"就成了假的。
-- **角色卡的 `##` 陷阱**：`proposal.ownItems` 取**最浅**标题层。角色卡上冒出任意一个 `##`，卡里**所有** `###` 都从逐格审阅里消失。所以 `propose-design` 与 `append-design` 对角色卡都拒收 `##`（`cardHeadingError`）——详见 `characters.md`。
+- **重名小节**：寻址按标题，两个同名 `##` 之后"读第 2 节"永远命中前一个——此后工具读不懂这份文档。`invariants.ts` 的 `design.no-duplicate-heading` 拦"**新造出来**的重名"。
+- **角色卡的 `##` 陷阱**：`proposal.ownItems` 取**最浅**标题层。角色卡上冒出任意一个 `##`，卡里**所有** `###` 都从逐格审阅里消失。`characters.no-shallow-heading` 拦它——**判结果**，所以 `write` / `edit` / `propose-design` 哪条路都绕不过。详见 `characters.md`。
 - **删除**：`delete` 内置 `search-designs` 引用检查，命中结果摆进 confirm——**级联清理由模型自己用 `edit` 做**，工具只负责把影响面摆出来。
 
 ## 章节生产
@@ -111,6 +112,6 @@ flowchart TD
 | `framework/match.ts` | 锚点匹配的回退阶梯（唯一性、跨度失控兜底） |
 | `framework/invariants.ts` | **对算出来的结果做后验**（角色卡三条）。提案时也跑同一份，所以判据不会两处说两套 |
 | `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `specFor` / `reviewable` / `renderProposal`）＋ `proposalOp`（提案 → 写盘 op）。**`specFor` 先精确后模式**——层的规范按文件名，文档的规范按路径 |
-| `framework/markdown.ts` | 区块**读**手术（`getSection` / `appendBlock` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
+| `framework/markdown.ts` | 区块**读**手术（`getSection` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
 | `framework/anchor.ts` | 常驻注入 + `list-designs` 的索引 |
 | `tool/design_tools.ts` | 上面这些的工具壳（校验与守卫都在这里） |

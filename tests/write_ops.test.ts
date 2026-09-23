@@ -182,12 +182,19 @@ describe("write_ops · 行尾适配", () => {
     expect(await readDesign(pid, "core.md")).toBe("甲\r\n乙\r\n新丙\r\n");
   });
 
-  test("追加：接缝跟着文件的写法，不产生两种行尾混着", async () => {
+  test("末尾加一节走 edit：替换文本里的换行也适配成文件的写法", async () => {
+    // 从前这是 `append-design` 的活；那个工具删了之后它就是一次普通的 replace——
+    // 但"模型给的换行要跟文件一致"这条照样得成立，否则一份 CRLF 文档会变成两种行尾混着。
     await writeDesign(pid, "wiki/world.md", "## 一\r\n甲\r\n");
     const ctx = makeCtx();
     const r = await writeFile(
       ctx,
-      confirm({ kind: "append", path: "design/wiki/world.md", block: "## 二\n乙" }),
+      confirm({
+        kind: "replace",
+        path: "design/wiki/world.md",
+        find: "## 一\n甲",
+        replace: "## 一\n甲\n\n## 二\n乙",
+      }),
     );
     expect(r.ok).toBe(true);
     const text = (await readDesign(pid, "wiki/world.md")) ?? "";

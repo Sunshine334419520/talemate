@@ -142,18 +142,8 @@ export function removeSection(content: string, title: string): string {
   return [before, after].filter((s) => s.length > 0).join("\n\n");
 }
 
-/**
- * 在文档末尾追加一个区块（blockText 通常自带 `## ` heading）。
- *
- * `ending` 是**文件自己的行尾写法**：追加进去的字节得跟正文本来的写法一致，否则一份 `\r\n`
- * 的文档被追加一次就成了两种行尾混着。默认 `\n`——本产品自己写出来的文件就是这个写法。
- * （区块内部的换行由调用方一并转好再传进来，这里只管"接缝"那一处。）
- */
-export function appendBlock(content: string, blockText: string, ending: "\n" | "\r\n" = "\n"): string {
-  const sep = ending === "\r\n" ? "\r\n\r\n" : "\n\n";
-  const base = content.trimEnd();
-  return base.length ? base + sep + blockText.trim() + ending : blockText.trim() + ending;
-}
+// **没有 `appendBlock`**。末尾加一节从前走它（`append-design` 的落点），现在走通用的 `edit`：
+// 拿尾块当锚点，把尾块换成"尾块 + 新节"——行尾由 `file_ops` 统一适配，这里不必再管一份。
 
 /** 一行命中（供 search 展示） */
 export function findInContent(content: string, query: string): { line: number; heading?: string; text: string }[] {

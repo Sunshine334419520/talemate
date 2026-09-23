@@ -8,7 +8,7 @@
  * （模糊匹配、唯一性、跨度失控都在这里）。纯函数意味着它能被穷举测试，而不用起临时目录。
  */
 import type { FileOp } from "../core/types";
-import { appendBlock } from "./markdown";
+
 import { applyReplace, type MatchLevel } from "./match";
 
 /**
@@ -68,21 +68,6 @@ export function computeNext(op: FileOp, current: string | undefined): OpOutcome 
       const r = applyReplace(current, toLineEnding(op.find, ending), toLineEnding(op.replace, ending), op.all);
       if (!r.ok) return { ok: false, output: r.output };
       return { ok: true, action: "write", content: r.content, isNew: false, match: r.level, count: r.count };
-    }
-
-    case "append": {
-      if (current === undefined) {
-        return { ok: false, output: `没有找到 ${op.path}——追加只能加到已存在的文档上；要新建一份请用 write。` };
-      }
-      const block = op.block.trim();
-      if (!block) return { ok: false, output: "block 是空的，没有内容可追加。" };
-      const ending = detectLineEnding(current);
-      return {
-        ok: true,
-        action: "write",
-        content: appendBlock(current, toLineEnding(block, ending), ending),
-        isNew: false,
-      };
     }
 
     case "delete": {

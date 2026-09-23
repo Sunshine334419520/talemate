@@ -38,7 +38,6 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "propose-plan",
       "enter-draft",
       "exit-draft",
-      "append-design",
       "search-designs",
       "list-designs",
       "skill",
