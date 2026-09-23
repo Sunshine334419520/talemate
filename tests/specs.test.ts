@@ -1,7 +1,7 @@
 /**
  * 规范注册表的守卫：`tests/` 里的一条"结构不变量"测试（其余多是行为测试）。
  *
- * 守两件事：
+ * 守三件事：
  *   1. **胜负由模式长度定，与表序无关。** `permission.match` 把 `*` 映射成 `.*`、**跨 `/`**，
  *      所以 `design/outline/vol_*.md` 也命中 `design/outline/vol_1/s2.md`。若取规范靠"第一个
  *      命中即止"，一卷的序列纲就会被静默读成卷纲。这里对**每一条**规范回头查一次：拿它自己的
@@ -9,6 +9,8 @@
  *   2. **同一份事实只有一个家。** 这一层从前横跨两个文件（短名在 `layers.ts` 的 `LAYERS`、
  *      长名在 `design_spec.ts` 的 `DESIGN_SPECS`），再靠一个测试钉住两边不脱节；现在两个名字
  *      并排放在同一行（`DocSpec.label` / `DocSpec.title`），那份跨文件的对应关系不存在了。
+ *   3. **工作法不许漏写工具的前置。** 它是每层手抄一份的散文，漏写不会报错，只会让模型读到一份
+ *      自相矛盾的规范——比没有更糟。见文末「规范注册表 · 工作法」。
  */
 import { describe, test, expect } from "bun:test";
 import { RESIDENT_DOCS } from "../src/framework/anchor";
@@ -97,6 +99,18 @@ describe("规范注册表 · 管辖范围", () => {
     // 它连同一张别名表一起删了：糖能表达的路径本来就能表达，而它多带一套词表。
     const want = ["design/core.md", "design/wiki/world.md", "design/characters/", "design/outline/"];
     const missing = want.filter((p) => !SPECS.some((s) => s.match === p || s.match === `${p}*`));
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("规范注册表 · 工作法", () => {
+  test("工作法里提到 propose-design 的，必须同时写明它要先在草稿模式里", () => {
+    // 工作法每层手抄一份，措辞各异——所以漏写半句在 diff 里看不出来。漏写的后果不是报错，而是
+    // 模型从规范里**合理地**推出 propose-design 不需要草稿模式，跳过 enter-draft 直接提案、被工具拒。
+    // 自相矛盾的规范比没有规范更糟，所以这一条钉住"提到它就得写出它的前置"。
+    const missing = SPECS.filter((s) => s.guide.includes("propose-design"))
+      .filter((s) => !s.guide.includes("草稿模式"))
+      .map((s) => s.id);
     expect(missing).toEqual([]);
   });
 });

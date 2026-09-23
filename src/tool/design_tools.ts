@@ -99,17 +99,21 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
     required: ["path", "content"],
   },
   async execute(args, ctx) {
+    // 本工具带 `halt`，而 runner 对**任何 return** 都置 halt（见 `tool/runner.ts`）——所以下面每条
+    // 自愈路径都必须 `throw`：return 等于把回合停在一个本可自愈的错误上。被拒时用户看到的还不是
+    // 一条错误，而是**回合莫名结束**（提案没摆出来，CLI 的提案块也不会出现）。
+    // 钉这条语义的是 `tests/framework.test.ts` 的 "tool runner · halt"。
     const target = resolveDoc(args.path);
-    if ("error" in target) return { output: target.error };
+    if ("error" in target) throw new Error(target.error);
     const path = target.path;
     // 三向只有草稿模式那一条通道（见 agent/modes.ts）。不在里面就没有"提意见"这一路，
     // 摆出来也只是个二向的弹窗——不如让模型先把模式切过去。
-    if (ctx.getMode() !== DRAFT_MODE) return { output: notInDraft("把这一版整篇草稿摆出来") };
+    if (ctx.getMode() !== DRAFT_MODE) throw new Error(notInDraft("把这一版整篇草稿摆出来"));
     const content = (args.content ?? "").trim();
     if (!content) {
-      return {
-        output: `propose-design 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带完整字段重新调用。`,
-      };
+      throw new Error(
+        `propose-design 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带完整字段重新调用。`,
+      );
     }
     const current = await ctx.readDoc(path);
 
@@ -118,13 +122,12 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
     // 同一份注册表两处共用，所以提案时的判据与落盘时的判据不会各说各话。
     // 路径**原样**传：这里、`write_ops`、`invariants` 用的是同一个项目相对口径。
     const violation = checkInvariants({ path, opKind: "write", before: current, after: content });
-    if (violation) return { output: violation };
+    if (violation) throw new Error(violation);
     if (!reviewable(path, content)) {
-      return {
-        output:
-          "这版草稿没法逐格审阅（正文里没有小节标题，或没按该层规范的小节组织），摆给用户会是一页空白却照样落盘。" +
+      throw new Error(
+        "这版草稿没法逐格审阅（正文里没有小节标题，或没按该层规范的小节组织），摆给用户会是一页空白却照样落盘。" +
           "请每格一个 `## 标题`（先调 design-spec 拿这一层的形状）。",
-      };
+      );
     }
 
     const prev = ctx.getProposal(path);

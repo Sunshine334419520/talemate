@@ -57,6 +57,22 @@ afterAll(async () => {
   await rm(HOME, { recursive: true, force: true });
 });
 
+/**
+ * 取一次「自愈拒绝」的文案。
+ *
+ * `propose-design` / `propose-plan` 带 `halt`，所以它们的自愈路径必须是 **throw 而不是 return**——
+ * return 会被 runner 置 halt，把回合停在一个本可自愈的错误上（见 "tool runner · halt"）。
+ * 因此断言这两个工具的拒绝时不能读 `.output`，只能接住异常。
+ */
+async function rejectMessage(p: Promise<unknown>): Promise<string> {
+  return p.then(
+    () => {
+      throw new Error("预期被拒，但调用成功了");
+    },
+    (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  );
+}
+
 // ─── markdown 区块手术 ───
 
 const sample = [
@@ -492,10 +508,11 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
 
   test("缺任一必有格 → 整篇提案被拒并列出缺哪几格（不再有构造器替模型补格）", async () => {
     const thin = "# 角色：某人\n\n### 基本档案\n\n身份 · 所属：某人\n";
-    const { proposed, ctx } = await land("某人", thin);
-    expect(proposed.output).toContain("缺这几格");
-    expect(proposed.output).toContain("性格与矛盾");
-    expect(proposed.output).toContain("说话方式");
+    const ctx = makeDraftCtx(pid);
+    const msg = await rejectMessage(proposeDesignTool.execute({ path: CARD("某人"), content: thin }, ctx as never));
+    expect(msg).toContain("缺这几格");
+    expect(msg).toContain("性格与矛盾");
+    expect(msg).toContain("说话方式");
     expect(ctx.pending.size).toBe(0); // 没登记任何提案
     expect(await readDoc(pid, CARD("某人"))).toBeUndefined(); // 更没落盘
   });
@@ -775,17 +792,21 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(flat.output).toContain("提案已交给用户审阅");
 
     // 有规范登记的层：同样的散文会被渲染成"四格全（待定）"，正文却照样落盘——这才是要拒的
-    const layered = await proposeDesignTool.execute({ path: "design/core.md", content: "整段散文，一个标题都没有。" }, ctx as never);
-    expect(layered.output).toContain("没法逐格审阅");
+    const msg = await rejectMessage(
+      proposeDesignTool.execute({ path: "design/core.md", content: "整段散文，一个标题都没有。" }, ctx as never),
+    );
+    expect(msg).toContain("没法逐格审阅");
   });
 
   test("守卫：角色卡上出现 ## 被拒（否则卡里所有 ### 会从逐格审阅里消失）", async () => {
     const ctx = makeDraftCtx(pid);
-    const proposed = await proposeDesignTool.execute(
-      { path: "design/characters/某人.md", content: "# 角色：某人\n\n## 基本档案\n来历不明。\n" },
-      ctx as never,
+    const msg = await rejectMessage(
+      proposeDesignTool.execute(
+        { path: "design/characters/某人.md", content: "# 角色：某人\n\n## 基本档案\n来历不明。\n" },
+        ctx as never,
+      ),
     );
-    expect(proposed.output).toContain("一律用 `###`");
+    expect(msg).toContain("一律用 `###`");
     expect(ctx.pending.size).toBe(0); // 没登记任何提案
 
     // `edit` 往卡上加一节时也拦得住——**同一份不变量，判的是结果**，所以哪条路都一样。
@@ -833,25 +854,26 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     // 世界层写错位置**看不出来**却是白写：常驻注入只认 `design/wiki/world.md`。
     // 守卫按注册表的 `target` 判，回的是**字面路径**，模型照着改就行。
     const ctx = makeDraftCtx(pid);
-    const r = await proposeDesignTool.execute({ path: "design/world.md", content: "# x\n\n## a\nb\n" }, ctx as never);
-    expect(r.output).toContain("design/wiki/world.md");
+    const msg = await rejectMessage(
+      proposeDesignTool.execute({ path: "design/world.md", content: "# x\n\n## a\nb\n" }, ctx as never),
+    );
+    expect(msg).toContain("design/wiki/world.md");
     expect(ctx.pending.size).toBe(0); // 没有登记任何提案
   });
 
   test("守卫：提案只写 design/ 下的文档（章节正文走 write/edit）", async () => {
     const ctx = makeDraftCtx(pid);
-    const r = await proposeDesignTool.execute(
-      { path: "chapters/chapter_ch1_v1.md", content: "# 第一章\n" },
-      ctx as never,
+    const msg = await rejectMessage(
+      proposeDesignTool.execute({ path: "chapters/chapter_ch1_v1.md", content: "# 第一章\n" }, ctx as never),
     );
-    expect(r.output).toContain("只写 design/ 下的文档");
+    expect(msg).toContain("只写 design/ 下的文档");
     expect(ctx.pending.size).toBe(0);
   });
 
   test("守卫：缺少 path 明说该给什么", async () => {
     const ctx = makeDraftCtx(pid);
-    const r = await proposeDesignTool.execute({ content: "## 随便\n内容" } as never, ctx as never);
-    expect(r.output).toContain("缺少 path");
+    const msg = await rejectMessage(proposeDesignTool.execute({ content: "## 随便\n内容" } as never, ctx as never));
+    expect(msg).toContain("缺少 path");
     expect(ctx.pending.size).toBe(0);
   });
 });
@@ -958,11 +980,15 @@ describe("会话模式 · draft", () => {
   });
 
   test("不在草稿模式就摆不了提案——两个 propose 都拒，并指路 enter-draft", async () => {
+    // **拒是 throw 而不是 return**：两个工具都带 halt，return 会被 runner 置 halt，把回合停在
+    // 这个本可自愈的错误上（模型还没来得及照自愈文案补 enter-draft，回合就没了）。
     const ctx = makeCtx(pid);
-    const plan = await proposePlanTool.execute({ content: "上岛第一晚。" }, ctx as never);
-    expect(plan.output).toContain("enter-draft");
-    const design = await proposeDesignTool.execute({ path: "design/wiki/x.md", content: "## 甲\n正文" }, ctx as never);
-    expect(design.output).toContain("enter-draft");
+    await expect(proposePlanTool.execute({ content: "上岛第一晚。" }, ctx as never)).rejects.toThrow(
+      "enter-draft",
+    );
+    await expect(
+      proposeDesignTool.execute({ path: "design/wiki/x.md", content: "## 甲\n正文" }, ctx as never),
+    ).rejects.toThrow("enter-draft");
     expect(ctx.pending.size).toBe(0); // 一份都没登记
   });
 
@@ -1225,5 +1251,20 @@ describe("tool runner · halt", () => {
     const badPart = await executeToolPart("mate", { id: "2", name: "t-halt", input: { fail: true } }, reg, makeCtx(pid) as never);
     expect(badPart.type === "tool" && badPart.state).toBe("error");
     expect(badPart.type === "tool" && badPart.halt).toBeFalsy();
+  });
+
+  // 上面那条用手写工具钉语义，这条钉**真实工具**照它做了——提案被拒时回合必须留着，
+  // 模型才能照自愈文案补上 enter-draft 再摆一次。
+  test("提案被拒不停轮：不在草稿模式调 propose-design → error 且不 halt", async () => {
+    const reg = new ToolRegistry();
+    reg.register(proposeDesignTool);
+    const part = await executeToolPart(
+      "mate",
+      { id: "1", name: "propose-design", input: { path: "design/wiki/x.md", content: "## 甲\n正文" } },
+      reg,
+      makeCtx(pid) as never,
+    );
+    expect(part.type === "tool" && part.state).toBe("error");
+    expect(part.type === "tool" && part.halt).toBeFalsy();
   });
 });

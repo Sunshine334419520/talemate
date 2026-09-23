@@ -183,8 +183,8 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
   },
   async execute(args, ctx) {
     const content = (args.content ?? "").trim();
-    // **这里必须 throw，不能 return**：runner 对任何 return 都置 halt，return 一个校验错误等于
-    // 把回合停在一个本可自愈的错误上。throw 会变成 error part，模型同轮就能补上重调。
+    // **本工具的每条自愈路径都必须 throw，不能 return**：runner 对任何 return 都置 halt，return
+    // 一个校验错误等于把回合停在一个本可自愈的错误上。throw 会变成 error part，模型同轮就能补上重调。
     // （`tests/framework.test.ts` 的 "tool runner · halt" 钉的就是这条。）
     if (!content) {
       throw new Error(
@@ -192,7 +192,7 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
       );
     }
     if (ctx.getMode() !== DRAFT_MODE) {
-      return { output: notInDraft("把这一章的节拍摆出来") };
+      throw new Error(notInDraft("把这一章的节拍摆出来"));
     }
     // 登记成"待执行的节拍"。**只在会话内存里，不落盘**——用户回话后由 harness 置 approved，
     // task(writer) 靠它判断"这一章用户拍过板了没有"。改了内容重新提案即覆盖，approved 归零。
