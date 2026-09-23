@@ -114,4 +114,64 @@ export const editTool: RegisteredTool<{ path: string; find: string; replace: str
   },
 });
 
-export const FILE_TOOLS: RegisteredTool[] = [writeTool, editTool];
+/** 文件名去掉目录与扩展名——引用检查的缺省术语（`design/characters/林晚.md` → `林晚`）。 */
+function stemOf(path: string): string {
+  const base = path.replace(/\\/g, "/").split("/").pop() ?? path;
+  return base.replace(/\.md$/, "");
+}
+
+/**
+ * delete：删掉**一份文件**——设计文档、角色卡、章节，同一条路。
+ *
+ * 它比"一个删文件的工具"多做一件事，而那正是它存在的理由：**删之前把"这个名字还在哪儿出现"
+ * 摆到用户眼前**。删一个角色/一个术语，影响面不在那份文件里——`core.md`、卷纲、好几章正文里
+ * 都可能提着它。看不见那个影响面，用户就没法判断"要不要一起清"。
+ *
+ * **但它不替你做级联。** 该不该动 `world.md` 里那句话、该不该改 `outline/vol_2.md` 里的登场安排，
+ * 是判断不是机械操作：工具做不了，模型做得了。所以这里的职责到"把影响面摆出来"为止，清理由模型
+ * 用 `edit` 逐处做（见 `prompts/tools/delete.txt`）。
+ *
+ * 局部删除（删一个段落、一节）**不在这里**——那是 `edit`，把那段原文换成空。
+ */
+export const deleteTool: RegisteredTool<{ path: string; term?: string }> = defineTool<{
+  path: string;
+  term?: string;
+}>({
+  id: "delete",
+  description: P("delete"),
+  permission: "edit",
+  input: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Project-relative path of the file to delete: design/<...> or chapters/<...>",
+      },
+      term: {
+        type: "string",
+        description:
+          "Name to look up references by before deleting; defaults to the filename without its extension",
+      },
+    },
+    required: ["path"],
+  },
+  async execute(args, ctx) {
+    const path = args.path.trim();
+    const term = args.term?.trim() || stemOf(path);
+    // 引用检查只覆盖 design/（chapters/ 的搜索还没通，见 docs/roadmap.md 的「章节读不回来」）
+    const refs =
+      `引用检查「${term}」——删它之前先看这个名字还在哪儿出现；` +
+      `有命中就自己判断要不要用 edit 一并清理，别留悬空引用：\n${await ctx.searchDesigns(term)}`;
+
+    const r = await writeFile(ctx, {
+      via: "confirm",
+      op: { kind: "delete", path },
+      action: `删除 ${path}`,
+      note: refs,
+    });
+    if (!r.ok) return { output: r.output };
+    return { output: `已删除 ${path}（连同它的全部内容）`, metadata: { file: path } };
+  },
+});
+
+export const FILE_TOOLS: RegisteredTool[] = [writeTool, editTool, deleteTool];

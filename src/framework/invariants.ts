@@ -2,7 +2,7 @@
  * invariants：**对"算出来的结果"做后验**——落盘的字节是不是还守得住那几条不变量。
  *
  * 为什么要在结果上判、不在提案上判：从前这些守卫都对着**提案文本**跑，于是只有
- * `propose-design` 与 `append-design` 两条路撞得上它们；`edit` / `write` / `remove-design-section`
+ * `propose-design` 与 `append-design` 两条路撞得上它们；`edit` / `write` / `delete`
  * 完全绕得过去。搬到结果上之后**哪条路都绕不过**——这正是把写盘收成一条路径的意义。
  *
  * 选哪几条不变量上钩，按这个判据：**违反了会不会造出一份"此后工具都读不懂"的文档**。
@@ -68,7 +68,7 @@ export const INVARIANTS: Invariant[] = [
     check: ({ before, after, opKind }) => {
       if (before === undefined) return undefined; // 新建，没有"丢掉"可言
       // **删掉整张卡不算**：那时它不再是卡了，没有"半身"可言。这条守的是
-      // "卡还在、却缺了一格"，不是"卡没了"——删卡是正当操作（remove-character）。
+      // "卡还在、却缺了一格"，不是"卡没了"——删卡是正当操作（`delete`）。
       if (opKind === "delete") return undefined;
       const gone = CHARACTER_FIELDS.filter(
         (f) => before.includes(`### ${f.label}`) && !after.includes(`### ${f.label}`),

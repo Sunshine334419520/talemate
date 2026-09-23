@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-09-22 · Agent 名册在 `src/agent/registry.ts`，权限在 `src/permission.ts`
+> **对齐代码**：2026-09-23 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -58,10 +58,15 @@
 |---|---|
 | `write` | 整篇写/覆盖一份文件（`design/…` 或 `chapters/…`）。**「这份文件整个是我的」**——旧文件不在场也能写 |
 | `edit` | 锚点式改一段（给原文片段 + 替换文本），其余字节原样。**「我在动它的一部分」** |
+| `delete` | 删掉**整份文件**。**删前把"这个名字还在哪儿出现"摆进 confirm**——影响面不在被删的那份文件里 |
 
-两者分开而不是并成一个：合并就得靠"哪个参数给没给"来分辨，schema 对模型是含糊的；opencode 也是分开的，且它的 `edit` 明确拒绝在已存在的文件上用空锚点。
+`write` 与 `edit` 分开而不是并成一个：合并就得靠"哪个参数给没给"来分辨，schema 对模型是含糊的；opencode 也是分开的，且它的 `edit` 明确拒绝在已存在的文件上用空锚点。
 
-**它们都不自己落盘**——拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，所以校验、权限、CAS、原子写、diff 全在那一处。某个 agent 能碰哪个根由权限表划：writer 配的是 `edit: {"design/*": "deny"}`，写得了 `chapters/`、碰不了 `design/`。
+**删一个段落/一节不归 `delete`**——那是 `edit`：给出那段原文、替换为空。`delete` 只管整份文件。
+
+**`delete` 不做级联。** 它把引用摆出来，清理由模型用 `edit` 逐处做——"该不该动 `world.md` 里那句话"是判断，不是机械操作。opencode 那边没有 delete 工具（删除折在 `apply_patch` 里），它能那样做是因为它还有 `bash`；talemate 把 shell 剥掉了，所以删除必须是一个工具。
+
+**三个都不自己落盘**——拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，所以校验、不变量后验、权限、CAS、原子写、diff 全在那一处。某个 agent 能碰哪个根由权限表划：writer 配的是 `edit: {"design/*": "deny"}`，写得了 `chapters/`、碰不了 `design/`。
 
 **`design_tools`** — design/ 通用文档操作
 
@@ -73,13 +78,8 @@
 | `propose-design` | 摆提案给用户看，**不写盘**，并结束本回合 |
 | `apply-design` | 落盘**提案那一份**（不收正文） |
 | `append-design` | 末尾追加一块 |
-| `remove-design-section` | 删一个小节（删除前内置引用检查） |
 
-**`character_tools`** — 人物层
-
-| id | 用途 |
-|---|---|
-| `remove-character` | 删角色卡（删除前引用检查进 confirm） |
+（`character_tools` 整个模块已删：它只剩一个"删角色卡"，而那只是 `delete` 的角色专用版。**角色专用工具现在一个都没有了**——建卡改卡走 `propose-design` / `edit`，删卡走 `delete`。）
 
 **`framework_tools`** — 框架层
 
@@ -153,10 +153,11 @@
 
 ### mate 的工作协议
 
-1. **企划对话（含大纲）**：mate 直接答；查 = `list-designs`/`read-design`/`search-designs`，删 = `remove-design-section`。
-   - **局部改**（一句、一段、一格）= `edit`：用户看 diff 就够，二向（接受 / 拒绝）。
+1. **企划对话（含大纲）**：mate 直接答；查 = `list-designs`/`read-design`/`search-designs`。
+   - **局部改**（一句、一段、一格、删一节）= `edit`：用户看 diff 就够，二向（接受 / 拒绝）。
    - **整篇成稿** = 进 `enter-draft` → **`propose-design` → 用户回话 → `apply-design`**：三向（接受 / 拒绝 / 提意见）。
-   - **改文件一律走这两个工具**（`write` / `edit`），不派子代理。
+   - **删整份文档**（角色卡、过期专题页）= `delete`：它先把引用摆出来，**级联清理由 mate 自己用 `edit` 做**。
+   - **改文件一律走这三个工具**（`write` / `edit` / `delete`），不派子代理。
    **卷纲与序列纲就在这一条里**——它们是设计文档，走同一套两段式。
 2. **要写某章正文**（一条链，四步）：
    ① `read-design` 取切片（core 常驻 + 当前**序列纲** + 相关人物/世界）→ ② **mate 自己写这一章的节拍** → ③ **`enter-draft` → `propose-plan` 摆给用户拍板**（它带 `halt`，回合到此为止）→ ④ 用户接受后 `task(writer, { prompt: 切片 + 节拍 })`，writer 用 `write` 落 `chapters/`（二向：用户看 diff 点头）。

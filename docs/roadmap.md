@@ -7,6 +7,22 @@
 
 ## 已确认的缺口
 
+### 章节读不回来（`read-design` 只读 `design/`）
+
+`read-design` 走 `storage/project.readDesign`，那个函数把根写死在 `design/`。而 `write` / `edit`
+的 `path` 已经能指 `chapters/…`——**模型能改章节，却读不到章节**。`edit` 是**锚点式**的，看不到
+当前字节就无从给出 `find`，所以"改一章正文"这条链现在是断的。
+
+同一处还缺另外两个：
+
+| 缺 | 现状 |
+|---|---|
+| **列** chapters | 没有工具。模型不知道已经写了哪些章（`ctx.listChapters` 实现了，但**没有任何工具调它**——死代码） |
+| **搜** chapters | `framework/search.ts` 的模块注释写着"跨 design/(+chapters/) 扫词"，但 `session.ts` 传的 scope 是 `"design"`——**注释与实现已经漂了** |
+
+**修法**：把这三个只读工具的**范围**从 `design/` 提到**项目级**（`design/` + `chapters/`），
+顺带正名——`-design` 这个后缀届时就不准了，而"名字与事实不符"正是这个仓库反复吃亏的地方。
+
 ### 状态层（长篇独有）
 
 角色状态目前**无处安放**：卡上不装（见 `characters.md`），独立目录也还没建。

@@ -99,23 +99,6 @@ async function designNotFound(ctx: ToolContext, name: string): Promise<string> {
   return `没有找到文档 ${name}。可用：\n${await ctx.listDesigns()}`;
 }
 
-/**
- * 一个小节**连同它前面的分隔空行**的原文——删它时 `replace` 用这个 span，才不留双空行。
- *
- * 为什么要往前吃一行：`listHeadings` 的 `end` 已经把"它之后到下一个标题之间的空行"包进去了，
- * 所以只删 `getSection(...).block` 会留下上一节与下一节之间的两个连续空行。往前吃一个空行，
- * 删完两份正文正好接上。
- *
- * 返回 undefined = 没这个标题（调用方据此给"可用小节：…"的自愈文案）。
- */
-function sectionSpan(content: string, title: string): string | undefined {
-  const h = findHeading(content, title);
-  if (!h) return undefined;
-  const lines = content.split("\n");
-  const start = h.line > 0 && lines[h.line - 1].trim() === "" ? h.line - 1 : h.line;
-  return lines.slice(start, h.end).join("\n");
-}
-
 /** 要追加的块里，有哪个一级小节标题是文档里已经有的（有则返回那个标题）。 */
 function duplicateHeading(block: string, current: string): string | undefined {
   const heads = listHeadings(block, 2);
@@ -336,51 +319,6 @@ export const appendDesignTool: RegisteredTool<{ name: string; block: string }> =
   },
 });
 
-/** remove-design-section：删一个小节（删前引用检查进 confirm） */
-export const removeDesignSectionTool: RegisteredTool<{ name: string; section: string; term?: string }> = defineTool<{
-  name: string;
-  section: string;
-  term?: string;
-}>({
-  id: "remove-design-section",
-  description: P("remove-design-section"),
-  permission: "edit",
-  input: {
-    type: "object",
-    properties: {
-      name: { type: "string", description: "Document filename under design/ (incl. .md)" },
-      section: { type: "string", description: "Section heading to delete" },
-      term: { type: "string", description: "Optional: entity term for the reference check; defaults to the section heading" },
-    },
-    required: ["name", "section"],
-  },
-  async execute(args, ctx) {
-    const current = await ctx.readDesign(args.name);
-    if (current === undefined) return { output: await designNotFound(ctx, args.name) };
-    const span = sectionSpan(current, args.section);
-    if (!span) {
-      const s = getSection(current, args.section);
-      return {
-        output: `文档 ${args.name} 没有小节「${args.section}」。可用小节：\n${(s.available ?? []).join("\n")}`,
-      };
-    }
-
-    // 必有一格不许删 → 不变量（invariants.ts 的 characters.required-kept），在管线的第 4 步判，
-    // 也就是**弹窗之前**。所以这里不必再拦一遍。
-    const term = args.term?.trim() || args.section;
-    const refs = `引用检查「${term}」：\n${await ctx.searchDesigns(term)}`;
-
-    const r = await writeFile(ctx, {
-      via: "confirm",
-      op: { kind: "replace", path: `design/${args.name}`, find: span, replace: "" },
-      action: `删除 design/${args.name} › ${args.section}`,
-      note: refs,
-    });
-    if (!r.ok) return { output: r.output };
-    return { output: `已删除 design/${args.name} › ${args.section}`, metadata: { name: args.name, section: args.section } };
-  },
-});
-
 export const DESIGN_TOOLS: RegisteredTool[] = [
   readDesignTool,
   listDesignsTool,
@@ -388,5 +326,4 @@ export const DESIGN_TOOLS: RegisteredTool[] = [
   proposeDesignTool,
   applyDesignTool,
   appendDesignTool,
-  removeDesignSectionTool,
 ];

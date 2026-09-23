@@ -12,14 +12,8 @@ import { RESIDENT_LAYERS } from "../src/framework/layers";
 import { renderDesignSpec } from "../src/framework/design_spec";
 import { renderHits, searchDesigns } from "../src/framework/search";
 import { buildResidentDesigns, buildDesignIndex } from "../src/framework/anchor";
-import { removeCharacterTool } from "../src/tool/character_tools";
-import {
-  appendDesignTool,
-  applyDesignTool,
-  proposeDesignTool,
-  removeDesignSectionTool,
-} from "../src/tool/design_tools";
-import { editTool } from "../src/tool/file_tools";
+import { appendDesignTool, applyDesignTool, proposeDesignTool } from "../src/tool/design_tools";
+import { deleteTool, editTool } from "../src/tool/file_tools";
 import { defineTool } from "../src/tool/define";
 import { designSpecTool } from "../src/tool/framework_tools";
 import { enterDraftTool, exitDraftTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
@@ -193,6 +187,30 @@ describe("design-spec（结构规范）", () => {
     expect(outline).not.toContain("## 伏笔与回收登记");
     // 情节层的主文档不是一个文件，所以不给 layer 写入口（给了会写到目录名上）
     expect(outline).not.toContain("layer: outline");
+  });
+
+  test("规范正文里不出现已删的工具名——模型照它选工具，写了就是教它调不存在的东西", () => {
+    // 这条是被一次真事故逼出来的：`remove-character` 删掉之后，characters 的规范里
+    // 还留着「删角色用 remove-character」，而 `propose-design` 的 `section` 参数也早没了——
+    // **两份都是给模型看的工作法**，模型照着调只会撞"未知工具"。
+    // `docs.test.ts` 只扫 `docs/`，扫不到这里。
+    const RETIRED = [
+      "add-character",
+      "update-character",
+      "character-brief",
+      "save-chapter",
+      "remove-character",
+      "remove-design-section",
+    ];
+    const layers = ["core", "world", "characters", "outline"] as const;
+    const hits: string[] = [];
+    for (const l of layers) {
+      const spec = renderDesignSpec(l);
+      for (const t of RETIRED) if (spec.includes(t)) hits.push(`${l} 的规范里出现已删的 ${t}`);
+    }
+    expect(hits).toEqual([]);
+    // 而且确实扫到了东西（否则上面那条空断言恒真）
+    expect(renderDesignSpec("characters")).toContain("propose-design");
   });
 
   test("design-spec 的 name 入口：登记过的给规范，没登记的明说自由成稿", async () => {
@@ -547,20 +565,23 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
     );
   });
 
-  test("守卫：remove-design-section 拒删必有格，自由长尾随便删", async () => {
-    const ctx = makeDraftCtx(pid);
-    const bad = await removeDesignSectionTool.execute(
-      { name: CARD("乔家劲"), section: "底线 · 绝不做" },
+  test("删一格走 edit：必有格删不掉（不变量拦），自由长尾随便删", async () => {
+    const ctx = makeCtx(pid);
+    // 必有格被 `characters.required-kept` 拦在管线的第 4 步——**弹窗之前**，
+    // 所以用户不会被问一件注定落不下去的事。
+    const bad = await editTool.execute(
+      { path: `design/${CARD("乔家劲")}`, find: "### 底线 · 绝不做", replace: "" },
       ctx as never,
     );
     expect(bad.output).toContain("必有格");
     expect((await readDesign(pid, CARD("乔家劲")))!).toContain("### 底线 · 绝不做");
 
-    const ok = await removeDesignSectionTool.execute(
-      { name: CARD("乔家劲"), section: "一句话定位" },
+    // 自由长尾（老卡上那些废止的格）随便删
+    const ok = await editTool.execute(
+      { path: `design/${CARD("乔家劲")}`, find: "### 一句话定位\n空姐，与江屿困同一座岛", replace: "" },
       ctx as never,
     );
-    expect(ok.output).toContain("已删除");
+    expect(ok.output).toContain("已改写");
     expect((await readDesign(pid, CARD("乔家劲")))!).not.toContain("一句话定位");
   });
 
@@ -576,8 +597,9 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
     expect(roster).not.toContain("characters/沈越.md:"); // 角色卡不铺必有格标题，只有一行
   });
 
-  test("remove-character：删卡；名单随之消失（现算，不用额外同步）", async () => {
-    const r = await removeCharacterTool.execute({ name: "林晚" }, makeCtx(pid) as never);
+  test("delete：删卡；名单随之消失（现算，不用额外同步）", async () => {
+    // **没有角色专用工具了**——删一份文档就是通用 delete 加一个项目相对路径。
+    const r = await deleteTool.execute({ path: `design/${CARD("林晚")}` }, makeCtx(pid) as never);
     expect(r.output).toContain("已删除");
     expect(await readDesign(pid, CARD("林晚"))).toBeUndefined();
     expect(await buildDesignIndex(pid)).not.toContain("林晚");

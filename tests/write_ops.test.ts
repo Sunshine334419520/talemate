@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { createProject, readDesign, writeDesign } from "../src/storage/project";
 import { projectPaths } from "../src/core/config";
 import { writeFile, type WriteRequest } from "../src/framework/write_ops";
-import { PLAN_KEY, type PendingProposal, type ToolContext } from "../src/core/types";
+import { PLAN_KEY, type PendingProposal, type PermissionRequest, type ToolContext } from "../src/core/types";
 
 let HOME: string;
 let pid: string;
@@ -32,18 +32,28 @@ afterAll(async () => {
 const designAbs = (name: string) => join(projectPaths(HOME, pid).design, name);
 const chaptersAbs = (name: string) => join(projectPaths(HOME, pid).chapters, name);
 
+type TestCtx = ToolContext & {
+  setAsk(v: "allow" | "reject" | "deny"): void;
+  pending: Map<string, PendingProposal>;
+  /** 最近一次弹窗的请求——用来断言"摆给用户做判断的材料"里到底有什么 */
+  lastAsk?: PermissionRequest;
+};
+
 /** 只实现 writeFile 真正用得到的那几项；`ask` 的答复可切。 */
-function makeCtx(): ToolContext & { setAsk(v: "allow" | "reject" | "deny"): void; pending: Map<string, PendingProposal> } {
+function makeCtx(): TestCtx {
   let answer: "allow" | "reject" | "deny" = "allow";
   const pending = new Map<string, PendingProposal>();
-  return {
+  const ctx: TestCtx = {
     projectId: pid,
     sessionId: "t",
     agent: "mate",
     signal: new AbortController().signal,
     confirm: async () => "once",
     check: () => "ask",
-    ask: async () => answer,
+    ask: async (req) => {
+      ctx.lastAsk = req;
+      return answer;
+    },
     askUser: async () => "",
     showProposal: () => {},
     getProposal: (k) => pending.get(k),
@@ -67,6 +77,7 @@ function makeCtx(): ToolContext & { setAsk(v: "allow" | "reject" | "deny"): void
     },
     pending,
   };
+  return ctx;
 }
 
 const confirm = (op: WriteRequest extends { via: "confirm"; op: infer O } ? O : never, action = "测试写入"): WriteRequest => ({
@@ -319,6 +330,59 @@ describe("write_ops · 落提案（三向）", () => {
     expect(denied.ok).toBe(false);
     if (!denied.ok) expect(denied.reason).toBe("denied");
     expect(await readDesign(pid, "prop-e.md")).toBeUndefined();
+  });
+});
+
+describe("write_ops · 摆给用户的材料", () => {
+  test("note（引用检查等）进 confirm，且排在 diff **之前**", async () => {
+    // 先看影响面、再看这次具体动什么——顺序反过来，用户得先读完 diff 才知道该拿什么去判断。
+    await writeDesign(pid, "note-a.md", "# X\n\n## 甲\n内容\n");
+    const ctx = makeCtx();
+    const r = await writeFile(ctx, {
+      via: "confirm",
+      op: { kind: "delete", path: "design/note-a.md" },
+      action: "删除 design/note-a.md",
+      note: "引用检查「X」：\n别的文档里还有三处提到它",
+    });
+    expect(r.ok).toBe(true);
+    const detail = ctx.lastAsk?.detail ?? "";
+    expect(detail).toContain("别的文档里还有三处提到它");
+    expect(detail).toContain("-内容"); // 被删的内容也在材料里
+    expect(detail.indexOf("引用检查")).toBeLessThan(detail.indexOf("-内容"));
+  });
+
+  test("没有 note 时不留下空段", async () => {
+    const ctx = makeCtx();
+    await writeFile(ctx, {
+      via: "confirm",
+      op: { kind: "write", path: "design/note-b.md", content: "x\n" },
+      action: "写入 design/note-b.md",
+    });
+    expect(ctx.lastAsk?.detail ?? "").not.toMatch(/^\n/);
+  });
+
+  test("弹窗的 pattern 与工具入参同一口径（项目相对）", async () => {
+    // 权限规则写的就是这个串——口径不一致的话，用户配的规则永远不会生效。
+    // （旧代码给 design 写入传的是裸 `name`，于是文档里 `design/core.md` 那类规则从来没生效过。）
+    const ctx = makeCtx();
+    await writeFile(ctx, {
+      via: "confirm",
+      op: { kind: "write", path: "design/wiki/地理.md", content: "# 地理\n" },
+      action: "写入 design/wiki/地理.md",
+    });
+    expect(ctx.lastAsk?.pattern).toBe("design/wiki/地理.md");
+  });
+
+  test("不变量跑在弹窗**之前**——违反它时用户根本不会被问", async () => {
+    // 角色卡整篇写缺必有格：用户不该被问一件注定落不下去的事，所以 lastAsk 应当还是空的。
+    const ctx = makeCtx();
+    const r = await writeFile(ctx, {
+      via: "confirm",
+      op: { kind: "write", path: "design/characters/缺格的卡.md", content: "# 角色：缺格的卡\n" },
+      action: "写入",
+    });
+    expect(r.ok).toBe(false);
+    expect(ctx.lastAsk).toBeUndefined();
   });
 });
 

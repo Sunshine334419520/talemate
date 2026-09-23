@@ -1,0 +1,14 @@
+Delete a whole file — a design doc, a character card, a chapter.
+
+- `path` is project-relative: `design/<...>` or `chapters/<...>`.
+- **Look at where the name still appears before you delete it.** That reference check is shown to the
+  user together with the request. If the term is still mentioned elsewhere, decide whether those
+  places should be cleaned up too — and clean them yourself with `edit`, one place at a time. The
+  tool does not cascade: which references matter is a judgement about the story, not a rule.
+  Leaving a dangling reference is worse than the deletion itself.
+- `term` is what to look references up by. It defaults to the filename without its extension
+  (`characters/林晚.md` → `林晚`), which is right for cards and topic pages; pass it explicitly when
+  the filename is not the name the prose uses.
+- To remove only *part* of a file — a paragraph, one section — use `edit` instead: give the exact
+  text and an empty replacement. This tool is for the whole file.
+- Deleting asks the user first, and they see exactly what will be removed.

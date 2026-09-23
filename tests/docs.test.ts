@@ -19,7 +19,14 @@ const DOCS = join(ROOT, "docs");
 const STATUS_KEYS = ["**职责**", "**读者**", "**对齐代码**"];
 
 /** 已删除的工具。docs/ 描述的是**当前状态**，不再提它们。 */
-const RETIRED_TOOLS = ["add-character", "update-character", "character-brief", "save-chapter"];
+const RETIRED_TOOLS = [
+  "add-character",
+  "update-character",
+  "character-brief",
+  "save-chapter",
+  "remove-character",
+  "remove-design-section",
+];
 
 async function docNames(): Promise<string[]> {
   return (await readdir(DOCS)).filter((n) => n.endsWith(".md")).sort();

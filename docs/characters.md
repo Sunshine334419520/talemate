@@ -2,7 +2,7 @@
 
 > **职责**：回答"角色卡长什么样、怎么维护、mate 在角色设计上做什么"。
 > **读者**：要改 `framework/characters.ts`、角色相关守卫，或定角色设计规范的人。
-> **对齐代码**：2026-09-19 · 必有格清单在 `framework/characters.ts` 的 `CHARACTER_FIELDS`
+> **对齐代码**：2026-09-23 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`
 > 相邻：`design-docs.md`（四层与两段式落盘）· `roadmap.md`（状态目录还没做）· `product.md`
 
 ## 一句话
@@ -40,7 +40,11 @@
 
 ### 硬约束：卡上只许 `###`
 
-`proposal.ownItems` 取**最浅**标题层。卡上冒出任意一个 `##`，全部 `###` 就都从提案审阅里消失——用户没看过的字节直接落盘。所以 `propose-design` 与 `append-design` 都对角色卡拒收 `##`（`cardHeadingError`）。
+`proposal.ownItems` 取**最浅**标题层。卡上冒出任意一个 `##`，全部 `###` 就都从提案审阅里消失——用户没看过的字节直接落盘。
+
+所以**任何**往卡上写 `##` 的动作都拒：这条落在 `invariants.ts` 的 `characters.no-shallow-heading`，
+判的是**算出来的结果**——于是 `write` / `edit` / `append` / `propose-design` 没有哪条绕得过
+（从前它只挡在 `propose-design` 与 `append-design` 两处，`edit` 是敞的）。
 
 ## 好卡的标尺
 
@@ -58,22 +62,23 @@
 
 ## 卡的领域性全在"读与校验"一侧
 
-**角色卡没有任何专用写工具**（只有一个 `remove-character`）。创建与修改一律走 `propose-design` 带 `name:"characters/<名>.md"`——改某一格用 `section:"<格名>"`，**卡上的格就是 `###` 标题**。
+**角色卡一个专用工具都没有了。** 建卡与整篇重写走 `propose-design` 带 `name:"characters/<名>.md"`；改一格走通用的 `edit`（锚点就是那一格的正文）；删卡走通用的 `delete`。
 
-它的"角色性"落在读与校验这一侧：
+它的"角色性"落在**读与校验**这一侧：
 
 | 机制 | 在哪 |
 |---|---|
 | 必有五格的清单（单一真相源） | `framework/characters.ts` 的 `CHARACTER_FIELDS` |
-| 骨架校验（整篇提案缺格即拒） | `design_tools.ts` 的 `cardSkeletonError` |
-| `##` 守卫 | `design_tools.ts` 的 `cardHeadingError` |
-| 只能删非必有格 | `design_tools.ts` 的 `cardRequiredSectionError` |
+| 骨架校验（整篇写缺格即拒） | `framework/invariants.ts` 的 `characters.skeleton-complete` |
+| `##` 守卫 | `framework/invariants.ts` 的 `characters.no-shallow-heading` |
+| 必有格只能清空、不能整格消失 | `framework/invariants.ts` 的 `characters.required-kept` |
 | 整篇重写告警 | `design_tools.ts` 的 `cardRewriteWarn` |
 | 名单行 | `framework/anchor.ts` 的 `characterLine` |
 
-**为什么收敛成一条路**：先前角色卡有三个写入口并存（静默写盘 / confirm 对话框 / 两段式提案），让同一个产物有了**三种"用户看过了"的语义**，同一个骨架不变量还实现了两遍。现在只剩 `propose-design` 一条：**用户看过的字节才落盘**。
+三条不变量都判**算出来的结果**，所以 `edit` / `append` / `delete` 哪条路都绕不过——从前它们只对着
+`propose-design` 的提案文本跑，另外几条路是敞的。
 
-**骨架校验与内容判定是两个口径**：`cardSkeletonError` 只看**标题在不在**（写个空标题能过）；内容空不空由名单行的「待补」判（`pendingRequiredLabels`）。
+**骨架校验与内容判定是两个口径**：`characters.skeleton-complete` 只看**标题在不在**（写个空标题能过）；内容空不空由名单行的「待补」判（`pendingRequiredLabels`）。
 
 ## 名单行
 

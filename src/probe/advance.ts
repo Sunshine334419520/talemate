@@ -12,7 +12,7 @@
  * ## 判定（只认硬证据，不读文本）
  *
  * 窗口 = **最后一次落盘之后**（哪一轮 `design/` 多了层文件，以真落盘为准，不猜）。
- *   advanced = 从那一轮起对角色层动手了：`design-spec(characters)` / 提案到 `characters/` / `remove-character`
+ *   advanced = 从那一轮起对角色层动手了：`design-spec(characters)` / 任何写 `characters/` 的工具
  *   stopped  = 落完盘没对角色层动手（把球交回用户）
  *   diverged = 一层都没落上盘（场景没复现，先查探针而不是查产品）
  *
@@ -89,12 +89,17 @@ const P_DESIGNSPEC_PAIR: Patch = {
  * `--check` 直接抛。角色层现在的写入靠 `propose-design`，它的描述不列格。
  */
 
-/** 角色专用工具在不在手边。只剩 remove-character 一个（add/update-character 已于 2026-09-19 删除）。 */
-const P_NO_CHAR_TOOLS: Patch = {
-  kind: "dropTools",
-  note: "mate 白名单去掉 remove-character",
-  names: ["remove-character"],
-};
+/**
+ * 曾经的 `P_NO_CHAR_TOOLS`（把 `remove-character` 从白名单去掉，看角色层动不动）**已随那一系列工具
+ * 一起删除**：`add/update-character` 2026-09-19 删，`remove-character` 2026-09-23 删——删一份文档
+ * 现在就是通用的 `delete`，**再也没有"角色专用工具"这个东西**，那个变体没有靶子了。
+ *
+ * 留着的话 `--check` 抓不到（它只校验描述替换串命不命中，**不校验 `dropTools` 的名字**），
+ * 变体会静默退化成 baseline。所以这里删掉而不是改个名。
+ *
+ * 同理 `all-off`（原本是"这几个全关"）也随之退化成与 `designspec-no-pair` 重复，一并删除。
+ * **该补什么变体是这个实验的设计决定，不由代码单方面决定**——见 `docs/roadmap.md`。
+ */
 
 /**
  * **加上**一个交回契约（而不是删掉什么）：落盘的结果里写明"这一层到此为止"。
@@ -111,12 +116,6 @@ const VARIANTS: Variant[] = [
   { id: "baseline", note: "原样 = 当前产品（persona 那条规则已在里面，所以它就是新基线）", patches: [] },
   { id: "apply-handback", note: "【加】落盘结果里补交回契约", patches: [P_APPLY_HANDBACK] },
   { id: "designspec-no-pair", note: "去掉「核心设定与世界观」那句暗示", patches: [P_DESIGNSPEC_PAIR] },
-  { id: "no-char-tools", note: "mate 没有角色工具（现在只剩 remove-character）", patches: [P_NO_CHAR_TOOLS] },
-  {
-    id: "all-off",
-    note: "这两个全关（仍 advanced → 原因不在这几处工具/描述里）",
-    patches: [P_DESIGNSPEC_PAIR, P_NO_CHAR_TOOLS],
-  },
 ];
 
 // ─────────────────────────── 消融的落地 ───────────────────────────
@@ -210,17 +209,17 @@ interface RunResult {
 }
 
 /**
- * 角色专用工具——只剩 remove-character（add/update-character 已于 2026-09-19 删除）。
- * 「对角色层动手」现在主要表现为 `design-spec(characters)` 与打到 `characters/` 的提案，
- * 见下面 isCharTool 的另两个分支——它们才是这条实验里真正的主信号。
+ * 会落到 `characters/` 上的工具。**按"这个工具能不能写那个目录"列，不按"这个工具是不是角色专用"**——
+ * 后者已经不存在了（角色专用工具全删，删卡就是通用的 `delete`）。
+ *
+ * `write` / `edit` 是新增的两条主路径，从前没有，"对角色层动手"漏了它们就漏掉大半信号。
  */
-const CHAR_TOOLS = new Set(["remove-character"]);
+const CHAR_WRITERS = new Set(["write", "edit", "delete", "propose-design", "apply-design"]);
 
-/** 硬证据：真的对角色层动手了（加载它的规范 / 建卡 / 提案到 characters/）。 */
+/** 硬证据：真的对角色层动手了（加载它的规范 / 建卡改卡删卡 / 写它的目录）。 */
 const isCharTool = (t: { name: string; input: string }): boolean =>
   (t.name === "design-spec" && t.input.includes("characters")) ||
-  CHAR_TOOLS.has(t.name) ||
-  ((t.name === "propose-design" || t.name === "apply-design") && t.input.includes("characters/"));
+  (CHAR_WRITERS.has(t.name) && t.input.includes("characters/"));
 
 const charAction = (log: TurnLog): boolean => log.tools.some(isCharTool);
 

@@ -25,7 +25,7 @@
 
 | permission | 覆盖哪些工具 | pattern 是什么 |
 |---|---|---|
-| **`edit`** | `write` · `edit` · `apply-design` · `append-design` · `remove-design-section` · `remove-character` | 目标文件在 `design/` 或 `chapters/` 下的相对路径（**项目相对**，与工具入参同一口径） |
+| **`edit`** | `write` · `edit` · `delete` · `apply-design` · `append-design` | 目标文件在 `design/` 或 `chapters/` 下的相对路径（**项目相对**，与工具入参同一口径） |
 | **`delegate`** | `task` | 子代理 id |
 | **`extern`** | `webfetch` · `websearch` | URL / 查询词 |
 | **`question`** | `ask-user` · `confirm` | `*`（这两个工具没有"对什么做"） |

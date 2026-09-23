@@ -190,9 +190,13 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
       pattern: checkDeny,
       always: checkDeny,
       summary: tryAction,
-      detail: [req.note, next.action === "remove" ? `将删除 ${checkDeny}。` : undefined, "", diff]
-        .filter((s) => s !== undefined)
-        .join("\n"),
+      // 材料分两段，空行隔开：**先影响面，后这次具体动什么**。顺序反过来，用户得先读完 diff
+      // 才知道该拿什么去判断。没有前一段时不留空行（空串会被 filter 掉，不是塞个 "" 占位）。
+      detail: [
+        ...(req.note ? [req.note] : []),
+        ...(next.action === "remove" ? [`将删除 ${checkDeny}。`] : []),
+        diff,
+      ].join("\n\n"),
     });
     if (verdict === "deny") {
       return { ok: false, reason: "denied", output: `当前模式不允许改文件。要改就先离开这个模式。` };
