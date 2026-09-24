@@ -36,7 +36,7 @@ const chaptersAbs = (name: string) => join(projectPaths(HOME, pid).chapters, nam
 type TestCtx = ToolContext & {
   setAsk(v: "allow" | "reject" | "deny"): void;
   pending: Map<string, PendingProposal>;
-  /** 最近一次弹窗的请求——用来断言"摆给用户做判断的材料"里到底有什么 */
+  /** 最近一次弹窗的请求——用来断言"给用户做判断的材料"里到底有什么 */
   lastAsk?: PermissionRequest;
 };
 
@@ -341,7 +341,7 @@ describe("write_ops · 落提案（三向）", () => {
   });
 });
 
-describe("write_ops · 摆给用户的材料", () => {
+describe("write_ops · 给用户的材料", () => {
   test("note（引用检查等）进 confirm，且排在 diff **之前**", async () => {
     // 先看影响面、再看这次具体动什么——顺序反过来，用户得先读完 diff 才知道该拿什么去判断。
     await writeDoc(pid, "design/note-a.md", "# X\n\n## 甲\n内容\n");

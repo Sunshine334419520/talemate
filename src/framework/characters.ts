@@ -189,7 +189,7 @@ const TAIL_LIMIT = 5;
  * 目录要廉价，正文才昂贵；这一行是目录那一半。
  *
  * 住在 `characters.ts` 而不是索引那一侧：它拼的是**卡**的三个领域事实（身份 / 必有齐没齐 / 自由长尾），
- * 索引只负责把它摆进目录（见 `framework/summaries.ts` 的注册表）。
+ * 索引只负责把它放进目录（见 `framework/summaries.ts` 的注册表）。
  */
 export function characterLine(content: string): string {
   const identity = cardIdentity(content) ?? "（待定）";

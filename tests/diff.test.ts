@@ -87,7 +87,7 @@ describe("diff · 渲染", () => {
     expect(out).toContain("跳过 10 行");
   });
 
-  test("没有改动时不摆一屏上下文，直接说无改动", () => {
+  test("没有改动时不铺一屏上下文，直接说无改动", () => {
     expect(renderDiff(diffLines(text("甲"), text("甲")))).toBe("（无改动）");
   });
 });

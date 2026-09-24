@@ -53,10 +53,10 @@ function resolveDoc(path: unknown): { path: string } | { error: string } {
 }
 
 /**
- * 整篇提案打到**已存在**的角色卡上时给用户的告警（不阻断，只摆在提案前面）。
+ * 整篇提案打到**已存在**的角色卡上时给用户的告警（不阻断，只放在提案前面）。
  *
  * 这是 `add-character` 那条查重逻辑的替代品：从前重复建卡会被工具直接拒绝，现在"创建"与
- * "重写"是同一条通道，只能靠把后果摆出来区分。提案渲染只列**新**内容——不显式说一句，
+ * "重写"是同一条通道，只能靠把后果列出来区分。提案渲染只列**新**内容——不显式说一句，
  * 用户看不出来旧卡上哪些小节会被抹掉。
  */
 function cardRewriteWarn(current: string | undefined): string | undefined {
@@ -72,7 +72,7 @@ function cardRewriteWarn(current: string | undefined): string | undefined {
  * propose-design：把一版**整篇**结论交给用户审阅——不写盘，并把本回合交给用户（halt）。
  *
  * **提案只有整篇一种形态。** 局部修改走二向的 `edit`（用户看 diff 就够，不必读一遍全文）；
- * 想让用户细看的那一版，哪怕只动了一格，也整篇摆出来——渲染里的 `★本版改动` 会指出动过哪几格。
+ * 想让用户细看的那一版，哪怕只动了一格，也整篇提出来——渲染里的 `★本版改动` 会指出动过哪几格。
  * 这一刀把"提案"和"改一格"彻底分开，两边的审查材料也就不再互相将就。
  */
 export const proposeDesignTool: RegisteredTool<{ path: string; content: string }> = defineTool<{
@@ -81,7 +81,7 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
 }>({
   id: "propose-design",
   description: P("propose-design"),
-  halt: true, // 结论摆出来了，接下来该用户说话——本回合到此为止（不靠模型自觉）
+  halt: true, // 结论提出来了，接下来该用户说话——本回合到此为止（不靠模型自觉）
   input: {
     type: "object",
     properties: {
@@ -101,14 +101,14 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
   async execute(args, ctx) {
     // 本工具带 `halt`，而 runner 对**任何 return** 都置 halt（见 `tool/runner.ts`）——所以下面每条
     // 自愈路径都必须 `throw`：return 等于把回合停在一个本可自愈的错误上。被拒时用户看到的还不是
-    // 一条错误，而是**回合莫名结束**（提案没摆出来，CLI 的提案块也不会出现）。
+    // 一条错误，而是**回合莫名结束**（提案没交出去，CLI 的提案块也不会出现）。
     // 钉这条语义的是 `tests/framework.test.ts` 的 "tool runner · halt"。
     const target = resolveDoc(args.path);
     if ("error" in target) throw new Error(target.error);
     const path = target.path;
     // 三向只有草稿模式那一条通道（见 agent/modes.ts）。不在里面就没有"提意见"这一路，
-    // 摆出来也只是个二向的弹窗——不如让模型先把模式切过去。
-    if (ctx.getMode() !== DRAFT_MODE) throw new Error(notInDraft("把这一版整篇草稿摆出来"));
+    // 交出去也只是个二向的弹窗——不如让模型先把模式切过去。
+    if (ctx.getMode() !== DRAFT_MODE) throw new Error(notInDraft("把这一版整篇草稿提出来"));
     const content = (args.content ?? "").trim();
     if (!content) {
       throw new Error(
@@ -125,7 +125,7 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
     if (violation) throw new Error(violation);
     if (!reviewable(path, content)) {
       throw new Error(
-        "这版草稿没法逐格审阅（正文里没有小节标题，或没按该层规范的小节组织），摆给用户会是一页空白却照样落盘。" +
+        "这版草稿没法逐格审阅（正文里没有小节标题，或没按该层规范的小节组织），用户看到的会是一页空白却照样落盘。" +
           "请每格一个 `## 标题`（先调 design-spec 拿这一层的形状）。",
       );
     }

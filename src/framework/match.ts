@@ -291,7 +291,7 @@ const LADDER: { level: MatchLevel; replacer: Replacer }[] = [
 // **没有"去公共缩进"那一级**（opencode 的 IndentationFlexibleReplacer）。
 // 它被 line-trimmed 完全覆盖：两级都要求行数相同，而"整段去掉同一个前缀后逐行相等"
 // 蕴含"逐行 trim 后相等"——设 dedent(block) === dedent(find) === S，则 block[j] 要么就是 S_j、
-// 要么是"空白前缀 + S_j"，两种的 trim 都等于 S_j.trim()。既然它永远轮不到，摆着只会让
+// 要么是"空白前缀 + S_j"，两种的 trim 都等于 S_j.trim()。既然它永远轮不到，留着只会让
 // 阶梯顺序这一层语义变得不可信（读的人会以为它拦住了什么）。
 
 /**

@@ -51,7 +51,7 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
       if (!plan?.approved) {
         return {
           output:
-            "还没到写正文的时候：没有一份用户已拍板的节拍。先把这一章的节拍写出来，用 propose-plan 摆给" +
+            "还没到写正文的时候：没有一份用户已拍板的节拍。先把这一章的节拍写出来，用 propose-plan 交给" +
             "用户看、等他回话；他认可之后再调 task(writer)，把切片和节拍一起放进 prompt。",
         };
       }
@@ -148,13 +148,13 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
 });
 
 /**
- * propose-plan：把**这一章**的节拍摆给用户拍板，并**结束本回合**等他回话。
+ * propose-plan：把**这一章**的节拍交给用户拍板，并**结束本回合**等他回话。
  *
  * **与 propose-design 的区别：没有 apply 那一半。** 节拍不落盘——它批准的是**动作**（去写正文），
  * 不是一份文档。所以这里不登记提案、不留 base 快照、不判"同意"：用户说"没问题"之后，mate 直接
- * 带着这份节拍去 `task(writer)`。用户要改 → 改完再摆一次，这是个循环。
+ * 带着这份节拍去 `task(writer)`。用户要改 → 改完再交一次，这是个循环。
  *
- * `halt` 是它存在的全部理由：光靠纪律，mate 可能拿着没批准的节拍直接叫 writer。而"摆出来就停"
+ * `halt` 是它存在的全部理由：光靠纪律，mate 可能拿着没批准的节拍直接叫 writer。而"交出去就停"
  * 正是草稿模式的出口干的事——这里不要阶段状态机（`design-docs.md` 明确否决过），只要一个会停的工具。
  *
  * **要先进草稿模式**：三向（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就没有"提意见"这一路。
@@ -165,7 +165,7 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
 }>({
   id: "propose-plan",
   description: P("propose-plan"),
-  halt: true, // 计划摆出来了，接下来该用户拍板——不靠模型自觉
+  halt: true, // 计划交出去了，接下来该用户拍板——不靠模型自觉
   input: {
     type: "object",
     properties: {
@@ -192,7 +192,7 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
       );
     }
     if (ctx.getMode() !== DRAFT_MODE) {
-      throw new Error(notInDraft("把这一章的节拍摆出来"));
+      throw new Error(notInDraft("把这一章的节拍提出来"));
     }
     // 登记成"待执行的节拍"。**只在会话内存里，不落盘**——用户回话后由 harness 置 approved，
     // task(writer) 靠它判断"这一章用户拍过板了没有"。改了内容重新提案即覆盖，approved 归零。
@@ -208,8 +208,8 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
     // 提意见是在模式里打转，退出去就等于把用户关在门外——他得重新进一次才能接着改。
     return {
       output:
-        "节拍已摆给用户（尚未写任何正文）。本回合已结束，等用户回话：认可 → 带这份节拍 task(writer)；" +
-        "要改 → 改完再 propose-plan 一次（改了内容必须重新摆）。",
+        "节拍已交给用户（尚未写任何正文）。本回合已结束，等用户回话：认可 → 带这份节拍 task(writer)；" +
+        "要改 → 改完再 propose-plan 一次（改了内容必须重新提交）。",
       metadata: { chapter: args.chapter },
     };
   },
@@ -221,7 +221,7 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
  */
 export function notInDraft(what: string): string {
   return (
-    `还没进草稿模式——三向审阅（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就摆不出东西。` +
+    `还没进草稿模式——三向审阅（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就提不出东西。` +
     `请先 enter-draft，再${what}；用户接受或拒绝之后模式会自己退出。`
   );
 }
@@ -242,7 +242,7 @@ export const enterDraftTool: RegisteredTool<Record<string, never>> = defineTool<
     ctx.setMode(DRAFT_MODE);
     return {
       output:
-        "已进入草稿模式（落盘与委派都不可用）。把要审的东西准备好，用 propose-design 或 propose-plan 摆给用户；" +
+        "已进入草稿模式（落盘与委派都不可用）。把要审的东西准备好，用 propose-design 或 propose-plan 交给用户；" +
         "他接受或拒绝之后模式自己退出，他提意见就留在模式里接着改。",
     };
   },

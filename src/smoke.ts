@@ -53,7 +53,7 @@ try {
   const s2write = await openSession({ projectId: meta.id, model, io });
   // 三向只有草稿模式那一条通道，所以先进模式再提案（propose-plan 的前置会拦）。
   process.env.TALEMATE_MOCK_TOOL = "enter-draft";
-  await s2write.post("我要写第 1 章，先摆个节拍。");
+  await s2write.post("我要写第 1 章，先给我一份节拍。");
   process.env.TALEMATE_MOCK_TOOL = "propose-plan";
   await s2write.post("帮我写第 1 章：主角在都市醒来。");
   const pendingPlan = s2write.pending.get(PLAN_KEY);

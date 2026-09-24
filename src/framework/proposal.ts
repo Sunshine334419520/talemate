@@ -81,7 +81,7 @@ export function itemsOf(name: string, content: string): ProposalItem[] {
 const WHOLE_DOC_HEADING = "全文";
 
 /**
- * 一份草稿里**没有落进任何格**的字节——它们照样写进文件，所以照样得摆给用户看。
+ * 一份草稿里**没有落进任何格**的字节——它们照样写进文件，所以照样得给用户看。
  *
  * 典型是文档标题行和 `##` 之前的导语。但不能简单写成"首个 `##` 之前那一段"：markdown 的区块
  * 语义是"到下一个 level ≤ 它的 heading 之前"（见 `markdown.ts`），所以正文中间冒出一个 `#`
@@ -128,7 +128,7 @@ function reviewOf(name: string, content: string): Review {
 /**
  * 这份草稿能不能审阅。不能 = 用户看到一页空白（或一页全「待定」）却照样落盘——最难发现的那类坑。
  *
- * 判据是"**字节摆得到用户眼前吗**"，不是"分不分格"：
+ * 判据是"**字节能不能到用户眼前**"，不是"分不分格"：
  *   - 有规范登记的层：内容得按规范的小节组织（否则几格全「待定」，整段散文却原样落盘）
  *   - 无规范登记的文档：整篇散文也放行——它会被 `reviewItems` 兜底成"整篇一格"，照样看得见
  */
@@ -178,7 +178,7 @@ export interface ProposalView {
  * 头部一行定位、逐格编号、待定格点出来问一句、收尾一行写清楚"怎么回话"。
  *
  * 提案**只有整篇一种**：局部修改走二向的 `edit`（用户看 diff，不看提案），所以这里没有
- * "只改一格"的分支。想审阅的改动哪怕只涉及一格，也整篇摆出来——渲染里的 `★本版改动`
+ * "只改一格"的分支。想审阅的改动哪怕只涉及一格，也整篇提出来——渲染里的 `★本版改动`
  * 会指出动过哪几格，用户一眼看得到。
  */
 export function renderProposal(v: ProposalView): string {
@@ -203,7 +203,7 @@ export function renderProposal(v: ProposalView): string {
   out.push(head);
   if (v.previous !== undefined) out.push("已替换上一版提案（标★的是本版改动过的格）。");
   out.push("");
-  // 不在格里的字节先摆：它们在文档里的位置也在格之前
+  // 不在格里的字节先放：它们在文档里的位置也在格之前
   if (review.loose) {
     out.push(`不在任何小节里${looseChanged ? "　★本版改动" : ""}（没有格子，但同样会原样写入）：`);
     out.push(...indentLines(review.loose));

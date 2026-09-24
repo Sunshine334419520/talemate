@@ -2,7 +2,7 @@
 
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
-> **对齐代码**：2026-09-23 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
+> **对齐代码**：2026-09-24 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
 > 相邻：`agents.md`（角色与工具名册）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
@@ -182,6 +182,7 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 | 内置默认 | 见上 | 写盘/委派/联网都要问；提问放行 |
 | **agent `mate`** | 无覆盖 | 同默认 |
 | **agent `writer`** | `question: deny *` · `delegate: deny *`（默认） | 不能烦用户、不能链式 spawn |
+| **agent `researcher`** | `question: deny *` · `delegate: deny *` · `edit: deny *`（**类别拒**） | 同上，外加**只读**：落盘类工具整个不在 schema 里 |
 | **模式 `accept-edits`** | `edit: allow` | **落盘不问**；委派与联网照问 |
 | **模式 `draft`** | `edit: deny *` · `delegate: deny *` | 只读：那些工具**不在 schema 里** |
 

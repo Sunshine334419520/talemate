@@ -9,6 +9,7 @@ prompts/
 ├── README.md                 本规范
 ├── mate.system.txt           mate(搭档) persona
 ├── writer.system.txt         writer subagent persona
+├── researcher.system.txt     researcher subagent persona
 ├── summarizer.system.txt     内部 hidden summarizer（compaction）
 ├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md「会话模式」）
 └── tools/<tool_id>.txt       每个工具的 description
@@ -63,12 +64,14 @@ prompts/
 3. **给调用方可操作的参数**（explore 的 thoroughness；talemate 的"prompt 要写全切片/要它返回什么"）。
 4. **说边界/何时不用**（照 opencode `task.txt` 的 "When NOT to use…"）。
 5. **陈述句、英文、短、无形容词堆砌**。
+6. **说清"何时不用我、那种情况去找谁"**——所有 subagent 的 description 会被拼进**同一份** `task` 目录，模型靠它们互相区分。只有一个 subagent 时这句可选，**两个以上就必需**：两份都写着 "Use this when…" 的 description，等于让模型在目录里瞎猜。
 
 **空 description 语义**：一个 subagent 不写/留空 description，会在 task 目录里显示为 `This subagent should only be called manually by the user.`——即"只能由人手动调用、不让模型自动委派"（照 opencode `registry.describeTask`）。
 
 **checklist（写完过一遍）**：
 - [ ] 英文；首句"它是什么"。
 - [ ] 有 "Use this when…" 且带**具体字面量/参数**。
+- [ ] **有"何时不用我"**——什么情况该去找谁（另一个 subagent / 你自己调哪个工具）。两个以上 subagent 时这条是硬要求，`tests/agents.test.ts` 守着它。
 - [ ] 说清边界（何时不用 / 要它返回给 mate 什么）。
 - [ ] 长度克制（≤ ~60 词），陈述句，不堆形容词。
 - [ ] 需要"只能手动调"的 subagent → 留空 description（而不是写一段"不让自动调"）。

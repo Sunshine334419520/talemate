@@ -91,7 +91,7 @@ derived」、角色名单现算、`design-docs.md` 的「绝不缓存旧设定�
 ## 章计划不在这里
 
 一节要写成几章，是**写到那儿才知道**的。所以每章写正文前，**mate 自己出这一章的节拍**，
-`propose-plan` 摆给用户拍板（带 `halt`，回合到此为止），认可后直接交给 writer。
+`propose-plan` 交给用户拍板（带 `halt`，回合到此为止），认可后直接交给 writer。
 
 **没有拍板过的节拍，`task(writer)` 会被拒绝**——门和执行工具同款，和 `apply-design` 是同一套机制。
 

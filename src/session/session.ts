@@ -152,7 +152,7 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
   });
   return [
     "<pending-proposal>",
-    "有一份东西已经摆给用户看过、但还没执行。执行必须等用户同意——同意由 harness 按他的回话判定，你自己说了不算。",
+    "有一份东西已经给用户看过、但还没执行。执行必须等用户同意——同意由 harness 按他的回话判定，你自己说了不算。",
     ...lines,
     "</pending-proposal>",
   ].join("\n");
@@ -248,7 +248,7 @@ export class Session {
    * 会话只进一次模式，里面可以来回提很多版。退出的动作归这里（harness），不归 `propose-*`：
    * 只有 harness 知道这轮回话属于哪一种。
    *
-   * 只认最近提交的那一份：halt 保证一回合只摆一份，更早的提案不能被顺带点亮。
+   * 只认最近提交的那一份：halt 保证一回合只提交一份，更早的提案不能被顺带点亮。
    */
   private markPendingApproval(input: string): void {
     if (!this.pending.size) return;

@@ -89,7 +89,7 @@ export async function readProjectRules(projectId: string): Promise<string> {
  * 按**项目相对路径**写/覆盖一份文档；返回完整路径。
  *
  * **生产里没有调用方**——改文件只能走 `framework/write_ops.ts` 那条唯一路径（类型上 `ToolContext`
- * 只有一个写口）。留在这里是因为**测试要播种字节**：造夹具得能绕过权限弹窗与 CAS 直接把文件摆好，
+ * 只有一个写口）。留在这里是因为**测试要播种字节**：造夹具得能绕过权限弹窗与 CAS 直接把文件放好，
  * 否则每个用例都要先演一遍完整落盘流程。别在 `src/` 里用它。
  *
  * 它只挑得出 `design/` 与 `chapters/` 两个根之下的路径——与 `corpus.DOC_ROOTS`、`write_ops.WRITE_ROOTS`

@@ -191,7 +191,7 @@ export interface ToolDef<Args = unknown> {
    */
   permission?: PermissionName;
   /**
-   * 该工具**成功后结束本回合**，把控制权交回用户（如 propose-design：结论摆出来了，该用户说话了）。
+   * 该工具**成功后结束本回合**，把控制权交回用户（如 propose-design：结论提出来了，该用户说话了）。
    * 只在 state==="completed" 时生效——校验失败必须留给模型同轮自纠，否则循环会死在一个本可自愈的错误上。
    */
   halt?: boolean;

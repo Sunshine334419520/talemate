@@ -7,6 +7,8 @@
  *   agent 是搭档——两者不能共用一个头衔）。
  * - writer = subagent，只能被 task 委派；"何时派"写在它的 description，
  *   由 subagentCatalog() 自动拼进 task 工具目录（照 opencode describeTask）。
+ * - researcher = subagent，同上。**只读 + 只联网**（`edit` 是类别拒）——它考据外部世界，
+ *   产出入带出处的事实，落盘仍归 mate。
  * - summarizer = hidden 内部 agent（compaction 用）。
  * - Agent 是数据：talemate.json 的 agents.<id> 可覆盖（model/system/steps…）。
  * - permissions：`tools` 是**广告**（模型看得到哪些 schema），`permission` 才是**边界**（见
@@ -18,6 +20,7 @@ import { readPrompt } from "../prompts";
 // persona 放角色壳（定语气）与必要的编排残差；机制/方法归数据与工具，见 prompts/README.md 归属纪律。
 const MATE_SYSTEM = readPrompt("mate.system");
 const WRITER_SYSTEM = readPrompt("writer.system");
+const RESEARCHER_SYSTEM = readPrompt("researcher.system");
 const SUMMARIZER_SYSTEM = readPrompt("summarizer.system");
 
 const DEFAULT_AGENTS: AgentDef[] = [
@@ -54,7 +57,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
     name: "写手",
     description:
       "The prose writer. Writes one chapter's prose strictly from the provided setting slices + beat plan.\n" +
-      "Use this when the user asks for a chapter's prose AND you hold a beat plan for that chapter the user has already approved via propose-plan; if there is no beat plan yet, write it yourself and propose-plan it first. It runs in an isolated context to focus on the draft; you (the writing partner) review and approve the piece before it lands in chapters/.",
+      "Use this when the user asks for a chapter's prose AND you hold a beat plan for that chapter the user has already approved via propose-plan; if there is no beat plan yet, write it yourself and propose-plan it first. It runs in an isolated context to focus on the draft; you (the writing partner) review and approve the piece before it lands in chapters/.\n" +
+      "Do not use it for anything but prose: a real-world fact goes to the researcher, and a design call belongs to the user.",
     mode: "subagent",
     tools: ["read", "list", "skill", "write"],
     permission: {
@@ -71,6 +75,26 @@ const DEFAULT_AGENTS: AgentDef[] = [
       edit: { "design/*": "deny" },
     },
     system: WRITER_SYSTEM,
+  },
+  {
+    id: "researcher",
+    name: "考据",
+    description:
+      "The fact-checker. Researches the real world and returns findings with their sources — how a period's office or tax really worked, what a thing was called, how far a weapon reached.\n" +
+      "Use this when the novel needs a fact you must not assert from memory and settling it will take several searches and reads: it returns the conclusion and its sources, not the pages it read to get there. For a fact one lookup settles, call webfetch yourself instead. It reads the project but never writes it — you decide what lands.",
+    mode: "subagent",
+    tools: ["read", "list", "search", "webfetch", "websearch"],
+    permission: {
+      // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
+      // 也不能委派（防链式 spawn）。
+      question: "deny",
+      delegate: "deny",
+      // **只读，而且是类别拒**——`edit` 上的 `"*"` deny 让 write / edit / delete / apply-design
+      // 整个从 schema 里消失（不是"看得见但会被拒"）。研究者一个字节都动不了：
+      // 落盘由 mate 做，它只提供材料，不决定什么进书。
+      edit: "deny",
+    },
+    system: RESEARCHER_SYSTEM,
   },
   {
     id: "summarizer",
@@ -134,4 +158,4 @@ export class AgentRegistry {
   }
 }
 
-export { DEFAULT_AGENTS, MATE_SYSTEM, WRITER_SYSTEM, SUMMARIZER_SYSTEM };
+export { DEFAULT_AGENTS, MATE_SYSTEM, WRITER_SYSTEM, RESEARCHER_SYSTEM, SUMMARIZER_SYSTEM };

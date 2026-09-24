@@ -435,7 +435,7 @@ function makeCtx(
  * 已经进了**草稿模式**的 ctx——提案类用例的起点。
  *
  * 三向（接受 / 拒绝 / 提意见）只有草稿模式那一条通道：不在里面 `propose-*` 会回一句自愈文案
- * 而不是摆提案。所以凡是要走"提案 → 回话 → 落盘"的用例，都得先站到这个模式里。
+ * 而不是提交提案。所以凡是要走"提案 → 回话 → 落盘"的用例，都得先站到这个模式里。
  */
 function makeDraftCtx(projectId: string, ...rulesets: Ruleset[]) {
   const ctx = makeCtx(projectId, ...rulesets);
@@ -711,7 +711,7 @@ const DOC = "design/wiki/test-proposal.md";
 const DOC2 = "design/wiki/test-guard.md";
 
 describe("design 写入：提案 → 回话 → 落盘", () => {
-  test("propose-design 只摆提案、不写盘，并声明 halt", async () => {
+  test("propose-design 只交提案、不写盘，并声明 halt", async () => {
     expect(proposeDesignTool.halt).toBe(true);
     expect(applyDesignTool.halt).toBeUndefined();
 
@@ -787,7 +787,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
 
   test("守卫：无规范登记的散文放行（兜底成整篇一格），有规范登记的散文仍被拒", async () => {
     const ctx = makeDraftCtx(pid);
-    // wiki 专题页 / 序列纲这类：整篇散文是正当形状，摆成"整篇一格"用户照样看得到字节
+    // wiki 专题页 / 序列纲这类：整篇散文是正当形状，当成"整篇一格"用户照样看得到字节
     const flat = await proposeDesignTool.execute({ path: "design/wiki/x.md", content: "整段散文，一个标题都没有。" }, ctx as never);
     expect(flat.output).toContain("提案已交给用户审阅");
 
@@ -885,14 +885,14 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
 describe("propose-plan · 写正文前的门", () => {
   const BEATS = "上岛第一晚。\n\n入夜前先把七个人点一遍，谁跟谁不熟要露出来。\n\n钩子：退路断在谁也没看见的时候。";
 
-  test("摆出节拍、halt、且不写任何文件", async () => {
+  test("交出节拍、halt、且不写任何文件", async () => {
     const ctx = makeDraftCtx(pid);
     const before = await enumerateDocs(pid, "design/");
 
     const r = await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
 
-    expect(proposePlanTool.halt).toBe(true); // 门靠它：摆出来就停，不靠模型自觉
-    expect(r.output).toContain("节拍已摆给用户");
+    expect(proposePlanTool.halt).toBe(true); // 门靠它：交出去就停，不靠模型自觉
+    expect(r.output).toContain("节拍已交给用户");
     expect(ctx.shown[0]).toContain("──── 第 1 章 · 节拍 ────");
     expect(ctx.shown[0]).toContain("上岛第一晚。");
     expect(ctx.shown[0]).toContain("钩子：退路断在谁也没看见的时候。");
@@ -913,7 +913,7 @@ describe("propose-plan · 写正文前的门", () => {
   test("content 为空 → 抛错而不是 return（return 会被 runner 置 halt，把回合停在可自愈的错误上）", async () => {
     const ctx = makeDraftCtx(pid);
     await expect(proposePlanTool.execute({ content: "   " }, ctx as never)).rejects.toThrow("缺少 content");
-    expect(ctx.shown.length).toBe(0); // 什么都没摆
+    expect(ctx.shown.length).toBe(0); // 什么都没交出去
   });
 
   test("task(writer) 的硬门：没有拍板过的节拍就不放行，且文案能自愈", async () => {
@@ -923,7 +923,7 @@ describe("propose-plan · 写正文前的门", () => {
     expect(blocked.output).toContain("propose-plan"); // 自愈：告诉它下一步调什么
   });
 
-  test("摆过但用户还没回话 → 仍然不放行（approved 由 harness 置，模型自述无效）", async () => {
+  test("交过但用户还没回话 → 仍然不放行（approved 由 harness 置，模型自述无效）", async () => {
     const ctx = makeDraftCtx(pid);
     await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
     const blocked = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
@@ -940,7 +940,7 @@ describe("propose-plan · 写正文前的门", () => {
     expect(ctx.pending.has(PLAN_KEY)).toBe(false); // 写完了，批准也一并作废
 
     const again = await taskTool.execute({ agent: "writer", prompt: "再写一遍" }, ctx as never);
-    expect(again.output).toContain("没有一份用户已拍板的节拍"); // 下一章要重新摆、重新拍板
+    expect(again.output).toContain("没有一份用户已拍板的节拍"); // 下一章要重新交、重新拍板
   });
 
   test("待办注记能说清是哪一章的节拍（压缩之后靠它，不靠消息历史）", async () => {
@@ -979,7 +979,7 @@ describe("会话模式 · draft", () => {
     expect(ctx.pending.has(PLAN_KEY)).toBe(true); // 节拍已登记，等用户回话
   });
 
-  test("不在草稿模式就摆不了提案——两个 propose 都拒，并指路 enter-draft", async () => {
+  test("不在草稿模式就交不了提案——两个 propose 都拒，并指路 enter-draft", async () => {
     // **拒是 throw 而不是 return**：两个工具都带 halt，return 会被 runner 置 halt，把回合停在
     // 这个本可自愈的错误上（模型还没来得及照自愈文案补 enter-draft，回合就没了）。
     const ctx = makeCtx(pid);
@@ -1254,7 +1254,7 @@ describe("tool runner · halt", () => {
   });
 
   // 上面那条用手写工具钉语义，这条钉**真实工具**照它做了——提案被拒时回合必须留着，
-  // 模型才能照自愈文案补上 enter-draft 再摆一次。
+  // 模型才能照自愈文案补上 enter-draft 再交一次。
   test("提案被拒不停轮：不在草稿模式调 propose-design → error 且不 halt", async () => {
     const reg = new ToolRegistry();
     reg.register(proposeDesignTool);

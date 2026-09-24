@@ -45,7 +45,7 @@ const core = [
 ].join("\n");
 
 /**
- * 整篇散文、只有 H1——序列纲的形状。它**不该被逼着分格**，但字节必须摆得出来：
+ * 整篇散文、只有 H1——序列纲的形状。它**不该被逼着分格**，但字节必须拿得出来：
  * 从前这种草稿被 reviewable 直接拒收，理由是"渲染成 0 格 = 用户看到空白页"。
  * 现在改成兜底成"整篇一格"，拒绝的理由就没了。
  */
@@ -232,7 +232,7 @@ describe("renderProposal", () => {
     expect(text).toContain("第 2、3、4、5 格还没定"); // 只有基本档案填了，其余四格是（待定）
   });
 
-  test("序列纲（规范说「不分格」）→ 整篇一格摆出来，要落盘的字节一字不少", () => {
+  test("序列纲（规范说「不分格」）→ 整篇一格交出来，要落盘的字节一字不少", () => {
     const text = renderProposal({ name: "design/outline/vol_2/s2.md", content: prose });
 
     expect(text).toContain("提案 · 序列 2 · 夜宴"); // 标签取文档自己的 H1
@@ -253,7 +253,7 @@ describe("renderProposal", () => {
     expect(unseenLines(text, vol)).toEqual([]);
   });
 
-  test("有规范登记的层：`##` 之外的字节（文档标题、导语）也摆出来——从前它们是隐形落盘", () => {
+  test("有规范登记的层：`##` 之外的字节（文档标题、导语）也交出来——从前它们是隐形落盘", () => {
     const text = renderProposal({ name: "design/core.md", content: core });
 
     expect(text).toContain("另有不在小节里的部分");

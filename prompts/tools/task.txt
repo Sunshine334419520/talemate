@@ -7,5 +7,8 @@ your prompt, and returns a final text or finished piece.
 Writing prose has a gate: task(writer) is refused until the user has approved this chapter's beat
 plan through propose-plan. Present the plan first; one approval covers one chapter.
 
-Use for focused, isolated work that should not clutter your context. The delegable agents
-and when to use each are listed below.
+Delegate when the work would flood you with material you will not reference again — reading around,
+trial and error, dead ends — and you need back only the conclusion. Do it yourself when it is a step
+or two, or when the work needs going back and forth with the user. Every delegation asks the user
+first, and the subagent sees nothing but the prompt you write for it. The delegable agents and when
+to use each are listed below.
