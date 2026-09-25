@@ -173,7 +173,7 @@ export interface PermissionRequest {
   always?: string;
   /** 弹给用户的标题 */
   summary: string;
-  /** 弹给用户**做判断的材料**（将写入的完整内容等）。opencode 在这里传 diff，我们传全文。 */
+  /** 弹给用户**做判断的材料**（改文件时是 diff，委派子代理时是 prompt 规模等）。 */
   detail?: string;
 }
 

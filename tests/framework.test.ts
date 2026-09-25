@@ -1038,7 +1038,7 @@ describe("权限 · 求值", () => {
     expect(evaluate("edit", "a.md", R({ edit: "allow" }), R({ edit: "ask" })).action).toBe("ask");
   });
 
-  test("deny 单调——不受顺序影响（我们和 opencode 的唯一分歧）", () => {
+  test("deny 单调——不受顺序影响", () => {
     expect(evaluate("edit", "a.md", R({ edit: "deny" }), R({ edit: "allow" })).action).toBe("deny");
     expect(evaluate("edit", "a.md", R({ edit: "allow" }), R({ edit: "deny" })).action).toBe("deny");
   });

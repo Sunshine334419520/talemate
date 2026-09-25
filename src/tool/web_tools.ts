@@ -49,7 +49,7 @@ async function fetchUrl(url: string, format: FetchFormat, timeoutSec?: number): 
       res = await fetch(url, {
         redirect: "follow",
         signal: ctrl.signal,
-        headers: { "User-Agent": "opencode", Accept: acceptFor(format) },
+        headers: { "User-Agent": "talemate", Accept: acceptFor(format) },
       });
     }
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);

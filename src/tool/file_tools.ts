@@ -6,8 +6,7 @@
  *   write  「这份文件整个是我的」——模型是作者，整篇给。旧文件不在场也能写（新建）。
  *   edit   「我在动它的一部分」——模型给锚点（原文片段）与替换文本，其余字节原样。
  *
- * 合并成一个工具就得靠"哪个参数给没给"来分辨，schema 对模型来说是含糊的；opencode 也是分开的，
- * 且它的 edit 明确拒绝在已存在的文件上用空锚点（"use write for a full-file replacement"）。
+ * 合并成一个工具就得靠"哪个参数给没给"来分辨，schema 对模型来说是含糊的。
  *
  * **两者都不自己落盘**：拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径。所以
  * 校验、权限、CAS、原子写、diff 全在那一处，这里只剩"语义 + 入参 + 成功文案"。
@@ -97,7 +96,7 @@ export const editTool: RegisteredTool<{ path: string; find: string; replace: str
     if (!r.ok) return { output: r.output };
     // 模糊命中要说出来：精确命中时模型给的原文与文件一字不差；不模糊时它可能差在缩进/引号上，
     // 而那意味着"模型以为改的那一段"未必就是"实际改的那一段"——所以**把真实命中回给它**，
-    // 让它自己核对（这也是 opencode 把 diff 回给模型的目的，只是这里给的是实际换掉的那段）。
+    // 让它自己核对——回给它的是**实际换掉的那段**，未必是它以为自己写的那段。
     const fuzzy = r.match !== undefined && r.match !== "exact";
     return {
       output: [
