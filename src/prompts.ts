@@ -1,6 +1,6 @@
 /**
  * 提示词加载：所有自带 prompt 放仓库根 prompts/*.txt（内容即文件，便于 diff/review）。
- * readPrompt("writer.system") → prompts/writer.system.txt。相对 import.meta.url 解析，不依赖 cwd。
+ * readPrompt("mate.system") → prompts/mate.system.txt。相对 import.meta.url 解析，不依赖 cwd。
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

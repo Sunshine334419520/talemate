@@ -3,7 +3,7 @@
  * 运行：bun test
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject, loadProjectMeta, removeDoc, writeDoc } from "../src/storage/project";
@@ -11,6 +11,7 @@ import { enumerateDocs, readDoc, scanDocs } from "../src/storage/corpus";
 import { getSection, listHeadings, removeSection } from "../src/framework/markdown";
 import { RESIDENT_DOCS } from "../src/framework/anchor";
 import { SPECS, renderSpec } from "../src/framework/design_spec";
+import { planAbs } from "../src/framework/plan";
 import { renderHits } from "../src/framework/search";
 import { buildResidentDesigns, buildIndex } from "../src/framework/anchor";
 import { applyDesignTool, proposeDesignTool } from "../src/tool/design_tools";
@@ -880,78 +881,99 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
 
 // ─── runner：halt 只在成功时置位 ───
 
-// ─── propose-plan：写正文前的那道门 ───
+// ─── propose-plan：规划工件 + 用户拍板 ───
 
-describe("propose-plan · 写正文前的门", () => {
-  const BEATS = "上岛第一晚。\n\n入夜前先把七个人点一遍，谁跟谁不熟要露出来。\n\n钩子：退路断在谁也没看见的时候。";
+describe("propose-plan · 规划工件与拍板", () => {
+  const PLAN = [
+    "意图：把岛上这七个人点一遍。",
+    "",
+    "产物（按序）：",
+    "  1. chapters/chapter_ch1_v1.md",
+    "",
+    "第 1 步要什么：",
+    "  节拍：上岛第一晚。退路断在谁也没看见的时候。",
+    "  需要的角色：七个人都露一面，谁跟谁不熟要显出来。",
+  ].join("\n");
 
-  test("交出节拍、halt、且不写任何文件", async () => {
-    const ctx = makeDraftCtx(pid);
+  test("交出规划、halt、落 .talemate/plans/、登记待拍板，且不碰作品目录", async () => {
+    const ctx = makeCtx(pid);
     const before = await enumerateDocs(pid, "design/");
 
-    const r = await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
+    const r = await proposePlanTool.execute({ chapter: 1, content: PLAN }, ctx as never);
 
     expect(proposePlanTool.halt).toBe(true); // 门靠它：交出去就停，不靠模型自觉
-    expect(r.output).toContain("节拍已交给用户");
-    expect(ctx.shown[0]).toContain("──── 第 1 章 · 节拍 ────");
+    expect(r.output).toContain("规划已交给用户");
+    expect(ctx.shown[0]).toContain("──── 第 1 章 · 规划 ────");
     expect(ctx.shown[0]).toContain("上岛第一晚。");
-    expect(ctx.shown[0]).toContain("钩子：退路断在谁也没看见的时候。");
-    expect(ctx.shown[0]).toContain("回复「没问题」就按这个写正文");
-    // 节拍不落盘——批准的是动作，不是文档
+    expect(ctx.shown[0]).toContain("意图：把岛上这七个人点一遍。");
+    expect(ctx.shown[0]).toContain("回复「没问题」就照这个写正文");
+
+    // **真的落盘了**（旧断言是"节拍不落盘"），落的是引擎工作区：`read` 那个读口看不见它，
+    // 语料也枚举不到它——规划不是作品的一份文档（见 framework/plan.ts 的文件头）。
+    const onDisk = await readFile(planAbs(pid, 1), "utf-8");
+    expect(onDisk).toContain("# 第 1 章规划");
+    expect(onDisk).toContain("上岛第一晚。");
+    expect(await readDoc(pid, ".talemate/plans/ch_1.md")).toBeUndefined();
     expect(await enumerateDocs(pid, "design/")).toEqual(before);
-    // 但要在**内存里**登记成"待执行的节拍"：用户回话后由 harness 置 approved，task(writer) 才放行
-    expect(ctx.pending.get(PLAN_KEY)?.content).toContain("上岛第一晚。");
+
+    // 登记成"待执行的规划"：用户回话后由 harness 置 approved，模型自述无效
+    expect(ctx.pending.get(PLAN_KEY)?.chapter).toBe(1);
     expect(ctx.pending.get(PLAN_KEY)?.approved).toBe(false);
   });
 
-  test("chapter 缺省时抬头不带标签", async () => {
-    const ctx = makeDraftCtx(pid);
-    await proposePlanTool.execute({ content: BEATS }, ctx as never);
-    expect(ctx.shown[0]).toContain("──── 节拍 ────");
+  test("同一章再交一份即覆盖（一章一个工件），别的章各留各的", async () => {
+    const ctx = makeCtx(pid);
+    await proposePlanTool.execute({ chapter: 2, content: "第一版。" }, ctx as never);
+    await proposePlanTool.execute({ chapter: 2, content: "第二版。" }, ctx as never);
+    await proposePlanTool.execute({ chapter: 3, content: "第三章的。" }, ctx as never);
+
+    // 清理策略就是这一条：名字由章号决定，所以再交一份就是替换，章数封顶了工件的数量
+    const ch2 = await readFile(planAbs(pid, 2), "utf-8");
+    expect(ch2).toContain("第二版。");
+    expect(ch2).not.toContain("第一版。");
+    expect(await readFile(planAbs(pid, 3), "utf-8")).toContain("第三章的。");
+    // 待拍板的只有最近那一份——一回合只交一份（halt 保证）
+    expect(ctx.pending.get(PLAN_KEY)?.chapter).toBe(3);
   });
 
-  test("content 为空 → 抛错而不是 return（return 会被 runner 置 halt，把回合停在可自愈的错误上）", async () => {
-    const ctx = makeDraftCtx(pid);
-    await expect(proposePlanTool.execute({ content: "   " }, ctx as never)).rejects.toThrow("缺少 content");
+  test("content 为空 / chapter 不是正整数 → 抛错而不是 return（return 会被 runner 置 halt）", async () => {
+    const ctx = makeCtx(pid);
+    await expect(proposePlanTool.execute({ chapter: 1, content: "   " }, ctx as never)).rejects.toThrow("缺少 content");
+    await expect(
+      proposePlanTool.execute({ chapter: "第 1 章", content: PLAN } as never, ctx as never),
+    ).rejects.toThrow("正整数");
     expect(ctx.shown.length).toBe(0); // 什么都没交出去
   });
 
-  test("task(writer) 的硬门：没有拍板过的节拍就不放行，且文案能自愈", async () => {
-    const ctx = makeDraftCtx(pid);
-    const blocked = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
-    expect(blocked.output).toContain("没有一份用户已拍板的节拍");
-    expect(blocked.output).toContain("propose-plan"); // 自愈：告诉它下一步调什么
+  test("**不经草稿模式**也交得了规划——那道前置只服务文档提案的三向审阅", async () => {
+    // 推翻的旧断言：propose-plan 从前要先 enter-draft。规划批准的是"照它去执行"，不是一份要审阅
+    // 的文档；草稿模式（edit / delegate 全 deny）对"写正文前的准备"没有意义。
+    const ctx = makeCtx(pid);
+    expect(ctx.getMode()).toBeUndefined();
+    const r = await proposePlanTool.execute({ chapter: 1, content: PLAN }, ctx as never);
+    expect(r.output).toContain("规划已交给用户");
+    expect(ctx.modeLog).toEqual([]); // 也没有顺手把模式切过去
   });
 
-  test("交过但用户还没回话 → 仍然不放行（approved 由 harness 置，模型自述无效）", async () => {
-    const ctx = makeDraftCtx(pid);
-    await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
-    const blocked = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
-    expect(blocked.output).toContain("没有一份用户已拍板的节拍");
+  test("task 派规划者不再有硬门——门只剩 propose-plan 的 halt 那一半", async () => {
+    // 从前这里挡的是"没拍板过的节拍就别派 writer"。正文改由 mate 自己写之后，写正文不再经过任何
+    // 一个可以挂门的工具（那是普通 write，用户照样在 diff 上点头），硬门随之取消。
+    const ctx = makeCtx(pid);
+    const r = await taskTool.execute({ agent: "planner", prompt: "把第 1 章的规划做出来。" }, ctx as never);
+    expect(r.output).toContain('<task agent="planner" state="completed">');
   });
 
-  test("用户回话同意 → 放行；且一次批准只换一次写作（用掉即清）", async () => {
-    const ctx = makeDraftCtx(pid);
-    await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
-    ctx.pending.get(PLAN_KEY)!.approved = true; // 等价于用户回了一句"没问题"（Session 侧的动作）
-
-    const ok = await taskTool.execute({ agent: "writer", prompt: "写第 1 章" }, ctx as never);
-    expect(ok.output).toContain('<task agent="writer" state="completed">');
-    expect(ctx.pending.has(PLAN_KEY)).toBe(false); // 写完了，批准也一并作废
-
-    const again = await taskTool.execute({ agent: "writer", prompt: "再写一遍" }, ctx as never);
-    expect(again.output).toContain("没有一份用户已拍板的节拍"); // 下一章要重新交、重新拍板
-  });
-
-  test("待办注记能说清是哪一章的节拍（压缩之后靠它，不靠消息历史）", async () => {
-    const ctx = makeDraftCtx(pid);
-    await proposePlanTool.execute({ chapter: "第 1 章", content: BEATS }, ctx as never);
+  test("待办注记说清是哪一章、工件在哪、拍完板该干什么（压缩之后靠它，不靠消息历史）", async () => {
+    const ctx = makeCtx(pid);
+    await proposePlanTool.execute({ chapter: 1, content: PLAN }, ctx as never);
     const note = renderPendingNote(ctx.pending)!;
-    expect(note).toContain("第 1 章的节拍");
+    expect(note).toContain("第 1 章的规划");
+    // 规划躺在 read / list 看不见的地方，所以路径必须报出来
+    expect(note).toContain(".talemate/plans/ch_1.md");
     expect(note).toContain("用户还没同意");
 
     ctx.pending.get(PLAN_KEY)!.approved = true;
-    expect(renderPendingNote(ctx.pending)!).toContain("可以带它 task(writer)");
+    expect(renderPendingNote(ctx.pending)!).toContain("skill(prose)");
   });
 });
 
@@ -968,24 +990,22 @@ describe("会话模式 · draft", () => {
     expect(ctx.modeLog).toEqual(["draft", undefined]);
   });
 
-  test("propose-plan **不**自己退模式——出口是用户接受或拒绝（harness 判）", async () => {
+  test("propose-design **不**自己退模式——出口是用户接受或拒绝（harness 判）", async () => {
     // 旧行为是"提案成功即退出"。改成"接受/拒绝才退"之后，用户提意见可以留在模式里接着改，
     // 一次设计会话只进一次模式；否则每提一版都要重新走一遍"提议进模式 + 用户点头"。
     const ctx = makeCtx(pid);
     await enterDraftTool.execute({}, ctx as never);
-    await proposePlanTool.execute({ chapter: "第 1 章", content: "上岛第一晚。" }, ctx as never);
+    await proposeDesignTool.execute({ path: "design/wiki/x.md", content: "## 甲\n正文" }, ctx as never);
     expect(ctx.modeLog).toEqual(["draft"]); // 没有第二个 undefined
     expect(ctx.getMode()).toBe("draft");
-    expect(ctx.pending.has(PLAN_KEY)).toBe(true); // 节拍已登记，等用户回话
+    expect(ctx.pending.has("design/wiki/x.md")).toBe(true); // 提案已登记，等用户回话
   });
 
-  test("不在草稿模式就交不了提案——两个 propose 都拒，并指路 enter-draft", async () => {
-    // **拒是 throw 而不是 return**：两个工具都带 halt，return 会被 runner 置 halt，把回合停在
-    // 这个本可自愈的错误上（模型还没来得及照自愈文案补 enter-draft，回合就没了）。
+  test("不在草稿模式就交不了**文档**提案——拒，并指路 enter-draft", async () => {
+    // **拒是 throw 而不是 return**：它带 halt，return 会被 runner 置 halt，把回合停在这个本可
+    // 自愈的错误上（模型还没来得及照自愈文案补 enter-draft，回合就没了）。
+    // 规划（propose-plan）不在此列：它批准的是执行、工件落引擎工作区，走不到这条三向通道上。
     const ctx = makeCtx(pid);
-    await expect(proposePlanTool.execute({ content: "上岛第一晚。" }, ctx as never)).rejects.toThrow(
-      "enter-draft",
-    );
     await expect(
       proposeDesignTool.execute({ path: "design/wiki/x.md", content: "## 甲\n正文" }, ctx as never),
     ).rejects.toThrow("enter-draft");
@@ -1070,7 +1090,7 @@ describe("权限 · 求值", () => {
     expect(evaluate("edit", "*", mergeConfigs(BASE_PERMISSIONS, {}, { edit: "deny" }, { edit: "allow" })).action).toBe(
       "deny",
     );
-    // agent 声明也在这条链上：writer 的 question: deny 压过内置默认的 allow
+    // agent 声明也在这条链上：子代理（planner / researcher）的 question: deny 压过内置默认的 allow
     expect(evaluate("question", "*", mergeConfigs(BASE_PERMISSIONS, { question: "deny" }, {}, {})).action).toBe("deny");
   });
 
@@ -1162,7 +1182,7 @@ describe("权限 · 会话级行为", () => {
   test("accept-edits：落盘不问，委派与联网照问", async () => {
     const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES["accept-edits"].permission));
     expect(await ctx.ask({ permission: "edit", pattern: "design/core.md", summary: "" })).toBe("allow");
-    expect(ctx.check("delegate", "writer")).toBe("ask");
+    expect(ctx.check("delegate", "planner")).toBe("ask");
     expect(ctx.check("extern", "https://x")).toBe("ask");
   });
 

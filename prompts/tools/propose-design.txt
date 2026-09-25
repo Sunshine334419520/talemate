@@ -3,7 +3,7 @@ they can approve, refuse, or ask for changes.
 
 Name the target with `path`: its project-relative path incl. root and extension —
 design/core.md, design/wiki/world.md, design/wiki/<topic>.md, design/outline/vol_<N>.md,
-design/outline/vol_<N>/s<M>.md (volume and sequence outlines), design/outline/plan_ch<N>.md,
+design/outline/vol_<N>/s<M>.md (volume and sequence outlines),
 design/characters/<name>.md (a character card is created and rewritten this way; there is no
 character-specific tool for that). Same path form every other tool takes.
 
@@ -12,7 +12,7 @@ use `edit`: the user reviews a diff of just that piece instead of re-reading the
 it costs you far fewer tokens. A draft is refused only when its kind has a fixed shape (see
 design-spec — it holds the shape of every document kind) and the draft does not fill it, since
 the user would then be shown blanks while the prose landed anyway. Kinds that are free-form (sequence
-outlines, character cards, topic pages, chapter plans) are shown whole, as a single block. Fields you
+outlines, character cards, topic pages) are shown whole, as a single block. Fields you
 cannot fill yet get （待定）.
 
 **The draft IS the file**: on approval it is written byte for byte. So the content holds document

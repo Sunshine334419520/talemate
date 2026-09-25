@@ -264,7 +264,7 @@ describe("write_ops · 落提案（三向）", () => {
   // 复用同一个名字会让前一个用例写下的字节把后一个判成陈旧——测的就不是它想测的那件事了。
   const proposal = (name: string, over: Partial<PendingProposal> = {}): PendingProposal => ({
     // 文档提案的键就是**项目相对路径**（`write_ops` 拿它直接当落盘 op 的 path）——所以这里补上根；
-    // 节拍提案的键是 `PLAN_KEY`，它不是路径，原样留着。
+    // 规划那条登记（`PLAN_KEY`）不是路径，原样留着。
     name: name === PLAN_KEY ? name : `design/${name}`,
     content: "提案那一版\n",
     base: null,
@@ -299,9 +299,9 @@ describe("write_ops · 落提案（三向）", () => {
     expect(await readDoc(pid, "design/prop-b.md")).toBeUndefined();
   });
 
-  test("节拍提案（没有目标文件）→ 拒绝，并说清它不解锁落盘", async () => {
+  test("规划那条登记（没有目标文件，也不走这条路）→ 拒绝，并说清它不解锁落盘", async () => {
     const ctx = makeCtx();
-    ctx.setProposal(proposal(PLAN_KEY, { content: "节拍" }));
+    ctx.setProposal(proposal(PLAN_KEY, { content: "规划" }));
     const r = await writeFile(ctx, { via: "pending", proposalKey: PLAN_KEY, action: "落盘" });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.output).toContain("不落盘");

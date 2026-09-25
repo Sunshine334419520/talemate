@@ -8,7 +8,7 @@
 prompts/
 ├── README.md                 本规范
 ├── mate.system.txt           mate(搭档) persona
-├── writer.system.txt         writer subagent persona
+├── planner.system.txt        planner subagent persona
 ├── researcher.system.txt     researcher subagent persona
 ├── summarizer.system.txt     内部 hidden summarizer（compaction）
 ├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md「会话模式」）
@@ -23,7 +23,7 @@ prompts/
 
 - **操作/元层 = 英文**：system、协议、工具 description、**工具入参 schema 里每个参数的 `description`**（`defineTool` 的 `properties.*.description`）。省 token、跨模型稳。
 - **内容层 = 中文**：作品标记（`## 一句话简介`、`（待定）`）、docs、用户可见文案、运行时文案。
-- 一份文件内**不中英混排**；中文只在确属"内容/示例字面量"（文档名、小节标题、占位符，如角色卡字段名 `一句话定位`、路径 `design/outline/plan_ch<N>.md`）时出现。
+- 一份文件内**不中英混排**；中文只在确属"内容/示例字面量"（文档名、小节标题、占位符，如角色卡字段名 `一句话定位`、路径 `chapters/chapter_ch<N>_v<M>.md`）时出现。**`skills/*/SKILL.md` 是例外**：它是"知识/文风卡"这类**内容**（写给写正文时用），所以整份中文，`description` 也用中文——与 `docs/agents.md` 里那份示例同构。
 - **例外（易混淆）**：工具 `execute` 返回的 `output`、`needsConfirm` 摘要、`error` 属"用户可见文案"，**用中文**——即使它们也会作为 tool 结果回灌给模型（模型可读中文内容）。判断标准：**"模型怎么调这个工具"的说明→英文；"工具执行后产生的文本"→中文。**
 
 ## 每条提示词的骨架（按需取用）
@@ -56,12 +56,13 @@ prompts/
 - **为何不进 `.txt`**：它是短数据、跟 `mode/tools` 紧耦合，拆文件反而割裂 agent 定义（对比：长 persona 才进 `.txt`）。
 
 **范本**（本仓 `planner` 的 description，五条规则都踩到）：
-> The structural designer. Turns source material into a usable plan: chapter beat sheets, whole-novel or volume outlines, or cascading restructures across the design docs.
-> Use this when you need a chapter's beat plan (细纲 / 节拍), to synthesize the whole outline (design/outline/outline.md) from the existing docs, or when a setting change must cascade and re-consolidate several docs — jobs that require reading the full material and returning one consistent structure.
+> The chapter planner. Turns one chapter's intent into an executable plan: the beats in order, the characters it must land, the facts that had to be checked with their sources, and the artifacts the chapter lands in.
+> Use this when the user asks for a chapter's prose and no plan for that chapter exists yet — it reads the design docs end to end and returns one plan you then put in front of the user via propose-plan.
+> Not for prose: you write that yourself, after loading the prose skill. Not for a fact one lookup settles — call webfetch yourself — and not for a design call, which belongs to the user.
 
 **五条规则**：
 1. **首句 = 它是什么**（一个名词短语的领域定位）。
-2. **"Use this when…" = 触发条件**——给**具体字面量**（`design/outline/plan_ch<N>.md`、`"API endpoints"` 这类），别写抽象类别；模型按字面匹配。
+2. **"Use this when…" = 触发条件**——给**具体字面量**（`chapters/chapter_ch<N>_v<M>.md`、`"API endpoints"` 这类），别写抽象类别；模型按字面匹配。
 3. **给调用方可操作的参数**（explore 的 thoroughness；talemate 的"prompt 要写全切片/要它返回什么"）。
 4. **说边界/何时不用**（写成 "When NOT to use…"）。
 5. **陈述句、英文、短、无形容词堆砌**。

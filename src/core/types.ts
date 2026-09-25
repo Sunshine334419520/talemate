@@ -23,7 +23,7 @@ export type AgentMode = "primary" | "subagent";
 
 /** 声明式角色定义（纯数据，注册表持有；talemate.json 可覆盖 model 等字段） */
 export interface AgentDef {
-  id: string; // "mate" | "writer" | …
+  id: string; // "mate" | "planner" | "researcher" | …
   name: string; // 显示名（搭档 / 写手）
   description: string; // 何时选它（task 路由 / 用户可见）
   mode: AgentMode;
@@ -55,18 +55,21 @@ export type JsonSchema = {
  * apply-design 不收正文、只写这里存的那份，所以"用户看过的 == 落盘的"由构造保证。
  */
 /**
- * `propose-plan` 登记的章节节拍在待执行表里的键。节拍**没有目标文件**（不落盘），所以它占一个
- * 保留键；设计文档的键一定是 design/ 下的路径，撞不上。
+ * `propose-plan` 登记的**章节规划**在待执行表里的键。
+ *
+ * 保留键而不是路径：待执行表的键对文档提案来说是**落盘目标**（`write_ops` 的 `via:"pending"` 拿它
+ * 去取 op），而规划不走那条路——它落 `.talemate/plans/`（引擎工作区），由 `framework/plan.ts`
+ * 自己写。设计文档的键一定是 `design/` 下的路径，撞不上。
  */
 export const PLAN_KEY = "__plan__";
 
 export interface PendingProposal {
   /**
-   * 目标活文档的**项目相对路径**（`design/core.md`）；节拍提案是 `PLAN_KEY`——它**不是一个路径**，
+   * 目标活文档的**项目相对路径**（`design/core.md`）；规划提案是 `PLAN_KEY`——它**不是一个路径**，
    * 所以这个字段叫 `name` 而不是 `path`：它装的是"这份提案的键"。
    */
   name: string;
-  /** 将落盘的正文：提案=整篇全文；节拍=节拍全文 */
+  /** 正文：文档提案 = 将落盘的整篇全文；规划 = 那一份规划（落 `.talemate/plans/`） */
   content: string;
   /**
    * 提案时的整篇快照——落盘前校验文档未被改过，变了要求重新提案（CAS 的基准）。
@@ -75,8 +78,13 @@ export interface PendingProposal {
    * 也就没有那个曾经的 `section` 字段——"我只动了第 3 格"由提案渲染里的 `★本版改动` 表达。
    */
   base?: string;
-  /** 仅节拍提案：这一章在用户面前叫什么（如"第 1 章"）。让待办注记在压缩之后还能自己说清是哪一章 */
-  chapter?: string;
+  /**
+   * 仅规划提案：这份规划是**第几章**的。
+   *
+   * 存章号而不是一个展示用的字符串，是因为它有两个活儿：待办注记靠它说清"这是哪一章的规划"，
+   * 工件路径（`.talemate/plans/ch_<N>.md`）也靠它算出来——一份规划只有一个出处。
+   */
+  chapter?: number;
   /** 用户已回话表示同意。**由 harness 判定**（见 Session 里按用户回话匹配同意词），不由模型自述 */
   approved: boolean;
   at: number;

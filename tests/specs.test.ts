@@ -68,8 +68,8 @@ describe("规范注册表 · 结构", () => {
 });
 
 describe("规范注册表 · 管辖范围", () => {
-  test("没登记的路径给 undefined——专题页、章计划都按自由形状成稿", () => {
-    const open = ["design/wiki/岛屿地图.md", "design/outline/plan_ch1.md", "chapters/chapter_ch1_v1.md"];
+  test("没登记的路径给 undefined——专题页与正文都按自由形状成稿", () => {
+    const open = ["design/wiki/岛屿地图.md", "chapters/chapter_ch1_v1.md"];
     expect(open.filter((p) => specFor(p) !== undefined)).toEqual([]);
   });
 

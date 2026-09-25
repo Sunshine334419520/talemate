@@ -340,10 +340,10 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
   const alreadyPlayed = opts.messages.some((m) => m.role === "tool" && m.name === mockTool);
   if (mockTool && tools.some((t) => t.name === mockTool) && !alreadyPlayed) {
     const schema = tools.find((t) => t.name === mockTool)?.inputSchema;
-    // task 工具给合法委派（writer 子会话），其余按 schema 采样
+    // task 工具给合法委派（planner 子会话），其余按 schema 采样
     const input =
       mockTool === "task"
-        ? { agent: "writer", prompt: "照核心设定与细纲，把第 1 章正文写出来。" }
+        ? { agent: "planner", prompt: "把第 1 章的规划做出来。" }
         : mockTool === "propose-design"
           ? { path: "design/core.md", content: MOCK_PROPOSAL }
           : sampleArgs(schema);

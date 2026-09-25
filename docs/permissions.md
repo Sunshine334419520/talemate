@@ -2,7 +2,7 @@
 
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
-> **对齐代码**：2026-09-24 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
+> **对齐代码**：2026-09-25 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
 > 相邻：`agents.md`（角色与工具名册）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
@@ -30,7 +30,7 @@
 | **`extern`** | `webfetch` · `websearch` | URL / 查询词 |
 | **`question`** | `ask-user` · `confirm` | `*`（这两个工具没有"对什么做"） |
 
-**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**两段式已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
+**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**「先摆出来、用户拍板才执行」已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
 
 **少一类就少一处要维护的规则。** 真需要时再加是加法，不是改法。
 
@@ -171,9 +171,9 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
     ...(子声明了 delegate ? [] : [{ permission: "delegate", pattern: "*", action: "deny" }]) ]
 ```
 
-**父的 `allow` 不往下传。** 所以 `mate` 在 `accept-edits` 模式里落盘不问，**`writer` 不会跟着免确认**——它按自己的规则走。
+**父的 `allow` 不往下传。** 所以 `mate` 在 `accept-edits` 模式里落盘不问，**它派出去的子代理不会跟着免确认**——它们按自己的规则走。
 
-**子代理默认不能委派**（除非它自己声明了 `delegate`），这是防链式 spawn。`writer` 也不能 `question`——**子代理跑在隔离上下文里，用户不在场，它一旦能提问就会把用户从自己的对话里硬拽出来。**
+**子代理默认不能委派**（除非它自己声明了 `delegate`），这是防链式 spawn。子代理也不能 `question`——**它跑在隔离上下文里，用户不在场，它一旦能提问就会把用户从自己的对话里硬拽出来。**
 
 ## 现在有哪些规则
 
@@ -181,8 +181,8 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 |---|---|---|
 | 内置默认 | 见上 | 写盘/委派/联网都要问；提问放行 |
 | **agent `mate`** | 无覆盖 | 同默认 |
-| **agent `writer`** | `question: deny *` · `delegate: deny *`（默认） | 不能烦用户、不能链式 spawn |
-| **agent `researcher`** | `question: deny *` · `delegate: deny *` · `edit: deny *`（**类别拒**） | 同上，外加**只读**：落盘类工具整个不在 schema 里 |
+| **agent `planner`** | `question: deny *` · `delegate: deny *` · `edit: deny *`（**类别拒**） | 不能烦用户、不能链式 spawn，外加**只读**：落盘类工具整个不在 schema 里 |
+| **agent `researcher`** | 同上（同样三项） | 同 planner。两个子代理都只读——落盘由 mate 做 |
 | **模式 `accept-edits`** | `edit: allow` | **落盘不问**；委派与联网照问 |
 | **模式 `draft`** | `edit: deny *` · `delegate: deny *` | 只读：那些工具**不在 schema 里** |
 
@@ -191,7 +191,7 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 ## 与两种落盘形态的关系
 
 **二向**（`write` / `edit`）走权限：`ctx.ask` 是它唯一那道门。
-**三向**（`propose-design` / `propose-plan`）**不走权限**，因为它们是**更严的一道门**：
+**三向**（`propose-design`）**不走权限**，因为它是**更严的一道门**：
 
 | | 权限系统（二向） | 三向（草稿模式的出口） |
 |---|---|---|
@@ -201,8 +201,11 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 | 出口 | 用户当场接受/拒绝 | **接受或拒绝**才退出草稿模式；提意见留在里面接着改 |
 
 所以 `apply-design` **不需要**再问一次——用户已经在提案里看过内容了；但它**仍然过规则表**，
-"不许"不因为问过一次就失效（`write_ops` 的 `via:"pending"` 分支）。同理 `propose-plan` 之后的
-`task(writer)` 不再问 `edit`：用户批的是那个动作。
+"不许"不因为问过一次就失效（`write_ops` 的 `via:"pending"` 分支）。
+
+**`propose-plan` 不在这张表里**：它不走 `write_ops`——规划落 `.talemate/plans/`（引擎工作区），
+由工具自己整篇写、整篇渲染给用户看。它复用的是**同一套"待批准"语义**（登记 → harness 判同意），
+但那份工件不是作品文档，所以既没有 CAS 也没有权限 pattern（见 `framework/plan.ts`）。
 
 ## 相关源码
 

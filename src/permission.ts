@@ -130,7 +130,7 @@ export const BASE_PERMISSIONS: PermissionConfig = {
 /**
  * 子代理的规则集**是拼出来的，不是继承的**：
  *   - 父的 `deny` **继承**——紧的往下传得下去
- *   - 父的 `allow` **不继承**——所以 mate 在 `accept-edits` 里落盘不问，writer 不会跟着免确认
+ *   - 父的 `allow` **不继承**——所以 mate 在 `accept-edits` 里落盘不问，它派出去的子代理不会跟着免确认
  *   - 没自己声明 `delegate` 的一律禁委派（防链式 spawn）
  */
 export function deriveSubagentPermission(parent: Ruleset, sub: { permission?: PermissionConfig }): Ruleset {

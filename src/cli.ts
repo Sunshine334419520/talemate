@@ -73,11 +73,11 @@ function truncate(s: string, n: number): string {
 }
 
 /**
- * 提案类工具：入参就是整篇草稿（还带文件路径），正文由 harness 渲染后经 `proposal` 事件整块打印。
- * 所以它们不走常规工具行的截断打印——否则会把 `input={"name":"core.md",...}` 打出来，
- * 既看不懂，也和"对用户不出现文件路径"这条纪律冲突。
+ * 提案类工具：入参就是整篇正文（文档草稿 / 章节规划），内容由 harness 渲染后经 `proposal` 事件整块
+ * 打印。所以它们不走常规工具行的截断打印——否则会把 `input={"path":"design/core.md",...}` 打出来，
+ * 既看不懂，也和"对用户不出现文件路径"这条纪律冲突；规划则连正文都重复打一遍。
  */
-const PROPOSAL_TOOLS = new Set(["propose-design", "apply-design"]);
+const PROPOSAL_TOOLS = new Set(["propose-design", "apply-design", "propose-plan"]);
 
 // ─────────────────────────── REPL 状态 ───────────────────────────
 

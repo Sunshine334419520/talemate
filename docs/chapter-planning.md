@@ -1,9 +1,9 @@
-# 章节生产：目标架构
+# 章节生产：谁规划、谁批准、谁执行
 
-> **职责**：定下"写一章"这条流水线的目标架构——谁规划、谁批准、谁执行、工件放哪、哪些现有断言要被推翻。
+> **职责**：定下"写一章"这条流水线的架构——谁规划、谁批准、谁执行、工件放哪；并记下它推翻了哪些旧断言、为什么。
 > **读者**：要动手改这条流水线的人；以及想知道"为什么不是 writer 子代理了"的人。
-> **对齐代码**：**尚未落地**（2026-09-24 定稿）。本文描述的是**目标**，现状见 `design-docs.md`「写作段」与 `agents.md` 的角色名册——两处状态不一致时，以代码为准。
-> 相邻：`product.md`（为什么这么做）· `design-docs.md`（现状）· `agents.md`（角色与工具）· `outline.md`（序列纲与章计划）· `roadmap.md`（落地后要删的条目）
+> **对齐代码**：**已落地**（2026-09-25）· 工件在 `framework/plan.ts`，门在 `tool/core_tools.ts` 的 `propose-plan`，角色在 `agent/registry.ts`。本文与代码冲突时以代码为准。
+> 相邻：`product.md`（为什么这么做）· `design-docs.md`（设计文档体系与章节生产那条链）· `agents.md`（角色与工具）· `outline.md`（序列纲与章规划）· `roadmap.md`（状态层还没做）
 
 ## 一、为什么要改
 
@@ -77,6 +77,14 @@ mate 执行：skill(prose) 加载文风 → 自己写正文 → 写后步骤（�
 
 **规划落在 `.talemate/plans/`，不进 `design/`。** 边界是：`design/` + `chapters/` 是**作品**（用户的、要被审阅的、可进版本控制的）；`.talemate/` 是**引擎的工作区**（可清理、用户不必看、不参与 `list` / `search` / 不变量 / 规范）。规划是"这一次执行"的状态，不是作品的一份文档。
 
+**三条落实时的具体决定**（`framework/plan.ts`）：
+
+- **谁写这个文件**：`propose-plan` 工具自己写。`write` 只认 `design/` 与 `chapters/` 两个根，而规划按上面的边界不归这两个根；它也不该走 `write_ops` 那条作品文档的路（diff、CAS、权限 pattern 一样都不需要）——整篇写、整篇渲染给用户看，**用户看过的字节就是落盘的字节**。
+- **按章命名**：`ch_<N>.md`，N 是章号（`propose-plan` 的 `chapter` 参数就是这个数，不是展示用的字符串）。一章一个文件 → **同一章再交一份即覆盖**，这就是清理策略：数量由章数封顶，不需要按时间或次数删。执行完**不删**——它是那一次执行的记录。
+- **`read` / `list` 读不到它**（那是 `.talemate/` 的边界，不是漏做）。所以 `renderPendingNote` 每轮把**路径报出来**，mate 在压缩之后仍知道它存下来了。
+
+**代码不校验规划的形状**（不认识"产物"那一节）。判据是"**字节能不能到用户眼前**"：规划整篇摆给用户看，一份没写产物的规划他当场看得见。`propose-design` 那道的 `reviewable` 之所以存在，是因为**提案会渲染成一页空白却照样落盘**——那种失败模式在这里不存在。
+
 ## 四、决定的边界
 
 同样的机制，来源不同——左边是场景本身要求的，右边只是现有实现的习惯。改的时候只该动右边。
@@ -91,33 +99,37 @@ mate 执行：skill(prose) 加载文风 → 自己写正文 → 写后步骤（�
 | `design/outline/plan_ch<N>.md` 这个路径 | 现有习惯，**而且错了** → **扔**（规划归 `.talemate/`） |
 | "一次批准 = 一次写作" | 现有习惯 → 换成"一次批准 = 一份规划" |
 
-## 五、本文落地后会推翻的断言
+## 五、落地时推翻的断言
 
-| 现有说法 | 位置 | 处置 |
+这张表是**改动清单**：读这份文档的人多半记得旧设计，这里说清每一处旧说法现在是什么。
+
+| 旧说法 | 位置 | 处置 |
 |---|---|---|
-| 节拍**不落盘** | `design-docs.md` 写作段 | 推翻——规划落 `.talemate/plans/` |
-| `propose-design` 的合法目标含 `design/outline/plan_ch<N>.md` | `prompts/tools/propose-design.txt` + `design_spec.ts` | 删掉该目标 |
-| 规划要先 `enter-draft` | `prompts/tools/propose-plan.txt` + `core_tools.ts` 的模式守卫 | 推翻——草稿模式只服务文档提案 |
-| 一次批准 = 一次写作 | `core_tools.ts` | 推翻 |
-| 正文由 `task(writer)` 写 | `agents.md` 名册 + `mate.system.txt` + `writer.system.txt` | 推翻——mate 写，加载文风 skill |
-| `product.md` 的"独立上下文分工"用在正文 | `product.md` | 挪到章节规划阶段 |
-| `roadmap.md` 的「正文由谁落盘」「状态层·章末回写」 | `roadmap.md` | 落地后删（那条「折中落点（未采纳）：writer 落盘 + 短摘要」随问题一起作废） |
+| 节拍**不落盘** | `design-docs.md` 写作段 | **推翻**——规划落 `.talemate/plans/ch_<N>.md` |
+| `propose-design` 的合法目标含 `design/outline/plan_ch<N>.md` | `prompts/tools/propose-design.txt` + `design_tools.ts` 的入参描述 | **删掉**该目标 |
+| 规划要先 `enter-draft` | `prompts/tools/propose-plan.txt` + `core_tools.ts` 的模式守卫 | **推翻**——草稿模式只服务文档提案 |
+| 一次批准 = 一次写作 | `core_tools.ts` 的 `task` 硬门与"用掉即清" | **推翻**——门只剩 `propose-plan` 的 `halt` |
+| 正文由 `task(writer)` 写 | `agents.md` 名册 + `mate.system.txt` + `writer.system.txt` | **推翻**——`writer` 与 `writer.system.txt` 已删，mate 那条禁令随之**取消**（不是翻转）；正文由 mate 自己写，文风纪律在 `skills/prose/` |
+| `product.md` 的"独立上下文分工"用在正文 | `product.md` | **挪到**章节规划阶段 |
+| `roadmap.md` 的「正文由谁落盘」「状态层·章末回写」 | `roadmap.md` | **已删**（回写的障碍随 writer 一起消失，理由并进「状态层」那一节） |
 
 **保留不动**：`design-docs.md` 的「mate 没有阶段状态机」。它说的是**对话阶段**（设计段/写作段由用户点名驱动），而规划里的步骤是**一份工件的内容**——两者不是一回事。
 
-## 六、落地要动的东西
+## 六、落地动了什么
 
-1. **`.talemate/plans/`** —— 新目录 + 清理策略。`src/core/config.ts` 加路径；清理**今天不存在**（`sessions/` 也是只增不减），所以这是要建的，不是已有的。
+1. **`.talemate/plans/`** —— 新目录 + 清理策略（`src/core/config.ts` 的 `projectPaths.plans` + `framework/plan.ts`；清理策略见「三」末尾）。
 2. **内置 skill 库** —— 仓库根 `skills/`，在 `src/skill/discovery.ts` 里作为**最低优先级**扫描根（用户全局库、项目库可同名覆盖）。`roadmap.md` 的 P2「文风卡迁移成 skill 库」说的就是它；P3 的 `style-extractor` 是它未来的生产者。
-3. **`skills/prose/`** —— 文风纪律从 `writer.system.txt` 搬到这里（单一来源），mate 写正文前 `skill prose` 加载。
+3. **`skills/prose/`** —— 文风纪律从 `writer.system.txt` 搬到这里（单一来源），mate 写正文前取它。**触发只写在它的 description 里**，persona 与工具返回都不替它点名（见 `agents.md` 的 Skill 系统）。
 4. **规划者 SubAgent** —— 带 `read` 与网络工具。**注意深度上限是 1**，它不能再派 researcher，要自己查。
 5. **提交规划的工具** —— 语义从"节拍"换成"规划"；去掉草稿模式前置；批准粒度从"一次写作"改成"一份规划"。
-6. **mate 侧** —— `mate.system.txt` 的「绝不自己写正文」改成「正文由你自己写，先加载文风」；规划摆出与裁决复用现成的 pending 机制。
+6. **mate 侧** —— `mate.system.txt` 那条「绝不自己写正文」**删掉，不是改成它的反面**。writer 一没，它就挡不住任何东西了（剩下两个子代理都是类别拒的只读），而"什么时候派谁"的契约本来就在 `task` 的目录里——`planner` 的 description 写着 "Not for prose"。**留下一句同义反复的禁令，只会让下一个人以为还有个 writer 要防。** 规划摆出与裁决复用现成的 pending 机制。
 7. **`writer` 角色** —— 删除（或改造）。它存在的理由（隔离正文）在新架构下不成立。
 
 ## 七、未决
 
 **状态层**（规划里的"写后步骤"）。`design/state/` 尚未落地，连规范都没有——本文只**预留一个步骤位**，形状等那块做的时候再定。`roadmap.md` 的「状态层」条目继续有效。
+
+**它现在只是形状问题**：从前那一步还卡在"契约挂在哪个工具的结果上"（章节在 writer 子会话里落盘，`write` 的结果到不了 mate）。mate 自己写正文之后那个障碍没了——`write` 的结果直接回到它手里。
 
 ## 八、明确不为它造机制的事
 

@@ -26,6 +26,7 @@ import type {
 } from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
 import { buildResidentDesigns, buildIndex } from "../framework/anchor";
+import { planRelPath } from "../framework/plan";
 import { labelOf } from "../framework/proposal";
 import { renderHits } from "../framework/search";
 import { chat } from "../llm/provider";
@@ -137,11 +138,13 @@ export function verdictEffect(v: DraftVerdict): {
 export function renderPendingNote(pending: Map<string, PendingProposal>): string | undefined {
   if (!pending.size) return undefined;
   const lines = [...pending.values()].map((p) => {
-    // 节拍没有目标文件：它批准的是"去写正文"这个动作，不是一份文档。
+    // 规划没有要落盘的目标文档：它批准的是"照它去写正文"这个执行，不是一次落盘。
+    // **工件路径要报出来**：规划落在 `.talemate/plans/`，那是 `read` / `list` 看不见的地方，
+    // 压缩之后 mate 仍得知道它存下来了（见 framework/plan.ts 的文件头）。
     if (p.name === PLAN_KEY) {
-      const what = p.chapter ? `${p.chapter}的节拍` : "这一章的节拍";
+      const what = p.chapter ? `第 ${p.chapter} 章的规划（${planRelPath(p.chapter)}）` : "这一章的规划";
       const state = p.approved
-        ? "用户已表示同意 → 可以带它 task(writer)"
+        ? "用户已表示同意 → 照它执行：先 skill(prose) 加载文风，再自己写这一章的正文"
         : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
       return `- ${what}：${state}`;
     }
@@ -194,7 +197,8 @@ export class Session {
 
   /**
    * 当前会话模式（见 agent/modes.ts）。**只在内存里**——和 pending 同生命周期，进程重启即回到
-   * 默认模式。硬保证不靠它（写正文那道门挂在 task(writer) 上），所以丢了也不漏。
+   * 默认模式。硬保证不靠它（三向审阅的前置是模式，但那条链的"停"靠 `propose-design` 自己的
+   * `halt`），所以丢了也不漏。
    */
   private mode?: string;
 

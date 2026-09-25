@@ -15,7 +15,7 @@ import { isFiller } from "./report";
 const INDENT = "   ";
 
 /**
- * 一份文档提案对应的写盘 op。节拍提案（`PLAN_KEY`）没有目标文件 → `undefined`。
+ * 一份文档提案对应的写盘 op。规划（`PLAN_KEY`）没有目标文件 → `undefined`。
  *
  * `p.name` **就是项目相对路径**（`design/core.md`）——提案登记的名字与 `FileOp.path`、工具收的
  * 路径、权限 pattern 全同一个口径，所以这里不再补前缀。
@@ -27,12 +27,17 @@ const INDENT = "   ";
  * 提案永远是整篇（局部修改走二向的 `edit`，不进提案），所以这里恒为 `write`。
  */
 export function proposalOp(p: PendingProposal): FileOp | undefined {
+  // 规划不在这条路上：它落 `.talemate/plans/`，由 `framework/plan.ts` 自己写（那是引擎工作区，
+  // 不是要审阅的作品文档）。所以这里恒为 undefined——它解锁的是"去写正文"，不是一次落盘。
   if (p.name === PLAN_KEY) return undefined;
   return { kind: "write", path: p.name, content: p.content };
 }
 
-/** 正文按行缩进（与 confirm 摘要同一套 3 空格约定）。不截断——用户必须看到要落的全部字节。 */
-function indentLines(text: string): string[] {
+/**
+ * 正文按行缩进（与 confirm 摘要同一套 3 空格约定）。不截断——用户必须看到要落的全部字节。
+ * `plan.renderPlan` 也用它：两份渲染的缩进约定只该有一处定义。
+ */
+export function indentLines(text: string): string[] {
   return text
     .trim()
     .split("\n")
@@ -227,21 +232,4 @@ export function renderProposal(v: ProposalView): string {
   out.push("");
   out.push(`回复「没问题」就写入${label}；要改直接说第几格。`);
   return out.join("\n");
-}
-
-/**
- * 渲染一份**节拍计划**（`propose-plan` 用）。
- *
- * 与 `renderProposal` 的区别：节拍**不落盘**，所以没有逐格编号、没有"第 N 格"、没有待定格——
- * 它批准的是**动作**（去写正文），不是一份文档。用户要么说"没问题"，要么说要改哪儿。
- */
-export function renderPlan(chapter: string | undefined, content: string): string {
-  const label = chapter?.trim();
-  return [
-    `──── ${label ? `${label} · ` : ""}节拍 ────`,
-    "",
-    ...indentLines(content),
-    "",
-    "回复「没问题」就按这个写正文；要改直接说。",
-  ].join("\n");
 }

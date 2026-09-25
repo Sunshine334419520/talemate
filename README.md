@@ -1,6 +1,6 @@
 # talemate
 
-AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系统。设计段把企划做厚、写作段结构先行（先出节拍再写正文），用户当主编拍板；**不设事后打分/评判循环**。
+AI 小说创作 Agent —— 以"活的小说项目空间"为中心的创作系统。设计段把企划做厚、写作段结构先行（先出这一章的规划、拍板后再写正文），用户当主编拍板；**不设事后打分/评判循环**。
 
 ## 运行
 
@@ -22,7 +22,7 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 ```
 talemate new 我的小说 悬疑
   → 进 mate 会话，聊想法 → 企划长成 design/ 四层活文档
-  → "写第 1 章" → 先出节拍，你拍板 → 再写正文（writer）→ 落 chapters/
+  → "写第 1 章" → 先出一份规划，你拍板 → mate 自己写正文 → 落 chapters/
 ```
 
 项目落在 `~/.talemate/novels/<id>/`（可用 `TALEMATE_HOME` 改），目录结构见 `docs/architecture.md`。
@@ -32,13 +32,13 @@ talemate new 我的小说 悬疑
 | 模块 | 职责 |
 |---|---|
 | `src/cli.ts` `src/smoke.ts` | CLI + REPL 入口 / 离线冒烟 |
-| `src/agent/` | Agent 注册表：mate(primary) / writer / summarizer(hidden) |
+| `src/agent/` | Agent 注册表：mate(primary) / planner / researcher / summarizer(hidden) |
 | `src/session/` | 会话接线、agent 循环、上下文压缩 |
 | `src/tool/` | 工具框架 + 内置工具（design / character / framework / core / web 五个领域） |
 | `src/framework/` | 写作领域层：层规范、写盘唯一实现、提案渲染、markdown 手术、角色卡、引用搜索 |
 | `src/llm/` | provider 抽象（anthropic / openai 兼容 / mock）+ 流式多轮 |
 | `src/storage/` | 文件系统项目 / 会话存储 |
-| `src/skill/` | SKILL.md 发现与解析 |
+| `src/skill/` | SKILL.md 发现与解析（仓库内置库 `skills/` / 全局库 / 项目库） |
 | `src/prompts.ts` | 加载 `prompts/*.txt` |
 | `src/probe/` `src/legacy/` | 消融实验工具、遗留代码（开发用，不属产品路径） |
 

@@ -4,7 +4,8 @@
  * - 模型配置沿用现有环境变量（TALEMATE_PROVIDER/MODEL/REASONING/MAX_TOKENS/…），兼容已有 .env。
  */
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ModelConfig, Provider, Reasoning } from "./types";
 
 export function talemateHome(env = process.env): string {
@@ -19,6 +20,17 @@ export function paths(home = talemateHome()) {
     globalSkills: join(home, "skills"),
     globalAgents: join(home, "AGENTS.md"),
   };
+}
+
+/**
+ * 仓库自带的 skill 库（`<repo>/skills/`）——随产品发布的那一份，如正文文风纪律 `prose`。
+ *
+ * 它与 `paths().globalSkills`（用户全局库）**不是一回事**：这个跟着代码走、改了要发版，
+ * 那个是作者的、跨作品积累的。所以它排在发现顺序的**最后**——用户自己的同名 skill 压得过它，
+ * 而它压不过任何人。相对 `import.meta.url` 解析，不依赖 cwd（同 `prompts.ts`）。
+ */
+export function builtinSkillsDir(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "..", "..", "skills");
 }
 
 /** 项目目录与内部结构 */
@@ -36,6 +48,9 @@ export function projectPaths(home: string, projectId: string) {
     chapters: join(root, "chapters"),
     skills: join(root, "skills"),
     sessions: join(root, ".talemate", "sessions"),
+    // 章节规划工件（框架章节生产那条链的中间态）。**归 .talemate/ 而不是 design/**：
+    // design/ 与 chapters/ 是作品（用户审阅、进版本控制），这一份是引擎的工作区。
+    plans: join(root, ".talemate", "plans"),
   };
 }
 

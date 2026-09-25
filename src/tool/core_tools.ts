@@ -2,13 +2,16 @@
  * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / propose-plan / enter-draft / exit-draft）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
  *
- * **落盘的工具不在这里**。`save-chapter` 曾在这里，它只是"`write` 加一个写死的 chapters/ 前缀"——
- * 已删除，改由 `write` 承担，writer 的范围由权限表划（见 agent/registry.ts）。改文件的两个面在
- * `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
+ * **改作品文档的工具不在这里**。`save-chapter` 曾在这里，它只是"`write` 加一个写死的 chapters/ 前缀"——
+ * 已删除，改由 `write` 承担。改文件的两个面在 `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
+ *
+ * 唯一的例外是 `propose-plan`：它**自己落盘**规划工件。因为规划不是作品文档（不审 diff、不做 CAS、
+ * 不进语料），落点是 `.talemate/plans/` 这个引擎工作区，而 `write_ops` 只认 design/ 与 chapters/。
+ * 判据见 `framework/plan.ts` 的文件头。
  */
 import { DRAFT_MODE } from "../agent/modes";
 import { PLAN_KEY } from "../core/types";
-import { renderPlan } from "../framework/proposal";
+import { renderPlan, savePlan } from "../framework/plan";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
 
@@ -43,22 +46,10 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
     }
     if (verdict === "reject") return { output: `用户已拒绝委派 ${args.agent}。` };
 
-    // 写正文这一支还有**硬门**：用户没拍板过这一章的节拍就不放行。它和 apply-design 是同一套机制——
-    // propose-* 登记 → harness 按用户回话置 approved → 执行工具查它。门开在"执行"这一头而不是给
-    // 整个会话加个模式，是为了让设计流程与正文流程共用一种"用户拍板"的语义。
-    if (args.agent === "writer") {
-      const plan = ctx.getProposal(PLAN_KEY);
-      if (!plan?.approved) {
-        return {
-          output:
-            "还没到写正文的时候：没有一份用户已拍板的节拍。先把这一章的节拍写出来，用 propose-plan 交给" +
-            "用户看、等他回话；他认可之后再调 task(writer)，把切片和节拍一起放进 prompt。",
-        };
-      }
-    }
+    // **这里从前有一道硬门**：派 writer 写正文前必须有一份用户拍板过的节拍。它随 writer 一起没了——
+    // 正文现在由 mate 自己写，而"写正文"不再经过任何一个可以挂门的工具（那是普通 `write`，
+    // 用户照样在 diff 上点头）。拍板这一环留在 `propose-plan` 的 `halt` 上：规划交出去，本回合就停。
     const result = await ctx.runSubagent(args.agent, args.prompt);
-    // 一次批准 = 一次写作：用掉就清，免得写下一章时凭一份旧批准就开写。
-    if (args.agent === "writer") ctx.clearProposal(PLAN_KEY);
     return {
       output: `<task agent="${args.agent}" state="completed">\n<task_result>\n${result}\n</task_result>\n</task>`,
       metadata: { agent: args.agent },
@@ -148,38 +139,41 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
 });
 
 /**
- * propose-plan：把**这一章**的节拍交给用户拍板，并**结束本回合**等他回话。
+ * propose-plan：把**这一章**的规划交给用户拍板，并**结束本回合**等他回话。
  *
- * **与 propose-design 的区别：没有 apply 那一半。** 节拍不落盘——它批准的是**动作**（去写正文），
- * 不是一份文档。所以这里不登记提案、不留 base 快照、不判"同意"：用户说"没问题"之后，mate 直接
- * 带着这份节拍去 `task(writer)`。用户要改 → 改完再交一次，这是个循环。
+ * **与 propose-design 的区别：没有 apply 那一半。** 规划批准的是**执行**（照它去写正文），
+ * 不是一份要落盘的文档——所以这里不判"同意后怎么写"，用户说"没问题"之后，mate 直接开写。
+ * 用户要改 → 改完再交一次，这是个循环。
  *
- * `halt` 是它存在的全部理由：光靠纪律，mate 可能拿着没批准的节拍直接叫 writer。而"交出去就停"
- * 正是草稿模式的出口干的事——这里不要阶段状态机（`design-docs.md` 明确否决过），只要一个会停的工具。
+ * `halt` 是它存在的全部理由：光靠纪律，mate 可能拿着没批准的规划直接开写。
+ * 交出去就停，不靠模型自觉。
  *
- * **要先进草稿模式**：三向（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就没有"提意见"这一路。
+ * **它自己落盘**（`.talemate/plans/ch_<N>.md`，见 `framework/plan.ts`）：规划归引擎工作区，
+ * 不进 `design/`。所以这里既没有 `enter-draft` 前置（草稿模式只服务文档提案的三向审阅），
+ * 也不走 `write_ops` 那条作品文档的路径。
  */
-export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string }> = defineTool<{
+export const proposePlanTool: RegisteredTool<{ chapter: number; content: string }> = defineTool<{
+  chapter: number;
   content: string;
-  chapter?: string;
 }>({
   id: "propose-plan",
   description: P("propose-plan"),
-  halt: true, // 计划交出去了，接下来该用户拍板——不靠模型自觉
+  halt: true, // 规划交出去了，接下来该用户拍板——不靠模型自觉
   input: {
     type: "object",
     properties: {
+      chapter: {
+        type: "number",
+        description:
+          "The chapter this plan is for, as its number (3 for 第 3 章). It names the plan artifact and is how the user refers to the chapter.",
+      },
       content: {
         type: "string",
         description:
-          "The beat plan itself — what the user reviews and what the writer will follow. Plan text only: no notes to the user, no rationale, no questions.",
-      },
-      chapter: {
-        type: "string",
-        description: "Short label for the header, e.g. 第 1 章 / 序章. Optional.",
+          "The plan itself — what the user reviews and what you then execute. Plan text only: no notes to the user, no rationale, no questions.",
       },
     },
-    required: ["content"],
+    required: ["chapter", "content"],
   },
   async execute(args, ctx) {
     const content = (args.content ?? "").trim();
@@ -188,36 +182,42 @@ export const proposePlanTool: RegisteredTool<{ content: string; chapter?: string
     // （`tests/framework.test.ts` 的 "tool runner · halt" 钉的就是这条。）
     if (!content) {
       throw new Error(
-        `propose-plan 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带这一章的节拍正文重新调用。`,
+        `propose-plan 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带这一章的规划正文重新调用。`,
       );
     }
-    if (ctx.getMode() !== DRAFT_MODE) {
-      throw new Error(notInDraft("把这一章的节拍提出来"));
+    const chapter = Number(args.chapter);
+    if (!Number.isInteger(chapter) || chapter < 1) {
+      throw new Error(
+        `propose-plan 的 chapter 要是正整数（收到：${JSON.stringify(args.chapter ?? null).slice(0, 200)}）` +
+          `——它回答"这是第几章"，规划工件按它命名。请带章号重新调用。`,
+      );
     }
-    // 登记成"待执行的节拍"。**只在会话内存里，不落盘**——用户回话后由 harness 置 approved，
-    // task(writer) 靠它判断"这一章用户拍过板了没有"。改了内容重新提案即覆盖，approved 归零。
+    // 先落盘、再登记、再摆给用户：工件是这次执行的凭据，用户接受之后 mate 照它干。
+    const path = await savePlan(ctx.projectId, chapter, content);
+    // 登记成"待执行的规划"。用户回话后由 harness 置 approved（模型自述无效）。同一章再交一份
+    // 即覆盖旧的那一份，approved 归零——用户没见过新版就不算同意。
     ctx.setProposal({
       name: PLAN_KEY,
       content,
-      chapter: args.chapter?.trim() || undefined,
+      chapter,
       approved: false,
       at: Date.now(),
     });
-    ctx.showProposal(renderPlan(args.chapter, content));
-    // **不在这里退模式**：出口条件是"用户接受或拒绝"，由 harness 判（`session.verdictEffect`）。
-    // 提意见是在模式里打转，退出去就等于把用户关在门外——他得重新进一次才能接着改。
+    ctx.showProposal(renderPlan(chapter, content));
     return {
       output:
-        "节拍已交给用户（尚未写任何正文）。本回合已结束，等用户回话：认可 → 带这份节拍 task(writer)；" +
-        "要改 → 改完再 propose-plan 一次（改了内容必须重新提交）。",
-      metadata: { chapter: args.chapter },
+        `规划已交给用户（落在 ${path}，尚未写任何正文）。本回合已结束，等用户回话：` +
+        "认可 → 照它把这一章的正文写出来；要改 → 改完再 propose-plan 一次（改了内容必须重新提交）。",
+      metadata: { chapter, path },
     };
   },
 });
 
 /**
- * 「你不在草稿模式里」的自愈文案。`propose-design` / `propose-plan` 共用——它们的前置是同一条，
- * 文案也该是同一条，否则模型会从两句不同的话里推出两条不同的规则。
+ * 「你不在草稿模式里」的自愈文案——只服务 `propose-design` 了。
+ *
+ * 从前 `propose-plan` 也用它（两者前置同一条）。规划搬出草稿模式之后，三向审阅就只剩文档提案
+ * 这一条出口——这也正是这个模式本来的定位。
  */
 export function notInDraft(what: string): string {
   return (
@@ -242,7 +242,7 @@ export const enterDraftTool: RegisteredTool<Record<string, never>> = defineTool<
     ctx.setMode(DRAFT_MODE);
     return {
       output:
-        "已进入草稿模式（落盘与委派都不可用）。把要审的东西准备好，用 propose-design 或 propose-plan 交给用户；" +
+        "已进入草稿模式（落盘与委派都不可用）。把要审的那一版文档准备好，用 propose-design 交给用户；" +
         "他接受或拒绝之后模式自己退出，他提意见就留在模式里接着改。",
     };
   },

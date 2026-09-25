@@ -5,8 +5,8 @@
  * 语义：
  * - mate = 唯一 primary（日常对话面 + 项目执掌）。无导演/评审 agent，拍板只属于人（**人是主编**，
  *   agent 是搭档——两者不能共用一个头衔）。
- * - writer = subagent，只能被 task 委派；"何时派"写在它的 description，
- *   由 subagentCatalog() 自动拼进 task 工具目录。
+ * - planner = subagent，只能被 task 委派；"何时派"写在它的 description，
+ *   由 subagentCatalog() 自动拼进 task 工具目录。**只读 + 只联网**——它产出一份规划，落盘归 mate。
  * - researcher = subagent，同上。**只读 + 只联网**（`edit` 是类别拒）——它考据外部世界，
  *   产出入带出处的事实，落盘仍归 mate。
  * - summarizer = hidden 内部 agent（compaction 用）。
@@ -19,7 +19,7 @@ import { readPrompt } from "../prompts";
 
 // persona 放角色壳（定语气）与必要的编排残差；机制/方法归数据与工具，见 prompts/README.md 归属纪律。
 const MATE_SYSTEM = readPrompt("mate.system");
-const WRITER_SYSTEM = readPrompt("writer.system");
+const PLANNER_SYSTEM = readPrompt("planner.system");
 const RESEARCHER_SYSTEM = readPrompt("researcher.system");
 const SUMMARIZER_SYSTEM = readPrompt("summarizer.system");
 
@@ -53,28 +53,25 @@ const DEFAULT_AGENTS: AgentDef[] = [
     system: MATE_SYSTEM,
   },
   {
-    id: "writer",
-    name: "写手",
+    id: "planner",
+    name: "规划者",
     description:
-      "The prose writer. Writes one chapter's prose strictly from the provided setting slices + beat plan.\n" +
-      "Use this when the user asks for a chapter's prose AND you hold a beat plan for that chapter the user has already approved via propose-plan; if there is no beat plan yet, write it yourself and propose-plan it first. It runs in an isolated context to focus on the draft; you (the writing partner) review and approve the piece before it lands in chapters/.\n" +
-      "Do not use it for anything but prose: a real-world fact goes to the researcher, and a design call belongs to the user.",
+      "The chapter planner. Turns one chapter's intent into an executable plan: the beats in order, the characters it must land, the facts that had to be checked with their sources, and the artifacts the chapter lands in.\n" +
+      "Use this when the user asks for a chapter's prose and no plan for that chapter exists yet — it reads the design docs end to end and returns one plan you then put in front of the user via propose-plan.\n" +
+      "Not for prose — you write that yourself. Not for a fact one lookup settles, or for a design call: use webfetch, the researcher, or the user.",
     mode: "subagent",
-    tools: ["read", "list", "skill", "write"],
+    tools: ["read", "list", "search", "webfetch", "websearch"],
     permission: {
       // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
-      // 也不能委派（防链式 spawn）。其余按默认（落盘仍然问）。
+      // 也不能委派（防链式 spawn）。
       question: "deny",
       delegate: "deny",
-      // **写手的活动范围**：只写得了 chapters/，碰不了 design/。
-      //
-      // 从前这条边界是靠一个专用工具（save-chapter）表达的，现在是**一条数据**——加一个要保护的
-      // 目录就加一条规则，不用再造工具。注意用的是**具体 pattern 的 deny**，不是 `"*": "deny"`：
-      // 后者会让 `write` 整个从 schema 里消失（visibleTools 在 pattern `*` 上求值），
-      // 而这里要的是"工具还在，但有一个目录例外"。
-      edit: { "design/*": "deny" },
+      // **只读，而且是类别拒**（与 researcher 同款）——`edit` 上的 `"*"` deny 让 write / edit /
+      // delete / apply-design 整个从 schema 里消失。规划者是"读全套材料、回一份工作单"，
+      // 落盘由 mate 做（`propose-plan` 把规划落到 `.talemate/plans/`）。
+      edit: "deny",
     },
-    system: WRITER_SYSTEM,
+    system: PLANNER_SYSTEM,
   },
   {
     id: "researcher",
@@ -158,4 +155,4 @@ export class AgentRegistry {
   }
 }
 
-export { DEFAULT_AGENTS, MATE_SYSTEM, WRITER_SYSTEM, RESEARCHER_SYSTEM, SUMMARIZER_SYSTEM };
+export { DEFAULT_AGENTS, MATE_SYSTEM, PLANNER_SYSTEM, RESEARCHER_SYSTEM, SUMMARIZER_SYSTEM };

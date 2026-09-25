@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-09-24 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）
+> **对齐代码**：2026-09-25 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -26,7 +26,8 @@
 1. **不设导演 Agent，也不设"评审/拍板" Agent。** 多脑协作的唯一机制是父 Agent 用 `task` 委派。拍板永远是人。**凡是"让另一个 agent 去审查 agent 产出"的提议，都在重犯已被否决的评判系统。**
 2. **能靠 Tool 完成的，不升级成 SubAgent；能靠 Skill 注入的，不重写成 SubAgent。** SubAgent 是稀缺资源（每次 = 一整段独立上下文 + 一次往返 + **用户一次确认**），只在下列之一真的买到东西时才用：
    - **这活会淹掉主线上下文**——它产出的中间材料（读来读去、试错、死路）远多于你要的结论；
-   - **要给这活套一套更窄的权限**——writer 只写得了 `chapters/`，researcher 只读只联网；
+   - **要给这活套一套更窄的权限**——planner 与 researcher 都是类别拒的只读（`edit: deny`），
+     一个字节都动不了；
    - **要单配模型**（`AgentDef.model`）。
 
    反面同样成立：**需要和用户来回迭代的不要委派**（设计对话就是），**一两步能做完的不要委派**（委派本身要一次确认，还要写一份自足 prompt）。判据的正文在 `prompts/tools/task.txt`，那里是唯一该说它的地方。
@@ -36,12 +37,13 @@
 
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
-| **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **writer 写手** | subagent | 按"当前设定切片 + 节拍"写一章正文；**不自创设定、只输出正文** | mate 经 `task` | `read` `list` `skill` `write`（被 `edit: {"design/*": "deny"}` 限死在 `chapters/`，读得到全部） |
-| **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit: deny` 是**类别拒**——落盘类工具整个不在 schema 里） |
+| **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；**自己写正文**；当编排者，委派并拍板 | 用户每次输入 | 见下 |
+| **planner 规划者** | subagent | 把一个章节意图读成一份**可执行规划**：节拍、要立住的人、查证结论（带出处）、这次要落地的产物 | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit: deny` 是**类别拒**——落盘类工具整个不在 schema 里） |
+| **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（同上，类别拒） |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
-- mate **不亲自写正文**（节拍不是正文——它自己出，见下）；writer 与 researcher **不能直接对话**，只被 `task` 派生，且**都不能提问**（它们跑在隔离上下文里，用户不在场——见 `permissions.md`）。
+- mate **自己写正文**（文风纪律是 `skills/prose/` 那个 skill，按 description 触发）；**正文不派子代理**——它没有比自身更短的结论（"中间材料不进主线"那条判据对它不成立），而 mate 没见过正文就识别不出写作中浮现的新点子。理由与取舍见 `chapter-planning.md`。
+- planner 与 researcher **不能直接对话**，只被 `task` 派生，且**都不能提问**（它们跑在隔离上下文里，用户不在场——见 `permissions.md`）。两者**不重叠**：阶段不同（章节级 vs 任意时刻）、粒度不同（一份工作单 vs 一个事实）、产出不同。
 - persona 在 `prompts/*.txt`（英文，`readPrompt()` 载入）；agent 的 `description`（路由契约）内联在 `registry.ts`，写法见 `prompts/README.md`。
 
 ### 显式不做的角色（防回归）
@@ -74,7 +76,7 @@
 
 **`delete` 不做级联。** 它把引用列出来，清理由模型用 `edit` 逐处做——"该不该动 `world.md` 里那句话"是判断，不是机械操作。talemate 把 shell 剥掉了，删除必须是一个工具；也正因为没有 shell，"顺手删干净"没有地方可做，级联只能交回模型逐处判断。
 
-**三个都不自己落盘**——拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，所以校验、不变量后验、权限、CAS、原子写、diff 全在那一处。某个 agent 能碰哪个根由权限表划：writer 配的是 `edit: {"design/*": "deny"}`，写得了 `chapters/`、碰不了 `design/`。
+**三个都不自己落盘**——拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，所以校验、不变量后验、权限、CAS、原子写、diff 全在那一处。某个 agent 能碰哪个根由权限表划（"加一个要保护的目录"是加一条规则，不是造一个工具）：`design_tools` 的提案自己先拦一道"只写 `design/` 下"，子代理则整类是 `edit: deny`。唯一**不走这条路**的写是 `propose-plan` 落规划工件——它不是作品文档，见 `framework/plan.ts`。
 
 **`read_tools`** — 项目语料的三个读口（**项目级**：`design/` 与 `chapters/` 通吃）
 
@@ -103,10 +105,10 @@
 
 | id | 用途 |
 |---|---|
-| `task` | 委派 subagent（可派列表由运行时拼进 description）；**派 writer 时有硬门**——没有用户拍板过的节拍就拒 |
+| `task` | 委派 subagent（可派列表由运行时拼进 description）。**它没有硬门了**：从前挡的是"没拍板就派 writer"，正文改由 mate 自己写之后，写正文不再经过任何一个可挂门的工具 |
 | `skill` | 按名注入 SKILL.md 正文 |
 | `ask-user` | 向用户提问要**创作裁决**（不是权限审批） |
-| `propose-plan` | 把**一章**的节拍交给用户拍板并结束本回合；**不落盘**（批准的是"去写正文"这个动作）。它登记的那份 `approved` 就是 `task(writer)` 的门。**要先进草稿模式**；模式由用户接受/拒绝退掉，不由它自己退 |
+| `propose-plan` | 把**一章**的规划交给用户拍板并结束本回合。规划**落** `<novel>/.talemate/plans/ch_<N>.md`（引擎工作区，见 `framework/plan.ts`），**不落 design/**；用户回话后由 harness 置 `approved`。**不需要先 enter-draft**——草稿模式只服务文档提案的三向审阅 |
 | `enter-draft` | 进入**草稿模式**（`edit`/`delegate` 一律 deny，那些工具从 schema 里消失）。**三向审阅的唯一通道** |
 | `exit-draft` | 用户改主意不做了 → 离开草稿模式（正常路径不需要它：接受/拒绝会自己退） |
 | `confirm` | 模型主动要用户点头（受 `question` 权限管） |
@@ -133,9 +135,9 @@
 
 **按类别挡，不是按名单。** 将来加了新的写作工具、只要它声明了 `permission: "edit"`，就自动被 `draft` 挡住——不需要谁记得去改一份名单。这是旧写法（模式里硬编码一串工具名、加工具时靠一条测试兜底）修掉的病。
 
-模式的纪律正文刻意**不讲节拍**——那归 `propose-plan` 的 description。绑死成"章节草稿模式"会让它换个场景就用不了，有一条用例钉着。
+模式的纪律正文刻意**不讲规划**——那归 `propose-plan` 的 description。绑死成"章节草稿模式"会让它换个场景就用不了，有一条用例钉着。
 
-**模式只在会话内存里**，和待执行提案同生命周期：进程重启即回到默认。**硬保证不靠它**——写正文那道门挂在 `task(writer)` 上（查一份 approved 的节拍）。
+**模式只在会话内存里**，和待执行提案同生命周期：进程重启即回到默认。**硬保证不靠它**——它是一层"这个模式下看得到哪些工具"的档，不是任何流程的状态机；"交出去就停"归工具自己的 `halt`。
 
 ### 权限：谁能做什么、什么要问
 
@@ -158,10 +160,10 @@
 | 触发源 | 例子 | 机制 |
 |---|---|---|
 | **用户** | 进项目、"写第 N 章" | 用户输入绑定当前 primary；"要触发子代理"的话术由 mate 识别后转成工具调用 |
-| **Agent（模型自决）** | mate 判断"这一章够了" → `task(writer)` | 模型调 `task`；可派清单由 `subagentCatalog()` 动态拼进描述 |
+| **Agent（模型自决）** | mate 判断"这一章我手上没有材料" → `task(planner)` | 模型调 `task`；可派清单由 `subagentCatalog()` 动态拼进描述 |
 | **harness** | 上下文超预算 | 内部自动跑 hidden agent |
 
-> **关键认知**：在 agentic 世界里，"用户要写一章"**不会直接启动 writer**。输入进 mate 的会话，mate 按它的工作协议 + 手上的材料**决定**要不要、先调谁。所以触发时机由两件事决定：**mate system prompt 里的工作协议** + **task 工具的动态描述**。我们没有也不应该有一张"关键词 → 直接 spawn"的硬表。
+> **关键认知**：在 agentic 世界里，"用户要写一章"**不会直接启动 planner**。输入进 mate 的会话，mate 按它的工作协议 + 手上的材料**决定**要不要、先调谁。所以触发时机由两件事决定：**mate system prompt 里的工作协议** + **task 工具的动态描述**。我们没有也不应该有一张"关键词 → 直接 spawn"的硬表。
 
 ### mate 的工作协议
 
@@ -172,25 +174,26 @@
    - **改文件一律走这三个工具**（`write` / `edit` / `delete`），不派子代理。
    **卷纲与序列纲就在这一条里**——它们是设计文档，走同一套两段式。
 2. **要写某章正文**（一条链，四步）：
-   ① `read` 取切片（core 常驻 + 当前**序列纲** + 相关人物/世界）→ ② **mate 自己写这一章的节拍** → ③ **`enter-draft` → `propose-plan` 交给用户拍板**（它带 `halt`，回合到此为止）→ ④ 用户接受后 `task(writer, { prompt: 切片 + 节拍 })`，writer 用 `write` 落 `chapters/`（二向：用户看 diff 点头）。
-   - **节拍是 mate 自己的工作，不派子代理**：材料本来就在它手里（core 常驻、序列纲刚读过），派出去等于把已有的东西抄一遍；而用户改节拍是常态，留在自己的上下文里改是免费的，派出去则每次都要重发切片、还可能整份漂移。
-   - ③ **有两道门**：交出去就停（`halt`）；以及**没拍板就不许写**——`task(writer)` 查那份登记的 `approved`，没有就拒。用户要改 → 改完再交一次（循环，不是一次性提案）。
-   - **节拍不落盘**（登记只在会话内存里），**一次批准只换一次写作**。所以 ③ 与 ④ **不能合并成一个回合**：③ 之后必须结束，等用户说话。
+   ① 材料不在手上就 `task(planner)` 要一份**规划** → ② **`propose-plan` 把规划交给用户拍板**（它带 `halt`，回合到此为止，规划落 `.talemate/plans/ch_<N>.md`）→ ③ 用户接受后 **mate 自己写正文**：先 `skill prose` 加载文风，再用 `write` 落 `chapters/`（二向：用户看 diff 点头）→ ④ 写后步骤（状态回写）见 `roadmap.md` 的「状态层」，形状未定。
+   - **规划派得出去，正文不派**：规划的中间材料（翻设定、查资料、试错）远多于它交回来的那一页结论，正是 SubAgent 的判据；而正文**没有比它更短的结论**——产物就是全部中间材料，且 mate 没见过它就识别不出写作中浮现的新点子（`chapter-planning.md`）。
+   - ② **是这条链上唯一的门**：交出去就停（`halt`）。规划是"照它去执行"，**批准的是执行本身**——所以没有第二个"没拍板就不许写"的检查点：写正文是普通 `write`，用户照样在 diff 上点头。
+   - **能自己查一步就查完的，不要派规划者**：core 常驻、序列纲刚读过的时候，材料本来就在 mate 手里，派出去等于把已有的东西抄一遍。
 3. **作品级取舍**（"要不要写残酷点"）→ `ask-user`。
 4. **什么时候必须派**：需要隔离上下文或独立专注才 `task`；mate 自己能一两步查完的绝不派。
+5. **执行中发现更好的走法，就地按新的写。** 规划是**写作前**的准备，管不到写作中的发现——那不需要"变更申请"，也不需要追加提案（`chapter-planning.md` 的末节）。
 
 ### task 契约
 
 ```
-task { agent: "writer", prompt: string }
+task { agent: "planner", prompt: string }
   → 校验 agent 存在且 mode=subagent；depth 检查（≤1 层）
   → 新建 child Session（model = sub.model ?? 父 model，同项目）
   → child.post(prompt) 跑完整子循环
   → 父模型收到 <task agent="…" state="completed"><task_result>…</task_result></task>
 ```
 
-- **prompt 必须自包含**：子代理上下文全新，你给的 prompt 就是它的全部指令——把材料/切片写全，别让它猜。
-- **必须说清要它返回什么**（正文全文？节拍表？）。
+- **prompt 必须自包含**：子代理上下文全新，你给的 prompt 就是它的全部指令——把这一章的意图与手上已有的材料写全，别让它猜。
+- **必须说清要它返回什么**（一份可执行的章节规划）。
 - 子代理工具集由**它自己的** AgentDef 决定，不继承父全量；**默认不带给它 `task`**（防链式 spawn）。
 
 ## Skill 系统
@@ -206,9 +209,9 @@ description: 网文白话爽感文风（第三人称）。用户指定该文风/
 （正文 = 完整文风卡：约束层 + 六维声音层 + 反例 + 声音范例）
 ```
 
-- **发现**：全局库 `~/.talemate/skills/<name>/`（作者级、跨作品）+ 项目库 `novels/<id>/skills/<name>/`（本小说专属）。项目库覆盖全局同名项。
+- **发现**：三个库、一条优先级——**内置库** `<repo>/skills/<name>/`（随产品发布，如正文文风纪律 `prose`）< **全局库** `~/.talemate/skills/<name>/`（作者级、跨作品）< **项目库** `novels/<id>/skills/<name>/`（本小说专属）。扫描顺序就是优先级，后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
 - **注入**：system 只放 `<available_skills>`（name + description + location）；`skill` 工具按名把正文载入为一条 tool-result。
-- **触发**：模型按 description 自主调用为主。
+- **触发**：**只看 description**，没有第二处硬编码。`prose` 也走这一条——时机写在它自己的 description 里（「写任何一章正文之前先加载它」）。**别在 persona 或工具返回里替它点名**"先加载 X"：那样触发契约就有了两份，两份迟早说两套话，而且一处生效一处不生效时没人查得出来。
 
 ## 人机交互两个工具（对应"用户当主编"）
 

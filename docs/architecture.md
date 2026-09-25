@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-09-23 · 本文与代码冲突时**以代码为准**
+> **对齐代码**：2026-09-25 · 本文与代码冲突时**以代码为准**
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -17,7 +17,7 @@
    ▼             ▼                                              ▼
 agent/         tool/       内置工具(按 agent 白名单可见)          framework/   领域层
 registry.ts  (define/registry/runner + 6 域模块)             anchor/report/characters/design_spec/summaries/
-角色声明                                                      markdown/search/proposal/write_ops/match
+角色声明                                                      markdown/search/proposal/plan/write_ops/match
    │                                                                │
    ▼                                                                ▼
 context/  assemble(buildSystemPrompt, toNeutralMessages)         存储能力经 ToolContext 注入
@@ -27,7 +27,7 @@ llm/  provider(anthropic/openai/mock) + 工具循环 + 流式
    │
    ▼
 storage/  corpus.ts(语料读写唯一实现) · project.ts(项目元/规则/测试夹具) · session-store.ts · atomic/bom/util.ts
-skill/    SKILL.md 发现与注入
+skill/    SKILL.md 发现与注入（内置库 / 全局库 / 项目库，优先级由扫描顺序决定）
 ```
 
 依赖方向（实际 import 边）：`cli → session → {agent, tool, framework, context, llm, storage, skill}`；`context/llm/skill` 是叶；`tool/runner` 不依赖 Session。
@@ -57,12 +57,17 @@ skill/    SKILL.md 发现与注入
     │   │   └── <名>.md             #     # 角色:<名> + 必有五格 + 自由长尾
     │   └── outline/                #   情节层: 卷 → 序列（**没有"整本大纲"这个文档**）
     │       ├── vol_<N>.md          #     卷纲: 位置/目标与阻力/情绪曲线/卷末状态/本卷的序列
-    │       ├── vol_<N>/s<序号>.md  #     序列纲: 整篇散文、不分小节，一个情节单元一个文件
-    │       └── plan_ch<N>.md       #     章节细纲（"不该进 design/"已定，落点未定）
+    │       └── vol_<N>/s<序号>.md  #     序列纲: 整篇散文、不分小节，一个情节单元一个文件
     ├── chapters/                   # ◀ 成品正文 chapter_ch<N>_v<M>.md
-    ├── skills/                     # 项目级 SKILL.md（可选）
-    └── .talemate/sessions/<id>/    # 会话元 session.json + messages.jsonl
+    ├── skills/                     # 项目级 SKILL.md（可选；另有全局库与仓库内置库，见下）
+    └── .talemate/                  # ◀ 引擎工作区（不是作品）
+        ├── plans/ch_<N>.md         #   章节规划工件（propose-plan 落，见 framework/plan.ts）
+        └── sessions/<id>/          #   会话元 session.json + messages.jsonl
 ```
+
+**作品 vs 工作区**：`design/` + `chapters/` 是**作品**——用户的、要被审阅的、可进版本控制的；
+`.talemate/` 是**引擎的**：可清理、用户不必看、不参与 `list` / `search` / 不变量 / 结构规范
+（所以规划工件 `read` 也读不到，它的路径由待办注记报出来）。
 
 **会话放在项目目录里**：会话是"围绕这部小说的讨论记录"，跟作品同目录便于整体备份/迁移/进 git；但它**不属于作品内容**（只有 `design/` 与 `chapters/` 算）。
 
@@ -115,7 +120,7 @@ sequenceDiagram
 ```
 system = [
   env/date 块（今天日期 / 项目名 / 角色）
-  角色 system（agent.system —— 写手在这里含写作规范）
+  角色 system（agent.system —— 角色壳；正文的文风纪律不在这里，在 skills/prose/）
   项目规则（AGENTS.md 全文注入，来源标注 "Instructions from: …"）
   skills 目录清单（<available_skills>: name+description，无正文）
 ]
@@ -126,7 +131,7 @@ messages = 按 compaction 截断后的历史 + 刚读的设定切片
 四条规则：
 
 1. **AGENTS.md = 常驻、每步全量注入**。内容归用户——项目级、用户管理、**默认可空、不预建**；系统只提供"存在就注入"的能力。**产品核心行为不得依赖它**：路径约定归工具，分层工作法归 design-spec，写作与命名纪律归各角色 system。
-2. **Skill = 目录化、按需注入**。正文不常驻；system 只给清单，命中后用 `skill` 工具把正文作为 tool-result 带进来。
+2. **Skill = 目录化、按需注入**。正文不常驻；system 只给清单，命中后用 `skill` 工具把正文作为 tool-result 带进来。三个库按**扫描顺序**定优先级：仓库内置 < 用户全局 < 项目。
 3. **活文档 = 工具读取、按需切片**。要什么读什么，读到的内容作为 user 侧材料。**例外：`core.md` + `wiki/world.md` 每轮现读全文注入**（见下）。
 4. **取当前版本**：写作/task 委派时现读，绝不引用缓存。
 

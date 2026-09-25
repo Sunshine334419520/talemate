@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-09-23 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`
+> **对齐代码**：2026-09-25 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -86,29 +86,28 @@ read           { path: "chapters/chapter_ch2_v1.md" }
 
 ```mermaid
 flowchart TD
-    W[用户: 根据序列 X 写第 N 章] --> W1[read 取当前序列纲 + 相关切片]
-    W1 --> W2[mate 自己写这一章的节拍]
-    W2 --> W3[propose-plan 交给用户 —— halt，回合到此为止]
+    W[用户: 根据序列 X 写第 N 章] --> W1[task planner 带意图与手上的材料]
+    W1 --> W2[规划者读全套设定与序列纲，回一份可执行规划]
+    W2 --> W3[propose-plan: 落 .talemate/plans/ch_N.md + 摆给用户 —— halt，回合到此为止]
     W3 --> W4{用户拍板}
-    W4 -- 要改 --> W2
-    W4 -- 认可 --> W5[task writer 带切片 + 节拍写正文]
-    W5 --> W6[writer 用 write 落 chapters/ —— 用户看 diff 后点头]
+    W4 -- 要改 --> W3
+    W4 -- 认可 --> W5[mate 自己写: skill prose 加载文风 → write 落 chapters/]
+    W5 --> W6[用户看 diff 后点头 —— 用户看过的字节 == 落盘的字节]
 ```
 
-**一次只规划一章**，因为节拍是**序列纲的投影**：序列纲说"这一节要兑现什么"，节拍说"这一章怎么兑现"。
+**一次只规划一章**，因为规划是**序列纲的投影**：序列纲说"这一节要兑现什么"，规划说"这一章怎么兑现"。
 
-**门有两道，都挂在 `propose-plan` 这一环上：**
+**门只剩一道，挂在 `propose-plan` 上：交出去就停**（`halt`，不靠模型自觉）。它同时把规划登记进会话内存，用户回话后由 harness 置 `approved`——**和 `apply-design` 是同一套**：propose 登记 → harness 判同意 → 模型据它执行。
 
-- **交出去就停**：它带 `halt`，不靠模型自觉。
-- **没拍板就不许写**：它把节拍登记进会话内存，用户回话后由 harness 置 `approved`；`task(writer)` 查这一位，没批准就拒绝，并把"先 propose-plan"给回去。**这和 `apply-design` 是同一套**——propose 登记 → harness 判同意 → 执行工具查它。门开在**执行那一头**而不是给整个会话加个模式，是为了让设计流程与正文流程**共用一种"用户拍板"的语义**。
+**从前还有第二道门**（`task(writer)` 查那份 `approved`，没拍板就不放行）。它随 writer 一起取消了：正文改由 mate 自己写，而"写正文"是普通 `write`——用户照样在 diff 上点头，再挂一道门只是把同一件事问两遍。
 
-节拍**不落盘**：它批准的是**动作**（去写正文），不是一份文档。那份登记只活在会话内存里（`Session.pending`，storage 层完全不认识它），靠 `renderPendingNote` 每轮注入 system 抵抗压缩。**一次批准只换一次写作**——`task(writer)` 成功后即清，下一章要重新交、重新拍板。
+**规划落盘**，落在 `<novel>/.talemate/plans/ch_<N>.md`——**引擎的工作区，不是 `design/`**。`design/` + `chapters/` 是作品（用户的、要被审阅的、可进版本控制的），`.talemate/` 是这一次执行的状态：可清理、用户不必看、不参与 `list` / `search` / 不变量 / 结构规范。所以它**不走 `write_ops`**（那条路认识的是作品文档：diff、CAS、权限 pattern）——由 `propose-plan` 自己整篇写、整篇渲染出来，用户看过的字节就是落盘的字节。命名与清理策略见 `framework/plan.ts`。
 
 **mate 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善核心设定"就走企划成型，说"写第 N 章"就走章节生产。
 
 ## 写作依赖当前版本
 
-每次 task 委派写手，prompt 里带"当前 core 切片 + 相关 world/characters 切片 + 细纲切片"——**绝不缓存旧设定**。写作/task 委派时一律现读。
+每次写正文（以及每次 `task` 委派），都**现读**"当前 core 切片 + 相关 world/characters 切片 + 序列纲/规划"——**绝不缓存旧设定**。
 
 ## 相关源码
 
@@ -123,6 +122,7 @@ flowchart TD
 | `framework/match.ts` | 锚点匹配的回退阶梯（唯一性、跨度失控兜底） |
 | `framework/invariants.ts` | **对算出来的结果做后验**（角色卡三条 + 重名小节一条）。提案时也跑同一份，所以判据不会两处说两套 |
 | `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `reviewable` / `renderProposal`）＋ `proposalOp`（提案 → 写盘 op）。规范查询转发给 `design_spec.specFor` |
+| `framework/plan.ts` | **章节规划工件**：命名（`.talemate/plans/ch_<N>.md`）、落盘、渲染。**不走 `write_ops`**——它不是作品文档，见本文件「章节生产」 |
 | `framework/markdown.ts` | 区块**读**手术（`getSection` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
 | `framework/anchor.ts` | 常驻注入（`RESIDENT_DOCS` 两条路径）+ `buildIndex`（`list` 的索引） |
 | `tool/read_tools.ts` | `read` / `list` / `search` 三个薄壳（**项目级**，与 design 无关） |

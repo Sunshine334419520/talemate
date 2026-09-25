@@ -120,15 +120,13 @@ describe("itemsOf · 一个函数、两个数据源", () => {
     expect(heads).toContain("基本档案");
   });
 
-  test("专题页 / 章节细纲同样走兜底", () => {
+  test("专题页（无规范登记的文档）同样走兜底", () => {
     expect(itemsOf("design/wiki/岛屿地图.md", "# 岛屿地图\n\n## 北岸\n礁石。\n").map((i) => i.heading)).toEqual(["北岸"]);
-    expect(itemsOf("design/outline/plan_ch3.md", "## 节拍\n1. 醒来\n").map((i) => i.heading)).toEqual(["节拍"]);
   });
 
-  test("情节层按**路径模式**登记：同一个层下的卷纲与序列纲靠模式分开，章计划仍无规范", () => {
+  test("情节层按**路径模式**登记：同一个层下的卷纲与序列纲靠模式分开", () => {
     expect(specFor("design/outline/vol_2.md")?.id).toBe("outline-vol");
     expect(specFor("design/outline/vol_2/s3.md")?.id).toBe("outline-seq");
-    expect(specFor("design/outline/plan_ch3.md")).toBeUndefined();
     // **旧正则有、glob 没有的一条严格性**：`\d+`。`permission.match` 只认 `*`/`?`，表达不了
     // "卷号必须是数字"，所以 `vol_.md` 这类畸形路径现在也会落到卷纲规范上。
     // 这是**换来词表统一**的代价（与 `invariants`、权限用同一套匹配），也确实是更有用的答案：
@@ -193,7 +191,7 @@ describe("reviewable · 防「渲染成空页却照样落盘」", () => {
   test("无规范登记的文档：有 level ≥ 2 标题就逐格，没有就整篇一格——两种都看得到字节", () => {
     expect(reviewable("design/wiki/x.md", "## A\n内容")).toBe(true);
     expect(reviewable("design/wiki/岛屿地图.md", prose)).toBe(true);
-    expect(reviewable("design/outline/plan_ch3.md", prose)).toBe(true);
+    expect(reviewable("design/wiki/岛屿地图.md", "整段散文，一个标题都没有。")).toBe(true); // 兜底成"整篇一格"
   });
 });
 

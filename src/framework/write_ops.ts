@@ -137,7 +137,7 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
       return {
         ok: false,
         reason: "notapproved",
-        output: `${req.proposalKey} 不是一份待落盘的文档（节拍不落盘）——它解锁的是别的动作，不是写文件。`,
+        output: `${req.proposalKey} 不是一份待落盘的文档（规划那条登记不落盘到作品里，见 framework/plan.ts）——它解锁的是别的动作，不是写文件。`,
       };
     }
     op = derived;

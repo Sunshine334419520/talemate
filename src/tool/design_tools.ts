@@ -88,7 +88,7 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
       path: {
         type: "string",
         description:
-          "Project-relative path of the document, incl. its root and .md — design/core.md, design/wiki/world.md, design/wiki/<topic>.md, design/outline/vol_<N>.md, design/outline/vol_<N>/s<M>.md, design/outline/plan_ch<N>.md, design/characters/<name>.md (a character card is created and rewritten this way; there is no character-specific tool)",
+          "Project-relative path of the document, incl. its root and .md — design/core.md, design/wiki/world.md, design/wiki/<topic>.md, design/outline/vol_<N>.md, design/outline/vol_<N>/s<M>.md, design/characters/<name>.md (a character card is created and rewritten this way; there is no character-specific tool)",
       },
       content: {
         type: "string",

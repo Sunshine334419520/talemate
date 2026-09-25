@@ -11,7 +11,7 @@
  *   3. **自己 deny 掉 `question`**——这条最要紧。`AgentDef.tools` **不是执行边界**（它只决定模型
  *      看得见哪些 schema，执行查的是全局 registry），所以白名单里没有 `ask-user` 不代表调不出来：
  *      子代理只要没自己 deny，一次幻觉出来的 `ask-user` 就会真的**把用户从自己的对话里拽出来**
- *      ——而它跑在隔离上下文里，用户根本不在场。见 `docs/permissions.md` 与 writer/researcher 的注释。
+ *      ——而它跑在隔离上下文里，用户根本不在场。见 `docs/permissions.md` 与 planner/researcher 的注释。
  */
 import { describe, test, expect } from "bun:test";
 import { DEFAULT_AGENTS } from "../src/agent/registry";

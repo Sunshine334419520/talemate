@@ -1,12 +1,12 @@
 /**
  * P0 冒烟：mock provider + 临时 TALEMATE_HOME，离线验证 harness 全链路：
- *   建项目 → openSession(mate) → post → LLM 首轮返回 task 工具调用
- *   → runner 执行 task → 委派 writer 子会话（独立上下文）→ 结果回填父 assistant part
- *   → 第二轮 LLM 返回正文 → 落盘。
+ *   建项目 → openSession(mate) → post → LLM 首轮返回 propose-plan
+ *   → 规划落到 .talemate/plans/ 并交给用户 → 用户回话 → 委派 planner 子会话（独立上下文）
+ *   → 结果回填父 assistant part。
  * 运行：bun run src/smoke.ts
  * 环境：TALEMATE_PROVIDER=mock（不需 key）；TALEMATE_HOME 自动用临时目录。
  */
-import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openSession, type UserIO } from "./session/session";
@@ -14,6 +14,7 @@ import { createProject, readProjectRules, writeProjectMeta } from "./storage/pro
 import { enumerateDocs } from "./storage/corpus";
 import { loadMessages, listSessionIds, loadSessionMeta } from "./storage/session-store";
 import { loadModelConfig } from "./core/config";
+import { discoverSkills } from "./skill/discovery";
 import { evaluateWithSource } from "./permission";
 import { PLAN_KEY } from "./core/types";
 
@@ -40,33 +41,50 @@ try {
   const model = loadModelConfig();
   console.log(`[1] 项目已建：${meta.id}`);
 
-  // 2) 硬门：写正文前必须有一份用户拍板过的节拍。没拍板就派 writer，会被拒
+  // 2) 章节生产：propose-plan 把规划落到 .talemate/plans/（引擎工作区），交给用户、本回合停手。
+  //    **它不再需要先 enter-draft**——草稿模式只服务文档提案的三向审阅。
   const session = await openSession({ projectId: meta.id, model, io });
+  process.env.TALEMATE_MOCK_TOOL = "propose-plan";
   await session.post("帮我写第 1 章：主角在都市醒来。");
-  const gatedMsgs = await loadMessages(meta.id, session.sessionId);
-  const refusedPart = gatedMsgs.flatMap((m) => m.parts ?? []).find((p) => p.type === "tool" && p.name === "task");
-  const gated = refusedPart?.type === "tool" && /没有一份用户已拍板的节拍/.test(refusedPart.output ?? "");
-  console.log(`[2] 硬门：没拍板的节拍 → task(writer) 被拒：${gated ? "✓" : "✗"}`);
-  if (!gated) throw new Error(`写正文的硬门没起作用：${truncate(JSON.stringify(refusedPart ?? null), 200)}`);
+  const pendingPlan = session.pending.get(PLAN_KEY);
+  console.log(`[2] propose-plan 已登记待拍板的规划（未获同意）：${pendingPlan && !pendingPlan.approved ? "✓" : "✗"}`);
+  if (!pendingPlan || pendingPlan.approved) throw new Error("规划未被登记为待拍板");
 
-  // 3) 拍板过之后同一条委派放行——走真实的两回合
+  const planFile = join(HOME, "novels", meta.id, ".talemate", "plans", "ch_1.md");
+  const planText = await readFile(planFile, "utf-8").catch(() => "");
+  const landed = planText.includes("# 第 1 章规划");
+  console.log(`[2b] 规划工件落在 .talemate/plans/ch_1.md：${landed ? "✓" : "✗"}`);
+  if (!landed) throw new Error(`规划没有落到 .talemate/plans/ch_1.md：${truncate(planText, 120)}`);
+  const notInDesign = (await enumerateDocs(meta.id, "design/")).length === 0;
+  console.log(`[2c] 规划没进 design/（作品目录仍为空）：${notInDesign ? "✓" : "✗"}`);
+  if (!notInDesign) throw new Error("规划不该写进 design/");
+  const shownPlan = proposals.at(-1) ?? "";
+  console.log(`[2d] 规划已渲染给用户：${shownPlan.includes("──── 第 1 章 · 规划 ────") ? "✓" : "✗"}`);
+  if (!shownPlan.includes("──── 第 1 章 · 规划 ────")) throw new Error(`规划未按预期渲染：${truncate(shownPlan, 200)}`);
+
+  // 3) 用户拍板 → 委派规划者那条链（走真实的两回合）
   const s2write = await openSession({ projectId: meta.id, model, io });
-  // 三向只有草稿模式那一条通道，所以先进模式再提案（propose-plan 的前置会拦）。
-  process.env.TALEMATE_MOCK_TOOL = "enter-draft";
-  await s2write.post("我要写第 1 章，先给我一份节拍。");
   process.env.TALEMATE_MOCK_TOOL = "propose-plan";
   await s2write.post("帮我写第 1 章：主角在都市醒来。");
-  const pendingPlan = s2write.pending.get(PLAN_KEY);
-  console.log(`[3] propose-plan 已登记待执行的节拍（未获同意）：${pendingPlan && !pendingPlan.approved ? "✓" : "✗"}`);
-  if (!pendingPlan || pendingPlan.approved) throw new Error("节拍未被登记为待拍板");
-
   process.env.TALEMATE_MOCK_TOOL = "task";
   const reply = await s2write.post("没问题");
-  // 接受 = 退出草稿模式（出口是接受/拒绝，不是"提案成功"），所以随后的 task 才没被模式挡住
-  console.log(`[3b] 用户接受 → 退出草稿模式：${s2write.currentMode ? "✗ 还开着" : "✓"}`);
-  // 一次批准只换一次写作：task(writer) 成功后那份登记即清
-  console.log(`[3b2] task(writer) 放行、且用掉即清：${s2write.pending.has(PLAN_KEY) ? "✗ 还留着" : "✓"}`);
-  console.log(`[3c] mate post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
+  // 同意由 harness 按用户回话判定（模型自述无效）——拍完板它还在表里，规划不是"用掉即清"
+  console.log(`[3] 用户接受 → 规划记为已同意且留着：${s2write.pending.get(PLAN_KEY)?.approved ? "✓" : "✗"}`);
+  console.log(`[3b] mate post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
+
+  // 3c) 内置 skill 库：随产品发布的 prose 在最低优先级那一层，用户同名可覆盖
+  const skills = await discoverSkills(meta.id);
+  const hasProse = skills.some((s) => s.name === "prose");
+  console.log(`[3c] 内置 skill 库可发现 prose：${hasProse ? "✓" : "✗"}`);
+  if (!hasProse) throw new Error(`内置 skill 库没接上：${skills.map((s) => s.name).join(", ") || "（一个都没有）"}`);
+
+  const proj = join(HOME, "novels", meta.id, "skills", "prose");
+  await mkdir(proj, { recursive: true });
+  await writeFile(join(proj, "SKILL.md"), "---\nname: prose\ndescription: 项目自带的\n---\n项目版正文。\n", "utf-8");
+  const overridden = (await discoverSkills(meta.id)).find((s) => s.name === "prose");
+  const won = overridden?.description === "项目自带的";
+  console.log(`[3c2] 项目库同名覆盖内置库：${won ? "✓" : "✗"}`);
+  if (!won) throw new Error("项目库没能覆盖内置库的同名 skill");
 
   // 3d) 草稿模式：task 从 schema 里消失，连 mock 都演不出来（模式唯一的工具效果）
   const s3 = await openSession({ projectId: meta.id, model, io });
@@ -123,14 +141,14 @@ try {
     throw new Error("task 委派链路未打通");
   }
 
-  // 4) 子会话已落盘（writer）
+  // 4) 子会话已落盘（planner）
   const subIds = await listSessionIds(meta.id);
-  console.log(`[5] 落盘会话数：${subIds.length}（应 ≥2：父+writer 子）`);
+  console.log(`[5] 落盘会话数：${subIds.length}（应 ≥2：父+planner 子）`);
   const subMetas = [];
   for (const sid of subIds) subMetas.push(await loadSessionMeta(meta.id, sid));
-  const writerSession = subMetas.find((m) => m.title.startsWith("task:"));
+  const childSession = subMetas.find((m) => m.title.startsWith("task:"));
   console.log(`    子会话：${subMetas.map((m) => `${m.title}(${m.id})`).join(", ")}`);
-  if (!writerSession) throw new Error("writer 子会话未落盘");
+  if (!childSession) throw new Error("planner 子会话未落盘");
 
   // 4b) design/ 懒建：初始为空（按需 design-spec 拿形状再成稿）
   const seeded = await enumerateDocs(meta.id, "design/");

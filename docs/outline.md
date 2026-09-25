@@ -2,7 +2,7 @@
 
 > **职责**：回答"大纲由什么构成、一卷的纲/一个序列的纲各写什么、为什么没有整本大纲"。
 > **读者**：要改 `framework/design_spec.ts` 里卷纲/序列纲那两条规范、或改情节层写入守卫的人。
-> **对齐代码**：2026-09-23 · 规范在 `framework/design_spec.ts` 的 `SPECS`（按路径 glob 登记，具体者胜出）
+> **对齐代码**：2026-09-25 · 规范在 `framework/design_spec.ts` 的 `SPECS`（按路径 glob 登记，具体者胜出）；章规划在 `framework/plan.ts`
 > 相邻：`design-docs.md`（四层与两段式落盘）· `characters.md`（另一个"主文档是目录"的层）· `roadmap.md`
 
 ## 一句话
@@ -88,15 +88,15 @@ derived」、角色名单现算、`design-docs.md` 的「绝不缓存旧设定�
 `design/outline/vol_*/s*.md` 同时命中一份序列纲，靠"模式更长者胜出"定胜负——**不靠表里的先后**。
 取规范：`design-spec` 带 `path: "design/outline/"`（目录路径）拿两份，带某一份文档的路径拿其中一份。
 
-## 章计划不在这里
+## 章规划不在这里
 
-一节要写成几章，是**写到那儿才知道**的。所以每章写正文前，**mate 自己出这一章的节拍**，
-`propose-plan` 交给用户拍板（带 `halt`，回合到此为止），认可后直接交给 writer。
+一节要写成几章，是**写到那儿才知道**的。所以每章写正文前，mate 拿一份这一章的**规划**
+（材料不在手上就 `task(planner)` 去要），`propose-plan` 交给用户拍板（带 `halt`，回合到此为止），
+认可后**mate 自己照它写正文**。
 
-**没有拍板过的节拍，`task(writer)` 会被拒绝**——门和执行工具同款，和 `apply-design` 是同一套机制。
-
-**节拍不落盘**：它批准的是**动作**（去写正文），不是一份文档。`design/` 里没有它，
-`chapters/` 里也没有；那份待执行的登记只在会话内存里，写完即清。详见 `design-docs.md` 的「章节生产」。
+**规划不落 `design/`**：它落在 `.talemate/plans/ch_<N>.md`——那是引擎的工作区，不是作品的一份
+文档。`design/` 里没有它，`chapters/` 里也没有。判据、命名与清理策略见 `framework/plan.ts`，
+整条链见 `design-docs.md` 的「章节生产」与 `chapter-planning.md`。
 
 ## 尚未落地
 
