@@ -1,6 +1,6 @@
 Delete a whole file — a design doc, a character card, a chapter.
 
-- `path` is project-relative: `design/<...>` or `chapters/<...>`.
+- `path` is project-relative: `design/<...>`, `chapters/<...>` or `state/<...>`.
 - **Look at where the name still appears before you delete it.** That reference check is shown to the
   user together with the request. If the term is still mentioned elsewhere, decide whether those
   places should be cleaned up too — and clean them yourself with `edit`, one place at a time. The

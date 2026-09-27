@@ -9,7 +9,10 @@ real-world fact you must not assert from memory yourself.
 Write the plan in Chinese, as a list of artifacts rather than free text — a step is done when what
 it names exists:
 - 意图: what the user wants out of this chapter, in their terms.
-- 产物（按序）: where the work lands, the chapter file first (chapters/chapter_ch<N>_v<M>.md).
+- 产物（按序）: where the work lands — the chapter file first (chapters/chapter_ch<N>_v<M>.md), then
+  the state files this chapter actually moves (state/characters/<名>.md for each character whose
+  situation changes, state/foreshadowing.md if a thread is planted or paid off, and this chapter's
+  entry in state/progress.md). Read the current state files before deciding what moves.
 - Then, per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and the
   writing partner follows them); the characters the chapter must land and what each has to get
   across; the facts you checked, each with its source; the constraints the material cannot supply

@@ -14,6 +14,7 @@ import { SPECS, renderSpec } from "../src/framework/design_spec";
 import { planAbs } from "../src/framework/plan";
 import { renderHits } from "../src/framework/search";
 import { buildResidentDesigns, buildIndex } from "../src/framework/anchor";
+import { buildProjectStatus } from "../src/framework/report";
 import { applyDesignTool, proposeDesignTool } from "../src/tool/design_tools";
 import { deleteTool, editTool } from "../src/tool/file_tools";
 import { defineTool } from "../src/tool/define";
@@ -265,7 +266,7 @@ describe("design-spec（结构规范）", () => {
   });
 });
 
-// ─── 三个读口（项目级：design/ 与 chapters/ 通吃） ───
+// ─── 三个读口（项目级：design / chapters / state 通吃） ───
 
 describe("读口 · read / list / search", () => {
   // **自己的项目**：上面那些 describe 共用 `pid`，这里播下的文件会污染它们的"初始为空"断言。
@@ -310,17 +311,55 @@ describe("读口 · read / list / search", () => {
   });
 });
 
-describe("索引 · 未知目录不再被静默丢掉", () => {
-  test("design/state/ 这类新目录会显示（从前 order 只列四个已知名，其余枚举到了也不显示）", async () => {
+describe("索引 · 目录次序与未知目录", () => {
+  test("未知目录不再被静默丢掉（从前 order 只列四个已知名，其余枚举到了也不显示）", async () => {
     const id = (await createProject({ title: "索引目录" })).id;
-    await writeDoc(id, "design/state/continuity.md", "## 谁知道什么\n沈越 知道。\n");
+    await writeDoc(id, "design/wiki/地理/北境.md", "## 北境\n风大，年年有人冻死。\n");
     const idx = await buildIndex(id);
-    expect(idx).toContain("state/");
-    expect(idx).toContain("continuity.md");
+    expect(idx).toContain("地理/");
+    expect(idx).toContain("北境.md");
+  });
+
+  test("列整个项目时三个根按作品次序排在前面，且流水只占一行", async () => {
+    const id = (await createProject({ title: "索引根次序" })).id;
+    await writeDoc(id, "design/core.md", "# 核心\n");
+    await writeDoc(id, "chapters/chapter_ch1_v1.md", "第一章。\n");
+    await writeDoc(id, "state/progress.md", "# 章节流水\n\n## 第 1 章\n他借到了粮。\n");
+
+    const idx = await buildIndex(id, "");
+    const order = ["design", "chapters", "state"].map((g) => idx.indexOf(`  ${g}/`));
+    expect(order.every((i) => i >= 0)).toBe(true); // 三个根都列出来了
+    expect([...order].sort((a, b) => a - b)).toEqual(order); // 次序是 design → chapters → state
+    // 流水是只追加的，几十章之后整篇铺小节会把目录淹掉——所以它只给一行
+    expect(idx).toContain("progress.md（1 条 · 最近：第 1 章）");
+    expect(idx).not.toContain("- 第 1 章");
   });
 });
 
 // ─── 播种 + 搜索 + 锚点（走真实临时项目） ───
+
+describe("状态卡 · 大纲现状只报位置，不报剩余", () => {
+  test("写到哪儿了：读 `state/progress.md` 的最后一节，原样报出来", async () => {
+    const id = (await createProject({ title: "状态卡" })).id;
+    await writeDoc(id, "design/outline/vol_1.md", "# 第一卷\n\n## 本卷在全局的位置\n他刚穿来，一无所有。\n");
+    await writeDoc(id, "design/outline/vol_1/s1.md", "序列一 · 落地\n");
+    // 还没写过正文 → 那一行不长尾巴（不编"写到第 0 章"）
+    expect(await buildProjectStatus(id)).toContain("✓ 第 1 卷 / 共 1 卷 · 1 个序列：他刚穿来，一无所有。");
+    expect(await buildProjectStatus(id)).not.toContain("写到");
+
+    await writeDoc(
+      id,
+      "state/progress.md",
+      "# 章节流水\n\n## 第 1 章\n他睁眼，认下这一屋子的欠账。\n\n## 第 2 章\n东家来催账，他第一次开口讲价。\n",
+    );
+    const card = await buildProjectStatus(id);
+    expect(card).toContain("写到第 2 章（东家来催账，他第一次开口讲价。）"); // 最后一节，不是第一节
+    expect(card).not.toContain("第 1 章");
+    // **没有"还剩/进度/百分比"这回事**：序列纲声明的是功能不是事件，章数与序列进度之间没有换算
+    const leaked = ["还剩", "进度", "%", "完成"].filter((w) => card.includes(w));
+    expect(leaked).toEqual([]);
+  });
+});
 
 describe("项目懒建 / 搜索 / 锚点", () => {
   test("懒建：建项目不种四层；文件被写入才出现", async () => {

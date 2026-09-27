@@ -29,14 +29,16 @@ afterAll(async () => {
 const root = (): string => join(HOME, "novels", pid);
 
 describe("corpus · 枚举", () => {
-  test("两个根都收，路径是**项目相对**", async () => {
+  test("三个根都收，路径是**项目相对**", async () => {
     await writeDoc(pid, "design/core.md", "# 核心\n");
     await writeDoc(pid, "design/characters/沈越.md", "# 角色：沈越\n");
+    await writeDoc(pid, "state/progress.md", "# 章节流水\n\n## 第 1 章\n落地。\n");
     await writeFile(join(root(), "chapters/chapter_ch1_v1.md"), "第一章\n", "utf-8");
     expect(await enumerateDocs(pid)).toEqual([
       "chapters/chapter_ch1_v1.md",
       "design/characters/沈越.md",
       "design/core.md",
+      "state/progress.md",
     ]);
   });
 
@@ -60,10 +62,19 @@ describe("corpus · 枚举", () => {
 });
 
 describe("corpus · 读", () => {
-  test("读得到两个根；不存在的给 undefined", async () => {
+  test("读得到三个根；不存在的给 undefined", async () => {
     expect(await readDoc(pid, "design/core.md")).toBe("# 核心\n");
     expect(await readDoc(pid, "chapters/chapter_ch1_v1.md")).toBe("第一章\n");
+    expect(await readDoc(pid, "state/progress.md")).toContain("## 第 1 章");
     expect(await readDoc(pid, "design/nope.md")).toBeUndefined();
+  });
+
+  test("状态层与作品一视同仁：读得回、扫得到（它只是又一个根，不是特例）", async () => {
+    await writeDoc(pid, "state/foreshadowing.md", "# 伏笔账\n\n## 那本账册\n第 3 章埋的，还没收。\n");
+    expect(await readDoc(pid, "state/foreshadowing.md")).toContain("第 3 章埋的");
+    expect(await scanDocs(pid, "还没收", "state/")).toEqual([
+      { path: "state/foreshadowing.md", heading: "那本账册", line: 4, text: "第 3 章埋的，还没收。" },
+    ]);
   });
 
   test("根之外一律不认；目录穿越被挡", async () => {

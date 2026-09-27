@@ -64,6 +64,26 @@ describe("summaries · 规范派生（不分格的文档给 `label（首句）`�
   });
 });
 
+describe("summaries · 章节流水（只追加，所以只给一行）", () => {
+  const progress = ["# 章节流水", "", "## 第 1 章", "他借到了粮。", "", "## 第 2 章", "东家来催账。", ""].join("\n");
+
+  test("`progress.md`：几条 · 最新一条——写下一章要看的是「写到哪了」", () => {
+    // 它是 `DOC_ROOTS` 里唯一**会一直长**的文档。几十章之后整篇铺小节等于把 `list` 淹掉，
+    // 而按 `outline.md` 立的判据（只有会被分别读取的小节才展开），没有人会单独读"第 5 章那条"。
+    expect(at("state/progress.md", progress)).toBe("progress.md（2 条 · 最近：第 2 章）");
+  });
+
+  test("空流水给「（空）」；读不到则让位给索引统一写「（缺）」", () => {
+    expect(at("state/progress.md", "# 章节流水\n")).toBe("progress.md（空）");
+    expect(at("state/progress.md", undefined)).toBeUndefined();
+  });
+
+  test("**只认这一份**：别的 state 文件的小节是要分别读的，照常铺出来", () => {
+    expect(at("state/characters/沈越.md", "# 沈越\n\n## 此刻处境\n在船上。\n")).toBeUndefined();
+    expect(at("state/foreshadowing.md", "# 伏笔账\n\n## 那本账册\n第 3 章埋的。\n")).toBeUndefined();
+  });
+});
+
 describe("summaries · 没有一行的情况（交给索引铺小节）", () => {
   test("有格的文档：返回 undefined，索引去铺它的小节标题", () => {
     expect(at("design/core.md", "# 核心\n\n## 一句话简介\n沈越想活着回去。\n")).toBeUndefined();

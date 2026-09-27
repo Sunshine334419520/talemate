@@ -23,6 +23,31 @@ export function paths(home = talemateHome()) {
 }
 
 /**
+ * 作品的三个根。
+ *
+ * **读口与写口共用这一份清单。** 从前它们各写一遍（`corpus.DOC_ROOTS` 与 `write_ops.WRITE_ROOTS`），
+ * 靠两处注释互相指认"我们是同一套"。加一个根时那两处必须同时改，而漏改一处的后果是
+ * **写得进去读不回来**（或反过来），且**不报错**——正是 `CLAUDE.md` 里"绝不手抄一份能推出来的清单"
+ * 那条要防的事。收在这里之后，加根只改这一行，两边同时到位。
+ *
+ * 三个根的分工：`design/` 与 `chapters/` 是**作品**（设定与正文），`state/` 是**当前状态**
+ * （每章都在变的东西：谁在场、谁知道什么、伏笔收到哪了）。判据见 `docs/state.md`。
+ */
+export const DOC_ROOTS = ["design", "chapters", "state"] as const;
+
+export type DocRoot = (typeof DOC_ROOTS)[number];
+
+/**
+ * 某个根在某项目下的绝对目录——**唯一**一处"根 → 目录"的映射。
+ *
+ * 从前读口写口各有一句 `root === "design" ? pp.design : pp.chapters`：那种三元在加第三个根时会
+ * **静默地把 state 也指到 chapters/**。改成按键取之后，"根没有对应目录"是编译期错误。
+ */
+export function rootAbs(projectId: string, root: DocRoot): string {
+  return projectPaths(talemateHome(), projectId)[root];
+}
+
+/**
  * 仓库自带的 skill 库（`<repo>/skills/`）——随产品发布的那一份，如正文文风纪律 `prose`。
  *
  * 它与 `paths().globalSkills`（用户全局库）**不是一回事**：这个跟着代码走、改了要发版，
@@ -46,6 +71,10 @@ export function projectPaths(home: string, projectId: string) {
     characters: join(design, "characters"),
     outline: join(design, "outline"),
     chapters: join(root, "chapters"),
+    // 状态层：每章都在变的东西（谁在场、谁知道什么、伏笔收到哪了）。**与作品平级而不是
+    // 在 design/ 下面**——它是"现在到哪了"，不是"这本书是什么样"，同一条边界也把规划工件
+    // 挡在 .talemate/ 里。判据见 docs/state.md。
+    state: join(root, "state"),
     skills: join(root, "skills"),
     sessions: join(root, ".talemate", "sessions"),
     // 章节规划工件（框架章节生产那条链的中间态）。**归 .talemate/ 而不是 design/**：

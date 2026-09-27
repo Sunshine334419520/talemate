@@ -15,14 +15,17 @@
  */
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { projectPaths, talemateHome } from "../core/config";
+import { DOC_ROOTS, rootAbs, type DocRoot } from "../core/config";
 import { findInContent } from "../framework/markdown";
 import { safeReadPath } from "./util";
 
-/** 两个根。**刻意只有两个**——与 `write_ops.WRITE_ROOTS` 同一套（读得到的必须写得着，反之亦然）。 */
-export const DOC_ROOTS = ["design", "chapters"] as const;
-
-export type DocRoot = (typeof DOC_ROOTS)[number];
+/**
+ * 三个根（design / chapters / state）。**清单不在这里**——它住在 `core/config.ts`，
+ * 与写口 `write_ops` 共用同一份：读得到的必须写得着，反之亦然，而那件事从前靠两处注释互相指认。
+ * 这里只是把它转出来，让"读口的根"继续有个可引用的名字。
+ */
+export { DOC_ROOTS };
+export type { DocRoot };
 
 export interface DocHit {
   /** 项目相对路径 */
@@ -33,8 +36,7 @@ export interface DocHit {
 }
 
 function absRoot(projectId: string, root: DocRoot): string {
-  const pp = projectPaths(talemateHome(), projectId);
-  return root === "design" ? pp.design : pp.chapters;
+  return rootAbs(projectId, root);
 }
 
 /**

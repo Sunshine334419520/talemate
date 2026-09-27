@@ -8,13 +8,13 @@
  * 与它行尾写法不同的文件。
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile as readRaw, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject, writeDoc } from "../src/storage/project";
-import { readDoc } from "../src/storage/corpus";
+import { DOC_ROOTS, readDoc } from "../src/storage/corpus";
 import { projectPaths } from "../src/core/config";
-import { writeFile, type WriteRequest } from "../src/framework/write_ops";
+import { WRITE_ROOTS, writeFile, type WriteRequest } from "../src/framework/write_ops";
 import { PLAN_KEY, type PendingProposal, type PermissionRequest, type ToolContext } from "../src/core/types";
 
 let HOME: string;
@@ -127,6 +127,25 @@ describe("write_ops · 直写（二向）", () => {
     const r = await writeFile(ctx, confirm({ kind: "write", path: "chapters/chapter_ch1_v1.md", content: "正文\n" }));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.path).toBe("chapters/chapter_ch1_v1.md");
+  });
+
+  test("state/ 也写得进去，而且落的是**它自己那个目录**", async () => {
+    // 从前根 → 目录是一句 `root === "design" ? pp.design : pp.chapters`：加第三个根时那种三元会
+    // **静默地把 state 也指到 chapters/**（写得进去、读不回来，且不报错）。所以这条盯的是
+    // 它真的落在 `state/` 下，不是"写成功了"。
+    const ctx = makeCtx();
+    const r = await writeFile(ctx, confirm({ kind: "write", path: "state/progress.md", content: "# 流水\n" }));
+    expect(r.ok).toBe(true);
+    expect(await readDoc(pid, "state/progress.md")).toBe("# 流水\n");
+    expect(await readDoc(pid, "chapters/progress.md")).toBeUndefined();
+    expect(await readRaw(join(projectPaths(HOME, pid).state, "progress.md"), "utf-8")).toBe("# 流水\n");
+  });
+
+  test("读口与写口认的是**同一份**根清单，不是手抄的两份", async () => {
+    // 加一个根要动两处（`corpus.DOC_ROOTS` 与 `write_ops.WRITE_ROOTS`）时，漏改一处的后果是
+    // "写得进去读不回来"（或反过来），且不报错。所以这条钉的是**同一个数组**——
+    // 不是"两个内容相等的数组"。
+    expect(WRITE_ROOTS).toBe(DOC_ROOTS);
   });
 
   test("根不对 / 想穿目录 → 拒绝，且文案说清可写的根有哪些", async () => {

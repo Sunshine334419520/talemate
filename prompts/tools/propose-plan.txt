@@ -8,7 +8,11 @@ exactly the bytes they were shown; calling it again for the same chapter replace
 Write the plan in Chinese, and make it a list of artifacts rather than free text — a step is done
 when what it names exists:
 - 意图 — what the user wants out of this chapter.
-- 产物（按序）— where the work lands, the chapter file first (chapters/chapter_ch<N>_v<M>.md).
+- 产物（按序）— where the work lands. The chapter file first (chapters/chapter_ch<N>_v<M>.md), then
+  what the state layer takes on: the state file of each character whose situation moves
+  (state/characters/<名>.md), the ledger if a thread is planted or paid off (state/foreshadowing.md),
+  and always this chapter's entry in state/progress.md. Name only the ones this chapter actually
+  moves — a chapter that changes nothing does not get an empty update.
 - per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and you follow
   them); the characters the chapter must land and what each has to get across; the facts that were
   checked, each with its source; the constraints the material cannot supply — what must not break,

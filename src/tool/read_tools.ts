@@ -85,7 +85,7 @@ export const listTool: RegisteredTool<{ path?: string }> = defineTool<{ path?: s
     properties: {
       path: {
         type: "string",
-        description: "Optional project-relative prefix to scope the listing: design/ or chapters/. Omit for the whole project.",
+        description: "Optional project-relative prefix to scope the listing: design/, chapters/ or state/. Omit for the whole project.",
       },
     },
   },
@@ -107,7 +107,7 @@ export const searchTool: RegisteredTool<{ query: string; path?: string }> = defi
       query: { type: "string", description: "Term to search (character / setting / term)" },
       path: {
         type: "string",
-        description: "Optional project-relative prefix to scope the search: design/ or chapters/. Omit for the whole project.",
+        description: "Optional project-relative prefix to scope the search: design/, chapters/ or state/. Omit for the whole project.",
       },
     },
     required: ["query"],

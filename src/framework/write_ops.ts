@@ -24,7 +24,7 @@
  */
 import { join } from "node:path";
 import type { FileOp, PermissionVerdict, ToolContext } from "../core/types";
-import { talemateHome, projectPaths } from "../core/config";
+import { DOC_ROOTS, rootAbs } from "../core/config";
 import { readText, removeIfUnchanged, StaleContentError, writeIfUnchanged } from "../storage/atomic";
 import { joinBom, splitBom } from "../storage/bom";
 import { safeRelPath } from "../storage/util";
@@ -34,8 +34,16 @@ import { checkInvariants } from "./invariants";
 import type { MatchLevel } from "./match";
 import { proposalOp } from "./proposal";
 
-/** 可写的两个根。**刻意只有两个**——加第三个根要同时想清楚权限 pattern 与常驻注入。 */
-export const WRITE_ROOTS = ["design", "chapters"] as const;
+/**
+ * 可写的根：**就是作品的三个根，与读口同一份清单**（`core/config.DOC_ROOTS`）。
+ *
+ * 从前这里是手抄的第二份（读口那份在 `corpus`），加根时两处必须同时改，漏一处就是"写得进去
+ * 读不回来"。现在它是同一个数组的别名——这个导出留着，是因为文档与工具 prompt 引的是这个名字。
+ *
+ * 加一个根要同时想清楚的三件事：权限 pattern（`state/…` 落进规则表的哪一档）、常驻注入
+ * （要不要每轮注入）、以及读写两处都到位（最后这条现在由共用清单保证）。
+ */
+export const WRITE_ROOTS = DOC_ROOTS;
 
 export type WriteFailure =
   /** 目标文件不存在（replace / append / delete 用） */
@@ -88,14 +96,13 @@ function resolveTarget(projectId: string, path: string): Target | { error: strin
   if (!root) {
     return {
       error:
-        `目标要写成 <根>/<相对路径>，可写的根只有 ${WRITE_ROOTS.join(" 与 ")}` +
+        `目标要写成 <根>/<相对路径>，可写的根只有 ${WRITE_ROOTS.join(" / ")}` +
         `（收到：${path}）。`,
     };
   }
   const rel = safeRelPath(clean.slice(root.length + 1));
   if (!rel) return { error: `非法路径：${path}` };
-  const pp = projectPaths(talemateHome(), projectId);
-  return { abs: join(root === "design" ? pp.design : pp.chapters, rel), pattern: `${root}/${rel}` };
+  return { abs: join(rootAbs(projectId, root), rel), pattern: `${root}/${rel}` };
 }
 
 /**

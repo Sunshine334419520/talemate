@@ -27,7 +27,7 @@ export const designSpecTool: RegisteredTool<{ path: string }> = defineTool<{
       path: {
         type: "string",
         description:
-          "A project-relative path under design/: a document whose kind has a spec (design/core.md, design/wiki/world.md, design/characters/林晚.md, design/outline/vol_1.md, design/outline/vol_1/s2.md), or a directory to get every kind under it (design/outline/). Documents with no spec (topic pages, chapter plans) are written free-form.",
+          "A project-relative path under design/: a document whose kind has a spec (design/core.md, design/wiki/world.md, design/characters/林晚.md, design/outline/vol_1.md, design/outline/vol_1/s2.md), or a directory to get every kind under it (design/outline/). Documents with no spec are written free-form.",
       },
     },
     required: ["path"],
@@ -37,7 +37,7 @@ export const designSpecTool: RegisteredTool<{ path: string }> = defineTool<{
     const rendered = path ? renderSpec(path) : undefined;
     if (rendered === undefined) {
       return {
-        output: `${path || "（空路径）"} 没有登记结构规范——按自由形状成稿即可（专题页、章节细纲都属此类）。目录型入口可带尾斜杠取整层，如 design/outline/。`,
+        output: `${path || "（空路径）"} 没有登记结构规范——按自由形状成稿即可（专题页属此类）。目录型入口可带尾斜杠取整层，如 design/outline/。`,
       };
     }
     return { output: rendered, metadata: { path } };

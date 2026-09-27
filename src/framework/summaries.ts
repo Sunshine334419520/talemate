@@ -13,7 +13,7 @@
 import { match } from "../permission";
 import { CARD_DIR, characterLine, nameFromPath } from "./characters";
 import { specFor } from "./design_spec";
-import { isFiller } from "./markdown";
+import { isFiller, listHeadings } from "./markdown";
 
 /**
  * 索引递给摘要器的东西。**`label` 是索引给的默认名字**（外层目录已剥掉的那一段）——形状可以
@@ -57,6 +57,25 @@ export const SUMMARIES: DocSummary[] = [
       const name = nameFromPath(path);
       if (name === undefined) return undefined;
       return `- ${name} · ${content === undefined ? "（缺）" : characterLine(content)}`;
+    },
+  },
+  {
+    id: "state.progress",
+    match: ["state/progress.md"],
+    /**
+     * 章节流水：**一章一节、只往后加**，所以它会一直长。
+     *
+     * 整篇铺小节等于把 `list` 淹掉（几十节，每节都是"第 N 章"），而按 `outline.md` 立的判据——
+     * 只有**会被分别读取**的小节才展开——没有人会单独读"第 5 章那条"。所以这里给一行：
+     * 记了几条、最新一条是什么。写下一章之前要看的是"写到哪了"，那正是这一行。
+     *
+     * 其余 state 文件（角色状态、伏笔账）不登记：它们的小节**是要分别读的**，铺出来有用。
+     */
+    line: ({ label, content }) => {
+      if (content === undefined) return undefined; // 交给索引统一写「（缺）」
+      const heads = listHeadings(content, 2).map((h) => h.title);
+      if (!heads.length) return `${label}（空）`;
+      return `${label}（${heads.length} 条 · 最近：${heads[heads.length - 1]}）`;
     },
   },
 ];

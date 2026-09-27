@@ -26,7 +26,7 @@ context/  assemble(buildSystemPrompt, toNeutralMessages)         存储能力经
 llm/  provider(anthropic/openai/mock) + 工具循环 + 流式
    │
    ▼
-storage/  corpus.ts(语料读写唯一实现) · project.ts(项目元/规则/测试夹具) · session-store.ts · atomic/bom/util.ts
+storage/  corpus.ts(语料读取唯一实现，三个根) · project.ts(项目元/规则/测试夹具) · session-store.ts · atomic/bom/util.ts
 skill/    SKILL.md 发现与注入（内置库 / 全局库 / 项目库，优先级由扫描顺序决定）
 ```
 
@@ -59,13 +59,18 @@ skill/    SKILL.md 发现与注入（内置库 / 全局库 / 项目库，优先�
     │       ├── vol_<N>.md          #     卷纲: 位置/目标与阻力/情绪曲线/卷末状态/本卷的序列
     │       └── vol_<N>/s<序号>.md  #     序列纲: 整篇散文、不分小节，一个情节单元一个文件
     ├── chapters/                   # ◀ 成品正文 chapter_ch<N>_v<M>.md
+    ├── state/                      # ◀ 当前状态（每章都在变；见 docs/state.md）
+    │   ├── characters/<名>.md      #     一角色一份：此刻处境、伤、钱、别人怎么称呼他
+    │   ├── foreshadowing.md        #     伏笔账：埋在哪、打算哪章回收、收了没有
+    │   └── progress.md             #     章节流水：一章一节，只往后加
     ├── skills/                     # 项目级 SKILL.md（可选；另有全局库与仓库内置库，见下）
     └── .talemate/                  # ◀ 引擎工作区（不是作品）
         ├── plans/ch_<N>.md         #   章节规划工件（propose-plan 落，见 framework/plan.ts）
         └── sessions/<id>/          #   会话元 session.json + messages.jsonl
 ```
 
-**作品 vs 工作区**：`design/` + `chapters/` 是**作品**——用户的、要被审阅的、可进版本控制的；
+**三个根 vs 工作区**：`design/`（设定）、`chapters/`（正文）、`state/`（当前状态）是**作品的三个根**
+——写入可写、读口可读、可进版本控制，清单只有一份（`core/config.DOC_ROOTS`，读写两处共用）。
 `.talemate/` 是**引擎的**：可清理、用户不必看、不参与 `list` / `search` / 不变量 / 结构规范
 （所以规划工件 `read` 也读不到，它的路径由待办注记报出来）。
 

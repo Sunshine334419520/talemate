@@ -39,7 +39,7 @@ function resolveDoc(path: unknown): { path: string } | { error: string } {
   }
   if (!clean.startsWith("design/")) {
     return {
-      error: `提案只写 design/ 下的文档（收到：${clean}）——章节正文走 write/edit。`,
+      error: `提案只写 design/ 下的文档（收到：${clean}）——章节正文与状态走 write/edit。`,
     };
   }
   const base = clean.split("/").pop() ?? clean;

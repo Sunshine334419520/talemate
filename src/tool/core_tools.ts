@@ -6,7 +6,7 @@
  * 已删除，改由 `write` 承担。改文件的两个面在 `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
  *
  * 唯一的例外是 `propose-plan`：它**自己落盘**规划工件。因为规划不是作品文档（不审 diff、不做 CAS、
- * 不进语料），落点是 `.talemate/plans/` 这个引擎工作区，而 `write_ops` 只认 design/ 与 chapters/。
+ * 不进语料），落点是 `.talemate/plans/` 这个引擎工作区，而 `write_ops` 只认作品的三个根。
  * 判据见 `framework/plan.ts` 的文件头。
  */
 import { DRAFT_MODE } from "../agent/modes";

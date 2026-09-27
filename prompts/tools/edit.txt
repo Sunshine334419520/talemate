@@ -1,6 +1,6 @@
 Replace exact text inside one file that already exists.
 
-- `path` is project-relative and must start with `design/` or `chapters/`.
+- `path` is project-relative and must start with `design/`, `chapters/` or `state/`.
 - `find` is the text to replace, copied from what you read. Give it enough surrounding context to
   be unique. Keep the indentation exactly as it appears — and never include line-number prefixes.
 - `replace` is what goes in its place, and must differ from `find`.

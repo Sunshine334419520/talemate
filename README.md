@@ -52,6 +52,8 @@ talemate new 我的小说 悬疑
 | 企划的四层活文档与两段式落盘 | [`docs/design-docs.md`](docs/design-docs.md) |
 | 角色卡长什么样、怎么维护 | [`docs/characters.md`](docs/characters.md) |
 | 大纲由什么构成、为什么没有整本大纲 | [`docs/outline.md`](docs/outline.md) |
+| 每章都在变的东西（谁在场、伏笔收到哪了） | [`docs/state.md`](docs/state.md) |
+| 写一章是谁规划、谁批准、谁执行 | [`docs/chapter-planning.md`](docs/chapter-planning.md) |
 | 谁能做什么、什么要问用户 | [`docs/permissions.md`](docs/permissions.md) |
 | 还没做什么 | [`docs/roadmap.md`](docs/roadmap.md) |
 | prompt 怎么组织、怎么写 | [`prompts/README.md`](prompts/README.md) |

@@ -11,7 +11,8 @@
  * **两者都不自己落盘**：拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径。所以
  * 校验、权限、CAS、原子写、diff 全在那一处，这里只剩"语义 + 入参 + 成功文案"。
  *
- * 可写的根只有 design/ 与 chapters/；某个 agent 能碰哪一个由权限表划（见 agent/registry.ts）。
+ * 可写的根是作品的三个根（design / chapters / state，清单在 core/config.ts）；某个 agent 能碰哪一个
+ * 由权限表划（见 agent/registry.ts）。
  */
 import { writeFile } from "../framework/write_ops";
 import { readPrompt } from "../prompts";

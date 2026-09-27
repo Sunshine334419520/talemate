@@ -1,6 +1,6 @@
 Write a complete file in one shot: create it, or replace it entirely.
 
-- `path` is project-relative and must start with `design/` or `chapters/`.
+- `path` is project-relative and must start with `design/`, `chapters/` or `state/`.
 - The content IS the file — it is written byte for byte. So it holds document text and nothing
   else: no notes to the user, no rationale, no questions. Undecided fields become （待定）.
 - Use this when you are the author of the whole file. To change part of a file that already

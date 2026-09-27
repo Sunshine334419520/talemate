@@ -3,7 +3,7 @@
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
 > **对齐代码**：2026-09-25 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`
-> 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
+> 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
 
@@ -19,6 +19,8 @@
 **"层"是产品词汇，不是代码里的一个类型。** 它指的是 `design/` 下的四个目录、以及状态卡与 `mate` 对用户说的那四个名字（核心设定 / 世界观 / 角色 / 大纲）。代码里**没有** `LayerId`、没有按层登记的规范表、也没有 `layer` 参数——文档的归属由**路径**说，别的都不需要。（从前这三样都有，于是"层"这个概念同时当了寻址键、规范匹配键和注入分组；实测下来，只有第一条是多余的。）
 
 **常驻只有两份**：`design/core.md` 与 `design/wiki/world.md`——`anchor.RESIDENT_DOCS` 就是**两条路径**，不再经过"层 id → 路径"那一跳。其余按需 `read`。常驻注入只给可见的 primary（mate）。
+
+**`state/` 不是第五层。** 它记的是"现在到哪了"（谁在场、谁知道什么、伏笔收到哪了），每章都在变——比变化最快的情节层还快一个数量级。所以它在项目根下与 `design/` **平级**，与设定分开。判据与形状见 `state.md`。
 
 **文档格式**：Markdown，`##` 即一格。**读**按"**项目相对路径** + 小节标题"寻址（`read` 的 `path` 与 `section`）；**写**按**锚点**寻址（`edit` 给一段原文与替换文本，见"两种落盘形态"）。不做条目级 ID 引用。
 
@@ -113,7 +115,7 @@ flowchart TD
 
 | 文件 | 职责 |
 |---|---|
-| `storage/corpus.ts` | **语料层**：枚举 / 读 / 扫词的唯一实现（项目相对口径、两个根、一条 walker）。只读，没有任何写口 |
+| `storage/corpus.ts` | **语料层**：枚举 / 读 / 扫词的唯一实现（项目相对口径、三个根、一条 walker）。只读，没有任何写口 |
 | `framework/design_spec.ts` | **一张**规范表：按路径 glob 登记（`SPECS`），**更具体的模式胜出**。每份规范 = 该有哪些小节 + 写/别写/写成 + 成稿工作法。`specFor` / `renderSpec`（目录入口会把名下每种文档一并返回） |
 | `framework/summaries.ts` | 目录摘要器注册表：**某种文档在 `list` 里占哪一行**（角色卡一人一行、不分格的给首句）。形状照抄 `invariants` |
 | `framework/search.ts` | 扫词命中的**渲染**（`renderHits`：按文件分组 + 小节标注）。取数在 `corpus` |

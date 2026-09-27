@@ -1,7 +1,7 @@
 /**
  * 项目级存储：
  * - 建/列/读/写项目元（talemate.json）
- * - AGENTS.md（项目规则）、design/（活文档）、chapters/（成品）
+ * - AGENTS.md（项目规则）、design/（活文档）、chapters/（成品）、state/（当前状态）
  * 会话级存储见 session-store.ts。
  */
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -24,6 +24,7 @@ export async function createProject(opts: { title: string; genre?: string }): Pr
   await mkdir(pp.characters, { recursive: true });
   await mkdir(pp.outline, { recursive: true });
   await mkdir(pp.chapters, { recursive: true });
+  await mkdir(pp.state, { recursive: true });
   await mkdir(pp.skills, { recursive: true });
   await mkdir(pp.sessions, { recursive: true });
 
@@ -92,8 +93,8 @@ export async function readProjectRules(projectId: string): Promise<string> {
  * 只有一个写口）。留在这里是因为**测试要播种字节**：造夹具得能绕过权限弹窗与 CAS 直接把文件放好，
  * 否则每个用例都要先演一遍完整落盘流程。别在 `src/` 里用它。
  *
- * 它只挑得出 `design/` 与 `chapters/` 两个根之下的路径——与 `corpus.DOC_ROOTS`、`write_ops.WRITE_ROOTS`
- * 同一套，绝对路径也由 `corpus.docAbs` 一处算（夹具与读口不会各走各的）。
+ * 它只挑得出 `DOC_ROOTS`（design / chapters / state）之下的路径——清单只有一份、住在 `core/config.ts`，
+ * 读口写口与这里共用；绝对路径也由 `corpus.docAbs` 一处算（夹具与读口不会各走各的）。
  */
 export async function writeDoc(projectId: string, path: string, content: string): Promise<string> {
   const abs = docAbs(projectId, path);

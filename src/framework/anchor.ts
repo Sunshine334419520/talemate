@@ -61,9 +61,10 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
     groups.get(g)!.push(f);
   }
   // 已知目录按固定次序（根在最前），**其余一律附在后面**——从前这里只列那四个名字，
-  // 于是枚举得到、却一个字的目录都不显示：`design/state/` 这类新目录会被静默丢掉。
-  // 列整个项目时（`prefix = ""`）分组就是 design / chapters，正是靠这一条才显示得出来。
-  const KNOWN = ["", "wiki", "characters", "outline"];
+  // 于是枚举得到、却一个字的目录都不显示：新目录会被静默丢掉。
+  // 列整个项目时（`prefix = ""`）分组就是那三个根，所以它们排在头里、顺序同 `DOC_ROOTS`；
+  // 后四个是 `design/` **之内**的分组（给 `prefix = "design/"` 用，那时前三个一个都不出现）。
+  const KNOWN = ["design", "chapters", "state", "", "wiki", "characters", "outline"];
   const rest = [...groups.keys()].filter((g) => !KNOWN.includes(g)).sort();
   const order = [...KNOWN.filter((g) => groups.has(g)), ...rest];
   for (const g of order) {
