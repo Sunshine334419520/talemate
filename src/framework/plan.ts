@@ -36,6 +36,32 @@ export function planAbs(projectId: string, chapter: number): string {
 }
 
 /**
+ * 章节正文的命名——`chapterFileOf`（生成）与 `isChapterFile`（辨认）是**同一件事的两半**，
+ * 改一处必须改另一处。所以这个正则只有这一份。
+ *
+ * 生成的这一半由正文写作窗口直接交给 mate（它照着写）；辨认的那一半判"规划执行完了没有"
+ * （`PendingProposal.done`）。**告诉它的名字必须就是认它的名字**——两半各写各的，
+ * 就会出现"写完了但系统认为没写"。
+ */
+const CHAPTER_FILE_RE = /^chapters\/chapter_ch(\d+)_v\d+\.md$/;
+
+/** 第 N 章正文的路径。`version` 是第几版（同一章改一次就递增）。 */
+export function chapterFileOf(chapter: number, version = 1): string {
+  return `chapters/chapter_ch${chapter}_v${version}.md`;
+}
+
+/**
+ * 这一份文件是不是第 N 章的正文——**规划"执行完了"的判据**（`PendingProposal.done`）。
+ *
+ * 模型写成别的名字时 `done` 不置位，窗口退回"一直开着"的旧行为——**是失效，不是误判**：
+ * 注记多留几轮，不会把正在写的章当成写完了。
+ */
+export function isChapterFile(path: string, chapter: number): boolean {
+  const m = CHAPTER_FILE_RE.exec(path);
+  return m !== null && Number(m[1]) === chapter;
+}
+
+/**
  * 一份规划落盘时的**全文**：标题由章号生成，正文是模型交上来的那一份。
  *
  * 用户看到的与落到盘上的是同一个字符串（`renderPlan` 也从它渲染），所以标题栏不会两处各写各的。

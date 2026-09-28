@@ -1,0 +1,21 @@
+Prose rules. They hold for every chapter, whatever voice the book uses — the floor, not the goal.
+Everything below can be checked by pointing at a sentence; nothing voice-specific is here, since
+that is the style card's job.
+
+- Never explain what you just showed. A line commenting on the meaning of the action above it —
+  「像是习惯，也像是随时准备抓住什么」 — is a footnote to your own text.
+- Never state what the reader can infer — an emotion, a nature, what an event means. Give what
+  someone does, says, or notices, and let the reader arrive there.
+- Say it once. A judgement, fact or image restated in other words is repetition, not emphasis.
+- Dialogue carries no information the reader already has: people talk past each other, answer the
+  wrong question, leave things unsaid.
+- Stay inside what the viewpoint character can perceive — no fact they cannot know.
+- Nothing new appears at the moment it is needed: what was not established earlier cannot solve the
+  problem now.
+- Every sentence must be load-bearing — remove it and ask what the reader loses. If nothing, it was
+  decoration; the same test applies to an image, since a metaphor that is merely correct is one any
+  writer would have reached for.
+
+AI tells are shapes, not words: banning 「仿佛」 only moves it to 「宛如」. Watch for the balanced
+hedge about one thing ("X, and also Y"); the paragraph's closing line reaching for a significance
+it did not earn; the stock body reaction (「心跳沉到嗓子眼」); the evenly-paced paragraph.

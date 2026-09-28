@@ -87,6 +87,16 @@ export interface PendingProposal {
   chapter?: number;
   /** 用户已回话表示同意。**由 harness 判定**（见 Session 里按用户回话匹配同意词），不由模型自述 */
   approved: boolean;
+  /**
+   * 仅规划提案：这一章的正文已经落盘了。
+   *
+   * **是标记，不是删除。** 规划正文只活在 `pending` 的 `content` 里——工件落在 `.talemate/plans/`，
+   * 而 `.talemate/` 不在 `DOC_ROOTS`（`design` / `chapters` / `state`），`read` / `list` / `search`
+   * 都够不着它。删掉条目 = 用户说"改第 2 条"时谁也读不到第 2 条。留着只多一行注记。
+   *
+   * 置位者是 harness（正文落盘那一刻），不由模型自述——同 `approved`。
+   */
+  done?: boolean;
   at: number;
 }
 

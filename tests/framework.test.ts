@@ -39,7 +39,9 @@ import {
 import { BUILTIN_TOOLS } from "../src/tool";
 import { AgentRegistry } from "../src/agent/registry";
 import { PLAN_KEY } from "../src/core/types";
-import { renderPendingNote, Session } from "../src/session/session";
+import { renderPendingNote, Session, writeSettlesPlan } from "../src/session/session";
+import { isChapterFile } from "../src/framework/plan";
+import { buildProseBrief, styleChoiceFrom } from "../src/framework/prose";
 import type { ModelConfig } from "../src/core/types";
 import { ToolRegistry } from "../src/tool/registry";
 import { executeToolPart } from "../src/tool/runner";
@@ -1012,7 +1014,106 @@ describe("propose-plan · 规划工件与拍板", () => {
     expect(note).toContain("用户还没同意");
 
     ctx.pending.get(PLAN_KEY)!.approved = true;
-    expect(renderPendingNote(ctx.pending)!).toContain("skill(prose)");
+    const approved = renderPendingNote(ctx.pending)!;
+    expect(approved).toContain("照它执行");
+    // 文风不再靠 mate 自己记得去取——规范与卡由 harness 随 system 一起交出去（framework/prose.ts）
+    expect(approved).not.toContain("skill(prose)");
+  });
+
+  test("正文一落盘，规划就不再是待办——注记改口，但条目留着", async () => {
+    const ctx = makeCtx(pid);
+    await proposePlanTool.execute({ chapter: 1, content: PLAN }, ctx as never);
+    const plan = ctx.pending.get(PLAN_KEY)!;
+    plan.approved = true;
+
+    const write = (path: string) => ({ id: "c", name: "write", input: { path } });
+    // 四条都不算：别的章、工具没成功（用户拒了 / 校验没过）、还没拍板、工具不是写文件
+    const notSettling = [
+      writeSettlesPlan(plan, write("chapters/chapter_ch2_v1.md"), true),
+      writeSettlesPlan(plan, write("chapters/chapter_ch1_v1.md"), false),
+      writeSettlesPlan({ ...plan, approved: false }, write("chapters/chapter_ch1_v1.md"), true),
+      writeSettlesPlan(plan, { id: "c", name: "read", input: { path: "chapters/chapter_ch1_v1.md" } }, true),
+    ];
+    expect(notSettling).toEqual([false, false, false, false]);
+    // 是这一章、确实落盘了（`edit` 也算：局部改完那一章就在了）
+    expect(writeSettlesPlan(plan, { id: "c", name: "edit", input: { path: "chapters/chapter_ch1_v1.md" } }, true)).toBe(true);
+
+    plan.done = true;
+    const note = renderPendingNote(ctx.pending)!;
+    expect(note).toContain("<settled-plan>");
+    expect(note).not.toContain("照它执行"); // 执行过了，不该再喊一次
+    expect(ctx.pending.has(PLAN_KEY)).toBe(true); // **不是删除**：规划正文只活在 pending 里
+    expect(note).toContain(".talemate/plans/ch_1.md");
+  });
+
+  test("章文件的认法只认一种形状——写错名字是失效，不是误判", () => {
+    const cases: [string, number, boolean][] = [
+      ["chapters/chapter_ch1_v1.md", 1, true],
+      ["chapters/chapter_ch3_v12.md", 3, true],
+      ["chapters/chapter_ch12_v1.md", 12, true],
+      ["chapters/chapter_ch2_v1.md", 1, false], // 是章文件，但不是这一章
+      ["chapters/chapter_ch1_v1.md", 12, false], // 反过来也一样
+      ["chapters/ch1.md", 1, false], // 没按约定命名 → done 不置位，退回"一直开着"（失效，不是误判）
+      ["design/core.md", 1, false],
+      ["chapters/chapter_ch1_v1.txt", 1, false],
+    ];
+    const wrong = cases.filter(([p, n, want]) => isChapterFile(p, n) !== want).map(([p]) => p);
+    expect(wrong).toEqual([]);
+  });
+});
+
+// ─── 正文写作窗口 ───
+
+describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () => {
+  const CORE = (body: string): string => `# 核心\n\n## 文风\n${body}\n`;
+
+  test("文风格读不出卡名时用默认，**但带一句说明**——不能静默换掉用户的声口", () => {
+    const cases: [string, string, boolean][] = [
+      ["（待定）", "prose", false], // 没填 → 默认，没什么可说的
+      ["网文爽文那一张", "prose", true], // 不像卡名 → 默认 + 说明
+      ["prose", "prose", false],
+      ["style-01-wangwen", "style-01-wangwen", false],
+      ["文风：prose", "prose", false], // 格是给人写的，容忍几种写法
+      ["- **prose**", "prose", false],
+    ];
+    const wrong = cases
+      .filter(([body, want, wantNote]) => {
+        const c = styleChoiceFrom(CORE(body));
+        return c.name !== want || (c.note !== undefined) !== wantNote;
+      })
+      .map(([body]) => body);
+    expect(wrong).toEqual([]);
+  });
+
+  test("没有核心设定、或没有文风格 → 默认那张", () => {
+    const got = [
+      styleChoiceFrom(undefined).name,
+      styleChoiceFrom("# 核心\n\n## 一句话简介\n沈越想活着回去。\n").name,
+    ];
+    expect(got).toEqual(["prose", "prose"]);
+  });
+
+  test("窗口块：规范 + 卡 + 落盘路径，三样一起给", async () => {
+    await writeDoc(pid, "design/core.md", CORE("prose"));
+    const brief = await buildProseBrief(pid, 3);
+    const missing = [
+      `<prose-window chapter="3">`,
+      "【正文规范】",
+      "Never explain what you just showed", // 规范正文真的进来了
+      "【这本书的文风】prose",
+      "短句推进", // 卡的正文真的进来了
+      // 落盘路径必须就是 `isChapterFile` 认的那一个：告诉它的名字和认它的名字是同一件事的两半
+      "chapters/chapter_ch3_v1.md",
+    ].filter((s) => !brief.includes(s));
+    expect(missing).toEqual([]);
+  });
+
+  test("指定的卡在库里不存在 → 明说要问用户，**不静默退回默认**", async () => {
+    await writeDoc(pid, "design/core.md", CORE("style-bucunzai"));
+    const brief = await buildProseBrief(pid, 1);
+    expect(brief).toContain("style-bucunzai");
+    expect(brief).toContain("文风库里没有这个名字");
+    expect(brief).toContain("先别写正文"); // 不是"悄悄用默认那张接着写"
   });
 });
 

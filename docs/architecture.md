@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-09-25 · 本文与代码冲突时**以代码为准**
+> **对齐代码**：2026-09-28 · 本文与代码冲突时**以代码为准**
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -125,7 +125,7 @@ sequenceDiagram
 ```
 system = [
   env/date 块（今天日期 / 项目名 / 角色）
-  角色 system（agent.system —— 角色壳；正文的文风纪律不在这里，在 skills/prose/）
+  角色 system（agent.system —— 角色壳；正文规范与文风卡不在这里，在写作窗口里注入，见 framework/prose.ts）
   项目规则（AGENTS.md 全文注入，来源标注 "Instructions from: …"）
   skills 目录清单（<available_skills>: name+description，无正文）
 ]

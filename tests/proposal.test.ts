@@ -96,6 +96,7 @@ describe("itemsOf · 一个函数、两个数据源", () => {
       "一句话简介",
       "金手指 / 超常设定",
       "基调 · 情绪",
+      "文风",
     ]);
   });
 
@@ -203,7 +204,7 @@ describe("renderProposal", () => {
     expect(text).toContain("1. 题材 · 频道");
     expect(text).toContain("男频 · 都市异能");
     expect(text).toContain("2. 一句话简介");
-    expect(text).toContain("第 2、3 格还没定"); // 没写的格被点出来问一句
+    expect(text).toContain("第 2、3、5 格还没定"); // 没写的格被点出来问一句（第 5 格是后加的「文风」）
     expect(text).toContain("先留白，还是现在给我一句？");
     expect(text).toContain("回复「没问题」就写入核心层；要改直接说第几格。");
     expect(text).not.toContain(".md");

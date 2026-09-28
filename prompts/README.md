@@ -11,6 +11,7 @@ prompts/
 ├── planner.system.txt        planner subagent persona
 ├── researcher.system.txt     researcher subagent persona
 ├── summarizer.system.txt     内部 hidden summarizer（compaction）
+├── prose.rules.txt           正文规范（跨文风恒定；**不是 persona**——由 harness 在写作窗口注入，见 src/framework/prose.ts）
 ├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md「会话模式」）
 └── tools/<tool_id>.txt       每个工具的 description
 ```
@@ -41,7 +42,7 @@ prompts/
 - **数据**：项目是什么 / 文档结构 → 常驻设定注入（core/world 全文，`framework/anchor.ts` `buildResidentDocs`）+ 文档文件骨架（模型每轮看得到，别在 persona 重复）。
 - **工具**：能做什么 / 覆盖要 confirm / 删前查引用 → 工具实现 + 工具 description。
 - **子代理**：派谁、何时派 → 子代理自己的 `description`（运行时拼进 task 目录）。
-- **条件注入/按需规范**：某阶段的做事方法 → 需要时由读取类工具给出（如 design-spec 返回某层该有哪些小节与成稿做法；写作协议后续）。
+- **条件注入/按需规范**：某阶段的做事方法 → **两种载体**，按"触发是不是一个状态"分：读取类工具给出（如 design-spec 返回某层该有哪些小节与成稿做法）——由模型发起；或 **harness 按会话状态注入**（如 `prose.rules.txt` + 这本书的文风卡，规划被拍板且正文未落盘时进 system）——不靠模型自觉。
 - **用户项目规矩** → AGENTS.md（用户管理）。
 
 **因此 persona 只留"角色壳"；每份文件只讲一件事、只在其生效时刻以它自己的载体出现。**

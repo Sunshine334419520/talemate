@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-09-25 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；章节生产那条链见 `chapter-planning.md`
+> **对齐代码**：2026-09-28 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -42,7 +42,7 @@
 | **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（同上，类别拒） |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
-- mate **自己写正文**（文风纪律是 `skills/prose/` 那个 skill，按 description 触发）；**正文不派子代理**——它没有比自身更短的结论（"中间材料不进主线"那条判据对它不成立），而 mate 没见过正文就识别不出写作中浮现的新点子。理由与取舍见 `chapter-planning.md`。
+- mate **自己写正文**（规范与文风卡由 harness 在写作窗口注入 system，见下「Skill 系统」）；**正文不派子代理**——它没有比自身更短的结论（"中间材料不进主线"那条判据对它不成立），而 mate 没见过正文就识别不出写作中浮现的新点子。理由与取舍见 `chapter-planning.md`。
 - planner 与 researcher **不能直接对话**，只被 `task` 派生，且**都不能提问**（它们跑在隔离上下文里，用户不在场——见 `permissions.md`）。两者**不重叠**：阶段不同（章节级 vs 任意时刻）、粒度不同（一份工作单 vs 一个事实）、产出不同。
 - persona 在 `prompts/*.txt`（英文，`readPrompt()` 载入）；agent 的 `description`（路由契约）内联在 `registry.ts`，写法见 `prompts/README.md`。
 
@@ -174,7 +174,7 @@
    - **改文件一律走这三个工具**（`write` / `edit` / `delete`），不派子代理。
    **卷纲与序列纲就在这一条里**——它们是设计文档，走同一套两段式。
 2. **要写某章正文**（一条链，四步）：
-   ① 材料不在手上就 `task(planner)` 要一份**规划** → ② **`propose-plan` 把规划交给用户拍板**（它带 `halt`，回合到此为止，规划落 `.talemate/plans/ch_<N>.md`）→ ③ 用户接受后 **mate 自己写正文**：先 `skill prose` 加载文风，再用 `write` 落 `chapters/`（二向：用户看 diff 点头）→ ④ **状态回写**：把这一章改变的东西写回 `state/`（角色的处境、伏笔账、这一章的流水），同样走二向。这一环列在规划的「产物（按序）」里，见 `state.md`。
+   ① 材料不在手上就 `task(planner)` 要一份**规划** → ② **`propose-plan` 把规划交给用户拍板**（它带 `halt`，回合到此为止，规划落 `.talemate/plans/ch_<N>.md`）→ ③ 用户接受后 **mate 自己写正文**：harness 随 system 把正文规范与这本书的文风卡交出去（见下「Skill 系统」的例外），mate 用 `write` 落 `chapters/`（二向：用户看 diff 点头）→ ④ **状态回写**：把这一章改变的东西写回 `state/`（角色的处境、伏笔账、这一章的流水），同样走二向。这一环列在规划的「产物（按序）」里，见 `state.md`。
    - **规划派得出去，正文不派**：规划的中间材料（翻设定、查资料、试错）远多于它交回来的那一页结论，正是 SubAgent 的判据；而正文**没有比它更短的结论**——产物就是全部中间材料，且 mate 没见过它就识别不出写作中浮现的新点子（`chapter-planning.md`）。
    - ② **是这条链上唯一的门**：交出去就停（`halt`）。规划是"照它去执行"，**批准的是执行本身**——所以没有第二个"没拍板就不许写"的检查点：写正文是普通 `write`，用户照样在 diff 上点头。
    - **能自己查一步就查完的，不要派规划者**：core 常驻、序列纲刚读过的时候，材料本来就在 mate 手里，派出去等于把已有的东西抄一遍。
@@ -209,9 +209,17 @@ description: 网文白话爽感文风（第三人称）。用户指定该文风/
 （正文 = 完整文风卡：约束层 + 六维声音层 + 反例 + 声音范例）
 ```
 
-- **发现**：三个库、一条优先级——**内置库** `<repo>/skills/<name>/`（随产品发布，如正文文风纪律 `prose`）< **全局库** `~/.talemate/skills/<name>/`（作者级、跨作品）< **项目库** `novels/<id>/skills/<name>/`（本小说专属）。扫描顺序就是优先级，后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
+- **发现**：三个库、一条优先级——**内置库** `<repo>/skills/<name>/`（随产品发布，如默认文风卡 `prose`）< **全局库** `~/.talemate/skills/<name>/`（作者级、跨作品）< **项目库** `novels/<id>/skills/<name>/`（本小说专属）。扫描顺序就是优先级，后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
 - **注入**：system 只放 `<available_skills>`（name + description + location）；`skill` 工具按名把正文载入为一条 tool-result。
-- **触发**：**只看 description**，没有第二处硬编码。`prose` 也走这一条——时机写在它自己的 description 里（「写任何一章正文之前先加载它」）。**别在 persona 或工具返回里替它点名**"先加载 X"：那样触发契约就有了两份，两份迟早说两套话，而且一处生效一处不生效时没人查得出来。
+- **触发**：**只看 description**，没有第二处硬编码。**别在 persona 或工具返回里替它点名**"先加载 X"：那样触发契约就有了两份，两份迟早说两套话，而且一处生效一处不生效时没人查得出来。
+
+**一处例外：正文规范与文风卡由 harness 注入（`framework/prose.ts`）。** 它们不按 description 触发、也不靠 mate 记得调 `skill`，理由三条，都不是口味问题：
+
+1. **规范是不变量**，"记得加载"不该是它的存活条件——同 `propose-plan` 的 `halt` 由 harness 执行。
+2. **skill 正文活不过压缩。** 它是 tool 结果，而 `compaction` 只留 assistant 的 `text` part、tool 结果不进摘要：书写到十几章，纪律会在某一次压缩之后**无声消失**；而 `<available_skills>` 目录每轮从 `discoverSkills` 重建、条目还在，模型不知道自己丢了什么。system 每轮重建，不受这一条影响。
+3. **规范不抄进每张文风卡**：五张各一份 = 改一次动五处。
+
+窗口的开与关都靠状态，不靠自觉：规划被用户拍板、而这一章的正文还没落盘 → 注入；正文一落盘（`chapters/chapter_ch<N>_v<M>.md` 出现）→ `PendingProposal.done` 置位，整块退出上下文。所以这份 token 只在写那一章的几轮里付。
 
 ## 人机交互两个工具（对应"用户当主编"）
 

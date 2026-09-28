@@ -267,7 +267,9 @@ async function runOnce(variant: Variant, run: number, outRoot: string, model: Mo
   let prevLayers: string[] = [];
 
   for (let turn = 1; turn <= MAX_TURNS; turn++) {
-    if (turn > 1 && session.pending.size === 0) break; // 没有待批的了 → 上一个 post 就是"材料用完"那一刻
+    // 没有未决的了 → 上一个 post 就是"材料用完"那一刻。**不能用 `pending.size`**：执行完的规划
+    // 会留着条目（`done`，理由见 core/types.ts），量 size 会让这个循环再也退不出来。
+    if (turn > 1 && !session.hasOpenProposal) break;
     if (turns.some(charAction)) break; // 已经动手了，目的达到
 
     cur = blank();

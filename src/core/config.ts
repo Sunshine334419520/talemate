@@ -48,7 +48,7 @@ export function rootAbs(projectId: string, root: DocRoot): string {
 }
 
 /**
- * 仓库自带的 skill 库（`<repo>/skills/`）——随产品发布的那一份，如正文文风纪律 `prose`。
+ * 仓库自带的 skill 库（`<repo>/skills/`）——随产品发布的那一份，如默认文风卡 `prose`。
  *
  * 它与 `paths().globalSkills`（用户全局库）**不是一回事**：这个跟着代码走、改了要发版，
  * 那个是作者的、跨作品积累的。所以它排在发现顺序的**最后**——用户自己的同名 skill 压得过它，

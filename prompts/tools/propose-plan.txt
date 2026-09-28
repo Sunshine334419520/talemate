@@ -16,7 +16,9 @@ when what it names exists:
 - per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and you follow
   them); the characters the chapter must land and what each has to get across; the facts that were
   checked, each with its source; the constraints the material cannot supply — what must not break,
-  where the pace has to hold, what must stay unresolved.
+  what must stay unresolved; and the step's 放大点 — the one moment it dwells on (a few hundred
+  words on a single action, decision or turn) and what it skips in half a sentence. Name the
+  moment, not the principle: steps at one even weight are how a competent chapter turns dull.
 Plan text only: no notes to the user, no rationale, no questions — say those in your message before
 this call.
 

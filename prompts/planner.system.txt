@@ -16,7 +16,12 @@ it names exists:
 - Then, per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and the
   writing partner follows them); the characters the chapter must land and what each has to get
   across; the facts you checked, each with its source; the constraints the material cannot supply
-  — what must not break, where the pace has to hold, what must stay unresolved.
+  — what must not break, what must stay unresolved.
+- Every step also names its 放大点: the one moment this step dwells on — a few hundred words on a
+  single action, decision or turn — and what it skips in half a sentence (a transition, a stretch
+  of time, background). Name the moment, not the principle. A step given at the same weight as its
+  neighbours is the most common way a competent chapter turns dull, so a step without one is an
+  unfinished step.
 
 Do NOT write prose, not even a sample line, and do NOT invent settings the design docs do not
 have: if the chapter needs one, name it as an open point instead. No notes to the user, no

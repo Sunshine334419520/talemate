@@ -2,7 +2,7 @@
 
 > **职责**：定下"写一章"这条流水线的架构——谁规划、谁批准、谁执行、工件放哪；并记下它推翻了哪些旧断言、为什么。
 > **读者**：要动手改这条流水线的人；以及想知道"为什么不是 writer 子代理了"的人。
-> **对齐代码**：**已落地**（2026-09-25）· 工件在 `framework/plan.ts`，门在 `tool/core_tools.ts` 的 `propose-plan`，角色在 `agent/registry.ts`。本文与代码冲突时以代码为准。
+> **对齐代码**：**已落地**（2026-09-28）· 工件在 `framework/plan.ts`，门在 `tool/core_tools.ts` 的 `propose-plan`，角色在 `agent/registry.ts`。本文与代码冲突时以代码为准。
 > 相邻：`product.md`（为什么这么做）· `design-docs.md`（设计文档体系与章节生产那条链）· `agents.md`（角色与工具）· `outline.md`（序列纲与章规划）· `roadmap.md`（状态层还没做）
 
 ## 一、为什么要改
@@ -33,7 +33,7 @@ mate ──task(规划者)──► 规划者（独立上下文）
    ├─ 摆给用户 ──► 接受 → 执行 ／ 不接受 → 改（再摆一次）
    │
    ▼ 接受
-mate 执行：skill(prose) 加载文风 → 自己写正文 → 写后步骤（状态，见「未决」）
+mate 执行：harness 随 system 注入正文规范 + 文风卡 → 自己写正文 → 写后步骤（状态）
 
 随时可用：
   世界观 / 角色 / 大纲设计时，mate 任何时候都能派 researcher 查一个事实
@@ -45,7 +45,7 @@ mate 执行：skill(prose) 加载文风 → 自己写正文 → 写后步骤（�
 |---|---|---|
 | **规划者** | SubAgent | 一个章节意图 → 一份**可执行规划** |
 | **researcher** | SubAgent | 跨阶段的**查证**：世界观、角色、大纲、章节规划都用得到它 |
-| **mate** | primary | 执行规划：写正文（加载文风 skill）、写状态 |
+| **mate** | primary | 执行规划：写正文（规范与文风由 harness 注入）、写状态 |
 | **用户** | — | 批准者。mate 摆出规划 → 接受就执行，不接受就改 |
 | **工作区** | — | `<novel>/.talemate/plans/` 放规划工件 |
 
@@ -70,6 +70,7 @@ mate 执行：skill(prose) 加载文风 → 自己写正文 → 写后步骤（�
   节拍：<...>
   需要的角色：<...>（各自要立住的点）
   查证结论：<...>（带出处）
+  放大点：<哪一刻慢镜头几百字、哪些半句带过>（每一步都要有——全章一个力度是平庸最常见的走法）
 
 第 2 步要什么：
   谁变了、从什么变成什么
@@ -109,7 +110,7 @@ mate 执行：skill(prose) 加载文风 → 自己写正文 → 写后步骤（�
 | `propose-design` 的合法目标含 `design/outline/plan_ch<N>.md` | `prompts/tools/propose-design.txt` + `design_tools.ts` 的入参描述 | **删掉**该目标 |
 | 规划要先 `enter-draft` | `prompts/tools/propose-plan.txt` + `core_tools.ts` 的模式守卫 | **推翻**——草稿模式只服务文档提案 |
 | 一次批准 = 一次写作 | `core_tools.ts` 的 `task` 硬门与"用掉即清" | **推翻**——门只剩 `propose-plan` 的 `halt` |
-| 正文由 `task(writer)` 写 | `agents.md` 名册 + `mate.system.txt` + `writer.system.txt` | **推翻**——`writer` 与 `writer.system.txt` 已删，mate 那条禁令随之**取消**（不是翻转）；正文由 mate 自己写，文风纪律在 `skills/prose/` |
+| 正文由 `task(writer)` 写 | `agents.md` 名册 + `mate.system.txt` + `writer.system.txt` | **推翻**——`writer` 与 `writer.system.txt` 已删，mate 那条禁令随之**取消**（不是翻转）；正文由 mate 自己写；规范在 `prompts/prose.rules.txt`、文风卡在 `skills/`，由 harness 在写作窗口注入 |
 | `product.md` 的"独立上下文分工"用在正文 | `product.md` | **挪到**章节规划阶段 |
 | `roadmap.md` 的「正文由谁落盘」「状态层·章末回写」 | `roadmap.md` | **已删**（回写的障碍随 writer 一起消失，理由并进「状态层」那一节） |
 
@@ -119,7 +120,7 @@ mate 执行：skill(prose) 加载文风 → 自己写正文 → 写后步骤（�
 
 1. **`.talemate/plans/`** —— 新目录 + 清理策略（`src/core/config.ts` 的 `projectPaths.plans` + `framework/plan.ts`；清理策略见「三」末尾）。
 2. **内置 skill 库** —— 仓库根 `skills/`，在 `src/skill/discovery.ts` 里作为**最低优先级**扫描根（用户全局库、项目库可同名覆盖）。`roadmap.md` 的 P2「文风卡迁移成 skill 库」说的就是它；P3 的 `style-extractor` 是它未来的生产者。
-3. **`skills/prose/`** —— 文风纪律从 `writer.system.txt` 搬到这里（单一来源），mate 写正文前取它。**触发只写在它的 description 里**，persona 与工具返回都不替它点名（见 `agents.md` 的 Skill 系统）。
+3. **`skills/prose/` + `prompts/prose.rules.txt`** —— 文风纪律从 `writer.system.txt` 搬出来，**并拆成两层**：可判对错的跨文风规矩归**规范**（`prompts/`），"像不像这个声音"归**文风卡**（`skills/` 库，默认那张是 `prose`）。两层由 harness 在写作窗口拼起来注入，理由见 `agents.md` 的 Skill 系统那条例外与 `framework/prose.ts`。
 4. **规划者 SubAgent** —— 带 `read` 与网络工具。**注意深度上限是 1**，它不能再派 researcher，要自己查。
 5. **提交规划的工具** —— 语义从"节拍"换成"规划"；去掉草稿模式前置；批准粒度从"一次写作"改成"一份规划"。
 6. **mate 侧** —— `mate.system.txt` 那条「绝不自己写正文」**删掉，不是改成它的反面**。writer 一没，它就挡不住任何东西了（剩下两个子代理都是类别拒的只读），而"什么时候派谁"的契约本来就在 `task` 的目录里——`planner` 的 description 写着 "Not for prose"。**留下一句同义反复的禁令，只会让下一个人以为还有个 writer 要防。** 规划摆出与裁决复用现成的 pending 机制。

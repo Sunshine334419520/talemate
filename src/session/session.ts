@@ -22,11 +22,13 @@ import type {
   PendingProposal,
   ProjectMeta,
   StoredMessage,
+  ToolCall,
   ToolContext,
 } from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
 import { buildResidentDesigns, buildIndex } from "../framework/anchor";
-import { planRelPath } from "../framework/plan";
+import { isChapterFile, planRelPath } from "../framework/plan";
+import { buildProseBrief } from "../framework/prose";
 import { labelOf } from "../framework/proposal";
 import { renderHits } from "../framework/search";
 import { chat } from "../llm/provider";
@@ -132,33 +134,77 @@ export function verdictEffect(v: DraftVerdict): {
 }
 
 /**
+ * 这一次工具调用算不算"把规划里那一章的正文写下来了"——`Session.markPlanDone` 的判据。
+ * 与 `verdictEffect` 同一个形状：策略是纯的，突变留在 Session 里。
+ *
+ * **"执行完了没有"是结果，不是声明**：模型说"我写完了"不能当事，章节文件真落地才算——
+ * 同 `approved` 由 harness 按用户回话判定，不由模型自述。
+ */
+export function writeSettlesPlan(plan: PendingProposal, call: ToolCall, ok: boolean): boolean {
+  if (plan.name !== PLAN_KEY || !plan.approved || plan.done || plan.chapter === undefined) return false;
+  if (!ok) return false;
+  if (call.name !== "write" && call.name !== "edit") return false;
+  const path = (call.input as { path?: unknown }).path;
+  return typeof path === "string" && isChapterFile(path, plan.chapter);
+}
+
+/**
  * 未落盘提案的状态注入（进 system，每轮都有；纯函数，导出供测试）。
  * 让协议状态独立于消息历史——压缩会把 tool 消息折掉，`/open` 恢复后历史也可能被截。
+ *
+ * **分两段**：`<pending-proposal>` 是"给用户看过、还没执行"的，执行等用户同意；
+ * `<settled-plan>` 是"执行过、还留在手边的规划"——它**不是待办**，但也不能不提：
+ * 规划正文只活在 pending 里（工件在 `.talemate/plans/`，`read` 够不着），
+ * 用户随时可能说"改第 2 条"，而 mate 得先知道第 2 条是什么。
  */
 export function renderPendingNote(pending: Map<string, PendingProposal>): string | undefined {
   if (!pending.size) return undefined;
-  const lines = [...pending.values()].map((p) => {
+  const open: string[] = [];
+  const settled: string[] = [];
+  for (const p of pending.values()) {
     // 规划没有要落盘的目标文档：它批准的是"照它去写正文"这个执行，不是一次落盘。
     // **工件路径要报出来**：规划落在 `.talemate/plans/`，那是 `read` / `list` 看不见的地方，
     // 压缩之后 mate 仍得知道它存下来了（见 framework/plan.ts 的文件头）。
     if (p.name === PLAN_KEY) {
       const what = p.chapter ? `第 ${p.chapter} 章的规划（${planRelPath(p.chapter)}）` : "这一章的规划";
+      // 正文一落盘就不再是待办——不分开的话，此后每一轮都会重复"照它执行"，而它早执行完了。
+      if (p.done) {
+        settled.push(`- ${what}：正文已落盘。用户要改哪一条，照规划里那一条直接改，不必重新提案`);
+        continue;
+      }
       const state = p.approved
-        ? "用户已表示同意 → 照它执行：先 skill(prose) 加载文风，再自己写这一章的正文"
+        ? "用户已表示同意 → 照它执行：这一章的正文由你自己写（规范与文风已随本 system 交给你）"
         : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
-      return `- ${what}：${state}`;
+      open.push(`- ${what}：${state}`);
+      continue;
     }
     const state = p.approved
       ? "用户已表示同意 → 可以 apply-design"
       : "用户还没同意 → 等他回话；他要改就重新 propose-design";
-    return `- ${p.name}：${state}`;
-  });
-  return [
-    "<pending-proposal>",
-    "有一份东西已经给用户看过、但还没执行。执行必须等用户同意——同意由 harness 按他的回话判定，你自己说了不算。",
-    ...lines,
-    "</pending-proposal>",
-  ].join("\n");
+    open.push(`- ${p.name}：${state}`);
+  }
+  const blocks: string[] = [];
+  if (open.length) {
+    blocks.push(
+      [
+        "<pending-proposal>",
+        "有一份东西已经给用户看过、但还没执行。执行必须等用户同意——同意由 harness 按他的回话判定，你自己说了不算。",
+        ...open,
+        "</pending-proposal>",
+      ].join("\n"),
+    );
+  }
+  if (settled.length) {
+    blocks.push(
+      [
+        "<settled-plan>",
+        "已经执行过、还留在手边的规划（用户随时可能点着某一条改）：",
+        ...settled,
+        "</settled-plan>",
+      ].join("\n"),
+    );
+  }
+  return blocks.length ? blocks.join("\n\n") : undefined;
 }
 
 export interface SessionDeps {
@@ -270,10 +316,29 @@ export class Session {
     if (effect.dropProposal) this.pending.delete(latest.name);
   }
 
-  /** 提示符用：待落盘提案的展示名（如"核心层"）。没有 pending → undefined。 */
+  /** 提示符用：待落盘提案的展示名（如"核心层"）。没有未决的 → undefined。 */
   get pendingLabel(): string | undefined {
-    if (!this.pending.size) return undefined;
-    return [...new Set([...this.pending.values()].map((p) => labelOf(p.name, p.content)))].join("、");
+    const open = [...this.pending.values()].filter((p) => !p.done);
+    if (!open.length) return undefined;
+    return [...new Set(open.map((p) => labelOf(p.name, p.content)))].join("、");
+  }
+
+  /**
+   * 还有没有"给用户看过、但没执行"的东西。
+   *
+   * **不等于 `pending.size > 0`**：执行完的规划会留着条目（`done`）——那是"手边的工作单"，
+   * 不是待办（理由见 `core/types.ts` 的 `done`）。探针的收尾判据要的是这个区分。
+   */
+  get hasOpenProposal(): boolean {
+    return [...this.pending.values()].some((p) => !p.done);
+  }
+
+  /** 正文落盘 → 把那一章的规划记为"已执行"（判据见 `writeSettlesPlan`，`done` 见 core/types.ts）。 */
+  private markPlanDone(call: ToolCall, part: AssistantPart): void {
+    const plan = this.pending.get(PLAN_KEY);
+    if (!plan) return;
+    if (!writeSettlesPlan(plan, call, part.type === "tool" && !part.error)) return;
+    plan.done = true;
   }
 
   /** 跑完一轮：输入 → runLoop（agent 循环）→ 返回最终 assistant 正文 */
@@ -309,6 +374,7 @@ export class Session {
         }
         const part = await executeToolPart(agentId, call, this.tools, this.makeContext(agent));
         if (isTask) this.io.onEvent({ type: "scope.close", label: "task" });
+        this.markPlanDone(call, part);
         const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
         this.io.onEvent({ type: "tool.result", id: call.id, name: call.name, output: out });
         return part;
@@ -416,7 +482,22 @@ export class Session {
     // 模式注记排在角色壳之后、状态注记之前：它是"眼下在干什么"，压过角色的默认姿态。
     const mode = this.mode ? MODES[this.mode] : undefined;
     const note = renderPendingNote(this.pending);
-    return [base, mode?.note, note].filter(Boolean).join("\n\n");
+    const prose = await this.proseWindow(agent);
+    return [base, mode?.note, note, prose].filter(Boolean).join("\n\n");
+  }
+
+  /**
+   * 正文写作窗口：用户拍过板、这一章还没落盘时，把规范与这本书的文风卡放进 system。
+   *
+   * **判据是状态，不是模型自觉**——同 `halt` 与 `approved`。窗口一关（正文落盘、`done` 置位）
+   * 它们就退出上下文，所以这份 token 只在写那一章的几轮里付。理由见 `framework/prose.ts` 的文件头。
+   */
+  private async proseWindow(agent: AgentDef): Promise<string | undefined> {
+    // 与常驻设定同一条边界：只给可见的 primary。规划只由 mate 执行。
+    if (agent.mode !== "primary" || agent.hidden) return undefined;
+    const plan = this.pending.get(PLAN_KEY);
+    if (!plan || !plan.approved || plan.done || plan.chapter === undefined) return undefined;
+    return buildProseBrief(this.projectId, plan.chapter);
   }
 
   /** 构造工具执行上下文（ToolContext），供 execute 获取读写/确认/委派等能力 */
