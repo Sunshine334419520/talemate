@@ -1108,6 +1108,16 @@ describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () 
     expect(missing).toEqual([]);
   });
 
+  test("换一张卡：核心设定写哪张，交出来的就是哪张的正文——选得到，不是只挂在目录里", async () => {
+    // 这条钉的是"用户能切换文风"的**取用端**：卡名写进「文风」格之后，真的走到写正文那一步。
+    // 卡名与正文各取一处（正文用「名字领句」，是该卡最醒目的指纹）——目录里有、正文却取不到，
+    // 正是会静默发生的那种失败。
+    await writeDoc(pid, "design/core.md", CORE("style-01-wangwen"));
+    const brief = await buildProseBrief(pid, 1);
+    const missing = ["【这本书的文风】style-01-wangwen", "名字领句"].filter((s) => !brief.includes(s));
+    expect(missing).toEqual([]);
+  });
+
   test("指定的卡在库里不存在 → 明说要问用户，**不静默退回默认**", async () => {
     await writeDoc(pid, "design/core.md", CORE("style-bucunzai"));
     const brief = await buildProseBrief(pid, 1);

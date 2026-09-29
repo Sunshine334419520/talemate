@@ -204,12 +204,14 @@ task { agent: "planner", prompt: string }
 SKILL.md
 ---
 name: style-01-wangwen
-description: 网文白话爽感文风（第三人称）。用户指定该文风/想写得"顺、快、爽"时加载。
+description: 网文 · 白话爽感文风（第三人称，快、顺、直给）。用户说要"网文风"，或想把这本书写得顺、快、有爽感时选它。
 ---
 （正文 = 完整文风卡：约束层 + 六维声音层 + 反例 + 声音范例）
 ```
 
-- **发现**：三个库、一条优先级——**内置库** `<repo>/skills/<name>/`（随产品发布，如默认文风卡 `prose`）< **全局库** `~/.talemate/skills/<name>/`（作者级、跨作品）< **项目库** `novels/<id>/skills/<name>/`（本小说专属）。扫描顺序就是优先级，后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
+**用户切换文风就是写一个卡名**：`design/core.md` 的「文风」格写哪张卡的名字，写作窗口就取哪张（`framework/prose.ts`）；不写这一格用默认那张 `prose`。所以**卡名必须是目录名**——对不上，`buildProseBrief` 会报"文风库里没有这个名字"，而那张卡明明躺在库里，看得见却取不到（`tests/skill.test.ts` 守着这一条）。加一张可选卡 = 加一个目录，没有第二处要改。
+
+- **发现**：三个库、一条优先级——**内置库** `<repo>/skills/<name>/`（随产品发布，如 `prose`、`style-01-wangwen`）< **全局库** `~/.talemate/skills/<name>/`（作者级、跨作品）< **项目库** `novels/<id>/skills/<name>/`（本小说专属）。扫描顺序就是优先级，后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
 - **注入**：system 只放 `<available_skills>`（name + description + location）；`skill` 工具按名把正文载入为一条 tool-result。
 - **触发**：**只看 description**，没有第二处硬编码。**别在 persona 或工具返回里替它点名**"先加载 X"：那样触发契约就有了两份，两份迟早说两套话，而且一处生效一处不生效时没人查得出来。
 
