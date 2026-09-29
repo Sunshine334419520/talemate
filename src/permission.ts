@@ -17,10 +17,16 @@
 export type Action = "allow" | "ask" | "deny";
 
 /**
- * 动作类别。**只有四个**，且刻意不含"读"——读设计文档是这个产品的日常，我们没有 `.env` 那种
- * "读了就是泄露"的对应物。少一类就少一处要维护的规则；真要加是加法，不是改法。
+ * 动作类别。**五个**，且刻意不含"读"——读设计文档是这个产品的日常，我们没有 `.env` 那种
+ * "读了就是泄露"的对应物；翻考据本（`recall`）同理，所以它干脆不声明权限。
+ *
+ * 第五类 `notes`（记一条考据，2026-09-29 加）**不是"多一类更好管"，是 `edit` 装不下它**：
+ * 第 1 步让任何匹配的 `deny` 恒赢（不受层级顺序影响），而 `deriveSubagentPermission` 又把父的
+ * deny 原样搬进子代理——研究员身上已经挂着 `edit: "*": deny`，那条 deny 压得住 `edit` 里任何
+ * "考据本例外"。而它必须在**隔离上下文**里记下来、还不能弹用户的脸（子代理的 `ask` 就是一次
+ * `io.confirm`），所以只能自成一类。
  */
-export type PermissionName = "edit" | "delegate" | "extern" | "question";
+export type PermissionName = "edit" | "delegate" | "extern" | "question" | "notes";
 
 export interface Rule {
   permission: string;
@@ -117,13 +123,20 @@ export function evaluateWithSource(permission: string, pattern: string, ...rules
 }
 
 /**
- * 内置默认：改世界的三类都要问；提问放行（子代理自己在 `registry.ts` 里把它 deny 掉）。
+ * 内置默认：改世界的四类都要问；提问放行（子代理自己在 `registry.ts` 里把它 deny 掉）。
  * 规则集的第一层，后面依次是 agent 声明、模式覆盖——但 `deny` 不受这个顺序影响。
  */
 export const BASE_PERMISSIONS: PermissionConfig = {
   edit: "ask",
   delegate: "ask",
   extern: "ask",
+  // 考据本（`.talemate/research/`）：写在引擎工作区、不是作品，但仍是落盘，所以默认问。
+  //
+  // **这一条不能写成 `deny`。** 子代理的规则集是从父的 deny **派生**的（`deriveSubagentPermission`
+  // 只搬 deny），所以一个 `deny` 会原样落到 researcher 身上，把它自己声明的 `notes: "allow"`
+  // 永久压死——它一条也记不下来，而且看不出是权限问题。写成 `ask` 则不会传播：父的 `ask` 不在
+  // 派生的那一份里，子会话也从不合并本表。
+  notes: "ask",
   question: "allow",
 };
 

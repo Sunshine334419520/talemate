@@ -2,7 +2,7 @@
 
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
-> **对齐代码**：2026-09-25 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
+> **对齐代码**：2026-09-29 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
 > 相邻：`agents.md`（角色与工具名册）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
@@ -17,11 +17,11 @@
 规则集 = Rule[]                   有序，后写的优先级高
 ```
 
-- `permission` 是**动作类别**，只有四个（见下）
+- `permission` 是**动作类别**，只有五个（见下）
 - `pattern` 是**这次的具体对象**——文件路径 / 子代理 id / URL。用通配符匹配，`*` **跨 `/`**，所以 `design/*` 就是 design 下一切
 - `action` 三档：`allow` / `ask` / `deny`
 
-## 四个动作类别
+## 五个动作类别
 
 | permission | 覆盖哪些工具 | pattern 是什么 |
 |---|---|---|
@@ -29,8 +29,13 @@
 | **`delegate`** | `task` | 子代理 id |
 | **`extern`** | `webfetch` · `websearch` | URL / 查询词 |
 | **`question`** | `ask-user` · `confirm` | `*`（这两个工具没有"对什么做"） |
+| **`notes`** | `remember` | 考据本的**题目**（它没有路径参数——目录由项目推死，见 `research_tools`） |
 
-**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**「先摆出来、用户拍板才执行」已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
+**`notes` 是第五类，理由不是"更好管"**：它**装不进 `edit`**。求值第 1 步让任何匹配的 `deny` 恒赢、不受层级顺序影响，而子代理的规则集又是从父的 deny 派生的——researcher 身上挂着 `edit: "*": deny`，那条 deny 压得住 `edit` 里任何"考据本例外"。可它必须在**隔离上下文**里记下一笔、还不能弹用户的脸（子代理的 `ask` 就是一次 `io.confirm`），所以只能自成一类。
+
+**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `recall`（翻考据本，同上）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**「先摆出来、用户拍板才执行」已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
+
+**无权限的读有个代价，`recall` 上要记住：** 没有 `permission`，runner 那道粗粒度兜底（`if (tool.permission && …)`）对它就是死代码，`visibleTools` 也没有可 deny 的把手——**挡不住被幻觉调出来的调用，也不能被某个模式收走**。所以它的圈定必须是**结构性的**：目录由项目推死、不收任何路径参数、题目在读侧也过校验。
 
 **少一类就少一处要维护的规则。** 真需要时再加是加法，不是改法。
 
@@ -175,14 +180,18 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 
 **子代理默认不能委派**（除非它自己声明了 `delegate`），这是防链式 spawn。子代理也不能 `question`——**它跑在隔离上下文里，用户不在场，它一旦能提问就会把用户从自己的对话里硬拽出来。**
 
+**同一条理由也适用于 `notes`：子代理绝不能把它留给默认值。** 留空的求值结果是 `ask`，而 `ask` 会走到 `ctx.ask` → `io.confirm`——同样是一次从隔离上下文里弹出来的问候。所以愿意写的（researcher）明写 `allow`，其余一律明写 `deny`，`tests/agents.test.ts` 有一条守着"每个子代理都表了态"。
+
+**`BASE_PERMISSIONS` 里的 `notes` 只能写 `ask`，不能写 `deny`。** 子代理的规则集是从**父的 deny 派生**的（`deriveSubagentPermission` 只搬 `deny`，且子会话从不合并本表），所以一个 `deny` 会被原样搬进 researcher 的规则集并把它的 `allow` 永久压死——症状不是权限报错，而是"它一条都记不下来，而且什么也不说"。
+
 ## 现在有哪些规则
 
 | 来源 | 规则 | 效果 |
 |---|---|---|
-| 内置默认 | 见上 | 写盘/委派/联网都要问；提问放行 |
+| 内置默认 | 见上 | 写盘/委派/联网/记考据都要问；提问放行 |
 | **agent `mate`** | 无覆盖 | 同默认 |
-| **agent `planner`** | `question: deny *` · `delegate: deny *` · `edit: deny *`（**类别拒**） | 不能烦用户、不能链式 spawn，外加**只读**：落盘类工具整个不在 schema 里 |
-| **agent `researcher`** | 同上（同样三项） | 同 planner。两个子代理都只读——落盘由 mate 做 |
+| **agent `planner`** | `question: deny *` · `delegate: deny *` · `edit: deny *`（**类别拒**） · `notes: deny *` | 不能烦用户、不能链式 spawn，外加**作品只读**：落盘类工具整个不在 schema 里。考据本也 deny——它是研究员的 |
+| **agent `researcher`** | 同上三项 + **`notes: allow *`** | 作品只读（落盘由 mate 做），**但能记自己那本考据本**。`notes: allow` 不是记账、是机制：留空 → 默认 `ask` → 一次 `io.confirm`，而用户不在场（见下） |
 | **模式 `accept-edits`** | `edit: allow` | **落盘不问**；委派与联网照问 |
 | **模式 `draft`** | `edit: deny *` · `delegate: deny *` | 只读：那些工具**不在 schema 里** |
 

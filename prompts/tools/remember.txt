@@ -1,0 +1,11 @@
+Record a finding in this book's research notes, so a later session does not have to look it up again.
+
+name: a short title for the topic, no file extension, no punctuation — letters, digits, 汉字, `.`, `_`
+and `-` only. Reuse an existing note's exact title to replace that note rather than adding a
+near-duplicate.
+content: the finding itself — the conclusion, where sources disagree, what you could not confirm,
+and the source URLs. A note with no URL in it is refused: once a conclusion is in here, the page it
+came from is never in context again.
+
+Record the questions you would have to look up a second time — how a system worked, what a thing was
+called, a piece of period detail — not every lookup you make. One note per question.

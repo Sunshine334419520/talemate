@@ -1,0 +1,11 @@
+Look in this book's research notes: findings earlier research already settled, each with the date it
+was checked and its sources. Read it before you search — a question this book has looked up before
+should not be looked up again.
+
+query (optional): words to look for in the notes' titles and bodies, e.g. 佃租, 漕运, 爽点节奏.
+Omit it to list what is already recorded.
+
+A hit is a lead, not an answer: every note carries its date and sources so you can judge whether it
+still holds. If its scope, era or date does not fit the question you were given, verify on the web
+anyway and rewrite that same note. Matching is literal — a query that finds nothing returns the list
+of titles, so retry with the note's own wording, or call with no query at all.

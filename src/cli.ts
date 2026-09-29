@@ -193,7 +193,7 @@ function printPermissions(session: Session): void {
   const sets = [...view.layers.map((l) => l.rules), view.approved];
   const labels = [...view.layers.map((l) => l.label), "会话已批准"];
   console.log("  现在（按 `*` 算；点名到具体文件的例外见「分层」）：");
-  // 动作类别取自 BASE_PERMISSIONS 的键——那是这四个类别的唯一定义处，不在这里再抄一份
+  // 动作类别取自 BASE_PERMISSIONS 的键——那是这些类别的唯一定义处，不在这里再抄一份
   for (const p of Object.keys(BASE_PERMISSIONS)) {
     const { rule, layer } = evaluateWithSource(p, "*", ...sets);
     console.log(`    ${p.padEnd(10)}${paintAction(rule.action)} ← ${layer < 0 ? "没有规则匹配 → 默认问" : labels[layer]}`);

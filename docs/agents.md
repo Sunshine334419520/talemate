@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-09-28 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；章节生产那条链见 `chapter-planning.md`
+> **对齐代码**：2026-09-29 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；考据本（researcher 的笔记本）在 `framework/research.ts`；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -27,7 +27,7 @@
 2. **能靠 Tool 完成的，不升级成 SubAgent；能靠 Skill 注入的，不重写成 SubAgent。** SubAgent 是稀缺资源（每次 = 一整段独立上下文 + 一次往返 + **用户一次确认**），只在下列之一真的买到东西时才用：
    - **这活会淹掉主线上下文**——它产出的中间材料（读来读去、试错、死路）远多于你要的结论；
    - **要给这活套一套更窄的权限**——planner 与 researcher 都是类别拒的只读（`edit: deny`），
-     一个字节都动不了；
+     **作品**一个字节都动不了（researcher 另有一本自己的考据本，那不是作品，见「工具」的 `research_tools`）；
    - **要单配模型**（`AgentDef.model`）。
 
    反面同样成立：**需要和用户来回迭代的不要委派**（设计对话就是），**一两步能做完的不要委派**（委派本身要一次确认，还要写一份自足 prompt）。判据的正文在 `prompts/tools/task.txt`，那里是唯一该说它的地方。
@@ -38,8 +38,8 @@
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
 | **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；**自己写正文**；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **planner 规划者** | subagent | 把一个章节意图读成一份**可执行规划**：节拍、要立住的人、查证结论（带出处）、这次要落地的产物 | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit: deny` 是**类别拒**——落盘类工具整个不在 schema 里） |
-| **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（同上，类别拒） |
+| **planner 规划者** | subagent | 把一个章节意图读成一份**可执行规划**：节拍、要立住的人、查证结论（带出处）、这次要落地的产物 | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit` / `notes` 是**类别拒**——落盘类工具整个不在 schema 里）+ `recall`（**只读**考据本，别重查） |
+| **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（同上，类别拒）+ `recall` `remember`（它自己的考据本） |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
 - mate **自己写正文**（规范与文风卡由 harness 在写作窗口注入 system，见下「Skill 系统」）；**正文不派子代理**——它没有比自身更短的结论（"中间材料不进主线"那条判据对它不成立），而 mate 没见过正文就识别不出写作中浮现的新点子。理由与取舍见 `chapter-planning.md`。
@@ -51,6 +51,8 @@
 **批评者 / 评审 agent** · **导演 / orchestrator agent** · **自动点子捕捉 / 一致性核查 agent** —— 分别是已删除的评判系统、多余的编排层、和"后台自动改企划"的残留冲动。
 
 **`researcher` 不在上面这三个里，边界值得写清楚**：它查的是**外部世界的事实**（一个朝代怎么收税、某个器物当时叫什么），不是稿子**内部的一致性**（金手指的边界有没有被违反）。前者是"去问世界"，后者是"拿自己的文档互相对照"——后者仍然不做。判据落在**主语**上：问的是世界，不是这部小说。
+
+**它的考据本不是「知识库」，也不是 skill。** 判据同样是主语，只是换成了**谁拥有它**：`skills/` 库里那几张卡是**用户的**东西——进 `<available_skills>` 目录、用户按名选（`design/core.md` 的「文风」格就是在选）、三层库还带"同名覆盖"的语义；而考据本是**模型自己的备忘录**，写在引擎工作区、`read` 够不着、用户不必知道也不用拍板。所以它既不该进 skill 库（那是"推"进上下文的、用户可选的知识），也不该有审阅环节（它不是作品）——它是"拉"的：问到才查。
 
 ### 加角色的固定动作
 
@@ -85,6 +87,15 @@
 | `read` | 按项目相对路径读整篇，或读其中一个 `section` |
 | `list` | 目录索引（角色卡一人一行；**不分格的文档也只给一行 + 首句**，如序列纲；章节流水只给一行"几条 · 最新一条"）。`path` 限定范围，省略 = 整个项目 |
 | `search` | 跨文档扫词，返回"文件 → 小节 + 行"（改/删前查影响面）。`path` 同上 |
+
+**`research_tools`** — 考据本（researcher 自己的笔记本）
+
+| id | 用途 |
+|---|---|
+| `recall` | 翻考据本：带 `query` 按词找（题目与正文都算命中面），不带就列已有题目。**未命中会回已有清单**——那是换措辞重试的路，不是错误 |
+| `remember` | 记一条（题目 + 结论，**必须带出处 URL**），同名即覆盖。只给 researcher（`notes` 权限），planner 只有 `recall` |
+
+考据本落在 `<novel>/.talemate/research/<题目>.md`——**引擎工作区，不是作品**：不进 `DOC_ROOTS`，`read` / `list` / `search` 一概够不着，读口只有 `recall` 一个（mate 读不到、用户也看不见，所以垃圾笔记的出路只有文件系统）。它解决的就一件事：**同一个问题不该被查第二遍**——查回来的结论本来活不过一次压缩（tool 结果不进摘要）。见 `framework/research.ts`。
 
 **`design_tools`** — design/ 的三向提案
 

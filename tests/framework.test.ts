@@ -20,6 +20,9 @@ import { deleteTool, editTool } from "../src/tool/file_tools";
 import { defineTool } from "../src/tool/define";
 import { designSpecTool } from "../src/tool/framework_tools";
 import { listTool, readTool, searchTool } from "../src/tool/read_tools";
+import { recallTool, rememberTool } from "../src/tool/research_tools";
+import { listNoteNames, noteAbs, readNote } from "../src/storage/notes";
+import { talemateHome } from "../src/core/config";
 import { enterDraftTool, exitDraftTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
 import { MODES } from "../src/agent/modes";
 import {
@@ -1436,5 +1439,116 @@ describe("tool runner · halt", () => {
     );
     expect(part.type === "tool" && part.state).toBe("error");
     expect(part.type === "tool" && part.halt).toBeFalsy();
+  });
+});
+
+// ─── 考据本（researcher 的笔记本，`.talemate/research/`） ───
+
+describe("考据本 · 记一条、翻回来、以及它够不着作品", () => {
+  /** 今天，按**本地**日期算——与工具盖章用的是同一个判据，所以不硬编码。 */
+  const TODAY = (() => {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  })();
+
+  const NOTE = "明代佃租比例";
+  const BODY = "结论：佃租约五成。来源 https://a.example/ming";
+
+  test("remember 落盘、recall 带得回正文与「查于」日期", async () => {
+    const ctx = makeCtx(pid, fromConfig({ notes: "allow" }));
+    await rememberTool.execute({ name: NOTE, content: BODY }, ctx as never);
+
+    const text = await recallTool.execute({ query: "佃租" }, ctx as never);
+    const missing = [NOTE, TODAY, "https://a.example/ming"].filter((s) => !text.output.includes(s));
+    expect(missing).toEqual([]);
+  });
+
+  test("同名再记一次 = 替换，不是新增；文案要点名换掉的是哪一版", async () => {
+    const ctx = makeCtx(pid, fromConfig({ notes: "allow" }));
+    await rememberTool.execute({ name: NOTE, content: BODY }, ctx as never);
+    const again = await rememberTool.execute(
+      { name: NOTE, content: "结论改了口径。来源 https://b.example/ming" },
+      ctx as never,
+    );
+
+    const names = await listNoteNames(pid);
+    const wrong = [
+      names.filter((n) => n === NOTE).length === 1, // 盘上只有一份
+      again.output.includes("替换"),
+      again.output.includes(TODAY), // 新查于
+      !(await readNote(pid, NOTE))?.includes("https://a.example/ming"), // 旧结论不再服务
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
+  });
+
+  test("未命中要回已有题目清单——那是换措辞重试的路", async () => {
+    const ctx = makeCtx(pid, fromConfig({ notes: "allow" }));
+    const miss = await recallTool.execute({ query: "完全没有的词" }, ctx as never);
+    const missing = ["没有找到", NOTE].filter((s) => !miss.output.includes(s));
+    expect(missing).toEqual([]);
+
+    const index = await recallTool.execute({}, ctx as never); // 不带 query = 要目录
+    expect(index.output.includes(NOTE) && !index.output.includes("没有找到")).toBe(true);
+  });
+
+  test("题目不合法 → 自愈文案，且盘上什么都不多", async () => {
+    const ctx = makeCtx(pid, fromConfig({ notes: "allow" }));
+    const before = (await listNoteNames(pid)).length;
+    const outs: string[] = [];
+    for (const bad of ["a/b", "明代 佃农", "..", "长".repeat(80)]) {
+      outs.push((await rememberTool.execute({ name: bad, content: BODY }, ctx as never)).output);
+    }
+    const wrong = [
+      outs.every((o) => o.includes("重新调用")), // 每条都说清了怎么改
+      (await listNoteNames(pid)).length === before,
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
+  });
+
+  test("正文没出处 → 拒收并说清为什么；研究员的人格就是每条都带来源", async () => {
+    const ctx = makeCtx(pid, fromConfig({ notes: "allow" }));
+    const out = await rememberTool.execute({ name: "无出处的结论", content: "反正是这么回事。" }, ctx as never);
+    const wrong = [
+      out.output.includes("出处"),
+      (await listNoteNames(pid)).includes("无出处的结论") === false,
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
+  });
+
+  test("考据本够不着作品：list/search/read 都看不见它，这是本设计的地基", async () => {
+    const ctx = makeCtx(pid, fromConfig({ notes: "allow" }));
+    await rememberTool.execute({ name: NOTE, content: BODY }, ctx as never);
+
+    const wrong = [
+      !(await enumerateDocs(pid, "")).some((p) => p.includes(".talemate")),
+      (await readDoc(pid, `.talemate/research/${NOTE}.md`)) === undefined,
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
+    // 但它在盘上（绝对路径算得出来，文件真的存在）
+    expect(await readNote(pid, NOTE)).toBeDefined();
+  });
+
+  test("权限：默认 ask——用户说不，就一条都不落", async () => {
+    const denied = makeCtx(pid); // 默认规则集（BASE_PERMISSIONS）
+    denied.setConfirmReply("no");
+    const out = await rememberTool.execute({ name: "被拒的笔记", content: BODY }, denied as never);
+    const wrong = [
+      out.output.includes("拒绝"),
+      (await listNoteNames(pid)).includes("被拒的笔记") === false,
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
+  });
+
+  test("`recall` 的缺席是故意的：它没有 permission，就没有可 deny 的把手", async () => {
+    // runner 的兜底是 `if (tool.permission && …)`，没有 permission 这条就是死代码——所以 recall
+    // 的圈定全靠结构（目录由 projectId 推死、不收路径参数）。给它加上 permission 会让它变得
+    // 可被模式打断，而"读自己的笔记本"没有要拦的理由。
+    expect(recallTool.permission).toBeUndefined();
+    expect(rememberTool.permission).toBe("notes");
+  });
+
+  test("绝对路径就是那个绝对路径——题目即文件名，没有第二条寻址", () => {
+    expect(noteAbs(pid, NOTE)).toBe(join(talemateHome(), "novels", pid, ".talemate", "research", `${NOTE}.md`));
   });
 });

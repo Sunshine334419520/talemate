@@ -80,6 +80,10 @@ export function projectPaths(home: string, projectId: string) {
     // 章节规划工件（框架章节生产那条链的中间态）。**归 .talemate/ 而不是 design/**：
     // design/ 与 chapters/ 是作品（用户审阅、进版本控制），这一份是引擎的工作区。
     plans: join(root, ".talemate", "plans"),
+    // 考据本：researcher 查证过的结论（一题一份）。同 `.talemate/` 的道理，而且更强——这本
+    // 账的**全部意义**就是不打扰用户，所以它既不是作品、也不该有任何审阅环节。读口只有
+    // `recall` 一个（它进不了 DOC_ROOTS，`read`/`list`/`search` 都够不着）。见 `storage/notes.ts`。
+    research: join(root, ".talemate", "research"),
   };
 }
 

@@ -34,7 +34,7 @@ talemate new 我的小说 悬疑
 | `src/cli.ts` `src/smoke.ts` | CLI + REPL 入口 / 离线冒烟 |
 | `src/agent/` | Agent 注册表：mate(primary) / planner / researcher / summarizer(hidden) |
 | `src/session/` | 会话接线、agent 循环、上下文压缩 |
-| `src/tool/` | 工具框架 + 内置工具（design / character / framework / core / web 五个领域） |
+| `src/tool/` | 工具框架 + 内置工具（按领域分模块，见 `src/tool/index.ts` 的聚合数组） |
 | `src/framework/` | 写作领域层：层规范、写盘唯一实现、提案渲染、markdown 手术、角色卡、引用搜索 |
 | `src/llm/` | provider 抽象（anthropic / openai 兼容 / mock）+ 流式多轮 |
 | `src/storage/` | 文件系统项目 / 会话存储 |

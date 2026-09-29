@@ -15,7 +15,7 @@
  */
 import { describe, test, expect } from "bun:test";
 import { DEFAULT_AGENTS } from "../src/agent/registry";
-import { evaluate, fromConfig } from "../src/permission";
+import { BASE_PERMISSIONS, deriveSubagentPermission, evaluate, fromConfig } from "../src/permission";
 import type { AgentDef } from "../src/core/types";
 
 const subs = DEFAULT_AGENTS.filter((a) => a.mode === "subagent");
@@ -61,5 +61,42 @@ describe("agent 注册表 · 路由契约", () => {
       .filter((a) => USER_FACING.some((t) => a.tools.includes(t)))
       .map((a) => `${a.id}: ${a.tools.filter((t) => USER_FACING.includes(t)).join(", ")}`);
     expect(bad).toEqual([]);
+  });
+});
+
+/**
+ * 考据本（`.talemate/research/`）的守卫。它有一条**跨层**的性质，光看某个角色的配置看不出来：
+ * 子代理的规则集是从**父的 deny** 派生的（`deriveSubagentPermission`），而 `evaluate` 让任何匹配的
+ * `deny` 恒赢——所以 `BASE_PERMISSIONS` 里 `notes` 写成什么，决定的不只是主会话，还顺着这条链
+ * 一路压到 researcher 身上。写成 `deny`，它一条也记不下来，而且症状不是权限报错、是"什么都没发生"。
+ */
+describe("agent 注册表 · 考据本", () => {
+  /** 派生出来的那份规则集 = 子会话真正在用的（`session.rulesetFor` 走的就是它）。 */
+  const derived = (a: AgentDef) => deriveSubagentPermission(fromConfig(BASE_PERMISSIONS), a);
+
+  test("researcher 派生之后**真的能写**——它的 notes: allow 压不过父的 deny", () => {
+    // 承重的一条：BASE 里那个 `notes` 一旦写成 deny，就会被搬进子代理的规则集并恒赢，
+    // 这里立刻变红。（写成 ask 才安全：派生的那一份只搬 deny，且子会话也不合并 BASE。）
+    const researcher = subs.find((a) => a.id === "researcher") as AgentDef;
+    expect(evaluate("notes", "*", derived(researcher)).action).toBe("allow");
+  });
+
+  test("每个子代理都得自己给 notes 表态——留空 = 默认 ask = 一次弹用户的脸", () => {
+    // 同 `question: "deny"` 那条的理由：子代理跑在隔离上下文里，用户不在场，而 `ask` 会走到
+    // `ctx.ask` → `io.confirm`。所以愿意写的研究员写 allow，其余一律 deny，不能靠默认值。
+    const leaking = subs.filter((a: AgentDef) => evaluate("notes", "*", derived(a)).action === "ask").map((a) => a.id);
+    expect(leaking).toEqual([]);
+  });
+
+  test("写口只给 researcher；planner 只读（recall），不写（remember）", () => {
+    const researcher = subs.find((a) => a.id === "researcher") as AgentDef;
+    const planner = subs.find((a) => a.id === "planner") as AgentDef;
+    const wrong = [
+      researcher.tools.includes("recall"),
+      researcher.tools.includes("remember"),
+      planner.tools.includes("recall"), // 规划时先翻本地，别重查
+      !planner.tools.includes("remember"),
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
   });
 });
