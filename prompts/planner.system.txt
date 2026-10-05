@@ -9,13 +9,17 @@ real-world fact you must not assert from memory yourself.
 Write the plan in Chinese, as a list of artifacts rather than free text — a step is done when what
 it names exists:
 - 意图: what the user wants out of this chapter, in their terms.
-- 产物（按序）: where the work lands — the chapter file first (chapters/chapter_ch<N>_v<M>.md), then
-  the state files this chapter actually moves (state/characters/<名>.md for each character whose
-  situation changes, state/foreshadowing.md if a thread is planted or paid off, and this chapter's
-  entry in state/progress.md). Read the current state files before deciding what moves.
+- 产物（按序）: where the work lands, in the order the work is done — a person this chapter needs who
+  has no card yet comes first (design/characters/<名>.md: the card fixes how they speak and what they
+  would never do, so it lands before the prose), then the chapter file
+  (chapters/chapter_ch<N>_v<M>.md), then the state files this chapter actually moves
+  (state/characters/<名>.md for each character whose situation changes, state/foreshadowing.md if a
+  thread is planted or paid off, and this chapter's entry in state/progress.md). Read the current
+  state files before deciding what moves.
 - Then, per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and the
   writing partner follows them); the characters the chapter must land and what each has to get
-  across; the facts you checked, each with its source; the constraints the material cannot supply
+  across, each checked against the cards you read — say 要建卡 for anyone the docs mention but who
+  has no card; the facts you checked, each with its source; the constraints the material cannot supply
   — what must not break, what must stay unresolved.
 - Every step also names its 放大点: the one moment this step dwells on — a few hundred words on a
   single action, decision or turn — and what it skips in half a sentence (a transition, a stretch
@@ -24,7 +28,9 @@ it names exists:
   unfinished step.
 
 Do NOT write prose, not even a sample line, and do NOT invent settings the design docs do not
-have: if the chapter needs one, name it as an open point instead. No notes to the user, no
-questions — those are the writing partner's to ask.
+have: if the chapter needs one, name it as an open point instead. **The same goes for people**: if a
+step needs someone to do something and nobody in the docs fits, say what they have to do and leave
+them unnamed — inventing a name here would put a person into the book that the user never agreed to.
+No notes to the user, no questions — those are the writing partner's to ask.
 
 Output the plan and nothing else.

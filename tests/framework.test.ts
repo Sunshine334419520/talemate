@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createProject, loadProjectMeta, removeDoc, writeDoc } from "../src/storage/project";
 import { enumerateDocs, readDoc, scanDocs } from "../src/storage/corpus";
 import { getSection, listHeadings, removeSection } from "../src/framework/markdown";
-import { RESIDENT_DOCS } from "../src/framework/anchor";
+import { RESIDENT_DOCS, docTree } from "../src/framework/anchor";
 import { SPECS, renderSpec } from "../src/framework/design_spec";
 import { planAbs } from "../src/framework/plan";
 import { renderHits } from "../src/framework/search";
@@ -1550,5 +1550,66 @@ describe("考据本 · 记一条、翻回来、以及它够不着作品", () => 
 
   test("绝对路径就是那个绝对路径——题目即文件名，没有第二条寻址", () => {
     expect(noteAbs(pid, NOTE)).toBe(join(talemateHome(), "novels", pid, ".talemate", "research", `${NOTE}.md`));
+  });
+});
+
+// ─── 文档树（界面左栏那棵树；与 list 的文本索引同族） ───
+
+describe("文档树 · 显示名与排序都只有一份", () => {
+  test("顶层是六段中文名，**目录名一个都不出现**", () => {
+    const tree = docTree(["state/progress.md", "chapters/chapter_ch1_v1.md", "design/core.md"]);
+    expect(tree.map((n) => n.name)).toEqual(["核心设定", "正文", "现状"]);
+    // 六段的固定次序：核心设定 → 世界观 → 角色 → 大纲 → 正文 → 现状
+    const all = docTree([
+      "state/progress.md",
+      "chapters/chapter_ch1_v1.md",
+      "design/outline/vol_1.md",
+      "design/characters/沈越.md",
+      "design/wiki/world.md",
+      "design/core.md",
+    ]);
+    expect(all.map((n) => n.name)).toEqual(["核心设定", "世界观", "角色", "大纲", "正文", "现状"]);
+  });
+
+  test("名字是人话：第 3 章（第 2 稿）、第 1 卷 / 序列 2、伏笔账", () => {
+    const tree = docTree([
+      "chapters/chapter_ch3_v2.md",
+      "design/outline/vol_1/s2.md",
+      "state/foreshadowing.md",
+      "design/characters/沈越.md",
+    ]);
+    const byName = Object.fromEntries(tree.map((n) => [n.name, n]));
+    const wrong = [
+      byName["正文"]?.children?.[0]?.name === "第 3 章（第 2 稿）",
+      byName["正文"]?.children?.[0]?.path === "chapters/chapter_ch3_v2.md",
+      byName["大纲"]?.children?.[0]?.name === "第 1 卷",
+      byName["大纲"]?.children?.[0]?.children?.[0]?.name === "序列 2",
+      byName["现状"]?.children?.[0]?.name === "伏笔账",
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
+  });
+
+  test("章号按数值排：第 2 章在第 10 章前面", () => {
+    const tree = docTree(["chapters/chapter_ch10_v1.md", "chapters/chapter_ch2_v1.md"]);
+    expect(tree[0].children?.map((n) => n.name)).toEqual(["第 2 章", "第 10 章"]);
+  });
+
+  test("一段既有总纲又有专题页时，那个节点**两个身份都有**；纯分组只有名字", () => {
+    const tree = docTree(["design/wiki/world.md", "design/wiki/漕运.md", "design/characters/沈越.md"]);
+    const world = tree.find((n) => n.name === "世界观");
+    const chars = tree.find((n) => n.name === "角色");
+    const wrong = [
+      world?.path === "design/wiki/world.md", // 点它开总纲
+      world?.children?.[0]?.name === "漕运", // 箭头展开看专题页
+      chars?.path === undefined, // "角色"本身不是一份文档
+      chars?.children?.[0]?.name === "沈越",
+    ].filter((x) => !x);
+    expect(wrong).toEqual([]);
+  });
+
+  test("认不出的照原样列进「其他」——加了一类文档忘了配名字，也得看得见", () => {
+    const tree = docTree(["design/没有这一类/怪东西.md", "design/core.md"]);
+    expect(tree.map((n) => n.name)).toEqual(["核心设定", "其他"]);
+    expect(tree[1].children?.[0]?.path).toBe("design/没有这一类/怪东西.md");
   });
 });

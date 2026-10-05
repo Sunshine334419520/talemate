@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-09-28 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`
+> **对齐代码**：2026-10-01 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -93,11 +93,16 @@ flowchart TD
     W2 --> W3[propose-plan: 落 .talemate/plans/ch_N.md + 摆给用户 —— halt，回合到此为止]
     W3 --> W4{用户拍板}
     W4 -- 要改 --> W3
-    W4 -- 认可 --> W5[mate 自己写: harness 注入规范+文风卡 → write 落 chapters/]
+    W4 -- 认可 --> W4B{这一章要点的人，卡上都有吗}
+    W4B -- 有 --> W5[mate 自己写: harness 注入规范+文风卡 → write 落 chapters/]
+    W4B -- 没有 --> W4C[先立人: propose-design 落卡, 用户拍板 —— 卡约束的是这一章怎么写]
+    W4C --> W5
     W5 --> W6[用户看 diff 后点头 —— 用户看过的字节 == 落盘的字节]
 ```
 
 **一次只规划一章**，因为规划是**序列纲的投影**：序列纲说"这一节要兑现什么"，规划说"这一章怎么兑现"。
+
+**新人物的卡排在正文之前**（图里的 `W4B`）。卡的用途是约束"他下一次怎么说话、什么绝不做"，事后从正文反推出来的卡只能是对已写正文的总结——那是墓志铭，不是合同。所以建卡走的是**设计文档那条两段式**（`propose-design` → 用户拍板 → `apply-design`）：建卡是设计动作，不是写作动作，它只是被章节生产**触发**的。判据见 `characters.md` 的「谁需要一张卡」。
 
 **门只剩一道，挂在 `propose-plan` 上：交出去就停**（`halt`，不靠模型自觉）。它同时把规划登记进会话内存，用户回话后由 harness 置 `approved`——**和 `apply-design` 是同一套**：propose 登记 → harness 判同意 → 模型据它执行。
 

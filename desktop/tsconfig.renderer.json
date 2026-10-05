@@ -1,0 +1,15 @@
+{
+  // 渲染层单独一份：它跑在浏览器里，要 DOM 与 jsx。**不并进根 tsconfig**——那份是给 Node 侧的
+  // （harness 与主进程），并进去之后主进程里写 `document.` 也能过类型检查，那种错要到运行时才现形。
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    // node 类型是**被迫**加的：渲染层要用 `StoredMessage`（消息模型只有那一份定义，不许手抄），
+    // 而它顺着 `core/types → permission` 把 `process.platform` 也拉了进来。
+    // 别把这一条当成"渲染层可以用 Node"——真正的保证在别处：preload 的白名单 + 打包器
+    // （vite 打包浏览器产物时遇到 node 内置模块会直接报错）。
+    "types": ["node"]
+  },
+  "include": ["src/renderer"]
+}

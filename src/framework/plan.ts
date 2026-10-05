@@ -45,6 +45,17 @@ export function planAbs(projectId: string, chapter: number): string {
  */
 const CHAPTER_FILE_RE = /^chapters\/chapter_ch(\d+)_v\d+\.md$/;
 
+/**
+ * 这个路径是第几章的正文？不是正文就 `undefined`。
+ *
+ * 界面要用它回答"这本书写到第几章了"（数一下 `chapters/` 里最大的那个 N）——**复用上面那条正则**，
+ * 不另抄一份：抄一份就会出现"界面说写到第 7 章、系统认为第 7 章还没写"这种两半各说各话的事。
+ */
+export function chapterNumberOf(path: string): number | undefined {
+  const m = CHAPTER_FILE_RE.exec(path);
+  return m === null ? undefined : Number(m[1]);
+}
+
 /** 第 N 章正文的路径。`version` 是第几版（同一章改一次就递增）。 */
 export function chapterFileOf(chapter: number, version = 1): string {
   return `chapters/chapter_ch${chapter}_v${version}.md`;

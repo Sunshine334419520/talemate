@@ -6,6 +6,9 @@
 # 依赖
 node_modules/
 
+# 桌面壳构建产物（desktop/build.ts 生成）
+desktop/out/
+
 # 实验生成产物
 experiments/output/
 

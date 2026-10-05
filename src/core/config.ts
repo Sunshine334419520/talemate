@@ -55,7 +55,34 @@ export function rootAbs(projectId: string, root: DocRoot): string {
  * 而它压不过任何人。相对 `import.meta.url` 解析，不依赖 cwd（同 `prompts.ts`）。
  */
 export function builtinSkillsDir(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "..", "..", "skills");
+  return join(resourceRoot() ?? join(dirname(fileURLToPath(import.meta.url)), "..", ".."), "skills");
+}
+
+/**
+ * 随包数据（`prompts/` 与 `skills/`）的根。
+ *
+ * 默认从 `import.meta.url` 往上推——源码旁边就是它们，所以 CLI 与测试什么都不用做。但**打包之后
+ * 那个 URL 指向 bundle 内部**（`out/main/index.js` 旁边当然没有 prompts），于是这两个目录会被算到
+ * 构建产物旁边。现象是"提示词读不到、skill 一个都没有"——而且**不报错**：skill 扫描本来就把
+ * "目录不存在"当空库（`skill/discovery.ts` 的 `scanDir`），一个都不会被发现。
+ *
+ * 所以给外壳一个钉子：启动时 `setResourceRoot(app.isPackaged ? process.resourcesPath : 仓库根)`。
+ * **它必须在第一次读取之前调用**，而"第一次读取"发生在模块加载之外——所以下面每一处都是**惰性**
+ * 求值（函数里算，不在模块顶层算）。顶层算过的话，import 提升会让外壳永远来不及钉。
+ */
+let pinned: string | undefined;
+
+export function setResourceRoot(dir: string | undefined): void {
+  pinned = dir;
+}
+
+/**
+ * 钉住的随包数据根；没钉 = `undefined`，由调用方按**自己那个文件**往上推算（各处的层数不同：
+ * 本文件在 `src/core/` 是两层，`prompts.ts` 在 `src/` 是一层——所以这一层不替它们算，算错了
+ * 是静默地指到仓库外面去）。
+ */
+export function resourceRoot(): string | undefined {
+  return pinned;
 }
 
 /** 项目目录与内部结构 */

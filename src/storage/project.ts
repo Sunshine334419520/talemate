@@ -11,7 +11,11 @@ import type { ProjectMeta } from "../core/types";
 import { docAbs } from "./corpus";
 import { rand4, safeName, safeRelPath, slugify } from "./util";
 
-export async function createProject(opts: { title: string; genre?: string }): Promise<ProjectMeta> {
+export async function createProject(opts: {
+  title: string;
+  genre?: string;
+  channel?: string;
+}): Promise<ProjectMeta> {
   const home = talemateHome();
   const p = paths(home);
   await mkdir(p.novelsRoot, { recursive: true });
@@ -28,7 +32,13 @@ export async function createProject(opts: { title: string; genre?: string }): Pr
   await mkdir(pp.skills, { recursive: true });
   await mkdir(pp.sessions, { recursive: true });
 
-  const meta: ProjectMeta = { id, title: opts.title, genre: opts.genre, createdAt: Date.now() };
+  const meta: ProjectMeta = {
+    id,
+    title: opts.title,
+    genre: opts.genre,
+    channel: opts.channel,
+    createdAt: Date.now(),
+  };
   await writeProjectMeta(meta);
   // 建项目不预种任何文件：
   // - design/ 懒建——用户要完善某层时由 mate 调 design-spec 拿形状再成稿落盘；

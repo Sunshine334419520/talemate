@@ -9,6 +9,15 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src"],
+  // Node 侧：harness + 主进程 + 预加载 + 探针。**渲染层不在这里**——它要 DOM 与 jsx，
+  // 单独一份 `desktop/tsconfig.renderer.json`（两边的类型环境不同，混在一起等于两边都不设防）。
+  "include": [
+    "src",
+    "desktop/src/main",
+    "desktop/src/preload",
+    "desktop/src/shared",
+    "desktop/probe",
+    "desktop/electron.vite.config.ts"
+  ],
   "exclude": ["tests"]
 }

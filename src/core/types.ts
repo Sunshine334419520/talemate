@@ -280,7 +280,16 @@ export interface SessionMeta {
 export interface ProjectMeta {
   id: string;
   title: string;
+  /** 题材（书架上的大类：都市 / 古言 / 悬疑……）。创建时就能定，之后也可以改 */
   genre?: string;
+  /**
+   * 频道：男频 / 女频 / 不限。
+   *
+   * 与 `genre` 分开存而不是拼成一个串：这两个是**两个独立的决定**，拼起来之后想按其一筛选就得拆串。
+   * 注意它记的是**用户在书架上的声明**，而 `design/core.md` 的「题材 · 频道」是模型据此展开的定位
+   * ——两者不必逐字一致，前者是输入、后者是产物。
+   */
+  channel?: string;
   createdAt: number;
   /** 角色覆盖（talemate.json agents.<id> 可覆盖 model/system/permission 等） */
   agents?: Record<string, Partial<AgentDef>>;

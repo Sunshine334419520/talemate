@@ -8,13 +8,19 @@ exactly the bytes they were shown; calling it again for the same chapter replace
 Write the plan in Chinese, and make it a list of artifacts rather than free text — a step is done
 when what it names exists:
 - 意图 — what the user wants out of this chapter.
-- 产物（按序）— where the work lands. The chapter file first (chapters/chapter_ch<N>_v<M>.md), then
-  what the state layer takes on: the state file of each character whose situation moves
-  (state/characters/<名>.md), the ledger if a thread is planted or paid off (state/foreshadowing.md),
-  and always this chapter's entry in state/progress.md. Name only the ones this chapter actually
-  moves — a chapter that changes nothing does not get an empty update.
+- 产物（按序）— where the work lands, **in the order the work is done**. A person this chapter needs
+  who has no card yet comes first (`design/characters/<名>.md`, landed the way design docs always
+  land — propose-design, then the user's answer): the card is what fixes how they speak and what
+  they would never do, so it lands **before** the prose, never after. Then the chapter file
+  (chapters/chapter_ch<N>_v<M>.md), then what the state layer takes on: the state file of each
+  character whose situation moves (state/characters/<名>.md), the ledger if a thread is planted or
+  paid off (state/foreshadowing.md), and always this chapter's entry in state/progress.md. Name only
+  the ones this chapter actually moves — a chapter that changes nothing does not get an empty update.
 - per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and you follow
-  them); the characters the chapter must land and what each has to get across; the facts that were
+  them); the characters the chapter must land and what each has to get across, each one checked
+  against the cards you read — someone the design docs mention but who has no card is marked 要建卡
+  here, and if the step needs *a* person to do something and nobody in the docs fits, say what they
+  have to do and leave them unnamed (naming them is the user's call, not yours); the facts that were
   checked, each with its source; the constraints the material cannot supply — what must not break,
   what must stay unresolved; and the step's 放大点 — the one moment it dwells on (a few hundred
   words on a single action, decision or turn) and what it skips in half a sentence. Name the

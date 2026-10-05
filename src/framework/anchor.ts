@@ -11,7 +11,7 @@
  *
  * 路径一律**项目相对**（`design/core.md`）——与工具收的路径、`FileOp.path`、权限 pattern 同一个口径。
  */
-import { enumerateDocs, readDoc } from "../storage/corpus";
+import { DOC_ROOTS, enumerateDocs, readDoc } from "../storage/corpus";
 import { listHeadings } from "./markdown";
 import { summarize } from "./summaries";
 
@@ -34,6 +34,120 @@ const LEGACY_SKIP = new Set(["design/characters/_index.md"]);
 
 /** 目录里小节的缩进：有组名时多一层。 */
 const INDENT = (n: number): string => "  ".repeat(n + 1);
+
+/**
+ * 文档树的一个节点。
+ *
+ * `path` **可以没有**：像"角色""正文"这种**分组节点**本身不是一份文档（它只是那一段的名字），
+ * 而"世界观"既是分组又有一份总纲——那种节点两个都有，界面点名字开文档、点箭头展开。
+ */
+export interface DocNode {
+  name: string;
+  path?: string;
+  children?: DocNode[];
+}
+
+/**
+ * 左栏那棵树的六段，**次序固定**。
+ *
+ * 这六个词就是 `mate` 对用户说话用的那六个（见 `mate.system.txt` 的 "Talk about 核心设定 / 世界观 /
+ * 角色 / 大纲"）。**目录名 `design/` `chapters/` `state/` 一个都不出现**——它们是实现，不是这本书的样子。
+ */
+const SECTIONS = ["核心设定", "世界观", "角色", "大纲", "正文", "现状"] as const;
+
+/** 认不出的东西归这一段——**列出来，别丢**：加了一类文档忘了配名字，也得看得见 */
+const OTHER = "其他";
+
+const base = (path: string): string => path.split("/").pop()?.replace(/\.md$/, "") ?? path;
+
+/**
+ * 一份文档**对外叫什么、归在哪一段**。
+ *
+ * **这是"显示名"的唯一一处。** CLI 那边要对齐也引它——同一份文档在两个界面里有两个名字，
+ * 是这类映射最典型的烂法。注意它只认作品那三个根下的已知形状；`.talemate/` 的东西根本到不了这里
+ * （`enumerateDocs` 不认它）。
+ */
+function displayOf(path: string): { section: string; parts: string[] } {
+  if (path === "design/core.md") return { section: "核心设定", parts: [] };
+  if (path === "design/wiki/world.md") return { section: "世界观", parts: [] };
+  if (path.startsWith("design/wiki/")) return { section: "世界观", parts: [base(path)] };
+  if (path.startsWith("design/characters/")) return { section: "角色", parts: [base(path)] };
+  if (path.startsWith("design/outline/")) {
+    const seq = /^design\/outline\/vol_(\d+)\/s(\d+)\.md$/.exec(path);
+    if (seq) return { section: "大纲", parts: [`第 ${seq[1]} 卷`, `序列 ${seq[2]}`] };
+    const vol = /^design\/outline\/vol_(\d+)\.md$/.exec(path);
+    if (vol) return { section: "大纲", parts: [`第 ${vol[1]} 卷`] };
+    return { section: "大纲", parts: [base(path)] };
+  }
+  if (path.startsWith("chapters/")) {
+    const ch = /^chapters\/chapter_ch(\d+)_v(\d+)\.md$/.exec(path);
+    if (ch) {
+      // 稿号只在多于一稿时才报——第一稿是常态，每一条都挂个「第 1 稿」是噪音
+      const label = Number(ch[2]) > 1 ? `第 ${ch[1]} 章（第 ${ch[2]} 稿）` : `第 ${ch[1]} 章`;
+      return { section: "正文", parts: [label] };
+    }
+    return { section: "正文", parts: [base(path)] };
+  }
+  if (path.startsWith("state/characters/")) return { section: "现状", parts: [base(path)] };
+  if (path === "state/foreshadowing.md") return { section: "现状", parts: ["伏笔账"] };
+  if (path === "state/progress.md") return { section: "现状", parts: ["章节流水"] };
+  return { section: OTHER, parts: [path] };
+}
+
+/**
+ * 平铺的项目相对路径 → 界面左栏那棵树（`buildIndex` 是它在文本上的同族）。
+ *
+ * 判据分两层，都只在这里：**归哪一段**（`displayOf` 的 section）与**同段之内怎么排**
+ * （目录在前、其余按 **`numeric`** 比较——`第 2 卷` 要排在 `第 10 卷` 前面，字典序正好反过来，
+ * 而界面上一眼看得出的顺序错比"少了点什么"更让人以为程序坏了）。
+ */
+export function docTree(paths: string[]): DocNode[] {
+  const children = new Map<string, DocNode[]>();
+  const self = new Map<string, string>(); // 那一段自己的总纲文档（核心设定、世界观总纲）
+
+  for (const path of paths) {
+    const { section, parts } = displayOf(path);
+    if (!children.has(section)) children.set(section, []);
+    if (parts.length === 0) {
+      self.set(section, path);
+      continue;
+    }
+    let level = children.get(section) as DocNode[];
+    parts.forEach((label, i) => {
+      const leaf = i === parts.length - 1;
+      let node = level.find((n) => n.name === label && (leaf ? n.children === undefined : n.children !== undefined));
+      if (node === undefined) {
+        node = leaf ? { name: label, path } : { name: label, children: [] };
+        level.push(node);
+      }
+      if (!leaf) level = node.children as DocNode[];
+    });
+  }
+
+  const rank = (name: string): number => {
+    const at = (SECTIONS as readonly string[]).indexOf(name);
+    return at >= 0 ? at : SECTIONS.length;
+  };
+  const sort = (nodes: DocNode[]): void => {
+    nodes.sort((a, b) => {
+      const aDir = a.children !== undefined;
+      const bDir = b.children !== undefined;
+      if (aDir !== bDir) return aDir ? -1 : 1;
+      return a.name.localeCompare(b.name, "zh", { numeric: true });
+    });
+    for (const n of nodes) if (n.children) sort(n.children);
+  };
+
+  const names = [...children.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, "zh"));
+  for (const name of names) sort(children.get(name) as DocNode[]);
+
+  return names.map((name): DocNode => {
+    const kids = children.get(name) as DocNode[];
+    const own = self.get(name);
+    if (kids.length === 0 && own !== undefined) return { name, path: own }; // 只有总纲：那一段就是个叶子
+    return { name, path: own, children: kids };
+  });
+}
 
 /**
  * 生成某一段语料的目录（给 CLI 的 `/status` 与 `list` 复用）。

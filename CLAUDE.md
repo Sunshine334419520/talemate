@@ -81,6 +81,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | Character cards | `docs/characters.md` |
 | Volumes and sequences; why there is no whole-book outline | `docs/outline.md` |
 | Who may do what, and what needs asking | `docs/permissions.md` |
+| What the desktop UI looks like, and what the user is allowed to see | `docs/ui.md` |
 | What isn't built yet | `docs/roadmap.md` |
 | How prompts are organised and written | `prompts/README.md` |
 

@@ -4,11 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node desktop/scripts/ensure-electron.mjs",
+    "desktop:setup": "node node_modules/electron/install.js",
     "cli": "bun run src/cli.ts",
     "smoke": "bun run src/smoke.ts",
     "probe": "bun run src/probe/advance.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p desktop/tsconfig.renderer.json",
+    "desktop": "bun run desktop:build && electron desktop",
+    "desktop:dev": "cd desktop && electron-vite dev",
+    "desktop:build": "cd desktop && electron-vite build",
+    "desktop:selftest": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_PROVIDER=mock TALEMATE_MOCK_TOOL=task TALEMATE_DESKTOP_SELFTEST=1 electron desktop",
+    "desktop:selftest:window": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_DESKTOP_SELFTEST=window electron desktop",
+    "desktop:probe": "bun run desktop/probe/run-under-node.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
@@ -17,7 +25,17 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/turndown": "^5.0.6",
+    "@vitejs/plugin-react": "^5",
+    "dompurify": "^3.4.16",
+    "electron": "^44.5.1",
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.28.2",
+    "marked": "^18.0.14",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^7.0.2"
   }
 }

@@ -1,0 +1,5 @@
+{
+  "name": "talemate-desktop",
+  "private": true,
+  "main": "./out/main/index.js"
+}
