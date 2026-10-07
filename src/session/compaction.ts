@@ -9,6 +9,7 @@
  */
 import { SUMMARIZER_SYSTEM } from "../agent/registry";
 import type { ModelConfig, StoredMessage } from "../core/types";
+import { compactTrigger } from "../core/windows";
 import { chat } from "../llm/provider";
 import { appendMessage, loadMessages } from "../storage/session-store";
 
@@ -33,24 +34,27 @@ export function estimateChars(messages: StoredMessage[]): number {
 }
 
 /**
- * 触发压缩的粗略字符阈值。**默认 20 万**（中文 ~1 字符/token 近似，即约 20 万 token 的窗口）。
- * 可用 `TALEMATE_COMPACT_CHARS` 覆盖——与其余可调项同一套约定（见 `core/config.ts`）。
- */
-const COMPACT_THRESHOLD_CHARS = 200_000;
-
-export function compactThreshold(env = process.env): number {
-  return Number(env.TALEMATE_COMPACT_CHARS) || COMPACT_THRESHOLD_CHARS;
-}
-
-/**
- * 窗口是否超预算（用内存消息判断，避免每次读盘）。
+ * 这个会话**是否该压缩**。
  *
- * **参数必须是模型实际会看到的那个窗口**——即 `loadModelWindow(messages)` 之后的那一段，不是整份
- * 会话文件。文件只增不减，量它就等于**越过阈值一次就永远超预算**：此后每回合压一次，而每压一次
- * 就把上下文洗掉一次，模型只能把刚读过的文档重读一遍。
+ * 判据是**真实用量**：provider 每次都会报回 `usage.input`（那一次请求到底发了多少 token），
+ * 会话把它记在元信息里（`SessionMeta.usage`）。触发点由**模型的窗口**算（`core/windows.ts` 的
+ * `compactTrigger`，窗口的八成）——所以 1M 窗口的模型就该到 80 万才动手，而不是所有模型都按同一个数。
+ *
+ * **没有真数时退回估算**（这个会话还没发过请求）——按字符数估，中文 1 字符≈1 token。新会话本来也
+ * 离阈值很远，所以这一步是兜底，不是常态。
+ *
+ * `messages` 必须是模型实际会看到的那一段（`loadModelWindow` 之后），不是整份会话文件：文件只增不减，
+ * 量它等于**越过阈值一次就永远超预算**——此后每回合压一次，而每压一次就把上下文洗掉一次，
+ * 模型只能把刚读过的文档重读一遍。
  */
-export function isOverBudget(messages: StoredMessage[], threshold = compactThreshold()): boolean {
-  return estimateChars(messages) > threshold;
+export function isOverBudget(
+  model: string,
+  lastInput: number | undefined,
+  messages: StoredMessage[],
+  env = process.env,
+): boolean {
+  const trigger = Number(env.TALEMATE_COMPACT_TOKENS) || compactTrigger(model);
+  return lastInput === undefined ? estimateChars(messages) > trigger : lastInput > trigger;
 }
 
 /** 保留的 recent 消息条数（原样留在上下文里，防止摘要丢细节） */

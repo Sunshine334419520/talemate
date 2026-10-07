@@ -55,6 +55,9 @@ export async function runLoop(agent: AgentDef, input: string, deps: LoopDeps): P
       },
     );
 
+    // 用量报给外面：它是界面那个"上下文占比"唯一的真实来源（估算的不算）
+    if (turn.usage) deps.onEvent({ type: "usage", input: turn.usage.input, output: turn.usage.output });
+
     // 收拢本条 assistant 的 parts（含工具执行结果，内嵌在本条里）
     const parts: AssistantPart[] = [];
     if (turn.reasoning) parts.push({ type: "reasoning", text: turn.reasoning });

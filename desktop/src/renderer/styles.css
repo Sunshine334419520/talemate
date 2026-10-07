@@ -72,7 +72,7 @@ body {
 button { font: inherit; color: inherit; }
 
 /* ── 首屏：书架 ── */
-.picker { min-height: 100vh; display: flex; flex-direction: column; padding: 56px 64px; }
+.picker { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 56px 64px; }
 .shelf { margin-bottom: 28px; }
 .shelf h1 { font-family: var(--serif); font-size: 24px; font-weight: 600; margin: 0 0 2px; }
 .shelf .sub { color: var(--faint); margin: 0; font-size: 13px; }
@@ -138,7 +138,10 @@ button { font: inherit; color: inherit; }
 /* ── 工作台 ── */
 /* **灰底 + 两块白面板**。这是参考图里最显眼的一条：底色是灰的、内容浮在上面，
    不是"左栏白、中栏白、到处白"。间距与圆角就是这一层读起来像不像的关键。 */
-.shell { display: flex; height: 100vh; gap: 10px; padding: 10px; }
+/* 上下两截：卡片区（撑满）+ 一条状态栏。状态栏**横贯窗口**、落在灰底上——
+   它能装的东西（模式、待你拍板、模型、上下文）都是"这个会话眼下什么状态"，不属于任何一块卡片。 */
+.app { display: flex; flex-direction: column; height: 100vh; }
+.shell { display: flex; flex: 1; min-height: 0; gap: 10px; padding: 10px 10px 0; }
 /* 左栏**没有面板**：它直接坐在灰底上（参考图就是这样） */
 .side { width: 232px; flex: none; display: flex; flex-direction: column; overflow: hidden; }
 .side .book { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); display: flex; align-items: baseline; gap: 8px; }
@@ -269,7 +272,52 @@ button { font: inherit; color: inherit; }
   font: inherit; color: var(--ink);
 }
 .box-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
-.send {
+
+/* 状态栏：一条细带。**没有数就不显示**——不编一句提示糊在上面 */
+/* 状态栏：一条细带。**垂直居中靠的是"没有不对称的内边距"**——上一版留了 10px 底边距，
+   align-items: center 也救不回来（它居中的是内容盒，而内容盒自己被顶上去了）。 */
+.statusbar {
+  flex: none; height: 34px; display: flex; align-items: center; gap: 14px;
+  padding: 0 16px; font-size: 11.5px; color: var(--faint);
+}
+.statusbar .left, .statusbar .right { display: flex; align-items: center; gap: 8px; }
+.statusbar .right { margin-left: auto; font-variant-numeric: tabular-nums; }
+.statusbar .badge { border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; line-height: 18px; }
+.statusbar .badge.zhu { color: var(--zhu); border-color: var(--zhu); }
+.statusbar .cell { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; }
+.statusbar .cell.plain { color: var(--muted); }
+.statusbar .cell.clickable { border: 0; background: none; color: var(--faint); cursor: pointer; font: inherit; }
+.statusbar .cell.clickable:hover { background: var(--hover); color: var(--ink); }
+.statusbar .cell.clickable .caret { font-size: 8px; color: var(--line); }
+.statusbar .cell.clickable:hover .caret { color: var(--faint); }
+
+.ctx.hot { color: var(--zhu); }
+.ctx .bar { width: 40px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.ctx .bar i { display: block; height: 100%; background: var(--faint); }
+.ctx.hot .bar i { background: var(--zhu); }
+
+/* 向上弹出的一层：贴在被点的格子上面、右边对齐 */
+.pop-wrap { position: relative; display: inline-flex; }
+.pop-mask { position: fixed; inset: 0; z-index: 40; }
+.pop {
+  position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 41;
+  min-width: 190px; padding: 8px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); box-shadow: 0 8px 24px rgb(0 0 0 / 8%);
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+}
+.pop-title { padding: 2px 6px 6px; color: var(--faint); font-size: 11px; }
+.pop-item {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  border: 0; background: none; border-radius: 6px; padding: 5px 6px; cursor: pointer; font: inherit; color: var(--ink);
+}
+.pop-item:hover { background: var(--hover); }
+.pop-item[aria-current="true"], .pop-item.sel { background: var(--hover); font-weight: 600; }
+.pop-hint { margin-left: auto; color: var(--faint); font-size: 11px; }
+.pop-big { padding: 0 6px; font-size: 17px; font-variant-numeric: tabular-nums; }
+.pop-big .pop-hint { margin-left: 0; }
+.pop .chart { display: flex; align-items: flex-end; gap: 2px; height: 44px; margin: 10px 6px 4px; }
+.pop .chart i { flex: 1; min-width: 3px; background: var(--line); border-radius: 2px 2px 0 0; }
+.pop .chart i:last-child { background: var(--zhu); }.send {
   width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer;
   background: var(--ink); color: var(--panel); font-size: 15px; line-height: 1;
 }
@@ -345,3 +393,59 @@ button { font: inherit; color: inherit; }
 }
 .splitter:hover { background: var(--hover); }
 .splitter:active { background: var(--line); }
+
+/* ── 设置：一个居中的弹窗 ── */
+.mask {
+  position: fixed; inset: 0; z-index: 60; padding: 40px 20px;
+  background: rgb(0 0 0 / 22%); display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  width: min(720px, 100%); max-height: 80vh; display: flex; flex-direction: column;
+  background: var(--card); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 18px 50px rgb(0 0 0 / 18%);
+}
+.modal header { display: flex; align-items: baseline; gap: 10px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line-soft); }
+.modal h2 { margin: 0; font-family: var(--serif); font-size: 17px; }
+.modal header .sub { flex: 1; color: var(--faint); font-size: 12px; }
+.modal .close { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+.modal .close:hover { color: var(--ink); }
+.modal { width: min(560px, 100%); }
+.modal .body { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px; }
+.modal .body.fields { padding: 14px 18px; gap: 10px; }
+.modal .body.plain .row { flex-direction: row; align-items: baseline; gap: 8px; }
+.modal .body.plain .row .md { margin-left: auto; color: var(--faint); }
+.modal .back { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 12px; padding: 0; }
+.modal .back:hover { color: var(--ink); }
+.modal .row.env { border: 1px dashed var(--line); }
+.modal .list { border-right: 1px solid var(--line-soft); padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.modal .row {
+  display: flex; flex-direction: column; gap: 1px; text-align: left; width: 100%;
+  border: 0; background: none; border-radius: 8px; padding: 7px 9px; cursor: pointer; font: inherit;
+}
+.modal .row:hover { background: var(--hover); }
+.modal .row.on { background: var(--hover); }
+.modal .row.on .nm { font-weight: 600; }
+.modal .row .nm { font-size: 13px; }
+.modal .row .md { color: var(--faint); font-size: 11.5px; }
+.modal .row .tag { align-self: flex-start; margin-top: 2px; font-size: 10.5px; color: var(--zhu); border: 1px solid var(--zhu); border-radius: 999px; padding: 0 6px; }
+.modal .row.add { color: var(--faint); }
+.modal .row.add:hover { color: var(--zhu); }
+.modal .fields { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.modal .fields label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.modal .fields .hint { color: var(--faint); font-size: 11px; margin-left: 6px; }
+.modal .fields input, .modal .fields select {
+  font: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--line);
+  border-radius: 7px; background: var(--ground); color: var(--ink);
+}
+.modal .fields .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal footer { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line-soft); }
+.modal footer .spacer { flex: 1; }
+
+/* 模型那一组：可删的片 + 一行加新的 */
+.modal .models { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.modal .models .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 9px; font-size: 12px; font-family: var(--mono); }
+.modal .models .chip .x { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 10px; padding: 0 2px; }
+.modal .models .chip .x:hover { color: var(--zhu); }
+.modal .models input { flex: 1; min-width: 140px; }
+.pop-group { display: flex; flex-direction: column; gap: 1px; }
+.pop-group .pop-title { padding: 6px 6px 2px; }

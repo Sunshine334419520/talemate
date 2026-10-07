@@ -8,11 +8,23 @@
  * 这一层只管**编排**（谁在哪儿、什么时候取数），画法全在 `Thread` 里——对话区是这套界面最容易糊成
  * 一片的地方，它的规矩单独立一份文件讲。
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage } from "../shared/api";
 import { DocTree } from "./DocTree";
 import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
+import { tokens } from "../shared/tokens";
+import { contextWindow } from "../../../src/core/windows";
+
+/** 目录树里所有**能打开的**节点，拉平成一列——`@` 的候选就是它。 */
+function flatDocs(nodes: DocNode[]): { name: string; path: string }[] {
+  const out: { name: string; path: string }[] = [];
+  for (const n of nodes) {
+    if (n.path !== undefined) out.push({ name: n.name, path: n.path });
+    if (n.children !== undefined) out.push(...flatDocs(n.children));
+  }
+  return out;
+}
 
 /** 右栏默认宽度，以及它的上下限——**两边都不许把对方挤没**。 */
 const DEFAULT_PANE = 460;
@@ -28,7 +40,15 @@ function when(ts: number): string {
   return d.toDateString() === today.toDateString() ? `今天 ${hhmm}` : `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-export function Workspace({ project, onExit }: { project: ProjectCard; onExit: () => void }) {
+export function Workspace({
+  project,
+  onExit,
+  onSettings,
+}: {
+  project: ProjectCard;
+  onExit: () => void;
+  onSettings: () => void;
+}) {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [history, setHistory] = useState<StoredMessage[]>([]);
@@ -44,6 +64,13 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
   const [stale, setStale] = useState(false);
   const [state, setState] = useState<SessionState>({});
   const [paneWidth, setPaneWidth] = useState(460);
+  /** 输入框里正在打的 `@…` 或 `/…`：`at` 是那个符号在文本里的位置（-1 = 没在打） */
+  const [menu, setMenu] = useState<{ kind: "at" | "slash"; token: string; at: number } | null>(null);
+  /** 高亮在第几项——**键盘和鼠标共用这一个**，否则两边会各选各的 */
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [profiles, setProfiles] = useState<{ name: string; models: string[] }[]>([]);
+  /** 每一轮请求的用量（`usage` 事件）：**真数据**，界面靠它显示占比与走势 */
+  const [uses, setUses] = useState<{ input: number; output: number }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
 
@@ -63,6 +90,8 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
       setLive([]);
       setBusy(false);
       setError(null);
+      // 用量由 harness 记在会话元信息里：切会话切回来在、**重启也还在**
+      setUses(await window.tm.sessionUsage(project.id, opened.sessionId));
       setState(await window.tm.sessionState(project.id));
       await loadSessions();
     },
@@ -72,6 +101,7 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
   useEffect(() => {
     void (async () => {
       // 上次拖出来的宽度先用上，免得开场先闪一下默认宽度
+      setProfiles((await window.tm.models()).profiles);
       const saved = (await window.tm.prefs()).paneWidth;
       if (typeof saved === "number") setPaneWidth(clampPane(saved));
       const rows = await loadSessions();
@@ -120,6 +150,7 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
         }
         return next;
       });
+      if (e.type === "usage") setUses((prev) => [...prev, { input: e.input, output: e.output }]);
       if (e.type === "session.status") setBusy(e.status === "busy");
     });
     window.tm.onSessionState(setState);
@@ -193,20 +224,90 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
   );
 
   /** 发一句话给 mate。三向裁决也走这里——按钮说的是固定短语，判定仍然在 harness（见 shared/verdict.ts）。 */
-  const say = useCallback((text: string): void => {
+  /**
+   * 发一句话。`shown` 是**气泡里显示的**，`sent` 是**真正发给 harness 的**——两者可以不同：
+   * `@世界观` 拼出来的 `<mentioned>` 段是给模型看的材料，不该糊在用户自己的气泡里（存进历史也一样丑）。
+   */
+  const say = useCallback((text: string, sent?: string): void => {
     setLive((prev) => [...prev, { kind: "me", text }]);
-    window.tm.prompt(text);
+    window.tm.prompt(sent ?? text);
   }, []);
+
+  // 窗口大小按当前模型查表（认不出给保守默认值）——**显示时永远带"约"**，不把估算说成事实
+  const win = contextWindow(info?.model ?? "");
+
+  /** 光标前那一段是不是 `@…` 或 `/…`。**只在词首认**：`a@b` 里的 @ 是邮箱，不是提及。 */
+  function scanMenu(text: string, caret: number): void {
+    const before = text.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at >= 0 && (at === 0 || /\s/.test(before[at - 1] ?? "")) && !/\s/.test(before.slice(at + 1))) {
+      setMenu({ kind: "at", token: before.slice(at + 1), at });
+      setMenuIndex(0); // 每换一次候选都从头高亮：**默认选中第一个**，回车就用它
+      return;
+    }
+    const slash = /^\/([^\s]*)$/.exec(before);
+    if (slash !== null) {
+      setMenu({ kind: "slash", token: slash[1], at: 0 });
+      setMenuIndex(0);
+      return;
+    }
+    setMenu(null);
+  }
+
+  /** 选中一个候选：把 `@token` 那段换成它 */
+  const pick = useCallback(
+    (value: string, run?: () => void): void => {
+      if (menu === null) return;
+      if (run !== undefined) {
+        setDraft("");
+        setMenu(null);
+        run();
+        return;
+      }
+      const next = `${draft.slice(0, menu.at)}@${value} ${draft.slice(menu.at + 1 + menu.token.length)}`;
+      setDraft(next);
+      setMenu(null);
+    },
+    [draft, menu],
+  );
+
+  /** 眼下这一层候选。**默认选中第一个**，↑↓ 移动，回车选它。 */
+  const menuItems = useMemo((): { key: string; label: string; hint?: string; run: () => void }[] => {
+    if (menu === null) return [];
+    if (menu.kind === "at") {
+      return flatDocs(tree)
+        .filter((d) => d.name.includes(menu.token))
+        .slice(0, 8)
+        .map((d) => ({ key: d.path, label: d.name, hint: d.path, run: () => pick(d.name) }));
+    }
+    const cmds: [string, () => void][] = [
+      ["新会话", () => void enter()],
+      ["设置", onSettings],
+      ["所有作品", onExit],
+    ];
+    return cmds
+      .filter(([label]) => label.includes(menu.token))
+      .map(([label, run]) => ({ key: label, label: `/${label}`, run: () => pick("", run) }));
+  }, [enter, menu, onExit, onSettings, pick, tree]);
 
   function send(): void {
     const text = draft.trim();
     if (!text || busy) return;
     setDraft("");
-    say(text);
+    setMenu(null);
+    // `@名字` 只是**你看的**：真正发出去时补一段"指的是哪些文件"，mate 拿的是确切地址。
+    // 我们看到的和模型拿到的不必是同一个东西——而让模型猜"核心设定"是哪个文件，是没必要的风险。
+    const hit = flatDocs(tree).filter((d) => text.includes(`@${d.name}`));
+    const body =
+      hit.length === 0
+        ? text
+        : `${text}\n\n<mentioned>\n${hit.map((d) => `${d.name} → ${d.path}`).join("\n")}\n</mentioned>`;
+    say(text, body);
   }
 
   return (
-    <div className="shell">
+    <div className="app">
+      <div className="shell">
       <aside className="side">
         <div className="book">
           <b>{project.title}</b>
@@ -227,25 +328,22 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
 
         <div className="label split">目录</div>
         <div className="list docs">
-          <DocTree nodes={tree} current={pane?.kind === "doc" ? pane.path : null} onOpen={(n) => void openDoc(n)} />
+          <DocTree
+            nodes={tree}
+            current={pane?.kind === "doc" ? pane.path : null}
+            onOpen={(n) => void openDoc(n)}
+            onMention={(n) => setDraft((d) => (d === "" ? `@${n.name} ` : `${d}@${n.name} `))}
+          />
         </div>
       </aside>
 
       <main className="main">
         <header className="head">
           <div className="book-name">{info?.book ?? "正在开会话…"}</div>
-          <span className="sub">
-            {info ? `${info.agent} · ${info.model}` : ""}
-            {state.mode !== undefined ? ` · ${state.mode}` : ""}
-            {state.pending !== undefined ? ` · 待你拍板：${state.pending}` : ""}
-            {busy ? " · ● 正在写" : ""}
-          </span>
+          <span className="sub">{info ? `${info.agent}${busy ? " · ● 正在写" : ""}` : ""}</span>
         </header>
 
         <div className="scroll" ref={scrollRef}>
-          {history.length === 0 && live.length === 0 && (
-            <p className="hint">这是新会话。说点什么开始——比如"写第 1 章"。</p>
-          )}
           <Thread
             history={history}
             live={live}
@@ -266,11 +364,53 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
 
         <div className="composer">
           <div className="box">
+            {menu !== null && menuItems.length > 0 && (
+              <div className="menu">
+                {menuItems.map((it, i) => (
+                  <button
+                    key={it.key}
+                    className={`pop-item${i === menuIndex ? " sel" : ""}`}
+                    onMouseEnter={() => setMenuIndex(i)}
+                    onClick={() => it.run()}
+                  >
+                    {it.label}
+                    {it.hint !== undefined && <span className="pop-hint">{it.hint}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               value={draft}
-              placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"
-              onChange={(e) => setDraft(e.target.value)}
+              placeholder="说点什么…"
+              onChange={(e) => {
+              setDraft(e.target.value);
+              scanMenu(e.target.value, e.target.selectionStart ?? e.target.value.length);
+            }}
               onKeyDown={(e) => {
+                // 菜单开着的时候，键盘先归菜单：回车**选项**而不是发出去——这是选单最基本的规矩
+                if (menu !== null && menuItems.length > 0) {
+                  const n = menuItems.length;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setMenuIndex((i) => (i + 1) % n);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setMenuIndex((i) => (i - 1 + n) % n);
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    menuItems[menuIndex]?.run();
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMenu(null);
+                    return;
+                  }
+                }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   send();
@@ -290,18 +430,16 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
           </div>
         </div>
       </main>
-
       {pane !== null && (
         <div
           className="splitter"
-          title="拖动改宽度（双击回默认）"
+          title="拖动改宽度"
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
             dragRef.current = true;
           }}
           onPointerMove={(e) => {
             if (!dragRef.current) return;
-            // 从窗口右边量：右栏宽度 = 窗口宽 - 指针位置 - 外壳右边距
             setPaneWidth(clampPane(window.innerWidth - e.clientX - 10));
           }}
           onPointerUp={(e) => {
@@ -339,6 +477,123 @@ export function Workspace({ project, onExit }: { project: ProjectCard; onExit: (
           }}
         />
       )}
+      </div>
+
+      <footer className="statusbar">
+        <span className="left">
+          {state.mode !== undefined && <span className="badge">{state.mode}</span>}
+          {state.pending !== undefined && <span className="badge zhu">待你拍板：{state.pending}</span>}
+        </span>
+        <span className="right">
+          {info !== null && (
+            <Cell label={info.model}>
+              {profiles.map((p) => (
+                <span key={p.name} className="pop-group">
+                  <span className="pop-title">{p.name}</span>
+                  {p.models.map((m) => (
+                    <button
+                      key={m}
+                      className="pop-item"
+                      aria-current={m === info.model}
+                      onClick={() => {
+                        void window.tm.useProfile(p.name, m);
+                        setInfo({ ...info, model: m });
+                      }}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </span>
+              ))}
+            </Cell>
+          )}
+          {info !== null && (
+            <EffortCell
+              value={info.effort}
+              onChange={(v) => {
+                setInfo({ ...info, effort: v });
+                void window.tm.setEffort(v);
+              }}
+            />
+          )}
+          <ContextCell uses={uses} win={win} />
+          <button className="cell clickable" title="模型与设置" onClick={onSettings}>
+            ⚙ 设置
+          </button>
+        </span>
+      </footer>
     </div>
+  );
+}
+
+/** 状态栏里可点的一格：平时是个按钮，点开向上弹一层。 */
+function Cell({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="pop-wrap">
+      <button className="cell clickable" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {label}
+        <span className="caret">▴</span>
+      </button>
+      {open && (
+        <>
+          {/* 点外面就收：一层透明垫子比全局监听便宜，也不会漏掉哪个角落 */}
+          <span className="pop-mask" onClick={() => setOpen(false)} />
+          <span className="pop">{children}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/** effort：四档，选了**当场换这个会话的**（不动全局默认）。 */
+function EffortCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const OPTIONS: [string, string][] = [["off", "关"], ["low", "低"], ["high", "高"], ["max", "最高"]];
+  const now = OPTIONS.find(([v]) => v === value)?.[1] ?? value;
+  return (
+    <Cell label={`effort ${now}`}>
+      {OPTIONS.map(([v, text]) => (
+        <button key={v} className="pop-item" aria-current={v === value} onClick={() => onChange(v)}>
+          {text}
+          <span className="pop-hint">{v}</span>
+        </button>
+      ))}
+    </Cell>
+  );
+}
+
+/**
+ * 上下文：点开是**真实的用量**——总数，以及每一轮的走势。
+ *
+ * **不给构成**（系统提示 / 工具 / 消息各占多少）：那是 `claude /context` 干的事，它自己知道每一段各有多长；
+ * 我们只知道 provider 报回来的总数，要拆就得估——而把估出来的东西画成饼是骗人。走势是真的。
+ */
+function ContextCell({ uses, win }: { uses: { input: number; output: number }[]; win: number }) {
+  // 没有统计就是 0：**这一格在不在，只该由"有没有这个会话"决定**，不该由"发没发过话"决定
+  const last = uses[uses.length - 1] ?? { input: 0, output: 0 };
+  const pct = Math.round((last.input / win) * 100);
+  const peak = Math.max(1, ...uses.map((u) => u.input));
+  return (
+    <Cell
+      label={
+        <span className={`ctx${last.input / win > 0.8 ? " hot" : ""}`}>
+          <span className="bar">
+            <i style={{ width: `${Math.min(100, pct)}%` }} />
+          </span>
+          上下文约 {tokens(last.input)} / {tokens(win)}
+        </span>
+      }
+    >
+      <div className="pop-big">
+        约 {tokens(last.input)} <span className="pop-hint">/ {tokens(win)} · {pct}%</span>
+      </div>
+      <div className="pop-hint">输出 {last.output}</div>
+      <div className="chart" title="每一轮发出去的 token">
+        {(uses.length > 0 ? uses : [last]).map((u, i) => (
+          <i key={i} style={{ height: `${Math.max(6, Math.round((u.input / peak) * 100))}%` }} />
+        ))}
+      </div>
+      <div className="pop-hint">{uses.length} 轮</div>
+    </Cell>
   );
 }

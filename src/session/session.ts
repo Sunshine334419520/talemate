@@ -36,7 +36,14 @@ import type { NeutralMsg, ToolSchema } from "../llm/types";
 import { discoverSkills, loadSkillByName, renderSkillCatalog } from "../skill/discovery";
 import { loadProjectMeta, readProjectRules } from "../storage/project";
 import { readDoc, scanDocs } from "../storage/corpus";
-import { appendMessage, createSession, loadMessages, loadModelWindow } from "../storage/session-store";
+import {
+  appendMessage,
+  appendUsage,
+  createSession,
+  loadMessages,
+  loadModelWindow,
+  loadSessionMeta,
+} from "../storage/session-store";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
 import { executeToolPart } from "../tool/runner";
@@ -235,6 +242,8 @@ export class Session {
   private abort = new AbortController();
   /** 会话消息内存缓存：同会话多次 post() 间复用；首次按需从盘载入 */
   private cache: StoredMessage[] | null = null;
+  /** 上一次请求发出去多少 token（provider 报的真数）——压缩的触发判据 */
+  private lastInput: number | undefined;
   /**
    * 待落盘的提案（design 写入 propose → apply 的中转态），按文档路径索引。
    * 只在内存里：重启即失效，apply 会要求重新提案。
@@ -275,6 +284,18 @@ export class Session {
 
   get agent(): AgentDef {
     return this.agents.get(this.agentId);
+  }
+
+  /**
+   * 事件先自己过一手再转给界面：**用量是会话自己的账**（界面的占比、将来的压缩都靠它），
+   * 而它只活在 provider 的回应里——不在这里记下来，切个会话或者关掉应用就没了。
+   */
+  private forwardEvent(e: LLMEvent): void {
+    if (e.type === "usage") {
+      this.lastInput = e.input; // 压缩的判据（见 compaction.isOverBudget）
+      void appendUsage(this.projectId, this.sessionId, { input: e.input, output: e.output }).catch(() => {});
+    }
+    this.io.onEvent(e);
   }
 
   async saveMeta(title?: string): Promise<void> {
@@ -350,7 +371,7 @@ export class Session {
     return runLoop(agent, input, {
       signal: this.abort.signal,
       steps: agent.steps,
-      onEvent: (e) => this.io.onEvent(e),
+      onEvent: (e) => this.forwardEvent(e),
       maybeCompact: () => this.maybeCompact(),
       commitUser: (text, agId) => this.persistUser(text, agId),
       buildRequest: (ag) => this.buildRequest(ag),
@@ -578,7 +599,12 @@ export class Session {
   }
 
   private async ensureLoaded(): Promise<StoredMessage[]> {
-    if (!this.cache) this.cache = await loadMessages(this.projectId, this.sessionId);
+    if (!this.cache) {
+      this.cache = await loadMessages(this.projectId, this.sessionId);
+      // 续聊时把上一轮的用量读回来：它是压缩的判据，而进程重启之后内存里没有
+      const meta = await loadSessionMeta(this.projectId, this.sessionId).catch(() => undefined);
+      this.lastInput = meta?.usage?.at(-1)?.input;
+    }
     return this.cache;
   }
 
@@ -607,7 +633,7 @@ export class Session {
   private async maybeCompact(): Promise<void> {
     const all = await this.ensureLoaded();
     // 量**窗口**，不是文件：文件只增不减，量它等于过了阈值就永远超预算（见 isOverBudget 的注释）。
-    if (!isOverBudget(loadModelWindow(all))) return;
+    if (!isOverBudget(this.model.model, this.lastInput, loadModelWindow(all))) return;
     const summarizer = this.agents.get("summarizer");
     const m = await compact({
       projectId: this.projectId,

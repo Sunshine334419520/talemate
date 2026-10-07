@@ -20,7 +20,7 @@ import "./prelude";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { app, BrowserWindow, ipcMain } from "electron";
-import type { ConfirmReply, ProjectMeta } from "../../../src/core/types";
+import type { ConfirmReply, ModelConfig, ProjectMeta } from "../../../src/core/types";
 import { leadLine } from "../../../src/framework/markdown";
 import { readDoc } from "../../../src/storage/corpus";
 import { writeProjectMeta } from "../../../src/storage/project";
@@ -35,7 +35,17 @@ import { watch, type FSWatcher } from "node:fs";
 import { DOC_ROOTS, docAbs } from "../../../src/storage/corpus";
 import { rootAbs, talemateHome } from "../../../src/core/config";
 import { readFile, writeFile } from "node:fs/promises";
-import type { DocNode, OpenInfo, Prefs, ProjectCard, SessionRow, SessionState } from "../shared/api";
+import { loadModelConfig } from "../../../src/core/config";
+import type {
+  DocNode,
+  ModelProfile,
+  ProfileView,
+  OpenInfo,
+  Prefs,
+  ProjectCard,
+  SessionRow,
+  SessionState,
+} from "../shared/api";
 
 const SELFTEST = process.env.TALEMATE_DESKTOP_SELFTEST ?? "";
 
@@ -124,6 +134,77 @@ function prefsFile(): string {
   return join(talemateHome(), "desktop.json");
 }
 
+/**
+ * 模型配置清单：`<talemateHome>/models.json`。**作者级、跨作品**——同一台机器上你的模型清单
+ * 不该跟着书走（书只该说"我这本书用什么声音"，不该说"你用什么模型"）。
+ *
+ * `apiKey` 明文躺在这里，与 `.env` 同级。这是一次**明知**的取舍（见 `shared/api.ts` 的 `ModelProfile`）。
+ * 一份都没有时**一律退回环境变量**——`.env` 那套照旧能用，不是被替代了。
+ */
+async function readModels(): Promise<{ profiles: ModelProfile[]; default?: string }> {
+  try {
+    const raw = JSON.parse(await readFile(modelsFile(), "utf-8")) as Partial<{
+      profiles: (Omit<ModelProfile, "models"> & { models?: string[]; model?: string })[];
+      default: string;
+    }>;
+    // 早期版本一套配置只装一个模型（`model`）——读的时候顺手认下来，别让老文件读不出来
+    const profiles = (raw.profiles ?? []).map((p): ModelProfile => {
+      const { model, ...rest } = p;
+      return { ...rest, models: p.models ?? (model !== undefined ? [model] : []) } as ModelProfile;
+    });
+    return { profiles, default: raw.default };
+  } catch {
+    return { profiles: [] };
+  }
+}
+
+/** 给界面看的那一份：**密钥换成"有没有"**——它不该为了显示而在进程间多绕一圈。 */
+function view(p: ModelProfile, isDefault: boolean): ProfileView & { isDefault?: boolean } {
+  const { apiKey, ...rest } = p;
+  return { ...rest, hasKey: apiKey !== undefined && apiKey !== "", isDefault };
+}
+
+/** 环境变量那套（`.env`）——一份配置都没有时实际在用的就是它，界面上要看得见。 */
+function envProfile(): ProfileView {
+  const cfg = loadModelConfig();
+  return {
+    name: "当前（.env）",
+    provider: cfg.provider,
+    models: [cfg.model],
+    baseURL: cfg.baseURL,
+    maxTokens: cfg.maxTokens,
+    reasoning: cfg.reasoning,
+    hasKey: Boolean(cfg.apiKey ?? process.env.ANTHROPIC_API_KEY),
+  };
+}
+
+function modelsFile(): string {
+  return join(talemateHome(), "models.json");
+}
+
+async function writeModels(next: { profiles: ModelProfile[]; default?: string }): Promise<void> {
+  await writeFile(modelsFile(), JSON.stringify(next, null, 2), "utf-8");
+}
+
+/** 一套具名配置 → 会话认识的 `ModelConfig`。 */
+function toModelConfig(p: ModelProfile, model?: string): ModelConfig {
+  return {
+    provider: p.provider,
+    model: model ?? p.models[0] ?? "",
+    apiKey: p.apiKey,
+    baseURL: p.baseURL,
+    maxTokens: p.maxTokens,
+    reasoning: p.reasoning,
+  };
+}
+
+/** 新建会话用哪套：默认那套 → 没有就退回环境变量（`.env` 一直有效）。 */
+async function modelForNewSession(): Promise<ModelConfig | undefined> {
+  const { profiles, default: name } = await readModels();
+  const picked = profiles.find((p) => p.name === name) ?? profiles[0];
+  return picked === undefined ? undefined : toModelConfig(picked);
+}
+
 function registerHandlers(): void {
   ipcMain.handle("projects:list", async (): Promise<ProjectCard[]> => {
     const projects = await listProjects();
@@ -205,6 +286,58 @@ function registerHandlers(): void {
 
   ipcMain.handle("session:state", (): SessionState => sessionState());
 
+  /** 用量由 harness 记在会话元信息里（`SessionMeta.usage`）——重启也还在，壳只读。 */
+  ipcMain.handle("session:usage", async (_e, p: { projectId: string; sessionId: string }) =>
+    (await loadSessionMeta(p.projectId, p.sessionId).catch(() => undefined))?.usage ?? [],
+  );
+
+  ipcMain.handle("models:list", async () => {
+    const { profiles, default: d } = await readModels();
+    return {
+      profiles: profiles.map((p) => view(p, p.name === d)),
+      default: d,
+      env: envProfile(),
+    };
+  });
+
+  ipcMain.handle(
+    "models:save",
+    async (_e, p: Omit<ModelProfile, "apiKey"> & { apiKey?: string }): Promise<void> => {
+      const now = await readModels();
+      const before = now.profiles.find((x) => x.name === p.name);
+      // 表单里没重填密钥 = 沿用旧的（**密钥只进不出**，界面本来就看不到它）
+      const next: ModelProfile = { ...p, apiKey: p.apiKey ?? before?.apiKey };
+      await writeModels({
+        ...now,
+        profiles: [...now.profiles.filter((x) => x.name !== p.name), next],
+        default: now.default ?? p.name,
+      });
+    },
+  );
+
+  ipcMain.handle("models:delete", async (_e, name: string): Promise<void> => {
+    const now = await readModels();
+    const profiles = now.profiles.filter((x) => x.name !== name);
+    // 默认那套被删了就顺位给第一个——留一个指向不存在名字的 default 只会让人以为选了没用
+    await writeModels({ profiles, default: now.default === name ? profiles[0]?.name : now.default });
+  });
+
+  ipcMain.handle("models:default", async (_e, name: string): Promise<void> => {
+    await writeModels({ ...(await readModels()), default: name });
+  });
+
+  /** 换**当前这个会话**用哪套：会话对象上的 `model` 是活的，下一轮请求就按新的发。 */
+  ipcMain.handle("session:use-model", async (_e, p: { name: string; model: string }): Promise<void> => {
+    const picked = (await readModels()).profiles.find((x) => x.name === p.name);
+    if (picked !== undefined && session !== undefined) session.model = toModelConfig(picked, p.model);
+  });
+
+  /** 换这个会话的推理强度。会话对象上的 `model` 是活的——改它，下一轮请求就按新的发。 */
+  ipcMain.handle("session:effort", (_e, effort: string): void => {
+    if (session === undefined) return;
+    session.model = { ...session.model, reasoning: effort as ModelConfig["reasoning"] };
+  });
+
   ipcMain.handle("prefs:get", async (): Promise<Prefs> => {
     try {
       return JSON.parse(await readFile(prefsFile(), "utf-8")) as Prefs;
@@ -236,6 +369,8 @@ function registerHandlers(): void {
       session = await openSession({
         projectId: p.projectId,
         sessionId: p.sessionId,
+        // 续聊用会话自己记的那套（`talemate.json` 的 agents / 会话元），新建才取默认那套
+        model: p.sessionId === undefined ? await modelForNewSession() : undefined,
         // 新会话先叫「新会话」，**第一句话发出去之后按那句话命名**（见 tm:prompt）——
         // 写死一个"桌面端"的结果是每一条都叫这个，列表里根本分不出哪条是哪条
         title: p.sessionId === undefined ? "新会话" : undefined,
@@ -250,6 +385,7 @@ function registerHandlers(): void {
         book: meta.title,
         agent: session.agent.name,
         model: session.model.model,
+        effort: session.model.reasoning,
       };
     },
   );

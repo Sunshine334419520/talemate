@@ -33,6 +33,35 @@ export interface Prefs {
   paneWidth?: number;
 }
 
+/**
+ * **一套模型的配置**（作者级、跨作品）。
+ *
+ * 它就是 `ModelConfig` 加上一个名字——名字是给人认的（"DeepSeek 主力"、"Opus 慢想"），
+ * 界面上按它选。`apiKey` **明文存在 `<talemateHome>/models.json`**（与 `.env` 同级的明文，
+ * 这是一次**明知**的取舍：正经做法是系统钥匙串，代价是要写一段原生集成）。
+ */
+export interface ModelProfile {
+  name: string;
+  provider: "anthropic" | "openai" | "mock";
+  /**
+   * 这套配置下**可以切的模型**，第一个是它的默认。
+   *
+   * 一个厂商配多个模型是常态（同一个 DeepSeek 端点上有快的有慢的），所以模型是**一组**而不是一个：
+   * 状态栏切的时候选的是"哪套配置的哪个模型"。
+   */
+  models: string[];
+  baseURL?: string;
+  maxTokens: number;
+  reasoning: "off" | "low" | "high" | "max";
+  /** **只进不出**：渲染层永远拿不到它，只拿得到 `hasKey`（见 `ProfileView`） */
+  apiKey?: string;
+}
+
+/** 界面上看到的那一份：**密钥不进渲染层**，只说"有没有"，表单里也只在你重填时才写。 */
+export interface ProfileView extends Omit<ModelProfile, "apiKey"> {
+  hasKey: boolean;
+}
+
 /** 顶栏那两个标记：当前模式、有没有等你拍板的东西。 */
 export interface SessionState {
   /** 「草稿模式」/「免确认落盘」…没有就是普通模式 */
@@ -54,6 +83,8 @@ export interface OpenInfo {
   book: string;
   agent: string;
   model: string;
+  /** 推理强度（off/low/high/max）——状态栏显示，也是将来切换器的入口 */
+  effort: string;
 }
 
 export interface ConfirmRequest {
@@ -91,6 +122,18 @@ export interface TmApi {
   saveDoc(projectId: string, path: string, text: string): Promise<"ok" | "stale">;
   /** 会话当下是什么模式、有没有等着拍板的东西（顶栏那两个标记） */
   sessionState(projectId: string): Promise<SessionState>;
+  /** 改**当前这个会话**的推理强度（off/low/high/max）——不动全局默认 */
+  setEffort(effort: string): Promise<void>;
+  /** 模型配置清单 + 哪一套是默认 */
+  models(): Promise<{ profiles: ProfileView[]; default?: string; env: ProfileView }>;
+  /** `apiKey` 省略 = **沿用已存的那一份**（表单里没重填就别动它） */
+  saveProfile(p: Omit<ModelProfile, "apiKey"> & { apiKey?: string }): Promise<void>;
+  deleteProfile(name: string): Promise<void>;
+  setDefaultProfile(name: string): Promise<void>;
+  /** 某个会话的用量序列（每一轮一条）——切回去时把走势也带回来 */
+  sessionUsage(projectId: string, sessionId: string): Promise<{ input: number; output: number }[]>;
+  /** 让**当前这个会话**改用某套配置里的某个模型（不动默认） */
+  useProfile(name: string, model: string): Promise<void>;
   prefs(): Promise<Prefs>;
   savePrefs(patch: Prefs): Promise<void>;
   /** 盘上有人动了作品文档（mate 落了稿，或你在别处改了）——开着的右栏与目录树据此更新 */

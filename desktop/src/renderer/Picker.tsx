@@ -35,19 +35,22 @@ export function Picker({
   projects,
   onOpen,
   onCreated,
+  onSettings,
 }: {
   projects: ProjectCard[];
   onOpen: (card: ProjectCard) => void;
   onCreated: () => Promise<void>;
+  onSettings: () => void;
 }) {
   const [creating, setCreating] = useState(projects.length === 0);
 
   return (
+    <div className="app">
     <div className="picker">
       <header className="shelf">
         <h1>talemate</h1>
         <p className="sub">
-          {projects.length === 0 ? "还没有作品——给它起个名字就能开始。" : `${projects.length} 部作品`}
+          {projects.length === 0 ? "还没有作品" : `${projects.length} 部作品`}
         </p>
       </header>
 
@@ -67,6 +70,15 @@ export function Picker({
           </button>
         )}
       </div>
+    </div>
+      {/* 状态栏在每一屏都在同一个位置；这一屏没有会话，所以只有右边那个设置 */}
+      <footer className="statusbar">
+        <span className="right">
+          <button className="cell clickable" title="模型与设置" onClick={onSettings}>
+            ⚙ 设置
+          </button>
+        </span>
+      </footer>
     </div>
   );
 }

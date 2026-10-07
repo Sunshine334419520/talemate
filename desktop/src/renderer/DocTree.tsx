@@ -15,17 +15,57 @@ export function DocTree({
   nodes,
   current,
   onOpen,
+  onMention,
 }: {
   nodes: DocNode[];
   current: string | null;
   onOpen: (node: DocNode) => void;
+  /** 右键 →"添加到对话"：把这一份的名字插进输入框（`@名字`），见 Workspace 的 mention */
+  onMention: (node: DocNode) => void;
 }) {
-  if (nodes.length === 0) return <p className="tree-empty">还没有任何文档。</p>;
+  const [menu, setMenu] = useState<{ x: number; y: number; node: DocNode } | null>(null);
+  if (nodes.length === 0) return <p className="tree-empty">（空）</p>;
   return (
     <div className="tree">
       {nodes.map((n) => (
-        <Node key={n.name} node={n} depth={0} current={current} onOpen={onOpen} />
+        <Node
+          key={n.name}
+          node={n}
+          depth={0}
+          current={current}
+          onOpen={onOpen}
+          onMenu={(e, node) => {
+            if (node.path === undefined) return; // 纯分组没什么可加、可开的
+            e.preventDefault();
+            setMenu({ x: e.clientX, y: e.clientY, node });
+          }}
+        />
       ))}
+      {menu !== null && (
+        <>
+          <span className="pop-mask" onClick={() => setMenu(null)} />
+          <span className="ctx-menu" style={{ left: menu.x, top: menu.y }}>
+            <button
+              className="pop-item"
+              onClick={() => {
+                onMention(menu.node);
+                setMenu(null);
+              }}
+            >
+              添加到对话
+            </button>
+            <button
+              className="pop-item"
+              onClick={() => {
+                onOpen(menu.node);
+                setMenu(null);
+              }}
+            >
+              在右栏打开
+            </button>
+          </span>
+        </>
+      )}
     </div>
   );
 }
@@ -45,11 +85,13 @@ function Node({
   depth,
   current,
   onOpen,
+  onMenu,
 }: {
   node: DocNode;
   depth: number;
   current: string | null;
   onOpen: (node: DocNode) => void;
+  onMenu: (e: React.MouseEvent, node: DocNode) => void;
 }) {
   const [open, setOpen] = useState(true);
   const pad = { paddingLeft: 6 + depth * 11 };
@@ -58,7 +100,11 @@ function Node({
 
   return (
     <>
-      <div className={`doc-row${current !== null && current === node.path ? " here" : ""}`} style={pad}>
+      <div
+        className={`doc-row${current !== null && current === node.path ? " here" : ""}`}
+        style={pad}
+        onContextMenu={(e) => onMenu(e, node)}
+      >
         <button
           className="twist"
           disabled={!hasKids}
@@ -76,7 +122,7 @@ function Node({
         )}
       </div>
       {hasKids && open && node.children?.map((c) => (
-        <Node key={c.name} node={c} depth={depth + 1} current={current} onOpen={onOpen} />
+        <Node key={c.name} node={c} depth={depth + 1} current={current} onOpen={onOpen} onMenu={onMenu} />
       ))}
     </>
   );

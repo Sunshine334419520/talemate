@@ -11,7 +11,9 @@ import type {
   ConfirmRequest,
   DocNode,
   LLMEvent,
+  ModelProfile,
   OpenInfo,
+  ProfileView,
   Prefs,
   ProjectCard,
   SessionRow,
@@ -32,6 +34,17 @@ const api: TmApi = {
   saveDoc: (projectId, path, text) =>
     ipcRenderer.invoke("docs:save", { projectId, path, text }) as Promise<"ok" | "stale">,
   sessionState: (projectId) => ipcRenderer.invoke("session:state", projectId) as Promise<SessionState>,
+  setEffort: (effort) => ipcRenderer.invoke("session:effort", effort) as Promise<void>,
+  models: () =>
+    ipcRenderer.invoke("models:list") as Promise<{ profiles: ProfileView[]; default?: string; env: ProfileView }>,
+  saveProfile: (p) => ipcRenderer.invoke("models:save", p) as Promise<void>,
+  deleteProfile: (name) => ipcRenderer.invoke("models:delete", name) as Promise<void>,
+  setDefaultProfile: (name) => ipcRenderer.invoke("models:default", name) as Promise<void>,
+  sessionUsage: (projectId, sessionId) =>
+    ipcRenderer.invoke("session:usage", { projectId, sessionId }) as Promise<
+      { input: number; output: number }[]
+    >,
+  useProfile: (name, model) => ipcRenderer.invoke("session:use-model", { name, model }) as Promise<void>,
   prefs: () => ipcRenderer.invoke("prefs:get") as Promise<Prefs>,
   savePrefs: (patch) => ipcRenderer.invoke("prefs:save", patch) as Promise<void>,
   onDocsChanged: (cb) => ipcRenderer.on("tm:docs-changed", () => cb()),

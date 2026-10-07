@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ProjectCard } from "../shared/api";
 import { Picker } from "./Picker";
+import { Settings } from "./Settings";
 import { Workspace } from "./Workspace";
 
 /** 回主进程一句"画出来了"。带上内容——只说"成功了"没有信息量。 */
@@ -20,6 +21,7 @@ export function App() {
   const [projects, setProjects] = useState<ProjectCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opened, setOpened] = useState<ProjectCard | null>(null);
+  const [settings, setSettings] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -48,16 +50,27 @@ export function App() {
   }
   if (projects === null) return <div className="picker"><p className="sub">正在打开书架…</p></div>;
 
+  const settingsModal = settings && <Settings onClose={() => setSettings(false)} />;
+
   if (opened !== null) {
     return (
-      <Workspace
-        project={opened}
-        onExit={() => {
-          setOpened(null);
-          void refresh();
-        }}
-      />
+      <>
+        <Workspace
+          project={opened}
+          onExit={() => {
+            setOpened(null);
+            void refresh();
+          }}
+          onSettings={() => setSettings(true)}
+        />
+        {settingsModal}
+      </>
     );
   }
-  return <Picker projects={projects} onOpen={setOpened} onCreated={refresh} />;
+  return (
+    <>
+      <Picker projects={projects} onOpen={setOpened} onCreated={refresh} onSettings={() => setSettings(true)} />
+      {settingsModal}
+    </>
+  );
 }

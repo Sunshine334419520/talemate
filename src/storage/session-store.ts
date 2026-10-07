@@ -54,6 +54,27 @@ export async function appendMessage(
   return full;
 }
 
+/**
+ * 追加一条用量。**只动 `usage`，其余字段原样带过去**——`createSession` 会把整份元信息重写一遍
+ * （`time.created` 也重置），拿它来记用量会顺手把别的字段弄丢。
+ */
+export async function appendUsage(
+  projectId: string,
+  sessionId: string,
+  point: { input: number; output: number },
+): Promise<void> {
+  const sp = sessionPaths(talemateHome(), projectId, sessionId);
+  let meta: SessionMeta;
+  try {
+    meta = JSON.parse(await readFile(sp.meta, "utf-8")) as SessionMeta;
+  } catch {
+    return; // 会话还没落元信息（刚开、还没存过）——下一轮再记
+  }
+  meta.usage = [...(meta.usage ?? []), point];
+  meta.time = { ...meta.time, updated: Date.now() };
+  await writeFile(sp.meta, JSON.stringify(meta, null, 2), "utf-8");
+}
+
 /** 读会话全部消息（保序）。无会话文件时返回 []。 */
 export async function loadMessages(projectId: string, sessionId: string): Promise<StoredMessage[]> {
   const sp = sessionPaths(talemateHome(), projectId, sessionId);

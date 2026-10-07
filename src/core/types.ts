@@ -272,6 +272,14 @@ export interface SessionMeta {
   title: string;
   agent: string; // 当前角色
   model?: ModelConfig;
+  /**
+   * **每一轮请求的真实用量**（provider 报回来的，不是估算）。
+   *
+   * 它是会话自己的账：界面靠它显示上下文占比与走势，而**压缩将来也该靠它**——今天压缩是按字符数
+   * 估的（`compaction.estimateChars`），那份估算在"离模型窗口还有多远"这个问题上永远是猜。
+   * 落在这里而不是壳那侧：会话元信息本来就归 harness，另存一份就是第二个真相源。
+   */
+  usage?: { input: number; output: number }[];
   time: { created: number; updated: number };
 }
 
@@ -314,6 +322,11 @@ export type LLMEvent =
   | { type: "scope.close"; label: string }
   /** 只读展示给用户的块（提案逐格清单等）——无返回值，与 confirm/askUser 的交互式提示区分 */
   | { type: "proposal"; text: string }
+  /**
+   * 这一次请求的用量。**它本来就有**（provider 每次都拿到 `usage`），从前只是没人接。
+   * 界面靠它显示"这个会话用了多少上下文"——`input` 就是这一次发出去的全部 token（≈当前上下文大小）。
+   */
+  | { type: "usage"; input: number; output: number }
   | { type: "step.start" }
   | { type: "step.end"; finish: "stop" | "tool_calls" | "error" }
   | { type: "session.status"; status: "busy" | "idle" };
