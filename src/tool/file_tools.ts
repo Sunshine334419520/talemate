@@ -1,18 +1,10 @@
 /**
- * file-tools：**改文件的两个面**——`write`（整篇）与 `edit`（局部）。
- *
- * 它们是同一件事的两个面，分开是因为**意图与安全性质不同**：
- *
- *   write  「这份文件整个是我的」——模型是作者，整篇给。旧文件不在场也能写（新建）。
- *   edit   「我在动它的一部分」——模型给锚点（原文片段）与替换文本，其余字节原样。
- *
- * 合并成一个工具就得靠"哪个参数给没给"来分辨，schema 对模型来说是含糊的。
- *
- * **两者都不自己落盘**：拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径。所以
- * 校验、权限、CAS、原子写、diff 全在那一处，这里只剩"语义 + 入参 + 成功文案"。
- *
- * 可写的根是作品的三个根（design / chapters / state，清单在 core/config.ts）；某个 agent 能碰哪一个
- * 由权限表划（见 agent/registry.ts）。
+ * file-tools：改文件的两个面——`write`（整篇）与 `edit`（局部），分开是因为意图与安全性质不同：
+ *   write  「这份文件整个是我的」——模型是作者，整篇给，旧文件不在场也能写（新建）
+ *   edit   「我在动它的一部分」——模型给锚点（原文片段）与替换文本，其余字节原样
+ * 合并成一个就得靠"哪个参数给没给"分辨，schema 对模型是含糊的。两者都不自己落盘，拼出 `FileOp`
+ * 交给 `framework/write_ops.ts` 那条唯一路径（校验、权限、CAS、原子写、diff 都在那里）；可写的根
+ * 是作品的三个根（design / chapters / state，见 core/config.ts），能碰哪一个由权限表划。
  */
 import { writeFile } from "../framework/write_ops";
 import { readPrompt } from "../prompts";
@@ -21,8 +13,8 @@ import { defineTool, type RegisteredTool } from "./define";
 const P = (id: string) => readPrompt(`tools/${id}`);
 
 /**
- * 回给模型的 diff 预览。**要有上限**：一次整节重写的 diff 能有几百行，全灌回去等于让模型
- * 重读一遍它自己刚写的东西。
+ * 回给模型的 diff 预览要有上限：一次整节重写的 diff 能有几百行，全灌回去等于让模型重读一遍
+ * 它自己刚写的东西。
  */
 function preview(diff: string, maxLines = 24): string {
   const lines = diff.split("\n");
@@ -30,7 +22,6 @@ function preview(diff: string, maxLines = 24): string {
   return [...lines.slice(0, maxLines), `…（另有 ${lines.length - maxLines} 行，略）`].join("\n");
 }
 
-/** write：整篇写/覆盖（新建或整体替换）。 */
 export const writeTool: RegisteredTool<{ path: string; content: string }> = defineTool<{
   path: string;
   content: string;
@@ -62,12 +53,9 @@ export const writeTool: RegisteredTool<{ path: string; content: string }> = defi
 });
 
 /**
- * edit：改文件里的一段。**给它锚点，不给它整篇。**
- *
- * 与 `write` 的分别不是"大小"，是**你手里有没有那份文件的权威全文**：
- * 有 → write（你就是作者）；没有、只知道要改哪一段 → edit（锚点式，模糊匹配兜住复制粘贴的偏差）。
- *
- * 所以它更便宜也更安全：用户要审的是那一小段 diff，而不是再读一遍整篇文档。
+ * edit：改文件里的一段——给它锚点，不给整篇。与 `write` 的分别不是"大小"，是你手里有没有那份
+ * 文件的权威全文：有 → write（你就是作者），没有、只知道要改哪一段 → edit（模糊匹配兜住复制
+ * 粘贴的偏差）。所以它更便宜也更安全，用户审的是那一小段 diff，而不是再读一遍整篇文档。
  */
 export const editTool: RegisteredTool<{ path: string; find: string; replace: string; all?: boolean }> = defineTool<{
   path: string;
@@ -95,9 +83,8 @@ export const editTool: RegisteredTool<{ path: string; find: string; replace: str
       action: `改写 ${args.path}`,
     });
     if (!r.ok) return { output: r.output };
-    // 模糊命中要说出来：精确命中时模型给的原文与文件一字不差；不模糊时它可能差在缩进/引号上，
-    // 而那意味着"模型以为改的那一段"未必就是"实际改的那一段"——所以**把真实命中回给它**，
-    // 让它自己核对——回给它的是**实际换掉的那段**，未必是它以为自己写的那段。
+    // 模糊命中要说出来：模型给的原文不是逐字命中时，"它以为改的那段"未必是实际改的那段，
+    // 所以把真实命中回给它自己核对
     const fuzzy = r.match !== undefined && r.match !== "exact";
     return {
       output: [
@@ -121,17 +108,10 @@ function stemOf(path: string): string {
 }
 
 /**
- * delete：删掉**一份文件**——设计文档、角色卡、章节，同一条路。
- *
- * 它比"一个删文件的工具"多做一件事，而那正是它存在的理由：**删之前把"这个名字还在哪儿出现"
- * 送到用户眼前**。删一个角色/一个术语，影响面不在那份文件里——`core.md`、卷纲、好几章正文里
- * 都可能提着它。看不见那个影响面，用户就没法判断"要不要一起清"。
- *
- * **但它不替你做级联。** 该不该动 `world.md` 里那句话、该不该改 `outline/vol_2.md` 里的登场安排，
- * 是判断不是机械操作：工具做不了，模型做得了。所以这里的职责到"把影响面列出来"为止，清理由模型
- * 用 `edit` 逐处做（见 `prompts/tools/delete.txt`）。
- *
- * 局部删除（删一个段落、一节）**不在这里**——那是 `edit`，把那段原文换成空。
+ * delete：删掉一份文件——设计文档、角色卡、章节同一条路。它比"一个删文件的工具"多做一件事：
+ * 删之前把"这个名字还在哪儿出现"送到用户眼前，因为影响面不在那份文件里（`core.md`、卷纲、好几章
+ * 正文里都可能提着它），看不见就没法判断要不要一起清。但它不替你做级联——该不该动哪一句是判断
+ * 不是机械操作，所以职责到"列出影响面"为止，清理由模型用 `edit` 逐处做；局部删除也走 `edit`。
  */
 export const deleteTool: RegisteredTool<{ path: string; term?: string }> = defineTool<{
   path: string;
@@ -158,8 +138,8 @@ export const deleteTool: RegisteredTool<{ path: string; term?: string }> = defin
   async execute(args, ctx) {
     const path = args.path.trim();
     const term = args.term?.trim() || stemOf(path);
-    // 引用检查覆盖**整个项目**（`path: ""` = 不设前缀）：章节正文里也会提到角色与设定名，
-    // 只看 `design/` 会让模型删完之后留下悬空引用，而它压根不知道那些引用存在。
+    // 引用检查覆盖整个项目（`path: ""` = 不设前缀）：章节正文里也会提到角色与设定名，
+    // 只看 `design/` 会让模型删完之后留下悬空引用，而它压根不知道那些引用存在
     const refs =
       `引用检查「${term}」——删它之前先看这个名字还在哪儿出现；` +
       `有命中就自己判断要不要用 edit 一并清理，别留悬空引用：\n${await ctx.searchDocs(term, "")}`;

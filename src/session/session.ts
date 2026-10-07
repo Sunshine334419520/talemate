@@ -60,11 +60,10 @@ export interface UserIO {
 
 /**
  * 规则表的展示视图（`Session.permissionView` 的产物）。给 CLI 的 `/permissions` 用——
- * 它要回答的是"我配的那条生效没有"，所以除了结论还得有**每一层各自贡献了什么**。
+ * 它要回答"我配的那条生效没有"，所以除了结论还得有每一层各自贡献了什么。
  */
 export interface PermissionView {
   agentName: string;
-  /** 当前模式（没进模式 → undefined） */
   modeTitle?: string;
   /** 子会话：规则由父会话派生，不是四层叠加 */
   derived: boolean;
@@ -89,13 +88,13 @@ export const autoIO: UserIO = {
 /**
  * 用户这轮回话属于三向里的哪一种。
  *
- * **核心只认这三种结局**，怎么问是**交付层**的事——今天在 REPL 里用文字问，将来 UI 用三个按钮，
+ * 核心只认这三种结局，怎么问是交付层的事——今天在 REPL 里用文字问，将来 UI 用三个按钮，
  * 这一层不动。所以判定留在这里（harness），而不在工具里。
  */
 export type DraftVerdict = "accept" | "reject" | "refine";
 
 /**
- * 词表必须**整句只由它们构成**才算数——这是 fail-closed 的关键：
+ * 词表必须整句只由它们构成才算数——这是 fail-closed 的关键：
  * 「没问题，但第 3 格改成 X」夹着改动要求，匹配不上，于是走"提意见"那一路多绕一轮，
  * 而不是被当成同意把用户没认可的东西落下去。
  */
@@ -104,17 +103,16 @@ const REJECT_WORDS = "不行|不要|不用|不好|不对|算了|不了|先不|�
 const AGREE_CHAIN_RE = new RegExp(`^(?:(?:${AGREE_WORDS})[，,、。！!.…~\\s]*)+$`, "i");
 const REJECT_CHAIN_RE = new RegExp(`^(?:(?:${REJECT_WORDS})[，,、。！!.…~\\s]*)+$`, "i");
 
-/** 这句话是不是一个"同意"（导出供测试）。 */
+/** 导出供测试。 */
 export function isAgreement(text: string): boolean {
   return AGREE_CHAIN_RE.test(text.trim());
 }
 
-/** 这句话是不是一个"拒绝"。 */
 export function isRejection(text: string): boolean {
   return REJECT_CHAIN_RE.test(text.trim());
 }
 
-/** 三向判定。**认不出的一律算"提意见"**——留在模式里多走一轮，绝不误判成接受。 */
+/** 三向判定。认不出的一律算"提意见"——留在模式里多走一轮，绝不误判成接受。 */
 export function draftVerdict(text: string): DraftVerdict {
   const t = text.trim();
   if (AGREE_CHAIN_RE.test(t)) return "accept";
@@ -123,18 +121,15 @@ export function draftVerdict(text: string): DraftVerdict {
 }
 
 /**
- * 这一种结局对协议状态意味着什么。
+ * 这一种结局对协议状态意味着什么。规则单独拎成纯函数是为了能测——`Session.markPendingApproval`
+ * 走 `post()`，一测就要打 LLM；突变留在 Session，规则在这里。
  *
- * 规则单独拎出来（纯函数）是为了能测：`Session.markPendingApproval` 走 `post()`，一测就要打 LLM。
- * 突变留在 Session，规则在这里——分开之后两边都简单。
- *
- * `leaveDraft` 是**接受或拒绝都退**，不是"提案成功就退"：提意见是在模式里打转。
+ * `leaveDraft` 是接受或拒绝都退，不是"提案成功就退"：提意见是在模式里打转。
  */
 export function verdictEffect(v: DraftVerdict): {
   approved: boolean;
   /** 拒绝了就把提案作废——留着的话 apply-design 还能把它落下去，而那正是用户刚说不的 */
   dropProposal: boolean;
-  /** 要不要离开草稿模式 */
   leaveDraft: boolean;
 } {
   return { approved: v === "accept", dropProposal: v === "reject", leaveDraft: v !== "refine" };
@@ -144,8 +139,8 @@ export function verdictEffect(v: DraftVerdict): {
  * 这一次工具调用算不算"把规划里那一章的正文写下来了"——`Session.markPlanDone` 的判据。
  * 与 `verdictEffect` 同一个形状：策略是纯的，突变留在 Session 里。
  *
- * **"执行完了没有"是结果，不是声明**：模型说"我写完了"不能当事，章节文件真落地才算——
- * 同 `approved` 由 harness 按用户回话判定，不由模型自述。
+ * "执行完了没有"是结果，不是声明：模型说"我写完了"不算，章节文件真落地才算——同 `approved`
+ * 由 harness 按用户回话判定，不由模型自述。
  */
 export function writeSettlesPlan(plan: PendingProposal, call: ToolCall, ok: boolean): boolean {
   if (plan.name !== PLAN_KEY || !plan.approved || plan.done || plan.chapter === undefined) return false;
@@ -159,10 +154,9 @@ export function writeSettlesPlan(plan: PendingProposal, call: ToolCall, ok: bool
  * 未落盘提案的状态注入（进 system，每轮都有；纯函数，导出供测试）。
  * 让协议状态独立于消息历史——压缩会把 tool 消息折掉，`/open` 恢复后历史也可能被截。
  *
- * **分两段**：`<pending-proposal>` 是"给用户看过、还没执行"的，执行等用户同意；
- * `<settled-plan>` 是"执行过、还留在手边的规划"——它**不是待办**，但也不能不提：
- * 规划正文只活在 pending 里（工件在 `.talemate/plans/`，`read` 够不着），
- * 用户随时可能说"改第 2 条"，而 mate 得先知道第 2 条是什么。
+ * 分两段：`<pending-proposal>` 是"给用户看过、还没执行"的；`<settled-plan>` 是"执行过、还留在
+ * 手边的规划"，它不是待办，但也不能不提——规划正文只活在 pending 里，工件在 `.talemate/plans/`，
+ * `read` 够不着，用户随时可能说"改第 2 条"，mate 得先知道第 2 条是什么。
  */
 export function renderPendingNote(pending: Map<string, PendingProposal>): string | undefined {
   if (!pending.size) return undefined;
@@ -170,7 +164,7 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
   const settled: string[] = [];
   for (const p of pending.values()) {
     // 规划没有要落盘的目标文档：它批准的是"照它去写正文"这个执行，不是一次落盘。
-    // **工件路径要报出来**：规划落在 `.talemate/plans/`，那是 `read` / `list` 看不见的地方，
+    // 工件路径要报出来：规划落在 `.talemate/plans/`，那是 `read` / `list` 看不见的地方，
     // 压缩之后 mate 仍得知道它存下来了（见 framework/plan.ts 的文件头）。
     if (p.name === PLAN_KEY) {
       const what = p.chapter ? `第 ${p.chapter} 章的规划（${planRelPath(p.chapter)}）` : "这一章的规划";
@@ -251,9 +245,8 @@ export class Session {
   readonly pending = new Map<string, PendingProposal>();
 
   /**
-   * 当前会话模式（见 agent/modes.ts）。**只在内存里**——和 pending 同生命周期，进程重启即回到
-   * 默认模式。硬保证不靠它（三向审阅的前置是模式，但那条链的"停"靠 `propose-design` 自己的
-   * `halt`），所以丢了也不漏。
+   * 当前会话模式（见 agent/modes.ts）。只在内存里——和 pending 同生命周期，进程重启即回默认模式。
+   * 硬保证不靠它：三向审阅的前置是模式，但那条链的"停"靠 `propose-design` 自己的 `halt`，丢了也不漏。
    */
   private mode?: string;
 
@@ -265,7 +258,7 @@ export class Session {
 
   /**
    * 子会话的派生来源。有值 = 这是个子代理会话：规则集由 `deriveSubagentPermission` 从父的
-   * **deny** 派生（父的 allow 不继承），而不是自己从内置默认起算。
+   * deny 派生（父的 allow 不继承），而不是自己从内置默认起算。
    */
   private readonly parentRuleset?: Ruleset;
 
@@ -287,7 +280,7 @@ export class Session {
   }
 
   /**
-   * 事件先自己过一手再转给界面：**用量是会话自己的账**（界面的占比、将来的压缩都靠它），
+   * 事件先自己过一手再转给界面：用量是会话自己的账（界面的占比、将来的压缩都靠它），
    * 而它只活在 provider 的回应里——不在这里记下来，切个会话或者关掉应用就没了。
    */
   private forwardEvent(e: LLMEvent): void {
@@ -313,13 +306,11 @@ export class Session {
   }
 
   /**
-   * 用户这轮说了话 → 判这是三向里的哪一种，并据此决定**要不要退出草稿模式**。
+   * 用户这轮说了话 → 判这是三向里的哪一种，并据此决定要不要退出草稿模式。
    *
-   * **出口条件是"用户接受或拒绝"，不是"提案成功"。** 提意见是在模式里打转，不出——所以一次设计
-   * 会话只进一次模式，里面可以来回提很多版。退出的动作归这里（harness），不归 `propose-*`：
-   * 只有 harness 知道这轮回话属于哪一种。
-   *
-   * 只认最近提交的那一份：halt 保证一回合只提交一份，更早的提案不能被顺带点亮。
+   * 出口条件是"用户接受或拒绝"，不是"提案成功"：提意见是在模式里打转，不出——所以一次设计会话
+   * 只进一次模式，里面可以来回提很多版。退出的动作归这里（harness），不归 `propose-*`——只有
+   * harness 知道这轮回话属于哪一种。只认最近提交的那一份：halt 保证一回合只提交一份。
    */
   private markPendingApproval(input: string): void {
     if (!this.pending.size) return;
@@ -347,8 +338,8 @@ export class Session {
   /**
    * 还有没有"给用户看过、但没执行"的东西。
    *
-   * **不等于 `pending.size > 0`**：执行完的规划会留着条目（`done`）——那是"手边的工作单"，
-   * 不是待办（理由见 `core/types.ts` 的 `done`）。探针的收尾判据要的是这个区分。
+   * 不等于 `pending.size > 0`：执行完的规划会留着条目（`done`）——那是"手边的工作单"，不是待办
+   * （理由见 `core/types.ts` 的 `done`）。探针的收尾判据要的是这个区分。
    */
   get hasOpenProposal(): boolean {
     return [...this.pending.values()].some((p) => !p.done);
@@ -417,10 +408,10 @@ export class Session {
   }
 
   /**
-   * 四层来源，**顺序即优先级**：内置默认 → agent 声明 → 模式覆盖 → 用户配置。
-   * （`deny` 单调，**不受这个顺序影响**——见 `permission.evaluate` 第 1 步。）
+   * 四层来源，顺序即优先级：内置默认 → agent 声明 → 模式覆盖 → 用户配置。
+   * （`deny` 单调，不受这个顺序影响——见 `permission.evaluate` 第 1 步。）
    *
-   * 求值与展示共用这一份定义：`rulesetFor` 把它拼起来跑，`permissionView` 把它摊开给人看。
+   * 求值与展示共用这一份定义：`rulesetFor` 把它拼起来跑，`permissionView` 把它摊开给人看；
    * 各写一份的话，"看到的规则"迟早和"执行的规则"说两套话。
    */
   private permissionSources(agent: AgentDef): { label: string; config: PermissionConfig }[] {
@@ -433,8 +424,7 @@ export class Session {
   }
 
   /**
-   * 当前生效的规则集（见 `permissionSources`）。
-   * 子会话走另一条路：只从父的 deny 派生，父的 allow 不继承。
+   * 当前生效的规则集（见 `permissionSources`）。子会话走另一条路：只从父的 deny 派生。
    * 按 (agent, 模式) 缓存——`check`/`ask` 一轮里要跑好几次，不缓存等于反复转。
    */
   private rulesetFor(agent: AgentDef): Ruleset {
@@ -451,10 +441,7 @@ export class Session {
     return this.mode ? MODES[this.mode] : undefined;
   }
 
-  /**
-   * 规则表的**给人看的视图**：每一层各自贡献了什么 + 会话级 approved。CLI 的 `/permissions` 用它回答
-   * "我配的那条生效没有、被谁盖住了"——同一个问题问 `rulesetFor` 只能得到结果，得不到来源。
-   */
+  /** 见 `PermissionView`：`rulesetFor` 只给结论，这里要的是每一层各自的来源。 */
   permissionView(): PermissionView {
     if (this.parentRuleset) {
       // 子会话不是四层叠加，是从父的 deny 派生的（见 permission.deriveSubagentPermission）
@@ -475,7 +462,7 @@ export class Session {
   }
 
   /**
-   * 该 agent 可见的工具：白名单**减去**被 `deny *` 盖住的。那些是"这个模式下**没有**这个工具"
+   * 该 agent 可见的工具：白名单减去被 `deny *` 盖住的。那些是"这个模式下没有这个工具"
    * （从 schema 里消失，不占上下文也不诱导模型去试），不是"有但会被拒"。
    */
   private allowedTools(agent: AgentDef): string[] {
@@ -485,7 +472,7 @@ export class Session {
 
   /**
    * 拼 system prompt：env + 角色 system + (core/world 常驻设定) + AGENTS.md + skill 目录。
-   * 常驻设定只给可见 primary（editor）注入——subagent 不注入（省 token，靠 task prompt 切片）。
+   * 常驻设定只给可见 primary（mate）注入——subagent 不注入（省 token，靠 task prompt 切片）。
    */
   private async buildSystem(agent: AgentDef): Promise<string> {
     const rules = await readProjectRules(this.projectId);
@@ -510,8 +497,8 @@ export class Session {
   /**
    * 正文写作窗口：用户拍过板、这一章还没落盘时，把规范与这本书的文风卡放进 system。
    *
-   * **判据是状态，不是模型自觉**——同 `halt` 与 `approved`。窗口一关（正文落盘、`done` 置位）
-   * 它们就退出上下文，所以这份 token 只在写那一章的几轮里付。理由见 `framework/prose.ts` 的文件头。
+   * 判据是状态，不是模型自觉——同 `halt` 与 `approved`。窗口一关（正文落盘、`done` 置位）它们就
+   * 退出上下文，所以这份 token 只在写那一章的几轮里付。理由见 `framework/prose.ts` 的文件头。
    */
   private async proseWindow(agent: AgentDef): Promise<string | undefined> {
     // 与常驻设定同一条边界：只给可见的 primary。规划只由 mate 执行。
@@ -521,7 +508,6 @@ export class Session {
     return buildProseBrief(this.projectId, plan.chapter);
   }
 
-  /** 构造工具执行上下文（ToolContext），供 execute 获取读写/确认/委派等能力 */
   private makeContext(agent: AgentDef): ToolContext {
     return {
       projectId: this.projectId,
@@ -558,12 +544,12 @@ export class Session {
       clearProposal: (name) => {
         this.pending.delete(name);
       },
-      // 三个读口，**写口一个都不留**——改文件只能走 tools 里的 write/edit（见 core/types.ts）。
+      // 三个读口，写口一个都不留——改文件只能走 tools 里的 write/edit（见 core/types.ts）。
       // 都不预设管辖范围：`prefix` 由调用工具给。
       readDoc: (path) => readDoc(this.projectId, path),
       listIndex: (prefix) => buildIndex(this.projectId, prefix),
       searchDocs: async (query, prefix) => renderHits(await scanDocs(this.projectId, query, prefix), query),
-      // 把**当前生效的**规则集交给子会话去派生（父的 deny 继承、allow 不继承）
+      // 把当前生效的规则集交给子会话去派生（父的 deny 继承、allow 不继承）
       runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt, this.rulesetFor(agent)),
       loadSkill: (name) => loadSkillByName(this.projectId, name).then((s) => s?.body),
     };
@@ -632,7 +618,7 @@ export class Session {
   /** 压缩前检查：用内存消息判断是否超阈值，是则压缩并把 compaction 消息同步回缓存 */
   private async maybeCompact(): Promise<void> {
     const all = await this.ensureLoaded();
-    // 量**窗口**，不是文件：文件只增不减，量它等于过了阈值就永远超预算（见 isOverBudget 的注释）。
+    // 量窗口，不是文件：文件只增不减，量它等于过了阈值就永远超预算（见 isOverBudget 的注释）。
     if (!isOverBudget(this.model.model, this.lastInput, loadModelWindow(all))) return;
     const summarizer = this.agents.get("summarizer");
     const m = await compact({

@@ -1,18 +1,15 @@
 /**
- * 首屏：**书架**。一部长篇的周期以年计，一个人手里不会超过十本——所以这张屏值得占满，
- * 每本书也值得占一张**纵向长卡**（像一本立着的书），一屏三本、多了往下滚。
+ * 首屏：书架。一部长篇的周期以年计，一个人手里不会超过十本，所以这张屏占满，每本书也占一张
+ * 纵向长卡（像一本立着的书），一屏三本、多了往下滚。
  *
- * 创建与修改共用同一套"基本盘"：**书名 · 频道 · 题材**。这三样是前期就能定下来的东西，
- * 选项来自 `shared/genres.ts`（那一份是产品数据，界面按它画、按它筛）。
- *
- * 它们写进 `talemate.json`（书架的元信息），**不是作品文档**——所以不经模型、不问权限。
- * `design/core.md` 里的「题材 · 频道」是模型据此展开的定位：前者是用户的声明，后者是产物。
+ * 创建与修改共用同一套基本盘：书名 · 频道 · 题材，选项来自 `shared/genres.ts` 那份产品数据。
+ * 它们写进 `talemate.json` 的书架元信息，不是作品文档，所以不经模型也不问权限；`design/core.md`
+ * 里的「题材 · 频道」才是模型据此展开的定位——书架上的是用户的声明，那份是产物。
  */
 import { useState } from "react";
 import type { ProjectCard } from "../shared/api";
 import { CHANNELS, genresFor } from "../shared/genres";
 
-/** "写到第 3 章" / "还没有正文"。 */
 function progress(card: ProjectCard): string {
   return card.chapter === null ? "还没有正文" : `写到第 ${card.chapter} 章`;
 }
@@ -25,7 +22,7 @@ function when(ts: number): string {
   return d.toDateString() === today.toDateString() ? `今天 ${hhmm}` : `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-/** 封面位上那一个字。取不到就用「书」；西文一律大写（封面上的字不会小写起头）。 */
+/** 封面位上那一个字。取不到就用「书」；西文一律大写——封面上的字不会小写起头。 */
 function coverChar(title: string): string {
   const first = [...title.trim()][0];
   return first === undefined ? "书" : first.toUpperCase();

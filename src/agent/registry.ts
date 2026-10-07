@@ -1,20 +1,13 @@
 /**
  * Agent 注册表 + 默认角色声明（规范化，见 docs/agents.md / prompts/README.md）。
  *
- * persona（system）全部放 prompts/*.txt，readPrompt 加载（英文）；description 内联于此（短数据，路由契约）。
- * 语义：
- * - mate = 唯一 primary（日常对话面 + 项目执掌）。无导演/评审 agent，拍板只属于人（**人是主编**，
- *   agent 是搭档——两者不能共用一个头衔）。
- * - planner = subagent，只能被 task 委派；"何时派"写在它的 description，
- *   由 subagentCatalog() 自动拼进 task 工具目录。**只读 + 只联网**——它产出一份规划，落盘归 mate。
- * - researcher = subagent，同上。**作品只读 + 只联网**（`edit` 是类别拒）——它考据外部世界，
- *   产出入带出处的事实，落盘仍归 mate。
- *   唯一被允许写的是**它自己的考据本**（`.talemate/research/`，`notes` 权限，引擎工作区、非作品）：
- *   同一个问题不该被查第二遍。见 `framework/research.ts`。
- * - summarizer = hidden 内部 agent（compaction 用）。
- * - Agent 是数据：talemate.json 的 agents.<id> 可覆盖（model/system/steps…）。
- * - permissions：`tools` 是**广告**（模型看得到哪些 schema），`permission` 才是**边界**（见
- *   `docs/permissions.md`）。子代理派生时只继承父的 deny、不继承父的 allow。
+ * mate 是唯一 primary（日常对话面 + 项目执掌），无导演/评审 agent——拍板只属于人：人是主编、agent
+ * 是搭档，两者不共用一个头衔。planner / researcher 是 subagent（只被 task 委派），summarizer 是
+ * hidden 内部 agent（compaction 用）。persona（system）全在 prompts/*.txt（英文），description
+ * 内联于此（路由契约）；"何时派"写在 description 里，由 subagentCatalog() 拼进 task 工具目录。
+ *
+ * Agent 是数据：talemate.json 的 agents.<id> 可覆盖（model/system/steps…）。`tools` 是广告（模型看得到
+ * 哪些 schema），`permission` 才是边界——子代理派生只继承父的 deny、不继承父的 allow（见 docs/permissions.md）。
  */
 import type { AgentDef, ProjectMeta } from "../core/types";
 import { readPrompt } from "../prompts";
@@ -63,20 +56,20 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "Not for prose — you write that yourself. Not for a fact one lookup settles, or for a design call: use webfetch, the researcher, or the user.",
     mode: "subagent",
     // `recall` 只读：规划者自己也在查证（它的 persona 就是"不能凭记忆断言的事实自己查"），
-    // 而考据本里可能已经有答案——没它就只会上网重查一遍。只给 `recall`，**永远不给 `remember`**：
+    // 考据本里可能已有答案——没它就只会上网重查一遍。只给 `recall`，永远不给 `remember`：
     // 记什么、什么时候记，是研究员那份契约。
     tools: ["read", "list", "search", "webfetch", "websearch", "recall"],
     permission: {
-      // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
+      // 子代理跑在隔离上下文里、用户不在场：不能提问（提问就是一次 io.confirm），
       // 也不能委派（防链式 spawn）。
       question: "deny",
       delegate: "deny",
-      // **只读，而且是类别拒**（与 researcher 同款）——`edit` 上的 `"*"` deny 让 write / edit /
+      // 只读，而且是类别拒（与 researcher 同款）——`edit` 上的 `"*"` deny 让 write / edit /
       // delete / apply-design 整个从 schema 里消失。规划者是"读全套材料、回一份工作单"，
       // 落盘由 mate 做（`propose-plan` 把规划落到 `.talemate/plans/`）。
       edit: "deny",
       // 考据本是研究员的（`notes: "allow"` 在它那边）。这里明写 deny 而不是留空：留空 = 默认
-      // `ask` = 一次 `io.confirm`，而用户不在场。顺带这一条也让 `remember` 从它的 schema 里消失。
+      // `ask` = 一次 `io.confirm`，而用户不在场；这一条也让 `remember` 从它的 schema 里消失。
       notes: "deny",
     },
     system: PLANNER_SYSTEM,
@@ -90,17 +83,15 @@ const DEFAULT_AGENTS: AgentDef[] = [
     mode: "subagent",
     tools: ["read", "list", "search", "webfetch", "websearch", "recall", "remember"],
     permission: {
-      // 子代理跑在隔离上下文里、用户不在场：不能提问（会把用户从自己的对话里硬拽出来），
-      // 也不能委派（防链式 spawn）。
+      // 同 planner：子代理不能提问、不能委派
       question: "deny",
       delegate: "deny",
-      // **作品只读，而且是类别拒**——`edit` 上的 `"*"` deny 让 write / edit / delete / apply-design
-      // 整个从 schema 里消失（不是"看得见但会被拒"）。作品文档一个字节都动不了：落盘由 mate 做，
-      // 它只提供材料，不决定什么进书。
+      // 同 planner 的类别拒（见上）：`edit` 一拒，write / edit / delete / apply-design 整个从
+      // schema 里消失，作品文档一个字节都动不了——它只提供材料、不决定什么进书，落盘归 mate。
       edit: "deny",
-      // 唯一被允许写的是**它自己的考据本**（引擎工作区，不是作品）。这不是记账、是机制：
-      // 留空 → 默认 `ask` → `ctx.ask` → `io.confirm`，一个跑在隔离上下文里的子代理去弹用户的脸，
-      // 正是上面 `question: "deny"` 要防的那件事。`notes` 也不能并进 `edit`——见 `permission.ts`。
+      // 唯一允许它写的是它自己的考据本（引擎工作区，不是作品）——留空 → 默认 `ask` → `ctx.ask`
+      // → `io.confirm`，一个跑在隔离上下文里的子代理去弹用户的脸，正是上面 `question: "deny"` 要防的
+      // 那件事。`notes` 也不能并进 `edit`——`edit` 上的 deny 会压住它，见 `permission.ts`。
       notes: "allow",
     },
     system: RESEARCHER_SYSTEM,
@@ -137,7 +128,7 @@ export class AgentRegistry {
     return a;
   }
 
-  /** 默认 primary：第一个非 hidden 的 primary（editor）。 */
+  /** 默认 primary：第一个非 hidden 的 primary（mate）。 */
   getDefaultPrimary(): AgentDef {
     const p = [...this.agents.values()].find((a) => a.mode === "primary" && !a.hidden);
     if (!p) throw new Error("没有可见的 primary agent");

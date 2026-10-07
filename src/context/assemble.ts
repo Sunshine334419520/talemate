@@ -1,13 +1,9 @@
 /**
- * 上下文组装：
- * 1) buildSystemPrompt：env 块 + 角色 system + 项目 AGENTS.md(常驻全量) + skill 目录清单
- * 2) toNeutralMessages：把持久化消息窗口（loadModelWindow 之后）转成 LLM NeutralMsg[]。
+ * 上下文组装：buildSystemPrompt 拼 env 块 + 角色 system + 项目 AGENTS.md（常驻全量）+ skill 清单；
+ * toNeutralMessages 把持久化消息窗口（loadModelWindow 之后）转成 provider 无关的 NeutralMsg[]。
  *
- * 存储→LLM 映射规则：
- * - compaction 消息 → 一条 <story-state> 前情摘要 user 消息
- * - user → user
- * - assistant：单条存储消息 = 一次模型回复。若含工具 part，展开为
- *     assistant(toolCalls) + 每条 completed tool 一条 role:"tool" 结果消息
+ * 存储 → LLM 不是 1:1：compaction 折成一条 <story-state> 前情摘要 user 消息；一条含工具 part 的 assistant
+ * 展开成 assistant(toolCalls) + 每条 completed tool 一条 role:"tool" 结果。
  */
 import type { StoredMessage } from "../core/types";
 import type { NeutralMsg } from "../llm/types";

@@ -1,17 +1,14 @@
 /**
- * 设置：**一个居中的弹窗**（左边清单、右边字段），不是一整屏。
- *
- * 一屏会把写作台整个盖掉——而"配模型"是随手改一下就走的事，不该把用户从工作里拽出来换个界面。
+ * 设置：一个居中的弹窗（左边清单、右边字段），不是一整屏——配模型是随手改一下就走的事，
  * 弹窗也天然回答了"改完去哪"：关掉就回到刚才在的地方。
  *
- * 两条写在这里免得被改没的：
- * - **一套都没有时一律退回环境变量**：`.env` 那套照旧能用，不是被这里替代了。
- * - **改清单 ≠ 切会话**：这里改默认只管下一次新建；当前会话用哪套，在状态栏那一格上切。
+ * 两条写在这里免得被改没的：一套都没有时一律退回环境变量（`.env` 那套照旧能用，不是被替代了）；
+ * 改清单 ≠ 切会话——这里改的默认只管下一次新建，当前会话用哪套在状态栏那一格上切。
  */
 import { useEffect, useState } from "react";
 import type { ModelProfile, ProfileView } from "../shared/api";
 
-/** 表单里的一份草稿。**密钥单独一栏**：它是"只进不出"的——显示时永远只有"已有/没有"。 */
+/** 表单里的一份草稿。密钥单独一栏：它是"只进不出"的——显示时永远只有"已有/没有"。 */
 type Draft = Omit<ModelProfile, "apiKey"> & { apiKey: string };
 
 const BLANK: Draft = {
@@ -24,7 +21,7 @@ const BLANK: Draft = {
   reasoning: "low",
 };
 
-/** 模型那一组：逐个可删，下面一行加新的。**一个厂商配多个模型是常态**（同端点上有快有慢）。 */
+/** 模型那一组：逐个可删，下面一行加新的。一个厂商配多个模型是常态（同端点上有快有慢）。 */
 function Models({
 value,
 onChange,
@@ -66,7 +63,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
   const [env, setEnv] = useState<ProfileView | null>(null);
   const [defaultName, setDefaultName] = useState<string | undefined>();
-  /** `null` = 在看清单；有值 = 在编辑某一套（`fromEnv` 表示它还没进清单，是从 .env 借来改的） */
+  /** `null` = 在看清单；有值 = 在编辑某一套（`saved: false` 表示它还没进清单，是从 .env 借来改的） */
   const [editing, setEditing] = useState<{ draft: Draft; saved: boolean } | null>(null);
   const [modelInput, setModelInput] = useState("");
 
@@ -88,14 +85,14 @@ export function Settings({ onClose }: { onClose: () => void }) {
   async function save(): Promise<void> {
     if (draft === undefined || !canSave) return;
     const { apiKey, ...rest } = draft;
-    // 密钥那栏留空 = 没重填 → **整项省掉**，让主进程沿用存着的那一份（它只进不出）
+    // 密钥那栏留空 = 没重填 → 整项省掉，让主进程沿用存着的那一份（它只进不出）
     await window.tm.saveProfile({
       ...rest,
       name: draft.name.trim(),
       ...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
     });
     await reload();
-    setEditing(null); // 存完回清单：这一屏干完了
+    setEditing(null); // 存完回清单
   }
 
   const setDraft = (next: Draft): void => setEditing((e) => (e === null ? e : { ...e, draft: next }));
@@ -122,8 +119,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
           </button>
         </header>
 
-        {/* 清单：设置进来先看这个。点一行才进编辑——**一屏只干一件事**，
-            不然"现在是在新建还是在改"要靠看按钮猜（上一版就是这么错的）。 */}
+        {/* 清单：设置进来先看这个。点一行才进编辑——一屏只干一件事，
+            不然"现在是在新建还是在改"要靠看按钮猜。 */}
         {editing === null ? (
           <div className="body plain">
             {profiles.map((p) => (

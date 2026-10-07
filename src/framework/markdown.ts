@@ -1,5 +1,5 @@
 /**
- * markdown 区块手术：以 `#{2,}` heading 为单位做 查/取/改/删/加。
+ * markdown 区块手术：以 `#{2,}` heading 为单位做 查 / 取 / 删。
  *
  * "区块"语义：一个 heading（如 `## 主角`）起，到"下一个 level ≤ 它的 heading"之前结束——
  * 因此 `## 主角` 覆盖其下的 `### 想要什么`；寻址 `### 想要什么` 则只动它一格。
@@ -92,8 +92,7 @@ export function getSection(content: string, title: string, minLevel = 2): Sectio
 
 /**
  * 空行 / 说明行 / （待定…）占位 —— 都不算"填了"。
- * 原在 report.ts；挪到这里是因为 characters.ts 也要用它，而 report → characters 已有依赖，
- * 反向 import 会成环。report.ts re-export 以保住原有调用点。
+ * 放在这里而非 report.ts：characters.ts 也要用它，而 report → characters 已有依赖，反向 import 会成环。
  */
 export function isFiller(line: string): boolean {
   const t = line.trim();
@@ -101,14 +100,14 @@ export function isFiller(line: string): boolean {
 }
 
 /**
- * 一行是不是「待定」占位：整行 `（待定…）`，**或键值写法** `键：（待定…）`
- * （角色卡的「基本档案」是逐行 `键：值`，不认这一种的话，`姓名：（待定）` 会被当成"填了"）。
+ * 一行是不是「待定」占位：整行 `（待定…）`，或键值写法 `键：（待定…）`（角色卡的「基本档案」是
+ * 逐行 `键：值`，不认这一种的话，`姓名：（待定）` 会被当成"填了"）。
  */
 export function isPendingLine(line: string): boolean {
   return /^(?:.{1,14}[:：]\s*)?（待定.*）$/.test(line.trim());
 }
 
-/** 取一个区块正文的第一句有效内容（跳过占位/空行/引用），超过 max 字截断。用于"简要输出"与角色总表派生。 */
+/** 取一个区块正文的第一句有效内容（跳过占位/空行/引用），超过 max 字截断。用于"简要输出"。 */
 export function leadLine(content: string, heading: string, max = 60): string | undefined {
   const s = getSection(content, heading);
   if (!s.found) return undefined;
@@ -122,13 +121,6 @@ export function matchesLevel2Heading(content: string): string | undefined {
   return m ? m[1].trim() : undefined;
 }
 
-/**
- * **没有 `replaceSection`**。改一格的正文从前走它，现在走通用的 `edit`（锚点式替换）。
- * 顺手治了它一直有的一个毛病：它用 `trimEnd`/`trimStart` + 重拼 `\n\n` 重建**全文**，于是
- * 未提及小节周边的空白也被改写了——"其余小节字节不动"那句承诺严格说不成立。
- * 锚点替换只动被锚住的那一段，别处一个字节不碰。
- */
-
 /** 删除一个区块（含其 heading）。找不到 → throw。 */
 export function removeSection(content: string, title: string): string {
   const h = findHeading(content, title);
@@ -141,9 +133,6 @@ export function removeSection(content: string, title: string): string {
   // 两个非空块之间用一个空行隔开
   return [before, after].filter((s) => s.length > 0).join("\n\n");
 }
-
-// **没有 `appendBlock`**。末尾加一节从前走它（`append-design` 的落点），现在走通用的 `edit`：
-// 拿尾块当锚点，把尾块换成"尾块 + 新节"——行尾由 `file_ops` 统一适配，这里不必再管一份。
 
 /** 一行命中（供 search 展示） */
 export function findInContent(content: string, query: string): { line: number; heading?: string; text: string }[] {

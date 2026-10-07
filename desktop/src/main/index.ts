@@ -1,21 +1,19 @@
 /**
  * 桌面壳的主进程。
  *
- * 它做四件事：起 harness（`openSession`）、**按界面的请求取数**（项目 / 会话 / 历史投影）、
- * 把 `LLMEvent` 转发给渲染层、把确认与提问接回来。**它自己没有状态**——真相在盘上与 harness 里，
- * 这里是一段管道加一层薄薄的"现取"。
+ * 它做四件事：起 harness（`openSession`）、按界面的请求取数（项目 / 会话 / 历史投影）、把
+ * `LLMEvent` 转发给渲染层、把确认与提问接回来。它自己没有状态——真相在盘上与 harness 里，这里是
+ * 一段管道加一层薄薄的"现取"。
  *
- * 两处要点：
+ * 两处要点：`.env` 与资源根在进程一起来就钉死（见 `prelude.ts`，必须是第一条 import；打包后
+ * `import.meta.url` 指向 bundle 内部，不钉就 prompts 读不到、skill 一个都发现不了且不报错）；
+ * 渲染层不碰文件系统，它要的每一样都从这里过一道 `ipcMain.handle`，因为"什么算一份文档"的判据在
+ * harness 那边只有一处，界面自己 walk 目录就会长出第二份。
  *
- * 1. **.env 与资源根在进程一起来就钉死**（见 `prelude.ts`，必须是第一条 import）：打包后 `import.meta.url`
- *    指向 bundle 内部，不钉的话 prompts 读不到、skill 一个都发现不了（且不报错）。
- * 2. **渲染层不碰文件系统**：它要的每一样都从这里过一道（`ipcMain.handle`）。"什么算一份文档"
- *    的判据在 harness 那边只有一处，界面自己 walk 目录就会长出第二份。
- *
- * `TALEMATE_DESKTOP_SELFTEST=1` 走无窗口自检（`bun run desktop:selftest`）；
- * `=window` 还会开一个**不显示**的窗口，等渲染层报"画出来了"——那是抓白屏的地方（见 `selftest`）。
+ * `TALEMATE_DESKTOP_SELFTEST=1` 走无窗口自检（`bun run desktop:selftest`）；`=window` 还会开一个
+ * 不显示的窗口，等渲染层报"画出来了"——那是抓白屏的地方（见 `selftest`）。
  */
-// **必须是第一条**：它先读 .env、再把随包数据的根钉死，而下面这些依赖在模块顶层就会读配置与提示词。见 prelude.ts。
+// 必须是第一条：下面的依赖在模块顶层就会读配置与提示词，见 prelude.ts
 import "./prelude";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -52,7 +50,7 @@ const SELFTEST = process.env.TALEMATE_DESKTOP_SELFTEST ?? "";
 let win: BrowserWindow | undefined;
 let session: Session | undefined;
 let watchers: FSWatcher[] = [];
-/** 这一次开的是新会话——发第一句话时要用它命名，命名只做一次 */
+/** 这一次开的是新会话——第一句话发出去时用它命名，只做一次 */
 let freshSession = false;
 
 /** 等渲染层回答的请求（确认、提问）：一条一个 id，答完即删。 */
@@ -68,7 +66,7 @@ function ask(channel: string, payload: Record<string, unknown>): Promise<string>
 
 // ─── 取数口（全部现取，不缓存） ───
 
-/** 这本书写到第几章：数 `chapters/` 里最大的章号。复用 `plan.ts` 那条唯一的正则。 */
+/** 这本书写到第几章：数 `chapters/` 里最大的章号，复用 `plan.ts` 那条唯一的正则。 */
 async function latestChapter(projectId: string): Promise<number | null> {
   const docs = await enumerateDocs(projectId, "chapters/");
   let max = 0;
@@ -90,7 +88,7 @@ async function sessionsOf(projectId: string): Promise<SessionRow[]> {
   return rows.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/** 顶栏那两个标记的当下值。**现取**——模式会在回合中间变（进/出草稿模式都是工具调用）。 */
+/** 顶栏那两个标记的当下值，现取——模式会在回合中间变（进/出草稿模式都是工具调用）。 */
 function sessionState(): SessionState {
   return { mode: session?.currentMode?.title, pending: session?.pendingLabel };
 }
@@ -102,9 +100,9 @@ function pushSessionState(): void {
 /**
  * 盯着作品的三个根，谁动了就通知界面一声。
  *
- * **界面不自己读盘**，所以这件事也由这里做：事件只用来报"变了"，重取哪些、要不要重取，仍由界面按
- * 状态决定（正在编辑就不抢光标）。三个根各挂一个 watcher——`recursive` 只在 macOS/Windows 上管用，
- * 而树最多三层，逐个根盯刚好够且不越界（`.talemate/` 里每写一行会话文件都会触发事件，那是噪音）。
+ * 界面不自己读盘，所以这件事也由这里做：事件只报"变了"，重取哪些、要不要重取仍由界面按状态决定
+ * （正在编辑就不抢光标）。三个根各挂一个 watcher——`recursive` 只在 macOS/Windows 上管用，而树最多
+ * 三层，逐个根盯刚好够且避开 `.talemate/` 的噪音（每写一行会话文件都会触发事件）。
  */
 function watchDocs(projectId: string): void {
   for (const w of watchers) w.close();
@@ -124,22 +122,15 @@ function watchDocs(projectId: string): void {
   }
 }
 
-/**
- * 壳自己的偏好（`<talemateHome>/desktop.json`）。
- *
- * **与作品元信息分开**：`talemate.json` 是"这本书是什么"，这份是"这台机器上这个人习惯的样子"。
- * 读失败一律当没有——偏好丢了只是回到默认值，不值得为它报错。
- */
+/** 壳自己的偏好文件。读失败一律当没有——偏好丢了只是回到默认值，不值得为它报错。 */
 function prefsFile(): string {
   return join(talemateHome(), "desktop.json");
 }
 
 /**
- * 模型配置清单：`<talemateHome>/models.json`。**作者级、跨作品**——同一台机器上你的模型清单
- * 不该跟着书走（书只该说"我这本书用什么声音"，不该说"你用什么模型"）。
- *
- * `apiKey` 明文躺在这里，与 `.env` 同级。这是一次**明知**的取舍（见 `shared/api.ts` 的 `ModelProfile`）。
- * 一份都没有时**一律退回环境变量**——`.env` 那套照旧能用，不是被替代了。
+ * 模型配置清单：`<talemateHome>/models.json`。作者级、跨作品——同一台机器上的模型清单不该跟着书走
+ * （书只该说"我这本书用什么声音"，不该说"你用什么模型"）。一份都没有时一律退回环境变量，`.env`
+ * 那套照旧能用、不是被替代了。
  */
 async function readModels(): Promise<{ profiles: ModelProfile[]; default?: string }> {
   try {
@@ -147,7 +138,7 @@ async function readModels(): Promise<{ profiles: ModelProfile[]; default?: strin
       profiles: (Omit<ModelProfile, "models"> & { models?: string[]; model?: string })[];
       default: string;
     }>;
-    // 早期版本一套配置只装一个模型（`model`）——读的时候顺手认下来，别让老文件读不出来
+    // 老文件一套配置只装一个模型（`model`）——顺手认下来，别让它们读不出来
     const profiles = (raw.profiles ?? []).map((p): ModelProfile => {
       const { model, ...rest } = p;
       return { ...rest, models: p.models ?? (model !== undefined ? [model] : []) } as ModelProfile;
@@ -158,7 +149,7 @@ async function readModels(): Promise<{ profiles: ModelProfile[]; default?: strin
   }
 }
 
-/** 给界面看的那一份：**密钥换成"有没有"**——它不该为了显示而在进程间多绕一圈。 */
+/** 给界面看的那一份：密钥换成"有没有"——不该为了显示就把密钥在进程间多绕一圈。 */
 function view(p: ModelProfile, isDefault: boolean): ProfileView & { isDefault?: boolean } {
   const { apiKey, ...rest } = p;
   return { ...rest, hasKey: apiKey !== undefined && apiKey !== "", isDefault };
@@ -186,7 +177,6 @@ async function writeModels(next: { profiles: ModelProfile[]; default?: string })
   await writeFile(modelsFile(), JSON.stringify(next, null, 2), "utf-8");
 }
 
-/** 一套具名配置 → 会话认识的 `ModelConfig`。 */
 function toModelConfig(p: ModelProfile, model?: string): ModelConfig {
   return {
     provider: p.provider,
@@ -198,7 +188,7 @@ function toModelConfig(p: ModelProfile, model?: string): ModelConfig {
   };
 }
 
-/** 新建会话用哪套：默认那套 → 没有就退回环境变量（`.env` 一直有效）。 */
+/** 新建会话用哪套：默认那套，没有就退回环境变量。 */
 async function modelForNewSession(): Promise<ModelConfig | undefined> {
   const { profiles, default: name } = await readModels();
   const picked = profiles.find((p) => p.name === name) ?? profiles[0];
@@ -211,7 +201,7 @@ function registerHandlers(): void {
     return Promise.all(
       projects.map(async (p): Promise<ProjectCard> => {
         const sessions = await sessionsOf(p.id);
-        // 卡上那行简介取自核心设定的「一句话简介」——**现读**，不缓存：用户改了设定，卡上就该跟着变
+        // 卡上那行简介取自核心设定的「一句话简介」——现读、不缓存：用户改了设定，卡上就该跟着变
         const core = await readDoc(p.id, "design/core.md");
         return {
           id: p.id,
@@ -238,7 +228,7 @@ function registerHandlers(): void {
     },
   );
 
-  /** 改书名 / 题材。书名是会被改的，而它**不是作品文档**（在 talemate.json 里），所以不经模型、不问权限。 */
+  /** 改书名 / 题材。书名不是作品文档（在 talemate.json 里），所以不经模型、不问权限。 */
   ipcMain.handle(
     "projects:update",
     async (_e, p: { id: string; title?: string; channel?: string; genre?: string }) => {
@@ -265,9 +255,9 @@ function registerHandlers(): void {
   /**
    * 用户在右栏手改之后落盘。
    *
-   * **不走 `write_ops`**：那条路上的 diff 与"问用户"是为**模型改稿**准备的——由谁改、谁点头是同一件事
-   * 的两半，而这里**用户自己就是那个点头的人**。所以只保留它在意的两样：原子写、以及
-   * **CAS**（打开之后文件被别处改过就拒，别把 mate 刚落的稿子盖掉）。
+   * 不走 `write_ops`：那条路上的 diff 与"问用户"是为模型改稿准备的——由谁改、谁点头是同一件事的
+   * 两半，而这里用户自己就是那个点头的人。所以只保留它在意的两样：原子写，以及 CAS（打开之后文件
+   * 被别处改过就拒，别把 mate 刚落的稿子盖掉）。
    */
   ipcMain.handle(
     "docs:save",
@@ -305,7 +295,7 @@ function registerHandlers(): void {
     async (_e, p: Omit<ModelProfile, "apiKey"> & { apiKey?: string }): Promise<void> => {
       const now = await readModels();
       const before = now.profiles.find((x) => x.name === p.name);
-      // 表单里没重填密钥 = 沿用旧的（**密钥只进不出**，界面本来就看不到它）
+      // 表单里没重填密钥 = 沿用旧的（界面看不到密钥，没法重发）
       const next: ModelProfile = { ...p, apiKey: p.apiKey ?? before?.apiKey };
       await writeModels({
         ...now,
@@ -326,13 +316,13 @@ function registerHandlers(): void {
     await writeModels({ ...(await readModels()), default: name });
   });
 
-  /** 换**当前这个会话**用哪套：会话对象上的 `model` 是活的，下一轮请求就按新的发。 */
+  /** 换当前这个会话用哪套：会话对象上的 `model` 是活的，下一轮请求就按新的发。 */
   ipcMain.handle("session:use-model", async (_e, p: { name: string; model: string }): Promise<void> => {
     const picked = (await readModels()).profiles.find((x) => x.name === p.name);
     if (picked !== undefined && session !== undefined) session.model = toModelConfig(picked, p.model);
   });
 
-  /** 换这个会话的推理强度。会话对象上的 `model` 是活的——改它，下一轮请求就按新的发。 */
+  /** 换这个会话的推理强度。 */
   ipcMain.handle("session:effort", (_e, effort: string): void => {
     if (session === undefined) return;
     session.model = { ...session.model, reasoning: effort as ModelConfig["reasoning"] };
@@ -371,8 +361,8 @@ function registerHandlers(): void {
         sessionId: p.sessionId,
         // 续聊用会话自己记的那套（`talemate.json` 的 agents / 会话元），新建才取默认那套
         model: p.sessionId === undefined ? await modelForNewSession() : undefined,
-        // 新会话先叫「新会话」，**第一句话发出去之后按那句话命名**（见 tm:prompt）——
-        // 写死一个"桌面端"的结果是每一条都叫这个，列表里根本分不出哪条是哪条
+        // 新会话先叫「新会话」，第一句话发出去之后按那句话命名（见 tm:prompt）——
+        // 都叫"桌面端"的话列表里分不出哪条是哪条
         title: p.sessionId === undefined ? "新会话" : undefined,
         io: makeIO(),
       });
@@ -402,11 +392,10 @@ function registerHandlers(): void {
     try {
       if (freshSession && session !== undefined) {
         freshSession = false;
-        // 用第一句话当会话名：取第一行、截断。**命名只做一次**——之后用户说什么都不再改，
-        // 否则列表里的名字会一直跳
+        // 用第一句话当会话名：取第一行、截断；命名只做一次，否则列表里的名字会一直跳
         const line = text.split("\n")[0]?.trim() ?? "";
         if (line) await session.saveMeta(line.length > 24 ? `${line.slice(0, 24)}…` : line);
-        win?.webContents.send("tm:docs-changed"); // 列表跟着更新
+        win?.webContents.send("tm:docs-changed");
       }
       await session?.post(text);
     } catch (err) {
@@ -443,9 +432,8 @@ async function openWindow(show: boolean): Promise<BrowserWindow> {
       nodeIntegration: false,
     },
   });
-  // **必须挂到模块级**：事件、确认、提问、报错全都经 `win` 发出去。漏了这一句的后果是
-  // `win?.webContents.send(...)` 变成静默空操作——界面照常打开、照常能发话，**但一个实时回复都看不到**，
-  // 而且不报错。自检那条路（`selftestWindow`）自己赋过值，所以它当时是绿的：**红灯照不到的那一处**。
+  // 必须挂到模块级：事件、确认、提问、报错全都经 `win` 发出去，漏了 `win?.webContents.send(...)`
+  // 就变成静默空操作——界面照常打开、照常能发话，但一个实时回复都看不到，而且不报错。
   win = w;
   w.on("closed", () => {
     if (win === w) win = undefined;
@@ -482,10 +470,10 @@ async function selftest(): Promise<void> {
 }
 
 /**
- * 带窗口的自检：开一个**不显示**的窗口，等渲染层报"画面出来了"。
+ * 带窗口的自检：开一个不显示的窗口，等渲染层报"画面出来了"。
  *
- * 这是唯一能抓到"白屏"的地方——构建产物缺个 js、路径不对、渲染层一上来就抛异常，全都表现为
- * 一片空白而**控制台什么都没有**。所以渲染层画完第一屏会回一句话，这里等它。
+ * 这是唯一能抓到"白屏"的地方——产物缺个 js、路径不对、渲染层一上来就抛异常，全都表现为一片空白
+ * 而控制台什么都没有。所以渲染层画完第一屏会回一句话，这里等它。
  */
 /** 等渲染层下一句话（超时也算一句话，好让失败看得见原因）。 */
 function nextRendererReport(): Promise<string> {
@@ -499,18 +487,16 @@ function nextRendererReport(): Promise<string> {
 }
 
 async function selftestWindow(): Promise<void> {
-  // **不要在调用处赋值**：`win` 只能由 `openWindow` 内部挂上。两处各挂一次，就等于自检这条路
-  // 绕开了「生产那条路挂没挂」这个判据——守卫会一直是绿的（这一版就是这么漏过去的）。
+  // 不要在调用处赋值：`win` 只能由 `openWindow` 内部挂上，否则自检这条路就绕开了「生产那条路
+  // 挂没挂」这个判据，守卫会一直是绿的。
   await openWindow(false);
   const painted = await nextRendererReport();
   console.log(`[selftest:window] 画出来了：${painted}`);
 
   /*
-   * 第二关：**事件到底有没有送到渲染层。**
-   *
-   * 光看"画出来了"是不够的：窗口句柄没挂上时，界面照常开、照常能发话，只是所有的 `webContents.send`
-   * 都变成空操作——**一个实时回复都看不到，而且不报错**（这一条是真的踩过）。所以这里再走一遍真正的链路：
-   * 起一个会话、发一句话，然后等渲染层回一句"收到事件"。
+   * 第二关：事件到底有没有送到渲染层。光看"画出来了"不够——`win` 没挂上时界面照开、能发话，
+   * 却收不到任何实时回复（见 `openWindow`）。所以走一遍真链路：起会话、发一句话，等渲染层回
+   * 一句"收到事件"。
    */
   const projects = await listProjects();
   const book = projects[0] ?? (await createProject({ title: "桌面端试验" }));

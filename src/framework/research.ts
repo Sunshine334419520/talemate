@@ -1,19 +1,16 @@
 /**
- * 考据本：**题目规则、匹配与全部文案**。不碰文件系统——IO 在 `storage/notes.ts`（分层守卫）。
+ * 考据本：题目规则、匹配与全部文案。不碰文件系统——IO 在 `storage/notes.ts`（分层守卫）。
  *
- * ## 它要解决什么
+ * `researcher` 查回来的东西活不过一次压缩（它是 tool 结果，而 `compaction` 只留 assistant 的 `text`
+ * part），于是同一个问题换个会话就得重查一遍；这本账把结论留下来，让下一次先翻本地、再上网。
  *
- * `researcher` 查回来的东西本来活不过一次压缩：它是 tool 结果，而 `compaction` 只留 assistant 的
- * `text` part，于是同一个问题换个会话就得重查一遍。这本账把结论留下来，让下一次**先翻本地、再上网**。
- *
- * ## 三条判据，写在这里免得下次被"顺手改好"
- *
- * 1. **命中是线索，不是答案。** 每条命中都带着「查于」日期与出处，就是为了让研究员能判"这条还作不作数"。
- *    缓存压制重查是这个设计**明知**兑换出去的代价——它换的是一次白跑的上网（这个功能的全部意义）。
- * 2. **未命中回已有题目清单**，那是恢复回路不是错误：措辞对不上是常态，词法匹配桥不过同义词，
- *    也没有相似度阈值——那层判断归研究员，它读得到题目。
- * 3. **命中返回全文，不做 top-N**。库小是设计出来的（一条 = 一次"以后还会再问"的判断），
- *    而漏一条的代价是重查。真要给上限，得先有"库大到会撑爆上下文"的实测。
+ * 三条判据：
+ * 1. 命中是线索，不是答案：每条命中都带着「查于」日期与出处，让研究员能判"这条还作不作数"；缓存压制
+ *    重查是明知兑换出去的代价，换的是一次白跑的上网。
+ * 2. 未命中回已有题目清单，那是恢复回路不是错误：措辞对不上是常态，词法匹配桥不过同义词，也没有相似度
+ *    阈值——那层判断归研究员，它读得到题目。
+ * 3. 命中返回全文，不做 top-N：库小是设计出来的（一条 = 一次"以后还会再问"的判断），而漏一条的代价是
+ *    重查；真要给上限，得先有"库大到会撑爆上下文"的实测。
  */
 import { MAX_NOTE_NAME, listNoteNames, noteAbs, readNote, safeNoteName, writeNote } from "../storage/notes";
 import { readText } from "../storage/atomic";
@@ -21,21 +18,21 @@ import { findInContent } from "./markdown";
 
 export interface Note {
   name: string;
-  /** 查于（YYYY-MM-DD）；读不出就是空串——旧笔记或手写的都可能没有这一行 */
+  /** 查于（YYYY-MM-DD）；读不出就是空串——旧笔记或手写的都可能没有这一行。 */
   date: string;
   body: string;
 }
 
 /**
- * 今天（本地时区）。**由工具盖章，不问模型**——模型不知道今天几号，而"这条查于何时"正是
- * 研究员判断要不要重查的唯一依据。用本地日期而不是 `toISOString()`：那是 UTC，跨一个时区就差一天。
+ * 今天（本地时区），由工具盖章而不是问模型——模型不知道今天几号，而"这条查于何时"是研究员判断要不要
+ * 重查的唯一依据。用本地日期而非 `toISOString()`：那是 UTC，跨一个时区就差一天。
  */
 export function todayISO(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 }
 
-/** 笔记的落盘形状。第 2 行的日期是刻意的：每次 `recall` 命中都得看得见它。 */
+/** 笔记的落盘形状。日期单占一行是刻意的：每次 `recall` 命中都得看得见它。 */
 export function renderNote(name: string, date: string, body: string): string {
   return `# ${name}\n查于 ${date}\n\n${body.trim()}\n`;
 }
@@ -52,10 +49,7 @@ export function parseNote(name: string, raw: string): Note {
   return { name, date, body };
 }
 
-/**
- * 关键词命中：题目与正文一起过一遍，用的是 `search` 那一套（`markdown.findInContent`）。
- * 判据是"这一行里有没有这个词"——**词法匹配，不是语义匹配**，同义词桥不过去，这是明说的代价。
- */
+/** 关键词命中：题目与正文一起过一遍，用的是 `search` 那一套（`markdown.findInContent`）。 */
 export function matchNotes(notes: Note[], query: string): Note[] {
   const q = query.trim();
   if (!q) return notes;
@@ -75,10 +69,7 @@ export function indexText(names: string[]): string {
   return `研究笔记（${names.length} 条）：\n${names.join("\n")}\n\n用 recall 带上 query 取某一条的正文。`;
 }
 
-/**
- * 未命中。**这是恢复回路**：把已有的题目列出来，研究员看着清单换个词再试。
- * 空库时换一句——建库的第一步不该读起来像失败。
- */
+/** 未命中。这是恢复回路：列出已有的题目让研究员换个词再试；空库时换一句，建库的第一步不该读起来像失败。 */
 export function missText(query: string, names: string[]): string {
   if (!names.length) {
     return `没有找到研究笔记「${query}」。这里还一条都没有——查到「以后还会再问」的结论后，用 remember 记一条。`;
@@ -97,10 +88,9 @@ export function sourceProblem(): string {
 }
 
 /**
- * 题目合法 → 归一后的题目；不合法 → 一句能让模型自己改的话。**两者互斥**，调用方不必再判。
- *
- * 三条失败分开报，因为它们要的修法不一样：带了分隔符（多半想写成路径）、太长、字符不合法。
- * 判据在 `storage/notes.safeNoteName`，这里只负责把"为什么不行"说清楚。
+ * 题目合法 → 归一后的题目；不合法 → 一句能让模型自己改的话，两者互斥，调用方不必再判。三条失败分开报，
+ * 因为它们要的修法不一样：带了分隔符（多半想写成路径）、太长、字符不合法。判据在
+ * `storage/notes.safeNoteName`，这里只负责把"为什么不行"说清楚。
  */
 export function noteName(raw: string): { name: string } | { problem: string } {
   const name = safeNoteName(raw ?? "");
@@ -127,10 +117,7 @@ export function hasSource(content: string): boolean {
 
 // ─── 带 IO 的三步（工具直接调用） ───
 
-/**
- * 读全本。**它是 recall 的唯一数据源**：目录、命中、未命中清单都从这一份出，
- * 所以"列得出来却读不回来"这种不一致从结构上不存在。
- */
+/** 读全本。它是 `recall` 的唯一数据源：目录、命中、未命中清单都从这一份出，所以"列得出来却读不回来"从结构上不存在。 */
 export async function loadNotes(projectId: string): Promise<Note[]> {
   const names = await listNoteNames(projectId);
   const out: Note[] = [];

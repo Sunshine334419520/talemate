@@ -1,18 +1,8 @@
 /**
- * talemate CLI（真实体验入口）。
+ * talemate CLI（真实体验入口）：argv 分发、current 空间指针、REPL 斜杠命令，以及把 session 事件流
+ * 渲染成给人看的输出；默认 verbose，每一步都打印。
  *
- * 用法：
- *   talemate                        # 帮助 + 若上次有 current 则提示进入
- *   talemate ls                     # 列出所有项目空间
- *   talemate new <书名> [题材]       # 建空间（播种四层骨架）并进入
- *   talemate use <id|书名>           # 进入某空间（可简写 talemate <id>）
- *
- * 空间内 REPL（默认 verbose——每一步都打印）：
- *   /help /quit /status /projects /use <id|书名> /new <书名> [题材]
- *   /sessions /open <n> /design <name> /permissions /verbose /quiet /reasoning
- *   - 单行回车即发送；行尾加反斜杠 `\` 续行（多行输入）。
- *   - 模型回复流式显示；工具调用/子代理边界/每轮落盘回放默认全打。
- *   - 提示符挂当前模式与待写入提案：两者都改得了"下一步能做什么"，看不见不行。
+ * 边界：只管接命令与渲染，LLM / 工具 / 权限的实现都在 session 与 tool 层。
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
@@ -30,11 +20,7 @@ import type { Action, Ruleset } from "./permission";
 
 // ─────────────────────────── 受管根 / current 指针 ───────────────────────────
 
-/**
- * 章节文件名（CLI 展示用）。项目相对 → 根相对这一步只属于**给人看的输出**，所以在 CLI 里做，
- * 不下沉到语料层——那一层只认项目相对路径。从前 storage 有个 `listChapters` 专管这件事，
- * 那是"枚举章节"的第二条实现，已并入 `enumerateDocs`。
- */
+/** 章节文件名（CLI 展示用）：项目相对 → 根相对的换算只属于给人看的输出，所以留在 CLI，不下沉到只认项目相对路径的语料层。 */
 async function chaptersOf(projectId: string): Promise<string[]> {
   const all = await enumerateDocs(projectId, "chapters/");
   return all.map((p) => p.slice("chapters/".length));
@@ -73,9 +59,9 @@ function truncate(s: string, n: number): string {
 }
 
 /**
- * 提案类工具：入参就是整篇正文（文档草稿 / 章节规划），内容由 harness 渲染后经 `proposal` 事件整块
- * 打印。所以它们不走常规工具行的截断打印——否则会把 `input={"path":"design/core.md",...}` 打出来，
- * 既看不懂，也和"对用户不出现文件路径"这条纪律冲突；规划则连正文都重复打一遍。
+ * 提案类工具的入参就是整篇正文（文档草稿 / 章节规划），内容由 harness 渲染后经 `proposal` 事件整块
+ * 打印，所以不走常规工具行的截断打印——否则会打出 `input={"path":"design/core.md",...}`，既看不懂，
+ * 也和"对用户不出现文件路径"的纪律冲突；规划还会把正文重复一遍。
  */
 const PROPOSAL_TOOLS = new Set(["propose-design", "apply-design", "propose-plan"]);
 
@@ -177,11 +163,8 @@ function renderRuleset(rules: Ruleset): string {
 }
 
 /**
- * 打印当前生效的规则表。
- *
- * 先给**结论**（每类动作现在是什么、是**哪一层**定的），再给**分层**（每层各自贡献了什么）。
- * 只有结论不够用：用户配了一条想放宽、看到的却还是 deny，得能一眼看出是被模式盖住了——
- * `deny` 单调，不受层级顺序影响（见 docs/permissions.md）。
+ * 先给结论（每类动作现在是什么、是哪一层定的），再给分层（每层贡献了什么）——只有结论不够用：
+ * 用户配了一条想放宽、看到的却还是 deny，得能一眼看出是被模式盖住了；`deny` 单调，不受层级顺序影响。
  */
 function printPermissions(session: Session): void {
   const view = session.permissionView();
@@ -451,8 +434,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
     }
     case "/design": {
       if (!curSpaceId) return "continue";
-      // CLI 是**给人用的**：`/design <名>` 收的是 design/ 相对的简写（不是工具那套项目相对路径）——
-      // 用户在命令行里想说的是"设计那本里的哪一份"。
+      // CLI 给人用：`/design <名>` 收的是 design/ 相对简写，不是工具那套项目相对路径——命令行里用户想说的是"设计那本里的哪一份"
       const name = arg.includes(".md") ? arg : `${arg}.md`;
       const c = await readDoc(curSpaceId, `design/${name}`);
       console.log(c === undefined ? `没有 ${name}` : `# ${name}\n${c}`);
@@ -522,12 +504,10 @@ async function repl(projectId: string, sessionId?: string): Promise<void> {
       console.log("（尚未进入任何项目空间）");
       continue;
     }
-    // verbose 标记用户输入
     console.log(`\n${CYAN}你${RESET} > ${text}`);
     try {
       const reply = await curSession.post(text);
       if (verbose) {
-        // 详细回放本轮落盘消息（工具入参/输出全文）
         const msgs = await loadMessages(curSession.projectId, curSession.sessionId);
         lastSeq = replayNew(msgs, lastSeq);
         console.log(`\n${DIM}—— 本轮结束 ——${RESET}`);
@@ -548,7 +528,6 @@ async function repl(projectId: string, sessionId?: string): Promise<void> {
 async function main(): Promise<void> {
   const [cmd, sub, ...rest] = process.argv.slice(2);
 
-  // talemate new / novel create
   if ((cmd === "new" || (cmd === "novel" && sub === "create")) && rest.length >= 0) {
     const title = cmd === "new" ? sub ?? rest[0] : rest[0];
     const genre = cmd === "new" ? rest.join(" ") : rest.slice(1).join(" ");
@@ -563,7 +542,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // talemate ls
   if (cmd === "ls") {
     const { listProjects } = await import("./storage/project");
     const all = await listProjects();
@@ -579,7 +557,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // talemate use <sel> / talemate <id>
   const sel = cmd === "use" ? sub ?? "" : cmd ?? "";
   if (sel) {
     const id = await resolveSpace(sel);
@@ -593,7 +570,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 无参：帮助 + ls + current 提示
   console.log(
     [
       "talemate —— 小说创作 Agent（主编会话）",

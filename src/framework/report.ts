@@ -9,13 +9,12 @@ import { specFor } from "./design_spec";
 import { getSection, isFiller, leadLine, listHeadings } from "./markdown";
 import { nameFromPath } from "./characters";
 
-/** 状态卡上这几格各读哪份文档——**路径就是判据**，不再经过层 id。路径是项目相对口径。 */
+/** 状态卡上这几格各读哪份文档——路径就是判据；路径是项目相对口径。 */
 const CORE_DOC = "design/core.md";
 const WORLD_DOC = "design/wiki/world.md";
 const PROGRESS_DOC = "state/progress.md";
 
-// isFiller 已挪到 markdown.ts（characters 也要用，而本文件 → characters 已有依赖）。
-// 这里 re-export 保住原有调用点（proposal.ts 从本文件引它）。
+// isFiller 住在 markdown.ts；这里 re-export 是因为 proposal.ts 从本文件引它，保住那个调用点
 export { isFiller };
 
 /** 取一个小节正文的第一句有效内容（跳过占位与空行），用于"简要输出"。 */
@@ -37,7 +36,7 @@ function missingSections(content: string | undefined, name: string): string[] {
   return sections.filter((s) => !sectionFilled(content, s.heading)).map((s) => s.heading);
 }
 
-/** 状态行右侧：文档不存在 →（空）；有内容 → ✓ 首句；存在但没写出首句 → fallback。 */
+/** 状态行右侧：不存在 →（空）；有首句 → ✓ 首句；存在但读不出首句 → fallback。 */
 function layerBrief(exists: boolean, lead: string | undefined, fallback: string): string {
   if (!exists) return "（空）";
   return lead ? `✓ ${lead}` : fallback;
@@ -64,10 +63,8 @@ function volumeNumber(rel: string): number | undefined {
 }
 
 /**
- * **写到哪儿了**：`state/progress.md` 的最后一节（章末回写留下的流水）——`第 3 章（他借到了粮）`。
- * 没有流水（还没写过正文）→ `undefined`，那一行就照原样不长尾巴。
- *
- * 小节标题由 mate 自己起，这里**原样报出来**，不解析、不换算成"进度"。
+ * 写到哪儿了：`state/progress.md` 的最后一节（章末回写留下的流水）。没有流水（还没写过正文）→
+ * `undefined`，那一行就照原样不长尾巴。小节标题由 mate 自己起，这里原样报出来，不解析、不换算成"进度"。
  */
 async function writingPosition(projectId: string): Promise<string | undefined> {
   const doc = await readDoc(projectId, PROGRESS_DOC);
@@ -79,15 +76,12 @@ async function writingPosition(projectId: string): Promise<string | undefined> {
 }
 
 /**
- * 大纲现状：**现算**。情节层没有"整本大纲"这个文档（见 `docs/outline.md`），能报的是走到哪一卷——
- * 卷号从已有的文件列表里挑，再读最新那卷的「本卷在全局的位置」首句；尾巴上挂**写到哪儿了**。
+ * 大纲现状：现算。情节层没有"整本大纲"这个文档（见 `docs/outline.md`），能报的是走到哪一卷——
+ * 卷号从已有的文件列表里挑，再读最新那卷的「本卷在全局的位置」首句；尾巴上挂写到哪儿了。
  *
- * **只报位置，不报剩余。** 序列纲声明的是**功能**不是事件（"给主角一个进内城的理由"，不是"主角
- * 遇到老乞丐"），而"一节要写成几章，是写到那儿才知道的"——所以章数与"这个序列兑现到哪了"之间
- * 没有换算关系。**报个百分比或者"还剩 3 章"，就是编。** 为什么也不给序列纲加一份可勾的清单，
- * 见 `docs/roadmap.md` 的「序列进度只报位置，不报剩余」。
- *
- * 卡片仍只出现层名与格名，不出现路径。
+ * 只报位置，不报剩余：序列纲声明的是功能不是事件（"给主角一个进内城的理由"，不是"主角遇到老乞丐"），
+ * 而"一节要写成几章，是写到那儿才知道的"——章数与"这个序列兑现到哪了"之间没有换算关系，报个百分比
+ * 或"还剩 3 章"就是编。为什么不给序列纲加一份可勾的清单，见 `docs/roadmap.md`。
  */
 async function outlineBrief(projectId: string, designPaths: string[]): Promise<string> {
   const volumes = designPaths

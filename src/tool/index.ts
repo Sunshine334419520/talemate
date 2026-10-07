@@ -17,9 +17,7 @@ export type { RegisteredTool };
 
 /**
  * 全部内置工具（session 注册用）。顺序无意义，权限/可见由 AgentDef.tools 白名单决定。
- *
- * `CHARACTER_TOOLS` 整个模块已删：它只剩 `remove-character` 一个，而那只是"删文件"的角色专用版。
- * 删文件现在归 `file_tools` 的 `delete`——**通用**，谁都能删，引用检查照做。
+ * 删文件走 `file_tools` 的 `delete`（通用，谁都能删，引用检查照做），没有角色专用的删卡工具。
  */
 export const BUILTIN_TOOLS: RegisteredTool[] = [
   ...FILE_TOOLS,

@@ -1,23 +1,17 @@
 /**
- * atomic：**落盘的唯一原语**——先写同目录临时文件再 rename，且写之前比对"我读到的那一份还在不在"。
+ * atomic：落盘的唯一原语——先写同目录临时文件再 rename，且写之前比对"我读到的那一份还在不在"。
  *
- * 两个问题各治一样：
+ * 裸 `writeFile` 不是原子的：进程被杀、磁盘满、断电，读者会看到一个被截断的 core.md 或半章
+ * 正文，而这两样是作品本身、没有第二份可恢复。所以先写 `.tmp` 再 `rename`——同文件系统内原子，
+ * 读者要么看到旧的要么看到新的；临时文件必须与目标同目录，跨设备 rename 不是原子的、还可能直接失败。
  *
- * - **中途断掉会留下半份文件**。裸 `writeFile` 不是原子的：进程被杀、磁盘满、断电，读者会看到
- *   一个被截断的 core.md 或半章正文。而这两样东西是作品本身，没有第二份可以对照恢复。
- *   所以先写 `.tmp` 再 `rename`——rename 在同一文件系统内是原子的，读者要么看到旧的、要么看到新的。
- *   临时文件**必须与目标同目录**（跨设备 rename 不是原子的，还可能直接失败）。
+ * 落盘前有一串 await（算 diff、等用户回话），中间文件可能被另一个工具调用或用户手改掉；
+ * 只读一次然后照着写等于把那次改动悄悄盖掉，所以写之前重读一遍、比对 `expected`，不等即抛
+ * StaleContentError。
  *
- * - **读与写之间文件被改掉**。落盘前有一串 await（算 diff、弹窗等用户回话），这中间文件可能变
- *   ——另一个工具调用，或者用户拿编辑器手改。只读一次然后照着写，等于把那次改动悄悄盖掉，
- *   而且没有任何痕迹。所以写之前重读一遍、比对 `expected`，不等就抛 StaleContentError。
- *
- * 边界：这里只管"一个绝对路径上的字节"。不认识根与根的区别，不认识小节、
- * 提案、权限。那些在 framework/write_ops.ts。
- *
- * **残留窗口（已知、有意）**：CAS 只覆盖同进程。进程外（用户手改文件）在"重读"与"rename"之间
- * 仍有一个极窄的窗口。POSIX 没有 compare-and-swap，关不掉；CLI 是单进程，实际情况里这个窗口
- * 只对手动编辑敞开，而那种改动本来就会在下一次读时被发现。
+ * 边界：只管"一个绝对路径上的字节"，不认识根、小节、提案、权限（那些在 `framework/write_ops.ts`）。
+ * CAS 只覆盖同进程：进程外手改在"重读"与"rename"之间仍有一个极窄窗口，POSIX 没有 compare-and-swap
+ * 关不掉；CLI 是单进程，那个窗口只对手动编辑敞开，而那种改动本来就会在下一次读时被发现。
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -26,7 +20,7 @@ import { dirname, join } from "node:path";
 /**
  * 落盘时发现文件不是我们读到的那一份。
  *
- * 它是一个**并发保护**而不是错误处理：调用方应当把它转成给模型的自愈文案
+ * 它是一个并发保护而不是错误处理：调用方应当把它转成给模型的自愈文案
  * （"重新读一遍再来"），而不是让它冒到用户面前。
  */
 export class StaleContentError extends Error {
@@ -49,9 +43,8 @@ export async function readText(abs: string): Promise<string | undefined> {
 /**
  * 同一路径上的落盘串行化。
  *
- * 一次工具调用里有好几个 await 点，两次调用可以在那里交错——没有这把锁，
- * 两个 read-modify-write 会各自读到同一份旧内容，后写的那个把先写的盖掉。
- * 锁是**进程内**的（见文件头的残留窗口）。
+ * 一次工具调用里有好几个 await 点，两次调用可以在那里交错——没有这把锁，两个 read-modify-write
+ * 会各自读到同一份旧内容，后写的那个把先写的盖掉。锁是进程内的（见文件头的残留窗口）。
  */
 const locks = new Map<string, Promise<void>>();
 
@@ -71,10 +64,10 @@ async function withLock<T>(abs: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** 临时文件落盘 + rename。**调用方必须已持有该路径的锁**。 */
+/** 临时文件落盘 + rename。调用方必须已持有该路径的锁 */
 async function writeUnlocked(abs: string, content: string): Promise<void> {
   await mkdir(dirname(abs), { recursive: true });
-  // 前缀点 + uuid：不会与任何真实文档撞名；尾部 .tmp 让它进不了 listDesigns（那只收 .md）
+  // 前缀点 + uuid：不会与任何真实文档撞名；尾部 .tmp 让它进不了 enumerateDocs（那只收 .md）
   const tmp = join(dirname(abs), `.${randomUUID()}.tmp`);
   try {
     await writeFile(tmp, content, "utf-8");
@@ -91,10 +84,10 @@ export async function writeAtomic(abs: string, content: string): Promise<void> {
 }
 
 /**
- * 比对后原子写——**写盘路径都该走这一个**。
+ * 比对后原子写——写盘路径都该走这一个。
  *
- * `expected` 是调用方读取时看到的字节；`null` 表示"当时这个文件还不存在"，
- * 于是它顺带成了新建的排他检查（期望不存在却存在 → 陈旧，拒绝）。
+ * `expected` 是调用方读取时看到的字节；`null` 表示"当时这个文件还不存在"，于是它顺带成了
+ * 新建的排他检查（期望不存在却存在 → 陈旧，拒绝）。
  */
 export async function writeIfUnchanged(opts: {
   abs: string;

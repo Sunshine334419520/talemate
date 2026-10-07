@@ -55,8 +55,8 @@ export async function appendMessage(
 }
 
 /**
- * 追加一条用量。**只动 `usage`，其余字段原样带过去**——`createSession` 会把整份元信息重写一遍
- * （`time.created` 也重置），拿它来记用量会顺手把别的字段弄丢。
+ * 追加一条用量。只动 `usage`，其余字段原样带过去——`createSession` 会把整份元信息重写一遍
+ * （`time.created` 也重置），拿它来记用量会连别的字段一起弄丢。
  */
 export async function appendUsage(
   projectId: string,

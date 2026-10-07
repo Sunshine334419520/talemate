@@ -1,32 +1,21 @@
 /*
- * 视觉令牌。**色值不是编的，是从 DuMate 那张设计图上取样来的**（ffmpeg 取区域平均色 / 最暗像素）：
- *
- *   主区（对话）底 #ffffff · 左栏底 #f3f4f9 · 悬停与选中 #e6e9f0 · 用户气泡 #f8f9fd
- *   主文字 #000000 · 次要文字 #82838c · 主按钮 #000000 · 禁用控件 #989898 · **几乎没有边框**
- *
- * 三条它那边很明确、我第一版做反了的：
- *   1. **冷调、无彩度**——灰是微微偏蓝的冷灰，不是暖米色（我原来那套是从"朱批"推的，观感完全两样）；
- *   2. **主区是纯白，左栏是浅灰**（我原来反着：左栏白、主区米）；
- *   3. **分层靠底色差，不靠线**——所以 `--line` 用得极少。
- *
- * 朱砂留下来只有一个用处：**"要你注意"**（待补 / 拒绝 / 正在写）。参考图里没有任何强调色，
- * 所以它不再是装饰；你要是想要纯无彩度，把这几处换成灰也是一句话的事。
- *
- * 字体那一半没跟着改：正文仍用宋体、界面用黑体——稿件与工具的分野。参考图是全无衬线的。
+ * 视觉令牌：色值从设计图上取样。冷调、无彩度（灰是微微偏蓝的冷灰），主区纯白、左栏浅灰，
+ * 分层靠底色差、不靠线，所以 `--line` 用得极少。朱砂只用于"要你注意"（待补 / 拒绝 / 正在写），
+ * 不做装饰。字体是正文宋体、界面黑体——稿件与工具的分野。
  */
 :root {
-  --ground: #f4f5fa;      /* **整体底色**（左栏直接坐在它上面，没有面板） */
+  --ground: #f4f5fa;      /* 整体底色（左栏直接坐在它上面，没有面板） */
   --card: #ffffff;        /* 面板：对话与右栏各是一块浮在灰底上的白卡 */
   --panel: #f3f4f9;       /* 面板之内的浅灰（次要按钮等） */
   --panel-2: #eef0f5;     /* 再实一档：卡片标题条、工具条、代码片、封面位 */
-  --hover: #e6e9f0;       /* 悬停 / 选中行 */
-  --bubble: #f8f9fd;      /* 用户气泡：实测就这么淡，在白底上几乎隐形（见文件头第 3 条） */
+  --hover: #e6e9f0;
+  --bubble: #f8f9fd;      /* 用户气泡：在白底上几乎隐形 */
   --line: #e7e9ef;        /* 边框：用得少，分层主要靠底色差 */
   --line-soft: #f0f1f6;
-  --ink: #000000;         /* 主文字：参考图是纯黑 */
+  --ink: #000000;         /* 主文字：设计图是纯黑 */
   --muted: #5d636e;
   --faint: #82838c;
-  --zhu: #a8402f;         /* 只给"要你注意"，不做装饰 */
+  --zhu: #a8402f;         /* 只给"要你注意" */
   --zhu-soft: #f7ebe8;
   --pine: #3f6b56;
   --indigo: #4a5b78;
@@ -38,7 +27,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* 深色不是把浅色取反：左栏在主区**之上**抬起一档（标准暗色面板的做法），
+    /* 深色不是把浅色取反：左栏在主区之上抬起一档（标准暗色面板的做法），
        浅色那边两者是"纯白 + 冷灰"的关系，方向相反但目的一样——让人一眼分得开。 */
     --ground: #14161b;
     --card: #1d2027;
@@ -77,8 +66,7 @@ button { font: inherit; color: inherit; }
 .shelf h1 { font-family: var(--serif); font-size: 24px; font-weight: 600; margin: 0 0 2px; }
 .shelf .sub { color: var(--faint); margin: 0; font-size: 13px; }
 
-/* 书架：**纵向长卡**（像一本立着的书）。一屏就放得下三本，多了往下滚——
-   这是刻意的：书是"一件东西"，不是一行记录，卡小了就变成列表了。 */
+/* 书架：纵向长卡（像一本立着的书）。书是"一件东西"不是一行记录，卡小了就变成列表了。 */
 .cards {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
   gap: 20px; max-width: 1180px; align-content: start;
@@ -136,13 +124,13 @@ button { font: inherit; color: inherit; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
 
 /* ── 工作台 ── */
-/* **灰底 + 两块白面板**。这是参考图里最显眼的一条：底色是灰的、内容浮在上面，
-   不是"左栏白、中栏白、到处白"。间距与圆角就是这一层读起来像不像的关键。 */
-/* 上下两截：卡片区（撑满）+ 一条状态栏。状态栏**横贯窗口**、落在灰底上——
+/* 灰底 + 两块白面板：底色是灰的、内容浮在上面，不是"到处白"。间距与圆角是这一层读起来
+   像不像的关键。 */
+/* 上下两截：卡片区（撑满）+ 一条状态栏。状态栏横贯窗口、落在灰底上——
    它能装的东西（模式、待你拍板、模型、上下文）都是"这个会话眼下什么状态"，不属于任何一块卡片。 */
 .app { display: flex; flex-direction: column; height: 100vh; }
 .shell { display: flex; flex: 1; min-height: 0; gap: 10px; padding: 10px 10px 0; }
-/* 左栏**没有面板**：它直接坐在灰底上（参考图就是这样） */
+/* 左栏没有面板：它直接坐在灰底上 */
 .side { width: 232px; flex: none; display: flex; flex-direction: column; overflow: hidden; }
 .side .book { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); display: flex; align-items: baseline; gap: 8px; }
 .side .book b { font-family: var(--serif); font-size: 15px; }
@@ -165,7 +153,7 @@ button { font: inherit; color: inherit; }
 .side .new { margin: 8px 14px; padding: 6px; border: 1px dashed var(--line); border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
 .side .new:hover { color: var(--zhu); border-color: var(--zhu); }
 
-/* 中栏：对话。**内容列居中、有最大宽度**——一行拉满整屏是最难读也最像草稿的排版 */
+/* 中栏：对话。内容列居中、有最大宽度——一行拉满整屏是最难读也最像草稿的排版 */
 .main, .sidepane {
   background: var(--card); border-radius: 14px; overflow: hidden;
   display: flex; flex-direction: column; min-width: 0;
@@ -179,14 +167,14 @@ button { font: inherit; color: inherit; }
 .thread { max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .hint { max-width: 44rem; margin: 0 auto; color: var(--faint); font-size: 13px; }
 
-/* 用户说的话：**只有它是气泡**（一次打断，不是正文），靠右 */
+/* 用户说的话：只有它是气泡（一次打断，不是正文），靠右 */
 .me { display: flex; justify-content: flex-end; }
 .me .bubble {
   background: var(--bubble); border-radius: 14px; padding: 8px 14px;
   max-width: 76%; font-size: 14px; line-height: 1.7;
 }
 
-/* markdown 渲染出来的正文。**对话与右栏预览共用这一份**——
+/* markdown 渲染出来的正文。对话与右栏预览共用这一份——
    同一套元素样式写两遍，迟早一处改了另一处没改。 */
 .md { font-family: var(--serif); font-size: 15px; line-height: 1.95; }
 .md > :first-child { margin-top: 0; }
@@ -211,7 +199,7 @@ button { font: inherit; color: inherit; }
 .md a { color: var(--indigo); }
 .note { color: var(--faint); font-size: 12.5px; }
 
-/* 过程：折成一行，展开才看见细节。工具是过程不是内容 */
+/* 过程：折成一行，展开才看见细节 */
 .steps { font-size: 12.5px; }
 .steps-head {
   background: none; border: 0; color: var(--faint); cursor: pointer;
@@ -237,7 +225,7 @@ button { font: inherit; color: inherit; }
 .chapter .label { background: var(--zhu-soft); color: var(--zhu); border-radius: 4px; padding: 0 6px; font-size: 11.5px; }
 .chapter .words { color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
 
-/* 卡片：要你动手的东西。**动作长在卡片上**，不另起一行问 */
+/* 卡片：要你动手的东西。动作长在卡片上，不另起一行问 */
 .card-box { border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
 .card-title { padding: 8px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: 12.5px; }
 .card-actions { display: flex; gap: 8px; padding: 10px 14px; align-items: center; }
@@ -273,9 +261,8 @@ button { font: inherit; color: inherit; }
 }
 .box-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 
-/* 状态栏：一条细带。**没有数就不显示**——不编一句提示糊在上面 */
-/* 状态栏：一条细带。**垂直居中靠的是"没有不对称的内边距"**——上一版留了 10px 底边距，
-   align-items: center 也救不回来（它居中的是内容盒，而内容盒自己被顶上去了）。 */
+/* 状态栏：一条细带，没有数就不显示——不编一句提示糊在上面；垂直居中靠的是没有不对称的
+   内边距，align-items: center 居中的是内容盒，顶上去了就救不回来。 */
 .statusbar {
   flex: none; height: 34px; display: flex; align-items: center; gap: 14px;
   padding: 0 16px; font-size: 11.5px; color: var(--faint);
@@ -364,7 +351,7 @@ button { font: inherit; color: inherit; }
 
 .steps-body.thought { font-family: var(--sans); font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; color: var(--faint); }
 
-/* 思考中的脉搏 + 秒数。**它是在说"它还活着"**——所以只用一个点，不用转圈：
+/* 思考中的脉搏 + 秒数。它是在说"它还活着"——所以只用一个点，不用转圈：
    转圈会让人以为在下载，而这个产品的等待是"它在想"。 */
 .activity { display: flex; align-items: center; gap: 8px; color: var(--faint); font-size: 12.5px; }
 .activity .secs { font-variant-numeric: tabular-nums; }
@@ -384,8 +371,8 @@ button { font: inherit; color: inherit; }
 }
 .pane-note { padding: 8px 14px; background: var(--zhu-soft); color: var(--zhu); font-size: 12.5px; }
 
-/* 对话与右栏之间的分隔缝。**它不占位**：宽度 12px 加两边 -11px 的外边距，正好落在两块面板之间
-   那 10px 的空里（净贡献 -10px，与原来的 gap 相同），所以拖的只是"谁宽谁窄"，不改变整体布局。
+/* 对话与右栏之间的分隔缝。它不占位：宽度 12px 加两边 -11px 的外边距，净贡献 -10px，
+   正好抵消 `shell` 那 10px 的 gap，所以拖的只是"谁宽谁窄"，不改变整体布局。
    平时不画东西（分层靠底色差），悬停与拖动时才显形。 */
 .splitter {
   flex: none; width: 12px; margin: 0 -11px; align-self: stretch;
@@ -406,8 +393,9 @@ button { font: inherit; color: inherit; }
 }
 .modal header { display: flex; align-items: baseline; gap: 10px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line-soft); }
 .modal h2 { margin: 0; font-family: var(--serif); font-size: 17px; }
-.modal header .sub { flex: 1; color: var(--faint); font-size: 12px; }
-.modal .close { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+/* 靠 `margin-left` 顶到右边：header 只渲染标题 + 关闭，别改成 `flex: 1`——
+   那会缩成内容宽、贴回标题后面。 */
+.modal .close { margin-left: auto; border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
 .modal .close:hover { color: var(--ink); }
 .modal { width: min(560px, 100%); }
 .modal .body { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px; }

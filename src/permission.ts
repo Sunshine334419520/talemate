@@ -3,28 +3,27 @@
  *
  * 一个动作 = `(permission, pattern)`；一条规则 = `{permission, pattern, action}`；规则集 = `Rule[]`。
  *
- * 求值三步，**顺序不能换**：
- *   1) `deny` 先判——所有规则集里匹配 `(permission, pattern)` 的 deny，找到一条就拒。**不受顺序影响**
- *   2) 否则在这些规则集上 findLast，按最后一条匹配的规则走——顺序即优先级
+ * 求值三步，顺序不能换：
+ *   1) `deny` 先判——任一层匹配 `(permission, pattern)` 的 deny，找到一条就拒，不受顺序影响
+ *   2) 否则在规则集上 findLast，按最后一条匹配的规则走——顺序即优先级
  *   3) 一条都没匹配 → `ask`（默认问，不是默认放行）
  *
- * 第 1 步是本设计的关键：只做第 2 步（顺序即一切，用户配置最强）会让别处的 allow 盖掉 deny。这里让 deny
- * 单调，是因为"不许"不该被别处的"允许"盖掉——同一条原则在子代理派生那里已经生效（父的 deny
- * 继承、父的 allow 不继承），这里只是把它推广到求值。
+ * 第 1 步是关键：只做第 2 步（顺序即一切，用户配置最强）会让别处的 allow 盖掉 deny。deny 单调，
+ * 是因为"不许"不该被别处的"允许"盖掉——同一条原则在子代理派生那里已生效（父的 deny 继承、
+ * 父的 allow 不继承），这里只是把它推广到求值。
  *
  * 完整设计见 `docs/permissions.md`。
  */
 export type Action = "allow" | "ask" | "deny";
 
 /**
- * 动作类别。**五个**，且刻意不含"读"——读设计文档是这个产品的日常，我们没有 `.env` 那种
- * "读了就是泄露"的对应物；翻考据本（`recall`）同理，所以它干脆不声明权限。
+ * 动作类别。五个，刻意不含"读"——读设计文档是日常，没有 `.env` 那种"读了就是泄露"的对应物；
+ * 翻考据本（`recall`）同理，也不声明权限。
  *
- * 第五类 `notes`（记一条考据，2026-09-29 加）**不是"多一类更好管"，是 `edit` 装不下它**：
- * 第 1 步让任何匹配的 `deny` 恒赢（不受层级顺序影响），而 `deriveSubagentPermission` 又把父的
- * deny 原样搬进子代理——研究员身上已经挂着 `edit: "*": deny`，那条 deny 压得住 `edit` 里任何
- * "考据本例外"。而它必须在**隔离上下文**里记下来、还不能弹用户的脸（子代理的 `ask` 就是一次
- * `io.confirm`），所以只能自成一类。
+ * `notes` 自成一类，是因为 `edit` 装不下它：第 1 步让任何匹配的 `deny` 恒赢，而
+ * `deriveSubagentPermission` 又把父的 deny 原样搬进子代理——研究员身上挂着 `edit: "*": deny`，
+ * 那条 deny 压得住 `edit` 里任何"考据本例外"；而它必须在隔离上下文里记下、不能弹用户的脸
+ * （子代理的 `ask` 就是一次 `io.confirm`）。
  */
 export type PermissionName = "edit" | "delegate" | "extern" | "question" | "notes";
 
@@ -34,11 +33,11 @@ export interface Rule {
   action: Action;
 }
 
-/** 求值用的有序规则数组。**内部表示**——外面写规则一律用 `PermissionConfig`，不写这个。 */
+/** 求值用的有序规则数组。内部表示——外面写规则一律用 `PermissionConfig`，不写这个。 */
 export type Ruleset = Rule[];
 
 /**
- * **唯一的对外形状**：写规则的所有地方（`talemate.json` 的 `permissions`、`AgentDef.permission`、
+ * 唯一的对外形状：写规则的所有地方（`talemate.json` 的 `permissions`、`AgentDef.permission`、
  * `ModeDef.permission`）都用它。
  *
  * ```json
@@ -46,12 +45,11 @@ export type Ruleset = Rule[];
  * ```
  *
  * 规则数组是求值用的内部表示，手写它很难看——所以对外永远只暴露这个形状，靠 `fromConfig` 转。
- * 两种形状并存过一次，那是个妥协，已拆掉。
  */
 export type PermissionConfig = Record<string, Action | Record<string, Action>>;
 
 /**
- * 通配符匹配。`*` 匹配任意字符**且跨 `/`**（所以 `design/*` 就是 design 下一切），`?` 匹配单字符，
+ * 通配符匹配。`*` 匹配任意字符且跨 `/`（所以 `design/*` 就是 design 下一切），`?` 匹配单字符，
  * 锚定整串。pattern 是给人写的，不做路径分段语义。
  * Windows 上不分大小写——那里的文件系统本来就不分。
  */
@@ -65,7 +63,7 @@ export function match(input: string, pattern: string): boolean {
   return new RegExp(`^${escaped}$`, process.platform === "win32" ? "si" : "s").test(normalized);
 }
 
-/** `PermissionConfig` → 求值用的规则数组。**唯一的转换点**，别在别处手搓规则对象。 */
+/** `PermissionConfig` → 求值用的规则数组。唯一的转换点，别在别处手搓规则对象。 */
 export function fromConfig(config: PermissionConfig): Ruleset {
   const out: Ruleset = [];
   for (const [permission, value] of Object.entries(config)) {
@@ -84,9 +82,9 @@ export function merge(...rulesets: Ruleset[]): Ruleset {
 }
 
 /**
- * 按**层**拼一份规则集——**参数的顺序就是优先级**（后写的赢）。
- * 这是组合规则表的唯一写法：`mergeConfigs(内置默认, agent 声明, 模式覆盖, 用户配置)`。
- * 别在外面手写 `merge(fromConfig(a), fromConfig(b))`：那是同一条纪律的分散副本。
+ * 按层拼一份规则集——参数的顺序就是优先级（后写的赢）。
+ * 这是组合规则表的唯一写法：`mergeConfigs(内置默认, agent 声明, 模式覆盖, 用户配置)`；
+ * 别手写 `merge(fromConfig(a), fromConfig(b))`，那是同一条纪律的分散副本。
  */
 export function mergeConfigs(...configs: PermissionConfig[]): Ruleset {
   return merge(...configs.map(fromConfig));
@@ -107,12 +105,12 @@ export interface SourcedRule {
 }
 
 /**
- * 同一次判断，额外说清**这条是谁定的**。
+ * 同一次判断，额外说清这条是谁定的。
  *
- * 不用改求值逻辑就能做到：`evaluate` 返回的是某一层里的**那个对象**（`hits.at(-1)` / `find` 都不复制），
- * 所以按引用就能定位来源。默认那条是新建的，落不进任何一层 → `layer: -1`。
+ * 不用改求值逻辑就能做到：`evaluate` 返回的是某一层里的那个对象（`hits.at(-1)` / `find` 都不复制），
+ * 所以按引用就能定位来源；默认那条是新建的，落不进任何一层 → `layer: -1`。
  *
- * 给人看的（CLI 的 `/permissions`）：用户配了规则之后，只显示"结论是 deny"没用，得显示"是模式定的"。
+ * 给人看（CLI 的 `/permissions`）：只显示"结论是 deny"没用，得显示"是模式定的"。
  */
 export function evaluateWithSource(permission: string, pattern: string, ...rulesets: Ruleset[]): SourcedRule {
   const rule = evaluate(permission, pattern, ...rulesets);
@@ -132,18 +130,17 @@ export const BASE_PERMISSIONS: PermissionConfig = {
   extern: "ask",
   // 考据本（`.talemate/research/`）：写在引擎工作区、不是作品，但仍是落盘，所以默认问。
   //
-  // **这一条不能写成 `deny`。** 子代理的规则集是从父的 deny **派生**的（`deriveSubagentPermission`
-  // 只搬 deny），所以一个 `deny` 会原样落到 researcher 身上，把它自己声明的 `notes: "allow"`
-  // 永久压死——它一条也记不下来，而且看不出是权限问题。写成 `ask` 则不会传播：父的 `ask` 不在
-  // 派生的那一份里，子会话也从不合并本表。
+  // 这一条不能写成 `deny`：子代理的规则集从父的 deny 派生（`deriveSubagentPermission` 只搬 deny），
+  // 一个 `deny` 会原样落到 researcher 身上，把它自己声明的 `notes: "allow"` 永久压死——它一条也
+  // 记不下来，且看不出是权限问题。`ask` 则不传播：父的 `ask` 不在派生那份里，子会话也不合并本表。
   notes: "ask",
   question: "allow",
 };
 
 /**
- * 子代理的规则集**是拼出来的，不是继承的**：
- *   - 父的 `deny` **继承**——紧的往下传得下去
- *   - 父的 `allow` **不继承**——所以 mate 在 `accept-edits` 里落盘不问，它派出去的子代理不会跟着免确认
+ * 子代理的规则集是拼出来的，不是继承的：
+ *   - 父的 `deny` 继承——紧的往下传得下去
+ *   - 父的 `allow` 不继承——所以 mate 在 `accept-edits` 里落盘不问，派出去的子代理不会跟着免确认
  *   - 没自己声明 `delegate` 的一律禁委派（防链式 spawn）
  */
 export function deriveSubagentPermission(parent: Ruleset, sub: { permission?: PermissionConfig }): Ruleset {
@@ -159,7 +156,7 @@ export function deriveSubagentPermission(parent: Ruleset, sub: { permission?: Pe
 }
 
 /**
- * 从可见工具里剔除被 `deny *` 盖住的——那些是"这个模式下**没有**这个工具"，不是"有但会被拒"：
+ * 从可见工具里剔除被 `deny *` 盖住的——那些是"这个模式下没有这个工具"，不是"有但会被拒"：
  * 前者不占上下文、也不会诱导模型去试。带具体 pattern 的 deny 不隐藏工具（那是"这一类里有一个例外"）。
  */
 export function visibleTools<T extends { permission?: PermissionName }>(tools: T[], ...rulesets: Ruleset[]): T[] {

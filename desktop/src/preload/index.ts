@@ -1,9 +1,9 @@
 /**
- * 预加载：渲染层能碰到的**全部**东西就是下面这些。
+ * 预加载：渲染层能碰到的全部东西就是下面这些。
  *
  * 渲染层拿不到 Node、拿不到 `ipcRenderer` 本身——这是 Electron 安全模型里唯一要紧的一条，
- * 而它在这里格外便宜：壳要暴露的能力本来就少，而且**没有一条是"操作文件系统"**。
- * 取数一律走 `ipcMain.handle`（invoke/response），推送走事件。
+ * 而它在这里格外便宜：壳要暴露的能力本来就少，而且没有一条是"操作文件系统"。取数一律走
+ * `ipcMain.handle`（invoke/response），推送走事件。
  */
 import { contextBridge, ipcRenderer } from "electron";
 import type {

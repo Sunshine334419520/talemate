@@ -1,4 +1,4 @@
-/** 小工具函数：slug / 随机后缀 / 安全文件名 / 行读取，供 storage 两个文件共用。 */
+/** 小工具函数：slug / 随机后缀 / 安全文件名 / 行读取，供 storage 各文件共用。 */
 import { access, readFile, writeFile } from "node:fs/promises";
 
 export function slugify(s: string): string {
@@ -24,7 +24,7 @@ export function safeName(name: string): string | undefined {
  * 设计文档的相对子路径（design/ 之下，允许一层以上目录，如 wiki/地理.md、characters/沈越.md）。
  * 反斜杠归一为 `/`；拒绝空串/绝对路径/`.` `..`/空段；每段限 [\w一-鿿.\-]+。防目录穿越。
  *
- * **这个函数管的是"工具许建什么名字"**（写侧、以及模型自报的路径）。要挡的只是"读得回什么"
+ * 这个函数管的是"工具许建什么名字"（写侧、以及模型自报的路径）。要挡的只是"读得回什么"
  * 就别用它——见 `safeReadPath`。
  */
 export function safeRelPath(name: string): string | undefined {
@@ -39,10 +39,10 @@ export function safeRelPath(name: string): string | undefined {
 }
 
 /**
- * **只挡目录穿越**的路径规范化——读侧（`corpus.splitRoot`）用。
+ * 只挡目录穿越的路径规范化——读侧（`corpus.splitRoot`）用。
  *
- * 与 `safeRelPath` 的唯一区别是**不限制字符类**。那个类限制的是"工具建得出哪些名字"，
- * 拿它去限制"读得回哪些名字"，就会造出**看得见却读不着**的文件：枚举走真实目录、什么都看得见，
+ * 与 `safeRelPath` 的唯一区别是不限制字符类。那个类限制的是"工具建得出哪些名字"，拿它去限制
+ * "读得回哪些名字"，就会造出枚举得出来却读不回来的文件：枚举走真实目录、什么都看得见，
  * 而读回时被字符类挡掉。那正是 `corpus.ts` 要消灭的那种两侧不一致。
  *
  * 手放的文件（`characters/约翰·史密斯.md`——译名里的 `·` 不在那个类里）是这一类里最要紧的：

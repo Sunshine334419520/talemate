@@ -12,10 +12,9 @@ export interface Skill {
 /**
  * 解析 SKILL.md：剥离 ---frontmatter---，取 name/description。
  *
- * **行尾先归一。** 正则里的 `\n` 是真换行符，而 Windows 检出（CRLF）的文件里第一行是 `---\r\n`，
- * 匹配不上 → frontmatter 读成空 → 缺 name 直接抛 → **被 `scanDir` 的 catch 静默吞掉**。
- * 现象是库看着是满的、`discoverSkills` 却返回空数组，一个 skill 都不报错地消失。
- * （仓库自带的那几个 skill 就是这个下场：在 Windows 上从来没被加载过。）
+ * 行尾先归一。正则里的 `\n` 是真换行符，而 Windows 检出（CRLF）的文件里第一行是 `---\r\n`，
+ * 匹配不上 → frontmatter 读成空 → 缺 name 直接抛 → 被 `scanDir` 的 catch 静默吞掉；现象是库
+ * 看着是满的、`discoverSkills` 却返回空数组，一个 skill 都不报错地消失。
  */
 export function parseSkillFile(raw: string, location: string): Skill {
   const text = raw.replace(/\r\n/g, "\n");

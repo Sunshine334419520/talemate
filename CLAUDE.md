@@ -26,13 +26,43 @@ So: a new tool's `description` is English, but the message it returns on success
 
 - **No `export default`** — zero in this codebase. Always inline named exports.
 - **`export function` / `export async function`** — never `export const x = () => {}`.
-- **Every source file opens with a `/** ... */` block comment** stating what the module is and where its boundaries are. Files that own a policy (see `framework/design_ops.ts`, `tool/web_tools.ts`) put the policy there as a numbered list or ASCII diagram. (`src/legacy/` predates this rule and is exempt — it's dead code.)
-- **Comments explain *why*, not *what*.** This is the strongest habit in the repo — comments record the bug that motivated the code, the thing that was tried and rejected, the invariant that must hold. Match that; a comment restating the line below it is noise.
+- **Every source file opens with a `/** ... */` block comment** stating what the module is and where its boundaries are. Files that own a policy (see `framework/write_ops.ts`, `tool/web_tools.ts`) put the policy there as a numbered list or ASCII diagram.
+
+### Comments
+
+Comments explain *why*, not *what* — the bug that motivated the code, the thing
+that was tried and rejected, the invariant that must hold. A comment has to still
+be **true** after the next refactor. Chinese, plain sentences, no drama.
+
+**Delete a comment when:**
+- It restates the line below it (`// 组装本次请求`).
+- It narrates the development process — `上一版就是这么错的`, `曾经有过`,
+  `旧账`, a date, a removed patch variant. Git remembers; the file should not.
+- It is atmosphere rather than fact (`// 硬拽出来`, `// 骗人`, `// 糊成一片`).
+- Another comment nearby already says it.
+
+**Keep it — reword to a sentence or two, but keep the fact:**
+- An invariant the code cannot express (uniqueness, ordering, bounded spans).
+- A real bug the line exists to prevent (CRLF silently lost a skill).
+- An alternative that was tried and rejected, and why.
+- A security or trust boundary (all markdown goes through DOMPurify).
+- A constraint imposed from outside the file (wire format, provider quirk).
+
+**Shape**
+- `//` for one idea, no trailing period. Block comments for file headers and
+  non-obvious exports; keep a block to ≤ 4 lines.
+- No `**bold**` in source comments, no emoji. A file header says what the module
+  owns and what it refuses to do — not its contents, not its history.
+- Never cite a line number, commit, or date. Never name a path that no longer exists.
+- One fact, one place: if three files explain the same invariant, keep it in the
+  file that owns it and leave the others a pointer (`见 write_ops.ts`).
+- A comment-only edit must leave every byte outside the comment unchanged.
+- Unsure whether a comment carries weight? Keep it and say so — deleting a live
+  invariant costs far more than keeping a dull sentence.
 - **Types**: cross-layer ones live in `src/core/types.ts`; module-local ones are defined in place next to their module. Export `interface` / `type` — never a bare object-shape alias.
 - **`strict` TypeScript, no escape hatches**: no `any`, no `@ts-ignore`, no `@ts-expect-error`.
 - **No linter or formatter is configured.** Match the surrounding file: 2-space indent, double quotes, semicolons.
 - **`as const`** only to narrow a literal (a string that feeds a union, an array used as a source of truth). `_` prefix for unused params (`_args`) and runtime marker fields (`_type`).
-- **`src/legacy/` is dead code** — nothing imports it. Don't copy from it, don't fix it.
 
 ## Tool conventions
 

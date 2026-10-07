@@ -1,11 +1,9 @@
 /**
- * Compaction（上下文压缩）：把最早的一段历史压成一条 role:"compaction" 消息（summary+recent）。
+ * Compaction（上下文压缩）：把最早的一段历史压成一条 role:"compaction" 消息（summary+recent），
  * 之后 loadModelWindow 只取"最新 compaction 之后"的 seq。
  *
- * - estimateChars / isOverBudget：粗略估算文本量，作为是否压缩的信号。
- * - compact：把 head 喂给 LLM 生成摘要，以 summary+recent 追加一条 compaction 消息并返回它。
- *
- * 触发在 session 侧：用内存缓存的消息判 isOverBudget，超阈值才调 compact（内存消息传进来，避免重复读盘）。
+ * estimateChars / isOverBudget 估文本量、判是否该压；compact 把 head 喂给 LLM 生成摘要。
+ * 触发在 session 侧：用它内存缓存的消息判 isOverBudget，超阈值才调 compact（免重复读盘）。
  */
 import { SUMMARIZER_SYSTEM } from "../agent/registry";
 import type { ModelConfig, StoredMessage } from "../core/types";
@@ -25,7 +23,7 @@ export function estimateChars(messages: StoredMessage[]): number {
         if (p.type === "tool") n += (p.output?.length ?? 0) + (p.input?.length ?? 0);
       }
     } else {
-      // compaction 的正文分两块：summary 与 recent，**两块都要算**。只算 summary 会让窗口估算偏低
+      // compaction 的正文分两块：summary 与 recent，两块都要算。只算 summary 会让窗口估算偏低
       // （实测 recent 有几百到两千多字），阈值就白设了。
       n += (m.text?.length ?? 0) + (m.summary?.length ?? 0) + (m.recent?.length ?? 0);
     }
@@ -34,17 +32,13 @@ export function estimateChars(messages: StoredMessage[]): number {
 }
 
 /**
- * 这个会话**是否该压缩**。
- *
- * 判据是**真实用量**：provider 每次都会报回 `usage.input`（那一次请求到底发了多少 token），
- * 会话把它记在元信息里（`SessionMeta.usage`）。触发点由**模型的窗口**算（`core/windows.ts` 的
- * `compactTrigger`，窗口的八成）——所以 1M 窗口的模型就该到 80 万才动手，而不是所有模型都按同一个数。
- *
- * **没有真数时退回估算**（这个会话还没发过请求）——按字符数估，中文 1 字符≈1 token。新会话本来也
- * 离阈值很远，所以这一步是兜底，不是常态。
+ * 这个会话是否该压缩。判据是真实用量：provider 报回的 `usage.input`（那一次请求到底发了多少 token），
+ * 会话记在 `SessionMeta.usage` 里。触发点按模型的窗口算（`core/windows.ts` 的 `compactTrigger`，八成），
+ * 所以 1M 窗口的模型到 80 万才动手，而不是所有模型按同一个数。没有真数时退回字符估算（这个会话还没
+ * 发过请求）——新会话离阈值本来就远，所以是兜底不是常态。
  *
  * `messages` 必须是模型实际会看到的那一段（`loadModelWindow` 之后），不是整份会话文件：文件只增不减，
- * 量它等于**越过阈值一次就永远超预算**——此后每回合压一次，而每压一次就把上下文洗掉一次，
+ * 量它等于越过阈值一次就永远超预算——此后每回合压一次，而每压一次就把上下文洗掉一次，
  * 模型只能把刚读过的文档重读一遍。
  */
 export function isOverBudget(

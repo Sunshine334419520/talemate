@@ -1,13 +1,13 @@
 /** talemate 跨层共享类型。轻栈：TS + Bun、无 Effect、文件系统存储。 */
 import type { Action, PermissionConfig, PermissionName } from "../permission";
 
-/** Provider 抽象：anthropic 原生 + openai 兼容（DeepSeek/Moonshot 等经 baseURL 指向）+ mock（离线冒烟） */
+/** provider：anthropic 原生、openai 兼容（DeepSeek/Moonshot 等经 baseURL 指向）、mock（离线冒烟） */
 export type Provider = "anthropic" | "openai" | "mock";
 
-/** 推理强度：off=关；low/high/max=开（DeepSeek 等生效） */
+/** 推理强度；off=关，其余三档为开，只在 DeepSeek 等支持推理的 provider 上生效 */
 export type Reasoning = "off" | "low" | "high" | "max";
 
-/** 模型配置：每角色可覆盖（talemate.json 里 agents.<id>），缺省读环境 */
+/** 模型配置；每角色可覆盖（talemate.json 的 agents.<id>），缺省从环境变量读 */
 export interface ModelConfig {
   provider: Provider;
   model: string;
@@ -18,28 +18,28 @@ export interface ModelConfig {
   temperature?: number;
 }
 
-/** 角色模式：primary=日常对话面；subagent=只能被 task 委派 */
+/** 角色模式：primary 是日常对话面，subagent 只能被 task 委派 */
 export type AgentMode = "primary" | "subagent";
 
-/** 声明式角色定义（纯数据，注册表持有；talemate.json 可覆盖 model 等字段） */
+/** 声明式角色定义：纯数据、注册表持有，talemate.json 可覆盖 model 等字段 */
 export interface AgentDef {
   id: string; // "mate" | "planner" | "researcher" | …
   name: string; // 显示名（搭档 / 写手）
   description: string; // 何时选它（task 路由 / 用户可见）
   mode: AgentMode;
-  tools: string[]; // 该角色可见工具 id 列表（**广告**；执行边界是 permission）
-  system: string; // 角色 system prompt
-  /** 这个角色自己的权限规则（配置形），拼在内置默认之后、模式之前。缺省 = 全用默认 */
+  tools: string[]; // 该角色可见工具 id 列表——是广告，不是执行边界（边界是 permission）
+  system: string;
+  /** 这个角色的权限规则（配置形），拼在内置默认之后、模式之前；缺省即全用默认 */
   permission?: PermissionConfig;
   model?: ModelConfig; // 缺省继承项目默认模型
-  steps?: number; // 本轮最多多少步（防跑飞）
-  /** 内部隐藏 agent（如 summarizer）：不参与 /agent 切换、不进 task 可派列表、不当默认 primary。 */
+  steps?: number; // 本轮最多多少步，防跑飞
+  /** 内部隐藏 agent（如 summarizer）：不参与 /agent 切换、不进 task 可派列表、不当默认 primary */
   hidden?: boolean;
 }
 
 /** ─── 工具 ─── */
 
-/** 一个工具的入参 JSON Schema（阶段一：极简 JSONSchema 子集） */
+/** 工具入参的 JSON Schema；只支持 JSONSchema 的一个极小子集 */
 export type JsonSchema = {
   type: "object";
   properties?: Record<
@@ -51,22 +51,22 @@ export type JsonSchema = {
 };
 
 /**
- * 一份待用户拍板的设计提案（propose → apply 的中转态）。
- * apply-design 不收正文、只写这里存的那份，所以"用户看过的 == 落盘的"由构造保证。
- */
-/**
- * `propose-plan` 登记的**章节规划**在待执行表里的键。
+ * `propose-plan` 登记的章节规划在待执行表里的键。
  *
- * 保留键而不是路径：待执行表的键对文档提案来说是**落盘目标**（`write_ops` 的 `via:"pending"` 拿它
+ * 用保留键而不是路径：待执行表的键对文档提案来说是落盘目标（`write_ops` 的 `via:"pending"` 拿它
  * 去取 op），而规划不走那条路——它落 `.talemate/plans/`（引擎工作区），由 `framework/plan.ts`
  * 自己写。设计文档的键一定是 `design/` 下的路径，撞不上。
  */
 export const PLAN_KEY = "__plan__";
 
+/**
+ * 一份待用户拍板的设计提案（propose → apply 的中转态）。
+ * apply-design 不收正文、只写这里存的那份，所以"用户看过的 == 落盘的"由构造保证。
+ */
 export interface PendingProposal {
   /**
-   * 目标活文档的**项目相对路径**（`design/core.md`）；规划提案是 `PLAN_KEY`——它**不是一个路径**，
-   * 所以这个字段叫 `name` 而不是 `path`：它装的是"这份提案的键"。
+   * 目标活文档的项目相对路径（`design/core.md`）；规划提案是 `PLAN_KEY`——那不是路径，
+   * 所以字段叫 `name` 而不是 `path`：它装的是这份提案的键。
    */
   name: string;
   /** 正文：文档提案 = 将落盘的整篇全文；规划 = 那一份规划（落 `.talemate/plans/`） */
@@ -74,26 +74,24 @@ export interface PendingProposal {
   /**
    * 提案时的整篇快照——落盘前校验文档未被改过，变了要求重新提案（CAS 的基准）。
    *
-   * **提案永远是整篇**：局部修改走二向的 `edit`，不进提案。所以没有"只改一格"的提案这一说，
-   * 也就没有那个曾经的 `section` 字段——"我只动了第 3 格"由提案渲染里的 `★本版改动` 表达。
+   * 提案永远是整篇：局部修改走二向的 `edit`，不进提案，所以不存在"只改一格"的提案。
    */
   base?: string;
   /**
-   * 仅规划提案：这份规划是**第几章**的。
+   * 仅规划提案：这份规划是第几章的。
    *
-   * 存章号而不是一个展示用的字符串，是因为它有两个活儿：待办注记靠它说清"这是哪一章的规划"，
+   * 存章号而不是展示用字符串，是因为它有两个活儿：待办注记靠它说清"这是哪一章的规划"，
    * 工件路径（`.talemate/plans/ch_<N>.md`）也靠它算出来——一份规划只有一个出处。
    */
   chapter?: number;
-  /** 用户已回话表示同意。**由 harness 判定**（见 Session 里按用户回话匹配同意词），不由模型自述 */
+  /** 用户已回话表示同意；由 harness 按用户回话匹配同意词判定，不由模型自述 */
   approved: boolean;
   /**
    * 仅规划提案：这一章的正文已经落盘了。
    *
-   * **是标记，不是删除。** 规划正文只活在 `pending` 的 `content` 里——工件落在 `.talemate/plans/`，
-   * 而 `.talemate/` 不在 `DOC_ROOTS`（`design` / `chapters` / `state`），`read` / `list` / `search`
-   * 都够不着它。删掉条目 = 用户说"改第 2 条"时谁也读不到第 2 条。留着只多一行注记。
-   *
+   * 是标记，不是删除：规划正文只活在 `pending` 的 `content` 里（工件在 `.talemate/plans/`，
+   * 而 `.talemate/` 不在 `DOC_ROOTS`，`read` / `list` / `search` 都够不着它），删掉条目就成了
+   * "用户说改第 2 条时谁也读不到第 2 条"；留着只多一行注记。
    * 置位者是 harness（正文落盘那一刻），不由模型自述——同 `approved`。
    */
   done?: boolean;
@@ -101,22 +99,17 @@ export interface PendingProposal {
 }
 
 /**
- * 一次文件改动的**字节级**描述。四个 kind，**零领域知识**——不认识"小节""角色卡""层"。
+ * 一次文件改动的字节级描述：四个 kind，零领域知识——不认识"小节""角色卡""层"。
  *
- * 领域语义（"改某一格"）不占 op 种类：它在工具层派生成 `replace` 的 (find, replace)。
- * 这样加一种新文档形状不必加新 op，写盘路径也只有一条。
+ * 领域语义（"改某一格"）不占 op 种类，它在工具层派生成 `replace` 的 (find, replace)，
+ * 所以加一种新文档形状不必加新 op，写盘路径也只有一条。
  *
- * `path` 是**项目相对路径**（`design/core.md` / `chapters/chapter_ch1_v1.md`）——
- * 与权限的 `pattern` 同一个口径，两者不会各说各话。
+ * `path` 是项目相对路径，与权限的 `pattern` 同一个口径，两者不会各说各话。
  */
 export type FileOp =
-  /** 整篇：新建或覆盖。 */
   | { kind: "write"; path: string; content: string }
   /** 局部：把 find 换成 replace。find 必须非空且唯一（`all` 时例外）。 */
   | { kind: "replace"; path: string; find: string; replace: string; all?: boolean }
-  // 没有 `append`。它一度在（"末尾加一节"），但**没有任何工具会产出它**——末尾追加拿尾块当锚点
-  // 就是一次普通的 `replace`，而进不了 op 的东西留着只会让"四个 kind"这句话不成立。
-  /** 删掉整个文件。 */
   | { kind: "delete"; path: string };
 
 /** 工具执行环境：循环提供给 execute 的能力（会话上下文） */
@@ -125,13 +118,13 @@ export interface ToolContext {
   sessionId: string;
   agent: string;
   /**
-   * **原始**确认口，不走权限。只有 `ask`（它要拿它当弹窗）和 `confirm` 工具该调它；
-   * 其余工具一律走 `ask`——那才是带权限判定的那道口。
+   * 原始确认口，不走权限：只有 `ask`（拿它当弹窗）和 `confirm` 工具该调它，其余工具一律走 `ask`
+   * ——那才是带权限判定的那道口。
    */
   confirm(action: string, summary: string): Promise<ConfirmReply>;
-  /** 纯求值：这个 `(permission, pattern)` 现在会怎么处理。**不打扰用户**——runner 的兜底用它。 */
+  /** 纯求值：这个 `(permission, pattern)` 现在会怎么处理，不打扰用户——runner 的兜底用它 */
   check(permission: PermissionName, pattern: string): Action;
-  /** 求值 + 该问就问：`ask` 那一档弹给用户，并按答复记下「以后都允许」。所有改世界的工具走这一个口。 */
+  /** 求值 + 该问就问：`ask` 那一档弹给用户，并按答复记下「以后都允许」；所有改世界的工具走这一个口 */
   ask(req: PermissionRequest): Promise<PermissionVerdict>;
   /** 向用户提问要创作决策（非审批），返回答案文本 */
   askUser(question: string, options?: string[]): Promise<string>;
@@ -151,16 +144,12 @@ export interface ToolContext {
    */
   getMode(): string | undefined;
   /**
-   * 读一份文档（**项目相对**路径：`design/core.md` / `chapters/chapter_ch1_v1.md`），不存在 → undefined。
+   * 读一份文档（项目相对路径：`design/core.md` / `chapters/chapter_ch1_v1.md`），不存在 → undefined。
    *
-   * **读口留着，写口没有**：改文件一律走 `framework/write_ops` 那一条路径。
-   * 从前这里还挂着 `writeDesign` / `removeDesign` / `saveChapter` 三个裸写方法，任何工具都能绕过
-   * 整套变换、CAS 与权限——`save-chapter` 当年就是那么绕过去的。删掉它们之后，"唯一写路径"
-   * 不再是一句约定，而是**类型上只有一个口**。
+   * 读口留着，写口没有：改文件一律走 `framework/write_ops` 那一条路径——留一个裸写方法，任何工具
+   * 都能绕开整套变换、CAS 与权限，所以"唯一写路径"要靠类型上只有一个口来保证。
    *
-   * 三个口都**不预设管辖范围**（没有"design 版"的方法）：`prefix` 由调用工具给。
-   * 从前它们分别叫 `readDesign` / `listDesigns` / `searchDesigns`，把"只管 design/"焊进了名字里，
-   * 于是章节读不到、`listChapters` 成了没人调的死方法。
+   * 三个口都不预设管辖范围（没有"design 版"的方法），`prefix` 由调用工具给。
    */
   readDoc(path: string): Promise<string | undefined>;
   /** 某一段语料的目录（渲染好的文本，含每个文档的一级小节标题）。`prefix` 是项目相对前缀，如 `design/` */
@@ -191,7 +180,7 @@ export interface PermissionRequest {
   always?: string;
   /** 弹给用户的标题 */
   summary: string;
-  /** 弹给用户**做判断的材料**（改文件时是 diff，委派子代理时是 prompt 规模等）。 */
+  /** 弹给用户做判断的材料（改文件时是 diff，委派子代理时是 prompt 规模等）。 */
   detail?: string;
 }
 
@@ -203,13 +192,13 @@ export interface ToolDef<Args = unknown> {
   description: string; // 给模型的说明（写清何时用/边界/用法）
   input: JsonSchema;
   /**
-   * 这个工具属于哪一类动作。**没有 = 不改变世界，不要权限**（读设计、取规范、提案、模式切换）。
+   * 这个工具属于哪一类动作：没有 = 不改变世界、不要权限（读设计、取规范、提案、模式切换）。
    * 两处用它：runner 做粗粒度兜底（`deny *` 的类别一律拒，哪怕工具是被幻觉调出来的），
    * session 把被禁的工具从 schema 里剔掉（`permission.visibleTools`）。
    */
   permission?: PermissionName;
   /**
-   * 该工具**成功后结束本回合**，把控制权交回用户（如 propose-design：结论提出来了，该用户说话了）。
+   * 该工具成功后结束本回合，把控制权交回用户（如 propose-design：结论提出来了，该用户说话了）。
    * 只在 state==="completed" 时生效——校验失败必须留给模型同轮自纠，否则循环会死在一个本可自愈的错误上。
    */
   halt?: boolean;
@@ -258,7 +247,6 @@ export interface StoredMessage {
   /** role=assistant：内容单元 */
   parts?: AssistantPart[];
   finish?: "stop" | "tool_calls" | "error";
-  /** role=compaction */
   summary?: string;
   recent?: string;
   model?: string;
@@ -273,10 +261,10 @@ export interface SessionMeta {
   agent: string; // 当前角色
   model?: ModelConfig;
   /**
-   * **每一轮请求的真实用量**（provider 报回来的，不是估算）。
+   * 每一轮请求的真实用量（provider 报回来的，不是估算）。
    *
-   * 它是会话自己的账：界面靠它显示上下文占比与走势，而**压缩将来也该靠它**——今天压缩是按字符数
-   * 估的（`compaction.estimateChars`），那份估算在"离模型窗口还有多远"这个问题上永远是猜。
+   * 它是会话自己的账：界面靠它显示上下文占比与走势，压缩将来也该靠它——目前压缩按字符数估
+   * （`compaction.estimateChars`），那份估算在"离模型窗口还有多远"上永远是猜。
    * 落在这里而不是壳那侧：会话元信息本来就归 harness，另存一份就是第二个真相源。
    */
   usage?: { input: number; output: number }[];
@@ -293,8 +281,8 @@ export interface ProjectMeta {
   /**
    * 频道：男频 / 女频 / 不限。
    *
-   * 与 `genre` 分开存而不是拼成一个串：这两个是**两个独立的决定**，拼起来之后想按其一筛选就得拆串。
-   * 注意它记的是**用户在书架上的声明**，而 `design/core.md` 的「题材 · 频道」是模型据此展开的定位
+   * 与 `genre` 分开存而不是拼成一个串：这两个是两个独立的决定，拼起来之后想按其一筛选就得拆串。
+   * 它记的是用户在书架上的声明，而 `design/core.md` 的「题材 · 频道」是模型据此展开的定位
    * ——两者不必逐字一致，前者是输入、后者是产物。
    */
   channel?: string;
@@ -302,7 +290,7 @@ export interface ProjectMeta {
   /** 角色覆盖（talemate.json agents.<id> 可覆盖 model/system/permission 等） */
   agents?: Record<string, Partial<AgentDef>>;
   /**
-   * 这个项目的权限规则（配置形）——规则表的**最后一层、最高优先级**。
+   * 这个项目的权限规则（配置形）——规则表的最后一层、最高优先级。
    * 典型用法是"放宽大部分、收紧一个"：`{ edit: { "*": "allow", "design/core.md": "ask" } }`。
    * 但 `deny` 单调：模式写的 deny 压得过这里（见 docs/permissions.md）。
    */
@@ -323,8 +311,8 @@ export type LLMEvent =
   /** 只读展示给用户的块（提案逐格清单等）——无返回值，与 confirm/askUser 的交互式提示区分 */
   | { type: "proposal"; text: string }
   /**
-   * 这一次请求的用量。**它本来就有**（provider 每次都拿到 `usage`），从前只是没人接。
-   * 界面靠它显示"这个会话用了多少上下文"——`input` 就是这一次发出去的全部 token（≈当前上下文大小）。
+   * 这一次请求的用量（provider 每次都拿到 `usage`）。界面靠它显示"这个会话用了多少上下文"
+   * ——`input` 就是这一次发出去的全部 token（≈当前上下文大小）。
    */
   | { type: "usage"; input: number; output: number }
   | { type: "step.start" }

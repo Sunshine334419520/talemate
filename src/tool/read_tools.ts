@@ -1,15 +1,10 @@
 /**
- * read-tools：**项目语料的三个读口**——read / list / search。
- *
- * 三个动词对应三种问法：给路径要内容（`read`）、要目录（`list`）、要跨文档找词（`search`）。
- * 都**按项目相对路径**寻址（`design/core.md` / `chapters/chapter_ch2_v1.md`），与 `write` / `edit` /
- * `delete` 同一套口径——所以 `read` 读得到章节，`search` 也扫得到章节。
- *
- * 从前它们叫 `read-design` / `list-designs` / `search-designs`，把"只管 `design/`"焊进了名字里：
- * 于是章节读不到、`listChapters` 成了没人调的死方法。现在管辖范围由 `path` 参数给，名字不再撒谎。
+ * read-tools：项目语料的三个读口 read / list / search——给路径要内容、要目录、要跨文档找词。
+ * 都按项目相对路径寻址，与 `write` / `edit` / `delete` 同一套口径，所以 `read` 读得到章节，
+ * `search` 也扫得到章节。名字里没有 `-design`：管辖范围由 `path` 参数给，已越过 `design/`。
  *
  * 取数在 `storage/corpus.ts`，目录渲染在 `framework/anchor.buildIndex`，命中渲染在
- * `framework/search.renderHits`——本文件只是三个薄壳，一句 fs 都不碰（有结构测试钉着）。
+ * `framework/search.renderHits`；本文件只是三个薄壳，一句 fs 都不碰（有结构测试钉着）。
  */
 import type { ToolContext } from "../core/types";
 import { getSection } from "../framework/markdown";
@@ -19,7 +14,7 @@ import { defineTool, type RegisteredTool } from "./define";
 const P = (id: string) => readPrompt(`tools/${id}`);
 
 /**
- * 路径所属的那一段（`design/core.md` → `design/`），用于"没找到"时列出**那一段**有什么。
+ * 路径所属的那一段（`design/core.md` → `design/`），"没找到"时用它列出那一段有什么；
  * 认不出根（模型给了个裸文件名）→ 整个项目，反正它更需要看全貌。
  */
 function rootOf(path: string): string {
@@ -28,14 +23,13 @@ function rootOf(path: string): string {
 }
 
 /**
- * 文档不存在时的文案。它是给模型的**路由线索**——"可用：…"让模型知道该写哪一份，
+ * 文档不存在时的文案：它是给模型的路由线索，"可用：…"让模型知道该写哪一份，
  * 所以带上清单，而不是只说一句"找不到"。
  */
 async function notFound(ctx: ToolContext, path: string): Promise<string> {
   return `没有找到文档 ${path}。可用：\n${await ctx.listIndex(rootOf(path))}`;
 }
 
-/** read：读整篇或按小节读 */
 export const readTool: RegisteredTool<{ path: string; section?: string }> = defineTool<{
   path: string;
   section?: string;
@@ -74,7 +68,7 @@ export const readTool: RegisteredTool<{ path: string; section?: string }> = defi
 });
 
 /**
- * list：目录索引。`path` 是**项目相对前缀**——给 `design/` 就只列企划，给 `chapters/` 只列正文，
+ * list：目录索引；`path` 是项目相对前缀——给 `design/` 就只列企划，给 `chapters/` 只列正文，
  * 不给就列整个项目。
  */
 export const listTool: RegisteredTool<{ path?: string }> = defineTool<{ path?: string }>({
@@ -94,7 +88,7 @@ export const listTool: RegisteredTool<{ path?: string }> = defineTool<{ path?: s
   },
 });
 
-/** search：跨文档查引用。`path` 同上——范围是参数，不是焊在工具名里的。 */
+/** search：跨文档查引用；`path` 同 list——范围是参数，不是焊在工具名里的。 */
 export const searchTool: RegisteredTool<{ query: string; path?: string }> = defineTool<{
   query: string;
   path?: string;

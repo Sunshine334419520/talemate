@@ -1,16 +1,8 @@
 /**
- * design-tools：design/ 的**三向提案**（propose / apply）。一工具一职责；description 在
- * prompts/tools/<id>.txt。三个**读**口（read / list / search）在 `read_tools.ts`——它们现在是
- * 项目级的，与 design/ 无关。
- *
- * 两段式：propose-design（不写盘，渲染提案并 halt 本回合）→ 用户回话 → apply-design（落提案那一份）。
- * **两者都要先在草稿模式里**——三向只有那一条通道。
- *
- * 全是**薄壳**：拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，校验、不变量后验、
- * diff、权限、CAS、原子写都在那一处。
- *
- * 注意：`AgentDef.tools` 白名单只决定模型看到哪些 schema，**不是执行边界**（session 传的是全局 registry）。
- * 撤一个工具必须真删定义，只从白名单拿掉等于没拿掉。
+ * design-tools：design/ 的三向提案（propose / apply），两段式、两者都要先在草稿模式里；三个读口
+ * 在 `read_tools.ts`，已是项目级、与 design/ 无关。全是薄壳：校验、不变量后验、diff、权限、CAS、
+ * 原子写都在 `framework/write_ops.ts` 那条唯一路径。`AgentDef.tools` 白名单不是执行边界——撤工具
+ * 必须真删定义，只从白名单拿掉等于没拿掉。
  */
 import { DRAFT_MODE } from "../agent/modes";
 import { checkInvariants } from "../framework/invariants";
@@ -25,13 +17,13 @@ import { defineTool, type RegisteredTool } from "./define";
 const P = (id: string) => readPrompt(`tools/${id}`);
 
 /**
- * 提案只写 `design/` 下的文档（章节正文走 `write`）。**就这一条边界**——其余交给注册表：
- * "某一层的主文档不许写到别处"换成按 `SPECS` 的 `target` 判，不另抄一份文件清单。
+ * 提案只写 `design/` 下的文档（章节正文走 `write`）；"某一层主文档不许写到别处"按 `SPECS` 的
+ * `target` 判，不另抄一份文件清单。
  */
 function resolveDoc(path: unknown): { path: string } | { error: string } {
   const clean = (typeof path === "string" ? path : "").replace(/\\/g, "/").trim();
   if (!clean) {
-    // `JSON.stringify(undefined)` 回的是 `undefined`（不是字符串），`.slice` 会炸——所以先兜一层。
+    // JSON.stringify(undefined) 回的是 undefined（不是字符串），.slice 会炸——所以先兜一层
     const got = JSON.stringify(path ?? null) ?? "undefined";
     return {
       error: `propose-design/apply-design 缺少 path（收到：${got.slice(0, 200)}）——给 design/ 下的相对路径，如 design/core.md。`,
@@ -53,11 +45,8 @@ function resolveDoc(path: unknown): { path: string } | { error: string } {
 }
 
 /**
- * 整篇提案打到**已存在**的角色卡上时给用户的告警（不阻断，只放在提案前面）。
- *
- * 这是 `add-character` 那条查重逻辑的替代品：从前重复建卡会被工具直接拒绝，现在"创建"与
- * "重写"是同一条通道，只能靠把后果列出来区分。提案渲染只列**新**内容——不显式说一句，
- * 用户看不出来旧卡上哪些小节会被抹掉。
+ * 整篇提案打到已存在的角色卡上时给用户的告警（不阻断，只放在提案前面）。
+ * 创建与重写走同一条通道，且提案渲染只列新内容——不显式说一句，用户看不出旧卡上哪些小节会被抹掉。
  */
 function cardRewriteWarn(current: string | undefined): string | undefined {
   if (current === undefined) return undefined;
@@ -69,11 +58,9 @@ function cardRewriteWarn(current: string | undefined): string | undefined {
 }
 
 /**
- * propose-design：把一版**整篇**结论交给用户审阅——不写盘，并把本回合交给用户（halt）。
- *
- * **提案只有整篇一种形态。** 局部修改走二向的 `edit`（用户看 diff 就够，不必读一遍全文）；
- * 想让用户细看的那一版，哪怕只动了一格，也整篇提出来——渲染里的 `★本版改动` 会指出动过哪几格。
- * 这一刀把"提案"和"改一格"彻底分开，两边的审查材料也就不再互相将就。
+ * propose-design：把一版整篇结论交给用户审阅——不写盘，并把本回合交给用户（halt）。
+ * 提案只有整篇一种形态：局部修改走二向的 `edit`（看 diff 就够），哪怕只动一格也整篇提出来，
+ * 渲染里的 `★本版改动` 会指出动过哪几格。
  */
 export const proposeDesignTool: RegisteredTool<{ path: string; content: string }> = defineTool<{
   path: string;
@@ -81,7 +68,7 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
 }>({
   id: "propose-design",
   description: P("propose-design"),
-  halt: true, // 结论提出来了，接下来该用户说话——本回合到此为止（不靠模型自觉）
+  halt: true,
   input: {
     type: "object",
     properties: {
@@ -99,15 +86,13 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
     required: ["path", "content"],
   },
   async execute(args, ctx) {
-    // 本工具带 `halt`，而 runner 对**任何 return** 都置 halt（见 `tool/runner.ts`）——所以下面每条
-    // 自愈路径都必须 `throw`：return 等于把回合停在一个本可自愈的错误上。被拒时用户看到的还不是
-    // 一条错误，而是**回合莫名结束**（提案没交出去，CLI 的提案块也不会出现）。
-    // 钉这条语义的是 `tests/framework.test.ts` 的 "tool runner · halt"。
+    // 本工具带 halt，runner 对任何 return 都置 halt（见 `tool/runner.ts`）——所以自愈路径必须 throw，
+    // 否则回合会停在一个本可自愈的错误上，用户看到的是回合莫名结束（提案没交出去，CLI 的提案块也不出现）；
+    // `tests/framework.test.ts` 的 "tool runner · halt" 钉着这条
     const target = resolveDoc(args.path);
     if ("error" in target) throw new Error(target.error);
     const path = target.path;
-    // 三向只有草稿模式那一条通道（见 agent/modes.ts）。不在里面就没有"提意见"这一路，
-    // 交出去也只是个二向的弹窗——不如让模型先把模式切过去。
+    // 三向只有草稿模式那一条通道；不在里面交出去也只是个二向的弹窗，不如让模型先把模式切过去
     if (ctx.getMode() !== DRAFT_MODE) throw new Error(notInDraft("把这一版整篇草稿提出来"));
     const content = (args.content ?? "").trim();
     if (!content) {
@@ -117,10 +102,8 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
     }
     const current = await ctx.readDoc(path);
 
-    // 不变量**在这里先跑一遍**：它们判的是"结果长什么样"（见 framework/invariants.ts），落盘时还会
-    // 再判一次；但提案必须先挡住——否则用户批了一版注定落不下去的草稿，要到 apply-design 才知道不行。
-    // 同一份注册表两处共用，所以提案时的判据与落盘时的判据不会各说各话。
-    // 路径**原样**传：这里、`write_ops`、`invariants` 用的是同一个项目相对口径。
+    // 不变量在这里先跑一遍（落盘时还会再判一次）：提案必须先把注定落不下去的草稿挡住，否则用户批完
+    // 要到 apply-design 才知道不行。同一份注册表两处共用，判据不会各说各话；路径原样传，三处同一口径
     const violation = checkInvariants({ path, opKind: "write", before: current, after: content });
     if (violation) throw new Error(violation);
     if (!reviewable(path, content)) {
@@ -147,12 +130,10 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
 });
 
 /**
- * apply-design：把待落盘提案写进文件。**不收正文**——内容只从提案登记里取。
- *
- * 四道闸全在 `write_ops` 那条唯一路径上，这里一句校验都不写：
- * 没有提案 / 用户没同意（同意由 harness 按用户回话判定，不由模型自述）/ 文档在提案后被改过（CAS）/
- * 规则表不许。「模型夹带用户没看过的字节」是**写不出来**，不是被检查拦住——`via:"pending"`
- * 那条路压根不接受正文。
+ * apply-design：把待落盘提案写进文件，不收正文——内容只从提案登记里取。
+ * 四道闸（没有提案 / 用户没同意 / 提案后文件被改过 CAS / 规则表不许）全在 `write_ops` 上，这里
+ * 一句校验都不写；同意由 harness 按用户回话判定而不是模型自述，"模型夹带没看过的字节"是写不出来，
+ * 因为 `via:"pending"` 压根不接受正文。
  */
 export const applyDesignTool: RegisteredTool<{ path: string }> = defineTool<{
   path: string;

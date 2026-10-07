@@ -25,9 +25,9 @@ export async function executeToolPart(
   if (!tool) {
     return { ...base, state: "error", error: `未知工具 ${call.name}`, time: { ...base.time, completed: Date.now() } };
   }
-  // 粗粒度兜底：`deny *` 盖住的类别一律拒——哪怕这个工具是被幻觉调出来的（它已经从 schema 里
-  // 消失了，但执行查的是全局 registry，所以这里必须再挡一次）。细粒度（具体 pattern 的
-  // allow/ask）由工具自己走 `ctx.ask`，因为只有它知道这次动的是哪个对象。
+  // 粗粒度兜底：`deny *` 盖住的类别一律拒，包括被幻觉调出来的工具（它已从 schema 消失，但执行查的是
+  // 全局 registry，所以这里必须再挡一次）；细粒度（具体 pattern 的 allow/ask）由工具自己走 `ctx.ask`，
+  // 因为只有它知道这次动的是哪个对象。
   if (tool.permission && ctx.check(tool.permission, "*") === "deny") {
     return {
       ...base,
@@ -43,8 +43,8 @@ export async function executeToolPart(
       ...base,
       state: "completed",
       output: res.output,
-      // 只有**成功**才允许结束本回合：被拒/校验失败必须留给模型同轮自纠，
-      // 否则循环会死在一个本可自愈的错误上（见 prompt 工具返回的"可用小节"这类自愈文案）。
+      // 只有成功才允许结束本回合：被拒/校验失败必须留给模型同轮自纠，
+      // 否则循环会死在一个本可自愈的错误上（见 prompt 工具返回的"可用小节"这类自愈文案）
       halt: tool.halt === true,
       time: { ...base.time, completed: Date.now() },
     };

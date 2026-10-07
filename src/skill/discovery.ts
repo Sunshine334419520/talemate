@@ -1,9 +1,8 @@
 /**
- * Skill 发现：SKILL.md 发现（内置库 + 全局库 + 项目库）+ 目录注入 + 读取。
- * system 只放 <available_skills>（name+description），正文由 skill 工具按名取。
- *
- * **三个库、一条优先级**：内置（随产品发布）< 全局（作者级）< 项目（本小说专属）。
- * 扫描顺序就是优先级，后扫的同名覆盖先扫的——所以内置那几份压不过任何用户自己的 skill。
+ * Skill 发现：SKILL.md 发现（内置库 + 全局库 + 项目库）+ 目录注入 + 读取；system 只放
+ * <available_skills>（name+description），正文由 skill 工具按名取。
+ * 三个库一条优先级：内置（随产品发布）< 全局（作者级）< 项目（本小说专属）——扫描顺序就是优先级，
+ * 后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
  */
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -13,7 +12,6 @@ import { parseSkillFile, type Skill } from "./parse";
 export type { Skill };
 export { parseSkillFile };
 
-/** 发现某项目可见的全部 skill（项目库优先，同名覆盖全局，两者都覆盖内置） */
 export async function discoverSkills(projectId?: string): Promise<Skill[]> {
   const found = new Map<string, Skill>();
 
@@ -42,7 +40,7 @@ async function scanDir(root: string, acc: Map<string, Skill>): Promise<void> {
     try {
       const raw = await readFile(file, "utf-8");
       const skill = parseSkillFile(raw, file);
-      acc.set(skill.name, skill); // 后扫的（项目库）覆盖先扫的（全局库）
+      acc.set(skill.name, skill);
     } catch {
       /* 无 SKILL.md 或损坏则跳过 */
     }
@@ -57,7 +55,7 @@ export async function loadSkillByName(
   return all.find((s) => s.name === name);
 }
 
-/** 渲染 <available_skills> 目录段（只含 name+description，无正文）——注入 system prompt */
+/** 渲染 <available_skills> 目录段（只含 name+description，无正文），注入 system prompt */
 export function renderSkillCatalog(skills: Skill[]): string {
   if (!skills.length) return "";
   const lines = skills

@@ -1,17 +1,14 @@
 /**
- * 语料层：项目里 `.md` 文档的**唯一取数入口**——枚举 / 读 / 扫词。
+ * 语料层：项目里 `.md` 文档的唯一取数入口——枚举 / 读 / 扫词。
  *
- * **为什么要有这一层。** 从前"什么算一份文档"抄了两遍：`storage/project.ts` 的 `walkDir` 收所有
- * `.md`，`framework/search.ts` 的 `walk` 多一道 `NAME_RE` 文件名过滤。同一件事两份判据，就是迟早
- * 不一致的同义词。合并到这里之后只有一个判据。
+ * 判据只能有一份："什么算一份文档"若分给 `storage/project.ts`（收所有 `.md`）与
+ * `framework/search.ts`（多一道 `NAME_RE` 过滤）各判一次，迟早不一致；所以全归这里。
  *
- * **路径口径：项目相对**（`design/core.md` / `chapters/chapter_ch1_v1.md`）——与 `FileOp.path`、
- * 与权限 pattern 同一套。全仓只此一种。
+ * 路径口径：项目相对（`design/core.md` / `chapters/chapter_ch1_v1.md`），与 `FileOp.path`、
+ * 与权限 pattern 同一套，全仓只此一种。
  *
- * **边界：零领域知识**——不认识层、角色卡、小节。参数只回答"在哪"，返回值只回答"那是什么"。
- * "目录里那一行该写什么"是策略，在 `framework/summaries.ts` 的注册表里。
- *
- * 只读：**这里没有任何写口**。改文件一律走 `framework/write_ops.ts` 那条唯一路径。
+ * 边界：零领域知识——不认识层、角色卡、小节，"目录里那一行该写什么"是策略，在
+ * `framework/summaries.ts` 的注册表里。只读，没有任何写口：改文件一律走 `framework/write_ops.ts`。
  */
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -20,9 +17,8 @@ import { findInContent } from "../framework/markdown";
 import { safeReadPath } from "./util";
 
 /**
- * 三个根（design / chapters / state）。**清单不在这里**——它住在 `core/config.ts`，
- * 与写口 `write_ops` 共用同一份：读得到的必须写得着，反之亦然，而那件事从前靠两处注释互相指认。
- * 这里只是把它转出来，让"读口的根"继续有个可引用的名字。
+ * 三个根（design / chapters / state）。清单不在这里——它住在 `core/config.ts`，与写口 `write_ops`
+ * 共用同一份（读得到的必须写得着，反之亦然）。这里只是把它转出来，让"读口的根"有个可引用的名字。
  */
 export { DOC_ROOTS };
 export type { DocRoot };
@@ -43,11 +39,10 @@ function absRoot(projectId: string, root: DocRoot): string {
  * 项目相对路径 → `{root, sub}`。根不在 `DOC_ROOTS` 里、或剩余部分穿出根（`..`、绝对路径、
  * 空段）→ `undefined`。
  *
- * 用 `safeReadPath` 而**不是** `safeRelPath`：后者的字符类管的是"工具许建什么名字"，拿它来管
- * "读得回什么"会让枚举与读回不一致——枚举走真实目录什么都看得见，读回却被字符类挡掉，于是
- * 手放的文件成了"看得见读不着"。读侧只该挡穿越。
+ * 用 `safeReadPath` 而不是 `safeRelPath`：后者的字符类管的是"工具许建什么名字"，拿它来管
+ * "读得回什么"会让枚举与读回不一致——枚举走真实目录什么都看得见，读回却被字符类挡掉。读侧只该挡穿越。
  *
- * 残留的不对称（**已知、待决**）：手放的名字读得着、却写不动——`write_ops.resolveTarget` 仍过
+ * 残留的不对称（已知、待决）：手放的名字读得着、却写不动——`write_ops.resolveTarget` 仍过
  * `safeRelPath`。要不要放开写侧的字符类（好让译名里的 `·` 建得出来）是另一个决定，牵到
  * `invariants` 的路径 glob 与 `nameFromPath`，没搭这次的车。
  */
@@ -60,12 +55,10 @@ function splitRoot(rel: string): { root: DocRoot; sub: string } | undefined {
 }
 
 /**
- * 递归收 `.md`，返回**项目相对**路径（已排序）。
+ * 递归收 `.md`，返回项目相对路径（已排序）。
  *
- * **不按文件名过滤。** 从前 search 那份 walker 多一道 `NAME_RE`，与 storage 那份构成"两侧判据
- * 不同"。那一道是多余的：写入口已经用 `util.safeRelPath` 把每一段限在同一个字符类里，所以工具
- * 能创建的文件本来就都过得去；它唯一拦得住的是**手放进去**的文件——而那正是最该被搜到的一类。
- *
+ * 不按文件名过滤：写入口已经用 `util.safeRelPath` 把每一段限在同一个字符类里，工具能创建的文件
+ * 本来就都过得去；字符类唯一拦得住的是手放进去的文件——而那正是最该被搜到的一类。
  * 原子写的临时文件以 `.tmp` 结尾（见 `atomic.ts`），`.md` 这一道就把它挡住了，不需要第二道。
  *
  * `prefix` 是项目相对前缀（`"design/"`）；不传 = 整个项目。
@@ -97,7 +90,7 @@ async function walkDocs(dir: string, prefix: string, acc: string[]): Promise<voi
  * 项目相对路径 → 绝对路径。根不在 `DOC_ROOTS` 之下、或路径穿出根（`..`、绝对路径、空段）
  * → `undefined`。
  *
- * **导出**是因为 `storage/project` 的测试夹具（`writeDoc` / `removeDoc`）也要按同一个口径落盘——
+ * 导出是因为 `storage/project` 的测试夹具（`writeDoc` / `removeDoc`）也要按同一个口径落盘——
  * "项目相对路径怎么变成绝对路径"只该有一处实现，否则夹具与读口迟早各走各的。
  */
 export function docAbs(projectId: string, rel: string): string | undefined {

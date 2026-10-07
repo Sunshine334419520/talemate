@@ -40,7 +40,7 @@ talemate new 我的小说 悬疑
 | `src/storage/` | 文件系统项目 / 会话存储 |
 | `src/skill/` | SKILL.md 发现与解析（仓库内置库 `skills/` / 全局库 / 项目库） |
 | `src/prompts.ts` | 加载 `prompts/*.txt` |
-| `src/probe/` `src/legacy/` | 消融实验工具、遗留代码（开发用，不属产品路径） |
+| `src/probe/` | 消融实验工具（开发用，不属产品路径） |
 
 ## 文档
 

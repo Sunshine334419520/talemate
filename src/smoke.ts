@@ -1,10 +1,6 @@
 /**
- * P0 冒烟：mock provider + 临时 TALEMATE_HOME，离线验证 harness 全链路：
- *   建项目 → openSession(mate) → post → LLM 首轮返回 propose-plan
- *   → 规划落到 .talemate/plans/ 并交给用户 → 用户回话 → 委派 planner 子会话（独立上下文）
- *   → 结果回填父 assistant part。
- * 运行：bun run src/smoke.ts
- * 环境：TALEMATE_PROVIDER=mock（不需 key）；TALEMATE_HOME 自动用临时目录。
+ * P0 冒烟：mock provider + 临时 TALEMATE_HOME，离线走通 harness 全链路——建项目 → propose-plan 交给用户
+ * 拍板 → 委派 planner 子会话（独立上下文）→ 结果回填父 assistant part。
  */
 import { mkdir, mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -36,13 +32,11 @@ const io: UserIO = {
 };
 
 try {
-  // 1) 建项目
   const meta = await createProject({ title: "冒烟测试书", genre: "都市" });
   const model = loadModelConfig();
   console.log(`[1] 项目已建：${meta.id}`);
 
-  // 2) 章节生产：propose-plan 把规划落到 .talemate/plans/（引擎工作区），交给用户、本回合停手。
-  //    **它不再需要先 enter-draft**——草稿模式只服务文档提案的三向审阅。
+  // 2) propose-plan 把规划落到 .talemate/plans/（引擎工作区），交给用户、本回合停手
   const session = await openSession({ projectId: meta.id, model, io });
   process.env.TALEMATE_MOCK_TOOL = "propose-plan";
   await session.post("帮我写第 1 章：主角在都市醒来。");
@@ -98,7 +92,7 @@ try {
   console.log(`[3d] 草稿模式下 task 不可见（工具序列 ${s3Tools.join(" → ")}）：${hidden ? "✓" : "✗"}`);
   if (!hidden) throw new Error("草稿模式没有藏掉 task");
 
-  // 3d2) /permissions 的视图：只说"edit 是 deny"没用，得说得出是**模式**定的
+  // 3d2) /permissions 的视图：只说"edit 是 deny"没用，得说得出是哪一层（模式）定的
   const pv = s3.permissionView();
   const verdict = evaluateWithSource("edit", "*", ...pv.layers.map((l) => l.rules), pv.approved);
   const source = pv.layers[verdict.layer]?.label ?? "（未匹配）";
@@ -141,7 +135,6 @@ try {
     throw new Error("task 委派链路未打通");
   }
 
-  // 4) 子会话已落盘（planner）
   const subIds = await listSessionIds(meta.id);
   console.log(`[5] 落盘会话数：${subIds.length}（应 ≥2：父+planner 子）`);
   const subMetas = [];
@@ -158,7 +151,6 @@ try {
   // 5) 端到端收到 delta 文本
   console.log(`[6] 收到流式 delta：${seen.length > 0 ? "✓" : "✗"}`);
 
-  // 6) 文档落盘结构
   const pp = join(HOME, "novels", meta.id);
   const tree = await listTree(pp);
   console.log(`[7] 项目目录：\n${tree.map((f) => "    " + f.replace(pp + "/", "")).join("\n")}`);

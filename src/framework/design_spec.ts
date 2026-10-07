@@ -1,35 +1,21 @@
 /**
- * 结构规范注册表：**哪份文档该有哪些小节、每格装什么、成稿做法**——按**路径**登记。
+ * 结构规范注册表：哪份文档该有哪些小节、每格装什么、成稿做法——按项目相对路径登记，与
+ * `FileOp.path`、权限 pattern、`framework/invariants.ts` 同一套路径口径，全仓只此一种。
  *
- * **路径一律项目相对**（`design/core.md` / `design/characters/林晚.md`）——与 `FileOp.path`、权限
- * pattern、`frameowrk/invariants.ts` 同一套。全仓只此一种，工具收的也是这个。
+ * 规范描述的是还不存在的文档（懒建）：用户要完善时才取规范、成稿落盘，所以按"将来那个路径"
+ * 取即可，不必等文件出现。匹配用 `permission.match`（glob，`*` 跨 `/`），取规范时更具体的
+ * 模式胜出、不是第一个命中即止（见 `specFor`）。
  *
- * **一张表、一个匹配键。** 从前是两张表两个键（`DESIGN_SPECS` 按 `LayerId` 配精确文件名、
- * `DOC_SPECS` 按正则），再靠 `proposal.specFor` 做"先精确后模式"兜着。合成一张之后，
- * "这份文档是什么"只有一处判据。
- *
- * **匹配用 `permission.match`**（glob，`*` 跨 `/`）——与 `framework/invariants.ts` 同一套词表，
- * 于是两处按路径选策略的注册表说的是同一种路径。
- *
- * ⚠️ **`*` 跨 `/`**：`design/outline/vol_*.md` **也命中** `design/outline/vol_1/s2.md`。所以取规范时是
- * **更具体的模式胜出**（更长者优先），**不是**"第一个命中即止"——按表序取的话，一卷的序列纲会被
- * 静默读成卷纲，而且全靠"谁记得把行排对位置"。按长度取之后，往表里插新行不必再想位置。
- *
- * - 懒建：目标文档**平时不存在**，用户要完善时才取规范、成稿落盘。规范描述的是还不存在的文档，
- *   所以它能按"将来那个路径"取，而不必等文件出现。
- * - 结构与内容分离：这里只定义"长什么样"；文件一旦建立即内容与真相。
+ * 结构与内容分离：这里只定义"长什么样"；文件一旦建立即内容与真相。
  */
 import { CARD_DIR, CHARACTER_FIELDS, IDENTITY_KEY, PROFILE_KEYS } from "./characters";
 import { match } from "../permission";
 
-/** 必有格的 `### 标题` 枚举——从 characters.CHARACTER_FIELDS **派生**，不在这里另抄一份。 */
+/** 必有格的 `### 标题` 枚举——从 characters.CHARACTER_FIELDS 派生，不在这里另抄一份。 */
 const REQUIRED_SECTIONS = CHARACTER_FIELDS.map((f) => `### ${f.label}`).join(" / ");
 
 /**
- * 一个小节（"格"）的**内容规范**，三件：
- *   write  该装什么
- *   avoid  不许装什么（越界线）
- *   form   写成什么样（形制与口气）
+ * 一个小节（"格"）的内容规范：该装什么 / 不许装什么（越界线）/ 写成什么样（形制与口气）。
  * 只进 design-spec 的返回（给模型看），不进用户看到的提案。
  */
 export interface DesignSection {
@@ -46,21 +32,17 @@ const DOC_STYLE =
 export interface DocSpec {
   /** 稳定标记，供测试与调试引用 */
   id: string;
-  /** 规范块标题（给**模型**看）：带说明的长名 */
+  /** 规范块标题（给模型看）：带说明的长名 */
   title: string;
   /**
-   * 提案标签（给**用户**看）的短名。**只给"主文档是一个固定文件"的那两层填**——
-   * 它们的正文往往没有有信息量的 H1（`core.md` 的 H1 可能就是 `core`），而用户看到的
-   * 该是「核心层」。不填的由 `proposal.labelOf` 取文档自己的 H1（`# 卷 2 · 内城`），
-   * 那比"卷纲"三个字有信息量。
-   *
-   * 这一对长短名从前横跨两个文件（短名在 `layers.ts` 的 `LAYERS`、长名在这里），
-   * 是 `layers.ts` 自己的注释写明**有意**分开的；现在两个名字并排放在同一行，区分还在，间接没了。
+   * 提案标签（给用户看）的短名。只给"主文档是一个固定文件"的那两层填——它们的正文往往没有
+   * 有信息量的 H1（`core.md` 的 H1 可能就是 `core`），而用户看到的该是「核心层」。不填的由
+   * `proposal.labelOf` 取文档自己的 H1（`# 卷 2 · 内城`），那比"卷纲"三个字有信息量。
    */
   label?: string;
-  /** 匹配键：glob（`*` 跨 `/`），**项目相对**路径。**目录型以 `/` 结尾**——只作目录入口用，没有 target。 */
+  /** 匹配键：glob（`*` 跨 `/`），项目相对路径。目录型以 `/` 结尾——只作目录入口用，没有 target。 */
   match: string;
-  /** 给模型看的地址式样（项目相对）。**目录入口没有**——它不是一个文件。 */
+  /** 给模型看的地址式样（项目相对）。目录入口没有——它不是一个文件。 */
   target?: string;
   sections: DesignSection[];
   /** 通篇形制（见 DOC_STYLE）；只有"文档型"的规范有 */
@@ -79,8 +61,8 @@ const WORK_METHOD = [
 ].join("\n");
 
 /**
- * 全部规范。**列表顺序不影响取规范**（命中的模式里更长者胜出，见 `specFor`），只决定目录入口里
- * "名下文档"的呈现——那一处按模式**从宽到窄**排，外层尺度在前。
+ * 全部规范。列表顺序不影响取规范（命中的模式里更长者胜出，见 `specFor`），只决定目录入口里
+ * "名下文档"的呈现——那一处按模式从宽到窄排，外层尺度在前。
  */
 export const SPECS: DocSpec[] = [
   // core：小说介绍（写作方向不变量），常驻、一切层依赖它。
@@ -118,9 +100,9 @@ export const SPECS: DocSpec[] = [
         avoid: "爽点排布、节奏安排、读者反应预测。不堆形容词。",
         form: "先一句感觉锚点，再列「不许破坏」的那几条。",
       },
-      // 与「基调 · 情绪」是两回事，别并成一格：那是**内容承诺**（这本书读起来压抑还是暖），
-      // 这是**叙述声音**（谁在下笔）。两者可以不一致——冷峻的声音写温暖的故事是成立的。
-      // 这一格存的是**名字**，卡片由 framework/prose.ts 按名字取出来注入（见那个文件头）。
+      // 与「基调 · 情绪」是两回事，别并成一格：那是内容承诺（这本书读起来压抑还是暖），
+      // 这是叙述声音（谁在下笔）。两者可以不一致——冷峻的声音写温暖的故事是成立的。
+      // 这一格存的是名字，卡片由 framework/prose.ts 按名字取出来注入（见那个文件头）。
       {
         heading: "文风",
         write:
@@ -172,9 +154,9 @@ export const SPECS: DocSpec[] = [
       "5) 文档文件一旦建立，后续以文件当前内容为准（先 read 再动）。",
     ].join("\n"),
   },
-  // characters：一角色一卡。**匹配 `design/characters/*` 而不只是那个目录本身**——这样
-  // `design-spec(path:"design/characters/林晚.md")` 也拿得到建卡方法（规范描述的正是"还不存在的那份
-  // 文档"），而不是回一句误导的"未登记"。卡的形状在 guide 里（卡内是 ###），所以 sections 为空。
+  // characters：一角色一卡。匹配 `design/characters/*` 而不只是那个目录本身——这样
+  // `design-spec(path:"design/characters/林晚.md")` 也拿得到建卡方法，而不是回一句误导的"未登记"。
+  // 卡的形状在 guide 里（卡内是 ###），所以 sections 为空。
   {
     id: "characters",
     match: `${CARD_DIR}*`,
@@ -199,8 +181,8 @@ export const SPECS: DocSpec[] = [
       "5) 一角色一卡；名单（有哪些人、必有格齐没齐、卡上还有哪些自由小节）由 list 现算，没有需要手改的总表；删角色用 delete，它会先把「这个名字还在哪儿出现」列出来，级联清理你自己用 edit 做。",
     ].join("\n"),
   },
-  // outline：**没有"整本大纲"这个文档**。全本走向是 core 的一句话简介加上各卷卷纲**能算出来的**
-  // 东西，另存一份就是迟早脱节的缓存——脱节的缓存比没有更糟，它会误导写手。所以本行是**目录入口**
+  // outline：没有"整本大纲"这个文档。全本走向是 core 的一句话简介加上各卷卷纲能算出来的东西，
+  // 另存一份就是迟早脱节的缓存——脱节的缓存比没有更糟，它会误导写手。所以本行是目录入口
   // （match 以 `/` 结尾、没有 target），真正的形状在下面按路径登记的两行里，与 characters 同构。
   {
     id: "outline",
@@ -219,8 +201,6 @@ export const SPECS: DocSpec[] = [
       "propose-design 交给他看、本回合到此为止 → 认可后 apply-design。文档一旦建立，后续以文件当前内容为准（先 read 再动）。",
     ].join("\n"),
   },
-  // 注意：`design/outline/vol_*.md` **也**命中这里的路径（`*` 跨 `/`）。靠"更具体者胜出"分开，
-  // **不靠表序**——所以这一行放在卷纲前面还是后面都一样（见 `specFor`）。
   {
     id: "outline-seq",
     match: "design/outline/vol_*/s*.md",
@@ -251,7 +231,7 @@ export const SPECS: DocSpec[] = [
       "则是整篇重提。文档一旦建立先 read 再动。",
     ].join("\n"),
   },
-  /** 卷纲：一卷一个文件。五格，见下。 */
+  /** 卷纲：一卷一个文件。 */
   {
     id: "outline-vol",
     match: "design/outline/vol_*.md",
@@ -296,14 +276,13 @@ export const SPECS: DocSpec[] = [
 ];
 
 /**
- * 这份文档该按哪份规范看：**命中的模式里更具体的胜出**（模式更长者优先，同长取靠前的）。
+ * 这份文档该按哪份规范看：命中的模式里更具体的胜出（模式更长者优先，同长取靠前的）。
  * 没命中 → `undefined`（调用方给自愈文案）。
  *
- * **刻意不是"第一个命中即止"。** `permission.match` 把 `*` 映射成 `.*`、**跨 `/`**，所以
- * `outline/vol_*.md` 也命中 `outline/vol_1/s2.md`——按表序取的话，一卷的序列纲会被读成卷纲，
- * 而且这个错**不报错、只静默**，全靠"谁记得把序列纲排在前面"。按长度取就把这件事变成结构性的：
- * 路径模式越长越深，深的先命中，于是**表的顺序可以按叙事来排**（先卷纲、后序列纲），
- * 往表里插新行也不必再想位置。
+ * 刻意不是"第一个命中即止"。`permission.match` 把 `*` 映射成 `.*`、跨 `/`，所以
+ * `outline/vol_*.md` 也命中 `outline/vol_1/s2.md`——按表序取会把序列纲读成卷纲，而且这个错
+ * 不报错、只静默，全靠"谁记得把序列纲排在前面"。按长度取就把这件事变成结构性的：路径模式越长
+ * 越深，深的先命中，于是表的顺序可以按叙事来排（先卷纲、后序列纲），往表里插新行也不必再想位置。
  */
 export function specFor(name: string): DocSpec | undefined {
   let best: DocSpec | undefined;
@@ -314,12 +293,11 @@ export function specFor(name: string): DocSpec | undefined {
   return best;
 }
 
-/** 目录入口：`match` 以 `/` 结尾的行——它**不是一个文件**，没有 target，页面上只是"这一层有哪几种文档"。 */
+/** 目录入口：`match` 以 `/` 结尾的行——它不是一个文件，没有 target，页面上只是"这一层有哪几种文档"。 */
 function isContainer(s: DocSpec): boolean {
   return s.match.endsWith("/");
 }
 
-/** 一格的规范：三行（写 / 别写 / 写成）。 */
 function renderSection(s: DesignSection): string[] {
   return [
     `  ## ${s.heading}`,
@@ -329,19 +307,14 @@ function renderSection(s: DesignSection): string[] {
   ];
 }
 
-/**
- * 渲染一份规范。写入口那行**只有一种形式**：`path: <target>`，而且**每块都有**。
- *
- * 从前有两套（固定层给 `layer: core · 目标 design/core.md`，其余给 `name: …`），而且**目录型的层
- * 一套都不给**——模型拿到角色卡的形状却拿不到"往哪儿写"，只能从 guide 的散文里自己抠。
- */
+/** 渲染一份规范。写入口那行只有一种形式：`path: <target>`，而且每块都有。 */
 function renderOne(spec: DocSpec): string {
   const shape = spec.sections.length
     ? [
         "该文档应含以下小节（每个 ## 即一格；改一格用 edit，锚点就是那一格的正文）：",
         ...spec.sections.flatMap(renderSection),
       ]
-    : // 不分格的文档（角色卡、序列纲）：形状全在 guide 里。**不能**只说"应含以下小节"然后空着。
+    : // 不分格的文档（角色卡、序列纲）：形状全在 guide 里。不能只说"应含以下小节"然后空着。
       ["本文档不分小节——形状见下。"];
   return [
     `【${spec.title}${spec.target ? ` · path: ${spec.target}` : ""}】`,
@@ -355,14 +328,14 @@ function renderOne(spec: DocSpec): string {
 const SEP = "\n\n────\n\n";
 
 /**
- * 按路径取规范。目录入口（`design-spec` 收 `design/outline/` 这样的路径）**连同它名下登记的每一种
- * 文档一并返回**——"一次调用就让模型看清这一层有哪几种文档，不用它自己猜有几个"。
+ * 按路径取规范。目录入口（`design-spec` 收 `design/outline/` 这样的路径）连同它名下登记的每一种
+ * 文档一并返回——一次调用就让模型看清这一层有哪几种文档，不用它自己猜有几个。
  */
 export function renderSpec(name: string): string | undefined {
   const spec = specFor(name);
   if (!spec) return undefined;
   if (!isContainer(spec)) return renderOne(spec);
-  // 从宽到窄列：外层尺度在前（先有卷，才有卷里的序列）。**表的顺序不参与**呈现——否则两处各说各话。
+  // 从宽到窄列：外层尺度在前（先有卷，才有卷里的序列）。表的顺序不参与呈现——否则两处各说各话。
   const kids = SPECS.filter((s) => s !== spec && s.match.startsWith(spec.match)).sort(
     (a, b) => a.match.length - b.match.length,
   );

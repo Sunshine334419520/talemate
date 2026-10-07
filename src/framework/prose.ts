@@ -1,30 +1,21 @@
 /**
- * 正文写作窗口：**规范与文风卡什么时候在上下文里，以及它们怎么拼**。
- *
- * ## 三层，按"能不能判对错"分，不按重要程度
+ * 正文写作窗口：规范与文风卡什么时候在上下文里、怎么拼。三层按"能不能判对错"分，不按重要程度，
+ * 因为这一层只准装可以判对错的东西——合成一层的代价是实测出来的：规范的语气是禁令，文风的目标是
+ * 无边界的好，禁令压不出好、只压出安全和灰。
  *
  * | 层 | 判据 | 恒定还是变量 | 载体 |
  * |---|---|---|---|
- * | **规范** | **能判对错** | 跨文风恒定 | `prompts/prose.rules.txt`——**不是 skill** |
- * | **文风** | 只判"像不像" | 每本书选一张 | `skills/` 库，按名字取 |
- * | **题材 / 结构** | 半可判 | 每本 / 每卷 | 规划与序列纲，不在这里 |
+ * | 规范 | 能判对错 | 跨文风恒定 | `prompts/prose.rules.txt`——不是 skill |
+ * | 文风 | 只判"像不像" | 每本书选一张 | `skills/` 库，按名字取 |
+ * | 题材 / 结构 | 半可判 | 每本 / 每卷 | 规划与序列纲，不在这里 |
  *
- * 合成一层的代价是实测出来的：规范的语气是禁令，文风的目标是无边界的好——**禁令压不出好，
- * 只压出安全和灰**。所以"这一层该装什么"只有一条判据：**可以判对错的才准进**。
+ * 由 harness 注入而不是让 mate 自己 `skill(prose)`：规范是不变量，"记得加载"不该是它的存活条件；
+ * skill 正文活不过压缩（它是 tool 结果，`compaction` 只留 assistant 的 `text`，而 `<available_skills>`
+ * 目录每轮从 `discoverSkills` 重建、条目还在，模型不知道自己丢了什么——system 每轮重建不受这条影响）；
+ * 规范也不抄进每张文风卡（五张各一份 = 改一次动五处）。
  *
- * ## 为什么由 harness 注入，而不是让 mate 自己 `skill(prose)`
- *
- * 1. **规范是不变量**，"记得加载"不该是它的存活条件（同 `propose-plan` 的 halt 由 harness 执行）。
- * 2. **skill 正文活不过压缩。** 它是 tool 结果，而 `compaction` 只留 assistant 的 `text` part——
- *    tool 结果不进摘要。书写到十几章，纪律会在某一次压缩之后无声消失；而 `<available_skills>`
- *    目录是每轮从 `discoverSkills` 重建的、条目还在，模型不知道自己丢了什么。system 每轮重建，
- *    不受这一条影响。
- * 3. **规范不抄进每张文风卡**：五张各一份 = 改一次动五处（`CLAUDE.md` 那条「绝不手抄」）。
- *
- * ## 窗口的开与关
- *
- * 开：用户拍过板、而这一章的正文还没落盘（`pending` 里那份 `approved` 且未 `done` 的规划）。
- * 关：正文一落盘 `done` 置位，整块退出上下文。**判据是状态，不是模型自觉。**
+ * 窗口开：用户拍过板、而这一章的正文还没落盘（`pending` 里那份 `approved` 且未 `done` 的规划）；
+ * 关：正文一落盘 `done` 置位，整块退出——判据是状态，不是模型自觉。
  */
 import { readPrompt } from "../prompts";
 import { loadSkillByName } from "../skill/discovery";
@@ -39,18 +30,16 @@ export const DEFAULT_STYLE = "prose";
 const NAME_LIKE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 export interface StyleChoice {
-  /** 要加载的卡名 */
+  /** 要加载的卡名。 */
   name: string;
-  /** 核心设定的「文风」格存在、却没能当卡名读出来时的说明——**要说给用户听**，不能静默吞掉 */
+  /** 核心设定的「文风」格存在、却没能当卡名读出来时的说明——要说给用户听，不能静默吞掉。 */
   note?: string;
 }
 
 /**
- * 这本书选了哪张文风卡。读 `design/core.md` 的「文风」格。
- *
- * 三种情况分得开，因为它们的处置完全不同：
- * - 格不存在 / 是空的 → 默认那张，没什么可说的（这是常态）；
- * - 格里有字但不像卡名（用户写了一句大白话）→ 用默认，**但带一句说明**；
+ * 这本书选了哪张文风卡。读 `design/core.md` 的「文风」格，三种情况处置不同：
+ * - 格不存在 / 是空的 → 默认那张（这是常态）；
+ * - 格里有字但不像卡名（用户写了一句大白话）→ 用默认，但带一句说明；
  * - 读出一个卡名 → 交给 `buildProseBrief` 去库里取，取不到时由它报错。
  */
 export function styleChoiceFrom(core: string | undefined): StyleChoice {
@@ -77,10 +66,8 @@ export function styleChoiceFrom(core: string | undefined): StyleChoice {
 }
 
 /**
- * 正文写作窗口那一块（进 system）。
- *
- * 三部分：规范（恒定）+ 这本书的卡 + **落盘路径**。路径由 harness 直接给，不是因为有话要说，
- * 而是 `isChapterFile` 会拿它判"这一章写完了没有"——**告诉它的名字必须就是认它的名字**。
+ * 正文写作窗口那一块（进 system）：规范（恒定）+ 这本书的卡 + 落盘路径。路径由 harness 直接给，
+ * 因为 `isChapterFile` 会拿它判"这一章写完了没有"——告诉它的名字必须就是认它的名字。
  */
 export async function buildProseBrief(projectId: string, chapter: number): Promise<string> {
   const choice = styleChoiceFrom(await readDoc(projectId, "design/core.md"));
@@ -97,7 +84,7 @@ export async function buildProseBrief(projectId: string, chapter: number): Promi
   if (card) {
     out.push("", `【这本书的文风】${card.name}（treat it as a voice to imitate, not a checklist）`, card.body);
   } else {
-    // **不能静默退回默认**：用户会以为在用那张卡，实际在用另一张，而且看不出来。
+    // 不能静默退回默认：用户会以为在用那张卡，实际在用另一张，而且看不出来
     out.push(
       "",
       `【这本书的文风】核心设定指定的是「${choice.name}」，但文风库里没有这个名字（可用：见 <available_skills>）。`,

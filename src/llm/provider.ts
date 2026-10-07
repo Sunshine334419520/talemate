@@ -1,11 +1,7 @@
 /**
- * LLM 层：provider 无关的多轮 chat，支持流式 delta（回调）+ 工具调用循环。
- *
- * - 会话 runner（session/loop）把历史转成 NeutralMsg[] 调 chat()；
- * - chat() 返回聚合的 assistant turn（text/reasoning/toolCalls），期间通过 onText/onReasoning 实时吐 delta；
- * - runner 自己执行 toolCalls（工具注册表），再把结果作为 role:"tool" 消息续调 chat()——循环直到无工具调用。
- *
- * provider 适配：anthropic 需把连续 tool 结果并成一条 tool_result user 消息；openai 用 role:"tool"。
+ * LLM 层：provider 无关的多轮 chat——把历史转成 NeutralMsg[] 调 chat()，返回聚合的 assistant turn，
+ * 期间用 onText/onReasoning 实时吐流式 delta；工具由 runner 自己执行、结果作为 role:"tool" 续调，
+ * 循环到无工具调用为止。provider 差异见各自实现（anthropic 要把连续 tool 结果并成一条）。
  */
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
@@ -236,10 +232,9 @@ function toOpenAITool(t: ToolSchema): OpenAI.Chat.Completions.ChatCompletionTool
 }
 
 /**
- * 解析模型返回的 tool arguments 字符串为对象。openai 兼容模型（尤其 DeepSeek）偶尔会给出
- * 不规范的 JSON：套代码围栏、字符串内未转义换行、尾逗号、或双层转义（arguments 本身是
- * 一段 JSON 字符串字面量）。逐层容错：剥围栏 → JSON.parse → 双层转义解一层 → 启发式修补 → 回退 {}。
- * 解析不动时回退空对象，由工具自身的必填守卫返回"请重发"让模型自纠。
+ * 解析模型返回的 tool arguments 字符串。openai 兼容模型（尤其 DeepSeek）偶尔给出不规范 JSON：
+ * 套代码围栏、字符串内未转义换行、尾逗号、双层转义。逐层剥离 → 解析 → 修补 → 回退 {}，
+ * 回退空对象由工具自身的必填守卫返回"请重发"，让模型自纠。
  */
 export function safeParseArgs(raw: string | undefined): Record<string, unknown> {
   let s = (raw ?? "").trim();
@@ -262,7 +257,6 @@ export function safeParseArgs(raw: string | undefined): Record<string, unknown> 
     const nested = toObj(tryParse(first));
     if (nested) return nested;
   }
-  // 启发式修补（未转义换行 / 尾逗号）后重试
   const patched = toObj(tryParse(repairJson(s)));
   if (patched) return patched;
   return {};
@@ -332,10 +326,9 @@ const MOCK_PROPOSAL = [
 async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
   const lastUser = [...opts.messages].reverse().find((m) => m.role === "user")?.text ?? "";
   const tools = opts.tools ?? [];
-  // 供冒烟脚本注入剧本：env TALEMATE_MOCK_TOOL=<toolName> 时 mock 先调用一次该工具再收尾。
-  // 入参按该工具的 inputSchema.required 字段生成样例值（对 task 之类能通过入参校验）。
-  // 「演过一次就收尾」按**工具名**判，不是"窗口里有没有任何 tool 消息"——冒烟要能演
-  // "第一回合调 A、用户回话后第二回合调 B"这种两回合流程（如 propose-plan → task）。
+  // 剧本由 env TALEMATE_MOCK_TOOL=<toolName> 注入：mock 先调一次该工具再收尾，入参按 inputSchema.required 采样
+  // 「演过一次就收尾」按工具名判，不是"窗口里有没有任何 tool 消息"——冒烟要能演
+  // "第一回合调 A、用户回话后第二回合调 B"这种两回合流程（如 propose-plan → task）
   const mockTool = process.env.TALEMATE_MOCK_TOOL;
   const alreadyPlayed = opts.messages.some((m) => m.role === "tool" && m.name === mockTool);
   if (mockTool && tools.some((t) => t.name === mockTool) && !alreadyPlayed) {

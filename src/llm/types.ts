@@ -11,13 +11,11 @@ export interface ToolSchema {
   inputSchema: JsonSchema;
 }
 
-/** provider 无关的消息三元：user / assistant / tool */
 export type NeutralMsg =
   | { role: "user"; text: string }
   | { role: "assistant"; text?: string; toolCalls?: ToolCall[] }
   | { role: "tool"; toolCallId: string; name: string; output: string };
 
-/** 一次 LLM 交互的聚合结果（text/reasoning/toolCalls） */
 export interface AssistantTurn {
   text: string;
   reasoning?: string;

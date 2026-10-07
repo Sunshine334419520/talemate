@@ -1,15 +1,12 @@
 /**
- * web-tools：联网工具（webfetch / websearch）。
+ * web-tools：联网工具（webfetch / websearch），自托管可跑，只用全局 fetch（Bun/Node 18+），
+ * 不依赖 ToolContext 注入。
  *
- * 形状：
- * 去 Effect、去云侧付费搜索，落到自托管可跑：
  * - webfetch：http(s) 抓取 + UA + 大小上限 + 超时；HTML 按 format 转 markdown / text（turndown）。
- * - websearch：可插拔 provider。后端选择：
+ * - websearch：可插拔 provider，用 TALEMATE_WEBSEARCH_PROVIDER 切，无对应 key 时回退 duckduckgo：
  *     duckduckgo（默认，无 key，尽力而为——部分网络被反爬拦截）
  *     bocha 博查（国内直连，推荐）→ BOCHA_API_KEY
  *     tavily / exa（国外主流）→ TAVILY_API_KEY / EXA_API_KEY
- *   用 TALEMATE_WEBSEARCH_PROVIDER 切。无对应 key 时回退 duckduckgo。
- * 纯工具层：只用全局 fetch（Bun/Node 18+），不依赖 ToolContext 注入。
  */
 import TurndownService from "turndown";
 import { readPrompt } from "../prompts";
@@ -19,7 +16,7 @@ const P = (id: string) => readPrompt(`tools/${id}`);
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_OUTPUT_CHARS = 80_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
@@ -28,7 +25,7 @@ const MAX_TIMEOUT_MS = 120_000;
 
 type FetchFormat = "text" | "markdown" | "html";
 
-/** 抓一个 URL 并按 format 返回内容。出错抛异常（runner 会包成 error part 让模型自纠）。 */
+/** 抓一个 URL 并按 format 返回内容；出错抛异常——runner 会包成 error part 让模型自纠。 */
 async function fetchUrl(url: string, format: FetchFormat, timeoutSec?: number): Promise<string> {
   if (!/^https?:\/\//i.test(url)) throw new Error("URL 必须以 http:// 或 https:// 开头");
   const timeoutMs = Math.min((timeoutSec ?? DEFAULT_TIMEOUT_MS / 1000) * 1000, MAX_TIMEOUT_MS);
@@ -177,7 +174,6 @@ export function selectWebSearchProvider(): SearchProvider {
     if (want === "duckduckgo" || keyOf[want]()) return want as SearchProvider;
     return "duckduckgo";
   }
-  // 未显式指定：默认 tavily；其次 bocha/exa；全无 key 才 duckduckgo
   if (keyOf.tavily()) return "tavily";
   if (keyOf.bocha()) return "bocha";
   if (keyOf.exa()) return "exa";

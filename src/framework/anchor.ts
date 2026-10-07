@@ -1,34 +1,24 @@
 /**
- * 常驻设定注入 + 文档索引。
+ * 常驻设定注入 + 文档索引。路径一律项目相对（`design/core.md`），与工具收的路径、`FileOp.path`、
+ * 权限 pattern 同一个口径。
  *
- * 常驻设定：design/core.md（小说介绍）+ design/wiki/world.md（世界层总纲）是每轮注入 mate 的固定基线——
- * 现读全文、**不带状态包装**。core/world 专题页（design/wiki/<题>.md）不常驻，按需读。
- * 状态类信息（写作进度/伏笔/待定）不是静态基线，归状态块与未来的状态层；
- * characters/outline 仍按需读，索引由 `list` 给出。
+ * 常驻集只有 design/core.md 与 design/wiki/world.md：每轮现读全文注入 mate、不带状态包装；
+ * wiki 专题页与 characters/outline 按需读，写作进度/伏笔/待定这类状态信息归状态层不归这里。
  *
- * 索引这一侧只做**通用**的事：分组、缩进、铺小节标题。**"某种文档在目录里长什么样"是策略**，
- * 在 `framework/summaries.ts` 的注册表里——从前那串 if 就长在本文件，于是取数的一侧知道了一份领域。
- *
- * 路径一律**项目相对**（`design/core.md`）——与工具收的路径、`FileOp.path`、权限 pattern 同一个口径。
+ * 索引这一侧只做分组、缩进、铺小节标题这类通用的事——"某种文档在目录里长什么样"是策略，
+ * 住在 `framework/summaries.ts` 的注册表里。
  */
 import { DOC_ROOTS, enumerateDocs, readDoc } from "../storage/corpus";
 import { listHeadings } from "./markdown";
 import { summarize } from "./summaries";
 
-/**
- * 常驻注入 mate 的文档：小说介绍 + 世界层总纲。
- *
- * **就是两条路径**，不再经过"层 id → 规范表里的 file"那一跳——常驻集本来就只有两个文件，
- * 那层间接没有任何东西需要它。
- */
 export const RESIDENT_DOCS = ["design/core.md", "design/wiki/world.md"] as const;
 
 /**
- * 2026-09-18 删掉的派生总表（卡的副本，会脱节）。老项目里可能还留着。
+ * 已删掉的派生总表（角色卡副本，会脱节），老项目里可能还留着。
  *
- * 这是**遗留兼容**，不是策略，所以它留在这一侧而不是进 `summaries` 的注册表：它不是"另一种文档形状"，
- * 而是一份不该被当成文档的文件——`nameFromPath` 已经不认它（`_index`），但不拦的话它会被
- * `design/characters/*.md` 那条摘要器规则当成"一份不分格的文档"混进名单里。
+ * 这是遗留兼容不是策略，所以留在这里而不进 `summaries` 注册表：它本不该被当成文档，但
+ * `design/characters/*.md` 那条摘要器规则会把它当成"一份不分格的文档"混进名单。
  */
 const LEGACY_SKIP = new Set(["design/characters/_index.md"]);
 
@@ -36,10 +26,8 @@ const LEGACY_SKIP = new Set(["design/characters/_index.md"]);
 const INDENT = (n: number): string => "  ".repeat(n + 1);
 
 /**
- * 文档树的一个节点。
- *
- * `path` **可以没有**：像"角色""正文"这种**分组节点**本身不是一份文档（它只是那一段的名字），
- * 而"世界观"既是分组又有一份总纲——那种节点两个都有，界面点名字开文档、点箭头展开。
+ * 文档树的一个节点。`path` 可以没有：像"角色""正文"这种分组节点本身不是文档（只是那一段的
+ * 名字）；而"世界观"这类既分组又有一份总纲的节点两个都有，界面点名字开文档、点箭头展开。
  */
 export interface DocNode {
   name: string;
@@ -48,24 +36,21 @@ export interface DocNode {
 }
 
 /**
- * 左栏那棵树的六段，**次序固定**。
- *
- * 这六个词就是 `mate` 对用户说话用的那六个（见 `mate.system.txt` 的 "Talk about 核心设定 / 世界观 /
- * 角色 / 大纲"）。**目录名 `design/` `chapters/` `state/` 一个都不出现**——它们是实现，不是这本书的样子。
+ * 左栏那棵树的六段，次序固定——就是 `mate` 对用户说话用的那六个词（见 `mate.system.txt`）。
+ * 目录名（`design/` `chapters/` `state/`）一个都不出现：它们是实现，不是这本书的样子。
  */
 const SECTIONS = ["核心设定", "世界观", "角色", "大纲", "正文", "现状"] as const;
 
-/** 认不出的东西归这一段——**列出来，别丢**：加了一类文档忘了配名字，也得看得见 */
+/** 认不出的东西归这一段：加了一类文档忘了配名字，也得看得见，不能丢。 */
 const OTHER = "其他";
 
 const base = (path: string): string => path.split("/").pop()?.replace(/\.md$/, "") ?? path;
 
 /**
- * 一份文档**对外叫什么、归在哪一段**。
+ * 一份文档对外叫什么、归在哪一段。这是显示名的唯一一处，CLI 那边要对齐也引它——同一份文档在
+ * 两个界面里有两个名字，是这类映射最典型的烂法。
  *
- * **这是"显示名"的唯一一处。** CLI 那边要对齐也引它——同一份文档在两个界面里有两个名字，
- * 是这类映射最典型的烂法。注意它只认作品那三个根下的已知形状；`.talemate/` 的东西根本到不了这里
- * （`enumerateDocs` 不认它）。
+ * 它只认作品那三个根下的已知形状；`.talemate/` 下的东西到不了这里（`enumerateDocs` 不认它）。
  */
 function displayOf(path: string): { section: string; parts: string[] } {
   if (path === "design/core.md") return { section: "核心设定", parts: [] };
@@ -97,9 +82,8 @@ function displayOf(path: string): { section: string; parts: string[] } {
 /**
  * 平铺的项目相对路径 → 界面左栏那棵树（`buildIndex` 是它在文本上的同族）。
  *
- * 判据分两层，都只在这里：**归哪一段**（`displayOf` 的 section）与**同段之内怎么排**
- * （目录在前、其余按 **`numeric`** 比较——`第 2 卷` 要排在 `第 10 卷` 前面，字典序正好反过来，
- * 而界面上一眼看得出的顺序错比"少了点什么"更让人以为程序坏了）。
+ * 判据只在这里：归哪一段；同段之内目录在前、其余按 `numeric` 比较——`第 2 卷` 要排在
+ * `第 10 卷` 前面，字典序正好反过来。
  */
 export function docTree(paths: string[]): DocNode[] {
   const children = new Map<string, DocNode[]>();
@@ -150,10 +134,8 @@ export function docTree(paths: string[]): DocNode[] {
 }
 
 /**
- * 生成某一段语料的目录（给 CLI 的 `/status` 与 `list` 复用）。
- *
- * `prefix` 是要索引的那一段（默认整个 `design/`）；组名与缩进都按**前缀之下**的相对路径算——
- * 项目相对路径的第一段永远是根，拿它分组会把所有文档塞进同一个组。
+ * 生成某一段语料的目录（CLI 的 `/status` 与 `list` 复用）。`prefix` 是要索引的那一段，
+ * 组名与缩进按前缀之下的相对路径算——按项目相对路径的第一段分组会把所有文档塞进同一个组。
  */
 export async function buildIndex(projectId: string, prefix = "design/"): Promise<string> {
   const files = await enumerateDocs(projectId, prefix);
@@ -174,10 +156,9 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g)!.push(f);
   }
-  // 已知目录按固定次序（根在最前），**其余一律附在后面**——从前这里只列那四个名字，
-  // 于是枚举得到、却一个字的目录都不显示：新目录会被静默丢掉。
-  // 列整个项目时（`prefix = ""`）分组就是那三个根，所以它们排在头里、顺序同 `DOC_ROOTS`；
-  // 后四个是 `design/` **之内**的分组（给 `prefix = "design/"` 用，那时前三个一个都不出现）。
+  // 已知目录按固定次序（根在最前），其余一律附在后面——否则枚举得到、却不显示的新目录会被
+  // 静默丢掉。列整个项目时分组就是那三个根（顺序同 `DOC_ROOTS`），后四个是 `design/` 之内的
+  // 分组，给 `prefix = "design/"` 用。
   const KNOWN = ["design", "chapters", "state", "", "wiki", "characters", "outline"];
   const rest = [...groups.keys()].filter((g) => !KNOWN.includes(g)).sort();
   const order = [...KNOWN.filter((g) => groups.has(g)), ...rest];
@@ -188,8 +169,7 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
       const content = await readDoc(projectId, f);
       const fileIndent = INDENT(g ? 1 : 0);
       const headIndent = INDENT(g ? 2 : 1);
-      // 组名已经单独占了一行，行内不再重复这个前缀——情节层是三层路径（outline/vol_1/s1.md），
-      // 重复一次就吃掉半行。
+      // 组名已单独占一行，行内不再重复前缀——否则三层路径（outline/vol_1/s1.md）会吃掉半行。
       const rel = relOf.get(f) ?? f;
       const label = g ? rel.slice(g.length + 1) : rel;
 
@@ -216,7 +196,7 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
   return lines.join("\n");
 }
 
-/** core + world 总纲常驻设定全文。mate 每轮注入；文件不存在（懒建未产出）则跳过该块。 */
+/** core + world 总纲的常驻全文，mate 每轮注入；文件不存在（懒建未产出）则跳过。 */
 export async function buildResidentDesigns(projectId: string): Promise<string> {
   const blocks: string[] = [];
   for (const path of RESIDENT_DOCS) {

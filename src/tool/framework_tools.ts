@@ -1,6 +1,6 @@
 /**
- * framework-tools：框架层工具。
- * 当前仅 design-spec——**查形状**（某份文档该有哪些小节、每格装什么、成稿做法），不是文档操作。
+ * framework-tools：框架层工具；当前仅 design-spec——查形状（某份文档该有哪些小节、每格装什么、
+ * 成稿做法），不是文档操作。
  */
 import { renderSpec } from "../framework/design_spec";
 import { readPrompt } from "../prompts";
@@ -9,12 +9,10 @@ import { defineTool, type RegisteredTool } from "./define";
 const P = (id: string) => readPrompt(`tools/${id}`);
 
 /**
- * design-spec：返回结构规范（该有哪些小节 + 成稿/补缺做法）——懒建时模型靠它成稿。
- *
- * **只收一个路径**：给一份文档的路径就取那一份的规范（规范描述的是**还不存在的**文档，所以给
- * "将来那个路径"就行）；给一个目录（`design/outline/`）就把该目录名下登记的每一种文档一并返回。
- * 从前还有第二个入口 `layer`（`core | world | …`），那是"少拼一次路径"的糖——路径口径统一之后
- * 它没有存在的理由：糖能表达的路径本来就能表达，而它多带一套词表、还和注册表各说各话。
+ * design-spec：返回结构规范（该有哪些小节 + 成稿/补缺做法），懒建时模型靠它成稿。
+ * 只收一个路径：给文档路径就取那一份的规范（规范描述的是还不存在的文档，给"将来那个路径"即可），
+ * 给目录（`design/outline/`）就返回该目录名下登记的每一种。曾有过第二个入口 `layer`，那是"少拼
+ * 一次路径"的糖——糖能表达的路径本来就能表达，而它多带一套词表、还和注册表各说各话，所以否决。
  */
 export const designSpecTool: RegisteredTool<{ path: string }> = defineTool<{
   path: string;

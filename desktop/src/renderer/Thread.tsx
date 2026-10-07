@@ -1,17 +1,10 @@
 /**
- * 对话区。**这一块是界面里最要紧的**，因为它同时装着性质完全不同的东西：
- * 用户说的话、mate 说的话、跑过的工具、摆出来的提案、要用户点头的落盘、要用户回答的问题。
- * 全画成一样的块，就会糊成一片——所以按"谁在说话 / 要不要你动手"分四种画法：
+ * 对话区：把性质不同的东西按"谁在说话 / 要不要你动手"分四种画法——用户的话是右侧气泡
+ * （只有它是气泡：一次打断，不是正文），mate 的话是页面正文（宋体、内容列宽），跑过的工具
+ * 折成一行"用了 N 步"（工具是过程，不是内容），要动手的（提案 / 落盘确认 / 提问）是卡片，
+ * 动作按钮长在卡片上。
  *
- * | 是什么 | 怎么画 |
- * |---|---|
- * | 用户说的话 | **右侧气泡**（只有它是气泡：它是一次打断，不是正文） |
- * | mate 说的话 | **页面正文**（宋体、无边框、内容列宽），靠 markdown 结构分区 |
- * | 跑过的工具 | **折成一组**：一行"用了 N 步"，展开才看见细节。工具是过程，不是内容 |
- * | 要动手的 | **卡片**：提案 / 落盘确认 / 提问，动作按钮长在卡片上 |
- *
- * **正文不铺在这里**（用户定的）：mate 写一章时那几千字是"稿子"，对话里只给一张进度卡——
- * 写着写着把对话淹掉，是这一类界面最容易变乱的地方。
+ * 正文不铺在这里（用户定的）：mate 写一章时那几千字只给一张进度卡，否则会把对话淹掉。
  */
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -20,11 +13,11 @@ import type { AskRequest, ConfirmRequest, StoredMessage } from "../shared/api";
 import { VERDICT_TEXT } from "../shared/verdict";
 
 /**
- * mate 说的话是 **markdown**（加粗、列表、行内代码），所以得渲染，不能当纯文本贴出来——
- * 贴出来就是一堆 `**星号**`，而"渲染过的回复"正是别人那套看起来不像草稿的原因之一。
+ * mate 说的话是 markdown（加粗、列表、行内代码），所以得渲染，不能当纯文本贴出来——
+ * 贴出来就是一堆星号。
  *
- * **必过 DOMPurify**：它和右栏预览走的是同一件事（外部文本进渲染层），而渲染层有网络。
- * 两处共用 `.md` 那一套元素样式（在 `styles.css` 里只写一份）。
+ * 必过 DOMPurify：它和右栏预览走的是同一件事（外部文本进渲染层，而渲染层有网络）。
+ * 两处共用 `styles.css` 里那一份 `.md` 元素样式。
  */
 function Markdown({ text }: { text: string }) {
   const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false })), [text]);
@@ -40,13 +33,13 @@ export type LiveItem =
   | { kind: "proposal"; text: string }
   | { kind: "note"; text: string };
 
-/** 一格"跑的这些东西"：连续的几个工具调用 + 稿子进度，合成一段可展开的过程。 */
+/** 一格过程：连续的几个工具调用加稿子进度，合成一段可展开的过程。 */
 export type Step =
   | { kind: "tool"; name: string; subject?: string; output?: string }
   | { kind: "chapter"; path: string; words: number };
 
 /**
- * 工具调用按**它动的是什么**分两种画法。
+ * 工具调用按它动的是什么分两种画法。
  *
  * `write` 往 `chapters/` 里写 = 写正文：那几千字不进对话，只报"正在写第几章、多少字"。
  * 别的（读文档、委派、查资料）都是过程，折进"用了 N 步"里。
@@ -65,18 +58,17 @@ export function classifyStep(name: string, input?: string): Step {
   return { kind: "tool", name };
 }
 
-/** 长结果只留个头，并说清"还有多少"——**别让一句证据占掉半屏**，也别让人以为就这么多。 */
+/** 长结果只留个头，并说清"还有多少"——别占掉半屏，也别让人以为就这么多。 */
 function truncate(text: string, max = 160): string {
   const one = text.replace(/\s+/g, " ").trim();
   return one.length <= max ? one : `${one.slice(0, max)}…（还有 ${one.length - max} 字）`;
 }
 
 /**
- * 推理：**收起成一行**，点开看全文。它是过程，不是结论；但"它想过什么"有时正是你要的。
+ * 推理：收起成一行，点开看全文。它是过程，不是结论，但"它想过什么"有时正是你要的。
  *
- * 两个状态用同一个词：正在跑是**「思考中…」+ 脉搏 + 秒数**（这是"它没死"最直接的那句话），
- * 跑完是**「思考过程」+ 字数**，并且**默认重新收起**（过程不该事后还占着地方）。
- * 两处的形状也一样：一个词 + 一个灰色的数字，只有词在变。
+ * 两个状态形状一样（一个词 + 一个灰色的数字）：正在跑是「思考中…」+ 脉搏 + 秒数，
+ * 跑完是「思考过程」+ 字数，并且默认重新收起——过程不该事后还占着地方。
  */
 function Thought({ text, live }: { text: string; live: boolean }) {
   const [open, setOpen] = useState(false);
@@ -94,11 +86,11 @@ function Thought({ text, live }: { text: string; live: boolean }) {
 }
 
 /**
- * 一行的"它在干活"状态，跑的时候**带秒数**。
+ * 一行的"它在干活"状态，跑的时候带秒数。
  *
  * 秒数不是装饰：默认 `TALEMATE_REASONING=off` 时根本没有推理流，模型就是静静想三十秒——
- * 光一句「思考中」，用户还是不知道它是在想还是死了。数字在动，就说明它还活着。
- * 秒数从**这个组件挂上来的那一刻**算起，等于这一段的起点，不用外面再传一个时间进来。
+ * 光一句「思考中」，用户还是不知道它是在想还是死了；数字在动，就说明它还活着。
+ * 秒数从这个组件挂上来的那一刻算起，等于这一段的起点，不用外面再传一个时间进来。
  */
 function Activity() {
   const [since] = useState(() => Date.now());
@@ -118,12 +110,11 @@ function Activity() {
 }
 
 /**
- * 工具 id → **人话**。两条规矩：
+ * 工具 id → 人话。两条规矩：
  *
- * 1. **不带"了"。** 这一行是"这一步在做什么"的摘要，不是记账；每一条都缀一个"了"，
- *    读起来就是流水账（"读了…、写了…、交了…"）。用动词短语的名词式：查阅、撰写、委派。
- * 2. **一个都不许漏。** 表里没有的 id 会把英文名直接漏到界面上（`enter-draft` 就是这么露出来的），
- *    漏了就是界面在说行话。
+ * 1. 不带"了"。这一行是"这一步在做什么"的摘要，不是记账；每条都缀一个"了"读起来就是流水账。
+ *    用动词短语的名词式：查阅、撰写、委派。
+ * 2. 一个都不许漏。漏了的 id 只能落到 `调用 <英文名>`，界面就在说行话。
  */
 const TOOL_WORDS: Record<string, string> = {
   read: "查阅文档",
@@ -148,16 +139,14 @@ const TOOL_WORDS: Record<string, string> = {
   skill: "载入规范",
 };
 
-/** 工具 id → 人话；认不出就照名字说（"调用 xxx"），不硬凑动词。 */
+/** 认不出的 id 照名字说（"调用 xxx"），不硬凑动词。 */
 function toolWord(name: string): string {
   return TOOL_WORDS[name] ?? `调用 ${name}`;
 }
 
 /**
- * **它动的是什么**：读了哪个文件、搜了什么词、派给谁。
- *
- * 这些都在工具调用的入参里，而展开那一行原来**只有名字**——"读了文档"却不说是哪一份，
- * 等于没说。取值按常见字段挨个试：`path` / `query` / `url` / `agent` / `name`，规划还看 `chapter`。
+ * 它动的是什么：读了哪个文件、搜了什么词、派给谁——这些都在工具调用的入参里。
+ * 取值按常见字段挨个试：`path` / `query` / `url` / `agent` / `name`，规划还看 `chapter`。
  */
 export function subjectOf(input?: string): string | undefined {
   if (input === undefined || input === "") return undefined;
@@ -209,7 +198,7 @@ export function Thread({
   ask: AskRequest | null;
   onReply: (id: string, value: string) => void;
   onVerdict: (text: string) => void;
-  /** 点"稿子"卡 → 右栏读全文（对话里只留这一行） */
+  /** 点"稿子"卡 → 右栏读全文 */
   onOpenDoc: (path: string) => void;
   /** 点"看改动" → 右栏显示 diff */
   onOpenDiff: (name: string, text: string) => void;
@@ -240,7 +229,7 @@ export function Thread({
   flush();
 
   // 末尾那条"它在干活"：屏幕上已经有在动的东西（正在想的推理 / 正在做的步骤 / 正在涌出的正文）时
-  // 不再叠一句——**同一件事说两遍，比不说更乱**。
+  // 不再叠一句——同一件事说两遍比不说更乱。
   const lastLive = live[live.length - 1];
   const showingActivity =
     lastLive !== undefined &&
@@ -268,7 +257,7 @@ function Stored({ m, onOpenDoc }: { m: StoredMessage; onOpenDoc: (path: string) 
     }
   };
   (m.parts ?? []).forEach((p, i) => {
-    // **`output` 必须带上**：从盘上载入的历史里原来只取了 input，于是展开那一行只剩一个名字
+    // `output` 必须带上：只取 input 的话，展开那一行就只剩一个名字
     if (p.type === "tool") {
       const step = classifyStep(p.name, p.input);
       steps.push(step.kind === "chapter" ? step : { ...step, subject: subjectOf(p.input), output: p.output });
@@ -277,7 +266,7 @@ function Stored({ m, onOpenDoc }: { m: StoredMessage; onOpenDoc: (path: string) 
       flush();
       out.push(<Said key={`t${i}`} text={p.text} />);
     }
-    // 推理不画：要看它得做成折叠块，那是后面的事
+    // 历史里的推理不画——要画得做成折叠块
   });
   flush();
   return <>{out}</>;
@@ -295,7 +284,7 @@ function Said({ text }: { text: string }) {
   return <Markdown text={text} />;
 }
 
-/** 过程折叠：一行摘要 + 展开。工具是过程，一眼扫过就行，别占着对话的地方。 */
+/** 过程折叠：一行摘要加展开。工具是过程，一眼扫过就行，别占着对话的地方。 */
 function Steps({ steps, running, onOpenDoc }: { steps: Step[]; running?: boolean; onOpenDoc: (path: string) => void }) {
   const [open, setOpen] = useState(false);
   const words = stepWords(steps);
@@ -331,7 +320,7 @@ function Steps({ steps, running, onOpenDoc }: { steps: Step[]; running?: boolean
 }
 
 /**
- * 摆出来的提案（设计稿 / 章节规划）。**动作长在卡片上**——三向裁决就是三个按钮，不另起一行问。
+ * 摆出来的提案（设计稿 / 章节规划）。动作长在卡片上——三向裁决就是三个按钮，不另起一行问。
  * 按钮说的是 `VERDICT_TEXT` 里那两句固定的话（判定在 harness，见 `shared/verdict.ts`）。
  */
 function Proposal({ text, onVerdict }: { text: string; onVerdict: (text: string) => void }) {
@@ -417,7 +406,7 @@ function Confirm({
       <div className="confirm-head">{req.action}</div>
       <pre className="proposal">{head}</pre>
       {body !== "" && (
-        // 细节去右栏（"需要展示详细的都在右侧"）：这一行只是个**入口**，不在这里摊开
+        // 细节去右栏（"需要展示详细的都在右侧"）：这一行只是个入口，不在这里摊开
         <button className="steps-head" onClick={() => onOpenDiff(req.action, body)}>
           <span className="caret">›</span>
           看改动（右栏）
@@ -438,7 +427,7 @@ function Confirm({
   );
 }
 
-/** 提问：mate 在等一个答案（`askUser`）。有选项就给按钮，没有就给输入框。 */
+/** 提问：mate 在等一个答案（`askUser`）；有选项就给按钮，没有就给输入框。 */
 function Ask({ req, onReply }: { req: AskRequest; onReply: (id: string, value: string) => void }) {
   const [value, setValue] = useState("");
   const answer = (v: string): void => onReply(req.id, v);

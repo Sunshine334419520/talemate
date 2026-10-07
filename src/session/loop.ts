@@ -1,11 +1,10 @@
 /**
- * 抽离出的 agent 循环：纯控制流，依赖注入、对 storage/llm/agents 零 import。
+ * 抽离出的 agent 循环：纯控制流，依赖全经 LoopDeps 注入，对 storage/llm/agents 零 import，
+ * 因此可脱离文件系统单独测（给一份 fake deps）。
  *
- * 一条输入 → 若干轮「取上下文 → 生成 → 执行工具 → 落盘 → 判断是否续」，
- * 直到某一轮无 tool-call、有工具要求 halt、或达 steps 上限。
- * 依赖全部经 LoopDeps 注入，因此可脱离文件系统单独测（给一份 fake deps）。
- *
- * halt：工具成功后要求结束本回合、把控制权交回用户（propose-design 用它保证提案与落盘不同回合）。
+ * 一条输入 → 若干轮「取上下文 → 生成 → 执行工具 → 落盘 → 判断是否续」，直到某轮无 tool-call、
+ * 有工具要求 halt、或达 steps 上限。halt 只在工具成功后置位，结束本回合、把控制权交回用户
+ * （propose-design 用它保证提案与落盘不同回合）。
  */
 import type { AgentDef, AssistantPart, LLMEvent, ToolCall } from "../core/types";
 import type { AssistantTurn, NeutralMsg, ToolSchema } from "../llm/types";
@@ -30,7 +29,6 @@ export interface LoopDeps {
   maybeCompact?(): Promise<void>;
   /** 本轮最多多少步（防跑飞） */
   steps?: number;
-  /** 中止信号 */
   signal: AbortSignal;
 }
 
@@ -43,9 +41,7 @@ export async function runLoop(agent: AgentDef, input: string, deps: LoopDeps): P
   const steps = deps.steps ?? 10;
   for (let step = 0; step < steps; step++) {
     deps.onEvent({ type: "step.start" });
-    // 组装本次请求
     const { system, messages, tools } = await deps.buildRequest(agent);
-    // 调用 LLM（流式 delta 转发给 io）
     const turn = await deps.generate(
       { system, messages, tools },
       {
@@ -58,12 +54,11 @@ export async function runLoop(agent: AgentDef, input: string, deps: LoopDeps): P
     // 用量报给外面：它是界面那个"上下文占比"唯一的真实来源（估算的不算）
     if (turn.usage) deps.onEvent({ type: "usage", input: turn.usage.input, output: turn.usage.output });
 
-    // 收拢本条 assistant 的 parts（含工具执行结果，内嵌在本条里）
     const parts: AssistantPart[] = [];
     if (turn.reasoning) parts.push({ type: "reasoning", text: turn.reasoning });
     if (turn.text) parts.push({ type: "text", text: turn.text });
 
-    // 逐个执行；某工具要求 halt（halt 只在成功时置位，见 tool/runner）就停在本条，剩余调用不再执行。
+    // 逐个执行；某工具要求 halt（只在成功时置位，见 tool/runner）就停在本条，剩余调用不再执行。
     // 剩余调用必须补一个带各自 id 的 part：本条消息登记了全部 toolCalls，而 assemble 只回放
     // completed/error——少一个 part，下一次请求的消息形状就是坏的（静默错误，测试专门盯它）。
     let halted = false;

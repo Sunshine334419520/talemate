@@ -1,11 +1,11 @@
 /**
- * 右栏：**看细节的地方**。对话只放"提到它的那一行"，细节一律来这里——
- * 一章正文、一次落盘的改动、将来还有别的。所以它装的是**一个联合**，不是"文档预览"那一种。
+ * 右栏：看细节的地方。对话只放"提到它的那一行"，细节一律来这里——一章正文、一次落盘的改动、
+ * 将来还有别的，所以它装的是一个联合，不是"文档预览"那一种。
  *
  * 两条纪律：
- * - **markdown 必过 DOMPurify**：文档里可能贴进任何东西（查证时从网页抄来的片段、用户自己粘的 HTML），
- *   而渲染层是有网络的那一侧。一个 `<img onerror>` 就够把稿子送出去。不是洁癖。
- * - **diff 按行着色**，不渲染 markdown：它是**逐字的证据**，加粗斜体只会把 `+`/`-` 淹掉。
+ * - markdown 必过 DOMPurify：文档里可能贴进任何东西（查证时从网页抄来的片段、用户自己粘的
+ *   HTML），而渲染层是有网络的那一侧。一个 `<img onerror>` 就够把稿子送出去。不是洁癖。
+ * - diff 按行着色，不渲染 markdown：它是逐字的证据，加粗斜体只会把 `+`/`-` 淹掉。
  */
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -32,7 +32,7 @@ export function SidePane({
   onEditingChange: (editing: boolean) => void;
   /** 保存一份文档；回 `stale` 表示打开之后它在别处被改过 */
   onSave: (text: string) => Promise<"ok" | "stale">;
-  /** 别处把这一份改了（界面据此提示，**不抢正在编辑的光标**） */
+  /** 别处把这一份改了（界面据此提示，不抢正在编辑的光标） */
   stale: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -99,7 +99,7 @@ function Doc({ text }: { text: string }) {
   return <div className="md pane-body" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-/** 逐行着色：`+` 新增、`-` 删除，其余原样。行号不给——`write_ops` 的 diff 自带上下文行。 */
+/** 逐行着色：`+` 新增、`-` 删除，其余原样。不给行号——`write_ops` 的 diff 自带上下文行。 */
 function Diff({ text }: { text: string }) {
   const lines = text.split("\n");
   return (

@@ -1,22 +1,16 @@
 /**
- * match：把"模型写的原文片段"对上"文件里真实存在的那一段"。纯函数、无 IO、不认识小节/角色卡/层。
+ * match：把"模型写的原文片段"对上"文件里真实存在的那一段"。纯函数、无 IO、不认识小节/角色卡/层，
+ * 只做字符串阶梯（行数组阶梯留给整文件补丁），也不写盘——落盘路径见 write_ops.ts。
  *
- * 为什么需要它：模型回填原文时几乎总是差一点——缩进被吃掉、行尾空格没了、中文弯引号被写成
- * 英文直引号、换行被写成字面的 `\n`。一次精确比较就失败太脆，所以从最严格到最宽松逐级降级，
- * **任一级命中即停**。
+ * 模型回填原文几乎总是差一点（缩进被吃、行尾空格、中文弯引号写成直引号、换行写成字面 `\n`），
+ * 一次精确比较太脆，所以从最严格到最宽松逐级降级，任一级命中即停。
  *
- * 两个不变量比阶梯本身更要紧：
- * - **唯一性由这里判，不由调用方保证**：命中位置不唯一就换下一个候选；全跑完仍不唯一才报错。
- *   静默改错位置是最糟的失败模式，宁可拒绝。
- * - **跨度不成比例就拒绝**（isDisproportionate）：模糊匹配的失败模式不是"找不到"，而是
- *   "匹配到太大的一片"——把一整节吞掉换成一个词。这条最容易漏。
- *
- * 边界：这里只回答"对上了哪一段、换成什么"，**不写盘**。落盘路径见 write_ops.ts。
- *
- * 只做字符串阶梯，不做行数组阶梯：后者是给整文件补丁用的，等正文编辑真需要整章补丁再补。
+ * 两个不变量由这里判而不留给调用方：命中不唯一就换下一个候选、全跑完仍不唯一才报错（静默改错
+ * 位置是最糟的失败模式，宁可拒绝）；跨度不成比例就拒绝——模糊匹配的失败模式不是"找不到"，
+ * 而是"匹配到太大的一片"。
  */
 
-/** 命中级别。**顺序即优先级**——数组里靠前的先试，命中即停。诊断与测试用。 */
+/** 命中级别；真正的优先级由 `LADDER` 的顺序决定，不在这里。 */
 export const MATCH_LEVELS = [
   "exact", // 原样子串
   "line-trimmed", // 逐行去首尾空白后比
@@ -32,10 +26,7 @@ export type MatchLevel = (typeof MATCH_LEVELS)[number];
 /** 单候选相似度阈值（block-anchor / context 用）。实测调出来的值，别随手调。 */
 const SIMILARITY_THRESHOLD = 0.65;
 
-/**
- * 编辑距离。**只留两行**——完整矩阵是 O(n·m) 内存，而这里会被逐行调用，
- * 长段落上没必要为了一样的答案多吃几万个格子。
- */
+/** 编辑距离。只留两行而不是完整矩阵：这里会被逐行调用，长段落上没必要为一样的答案多吃 O(n·m) 内存。 */
 function levenshtein(a: string, b: string): number {
   if (a === "") return b.length;
   if (b === "") return a.length;
@@ -58,22 +49,20 @@ function similarity(a: string, b: string): number {
   return max === 0 ? 1 : 1 - levenshtein(a, b) / max;
 }
 
-/** 拆行。末尾那个空串是 `split` 的产物，不代表多出一行——统一去掉，免得每处各判一次。 */
+/** 拆行。去掉 `split` 产生的末尾空串，免得每处调用各判一次。 */
 function lines(text: string): string[] {
   const out = text.split("\n");
   if (out.length && out[out.length - 1] === "") out.pop();
   return out;
 }
 
-/** 把行数组还原成文本片段。 */
 function joinLines(ls: string[]): string {
   return ls.join("\n");
 }
 
-/** 一个候选生成器：给定文件内容与要找的片段，产出"可能是它"的**真实子串**。 */
+/** 候选生成器：产出"可能是它"的真实子串，调用方靠 `indexOf` 定位。 */
 type Replacer = (content: string, find: string) => Generator<string, void, unknown>;
 
-/** 原样。 */
 function* exact(_content: string, find: string): Generator<string> {
   yield find;
 }
@@ -95,10 +84,7 @@ function* lineTrimmed(content: string, find: string): Generator<string> {
   }
 }
 
-/**
- * 首末行当锚，中间行算相似度。治的是"中间有几行被模型改写了措辞"。
- * 行数差超过 25% 就不认——差太多说明那不是同一块。
- */
+/** 首末行当锚、中间行算相似度，治"中间有几行被模型改写了措辞"。行数差超过 25% 就不认——差太多说明不是同一块。 */
 function* blockAnchor(content: string, find: string): Generator<string> {
   const search = lines(find);
   if (search.length < 3) return;
@@ -146,7 +132,6 @@ function* blockAnchor(content: string, find: string): Generator<string> {
   if (best && bestScore >= SIMILARITY_THRESHOLD) yield original.slice(best.start, best.end + 1).join("\n");
 }
 
-/** 所有空白串折叠成一个空格。 */
 function* whitespace(content: string, find: string): Generator<string> {
   const norm = (t: string) => t.replace(/\s+/g, " ").trim();
   const target = norm(find);
@@ -198,7 +183,6 @@ function* escape(content: string, find: string): Generator<string> {
   }
 }
 
-/** 整段 trim 后再比。 */
 function* boundary(content: string, find: string): Generator<string> {
   const trimmed = find.trim();
   if (trimmed === find) return; // 本来就 trim 过，没必要再来一遍
@@ -213,15 +197,12 @@ function* boundary(content: string, find: string): Generator<string> {
 }
 
 /**
- * Unicode 标点归一成 ASCII 后再比。
+ * Unicode 标点归一成 ASCII 后再比。正文里的引号本就该是弯的（“…”），模型回填时常写成直的
+ * （"…"）——两种都合法的写法对不上，不是模型写错；折线号、省略号、不换行空格同理。
  *
- * 专治中文：正文里的引号**本就该是弯的**（“…”），而模型回填时常写成直的（"…"）——
- * 这跟"模型写错了"不同，是两种都合法的写法对不上。折线号、省略号、不换行空格同理。
- *
- * **只收"同一个字的两种合法写法"，不收全角/半角标点**：`：` 与 `:`、`，` 与 `,`、`。` 与 `.`
- * 在中文里不是等价变体——前者是正字，后者是模型敲错了。把它们归一等于把真错误抹平，
- * 而且会把 `他说,我要回去.` 这类串放到一大片候选上去（唯一性随即失效）。
- * 敲错了就该让它撞"找不到"、回去重读文档，这是更短的自愈路径。
+ * 只收"同一个字的两种合法写法"，不收全角/半角标点（`：`/`:`、`，`/`,`、`。`/`.`）：它们不是
+ * 等价变体、后者是敲错了，归一等于把真错误抹平，还会把这类串放到一大片候选上（唯一性随即
+ * 失效）；敲错就该让它撞"找不到"、回去重读文档。
  */
 function* unicodeNormalized(content: string, find: string): Generator<string> {
   const norm = (s: string): string =>
@@ -272,9 +253,8 @@ function* contextAware(content: string, find: string): Generator<string> {
 }
 
 /**
- * 阶梯本体。数组顺序即优先级——**别按字母或"看起来更聪明"重排**。
- * 越靠后越宽松，命中的跨度也越可能不是模型想的那一段，所以靠后的级别尤其依赖
- * isDisproportionate 兜底。
+ * 阶梯本体，数组顺序即优先级，别重排。越靠后越宽松、命中的跨度越可能不是模型想的那一段，
+ * 所以靠后的级别尤其依赖 isDisproportionate 兜底。
  */
 const LADDER: { level: MatchLevel; replacer: Replacer }[] = [
   { level: "exact", replacer: exact },
@@ -287,25 +267,19 @@ const LADDER: { level: MatchLevel; replacer: Replacer }[] = [
   { level: "context", replacer: contextAware },
 ];
 
-// **没有"去公共缩进"那一级**。
-// 它被 line-trimmed 完全覆盖：两级都要求行数相同，而"整段去掉同一个前缀后逐行相等"
-// 蕴含"逐行 trim 后相等"——设 dedent(block) === dedent(find) === S，则 block[j] 要么就是 S_j、
-// 要么是"空白前缀 + S_j"，两种的 trim 都等于 S_j.trim()。既然它永远轮不到，留着只会让
-// 阶梯顺序这一层语义变得不可信（读的人会以为它拦住了什么）。
+// 没有"去公共缩进"那一级：它与 line-trimmed 都要求行数相同，而"整段去掉同一个前缀后逐行相等"
+// 蕴含"逐行 trim 后相等"，永远轮不到它，留着只会让阶梯顺序这一层语义变得不可信。
 
 /**
- * 模糊匹配有没有"吃掉太大一片"。**这是整个阶梯的安全阀**。
+ * 模糊匹配有没有"吃掉太大一片"，整个阶梯的安全阀。越靠后的级别越宽松（`context` 只要首末行
+ * 对上、中间过半对上就认，"改一个词"可能被理解成"重写整节"），判据是跨度而不是内容——内容
+ * 像不像归相似度管，这里只管它是不是大得离谱。
  *
- * 越靠后的级别越宽松：`context` 只要首末行对上、中间过半行对上就认，于是"改一个词"可能被
- * 理解成"重写整节"。判据是跨度，不是内容——内容像不像归相似度管，这里只管它**是不是大得离谱**。
+ * 行数暴涨与字符暴涨两条都要，它们抓的是不同的失控方式：`context` / `block-anchor` 只比行数与
+ * 相似度、不比行有多长，于是 3 行短句能对上 3 行长段落，只查行数会漏掉这一类。
  *
- * 两条规则都要，因为它们抓的是不同的失控方式：
- * - **行数暴涨**：命中比 find 多出好几行。
- * - **字符暴涨**（仅多行 find）：`context` / `block-anchor` 只比行数与相似度，**不比行有多长**。
- *   于是 3 行短句能对上 3 行长段落——行数一样，吞掉的内容却多几十倍。只查行数会漏掉这一类。
- *
- * `reference` 是"模型实际意图的大小"，通常就是 find。**唯独 escape 级要传解转义后的 find**：
- * 那一级本来就是把字面 `\n` 展开成多行，拿原始 find 去比会把它当失控误杀——可那正是模型要的。
+ * `reference` 是"模型实际意图的大小"，通常就是 find；唯独 escape 级要传解转义后的 find——
+ * 那一级本就把字面 `\n` 展开成多行，拿原始 find 去比会把它当失控误杀。
  */
 function isDisproportionate(matched: string, reference: string): boolean {
   const refLines = lines(reference).length;
@@ -320,12 +294,10 @@ export type ReplaceOutcome =
   | { ok: false; output: string };
 
 /**
- * 在 content 里找到 find 对应的**真实片段**，换成 replacement。
+ * 在 content 里找到 find 对应的真实片段，换成 replacement。
  *
- * `all=false`（默认）：命中必须唯一，否则拒绝并要求补上下文。
- * `all=true`：命中几处换几处（重命名变量那类用法）。
- *
- * 失败一律走返回值、不抛——文案是给模型的自愈线索（CLAUDE.md 的"模型能修的走 return"）。
+ * `all=false`（默认）要求命中唯一，否则拒绝并要求补上下文；`all=true` 命中几处换几处
+ * （重命名变量那类用法）。失败一律走返回值不抛——文案是给模型的自愈线索。
  */
 export function applyReplace(content: string, find: string, replacement: string, all = false): ReplaceOutcome {
   if (find === "") {
@@ -356,8 +328,8 @@ export function applyReplace(content: string, find: string, replacement: string,
       }
 
       if (all) {
-        // 用 split/join 而不是 replaceAll：字符串形式的替换值里 `$&`、`$1` 是**有含义的**，
-        // 正文里出现 `$` 时会被悄悄展开。函数式替换（或 split/join）才把 replacement 当字面量。
+        // 用 split/join 而不是 replaceAll：字符串替换值里的 `$&`、`$1` 有含义，正文出现 `$`
+        // 会被悄悄展开；函数式替换或 split/join 才把 replacement 当字面量。
         const parts = content.split(matched);
         return { ok: true, content: parts.join(replacement), matched, level, count: parts.length - 1 };
       }

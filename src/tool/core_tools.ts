@@ -2,12 +2,9 @@
  * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / propose-plan / enter-draft / exit-draft）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
  *
- * **改作品文档的工具不在这里**。`save-chapter` 曾在这里，它只是"`write` 加一个写死的 chapters/ 前缀"——
- * 已删除，改由 `write` 承担。改文件的两个面在 `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
- *
- * 唯一的例外是 `propose-plan`：它**自己落盘**规划工件。因为规划不是作品文档（不审 diff、不做 CAS、
- * 不进语料），落点是 `.talemate/plans/` 这个引擎工作区，而 `write_ops` 只认作品的三个根。
- * 判据见 `framework/plan.ts` 的文件头。
+ * 改作品文档的工具不在这里，它们在 `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
+ * 唯一的例外是 `propose-plan`：它自己落盘规划工件，因为规划不是作品文档（不审 diff、不做 CAS、
+ * 不进语料），落点是 `.talemate/plans/` 引擎工作区，而 `write_ops` 只认作品的三个根。
  */
 import { DRAFT_MODE } from "../agent/modes";
 import { PLAN_KEY } from "../core/types";
@@ -17,7 +14,7 @@ import { defineTool, type RegisteredTool } from "./define";
 
 const P = (id: string) => readPrompt(`tools/${id}`);
 
-/** task：委派 subagent（可派列表由 schemasFor 动态注入 description） */
+/** task：委派 subagent；可派列表由 schemasFor 动态注入 description。 */
 export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defineTool<{
   agent: string;
   prompt: string;
@@ -46,9 +43,8 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
     }
     if (verdict === "reject") return { output: `用户已拒绝委派 ${args.agent}。` };
 
-    // **这里从前有一道硬门**：派 writer 写正文前必须有一份用户拍板过的节拍。它随 writer 一起没了——
-    // 正文现在由 mate 自己写，而"写正文"不再经过任何一个可以挂门的工具（那是普通 `write`，
-    // 用户照样在 diff 上点头）。拍板这一环留在 `propose-plan` 的 `halt` 上：规划交出去，本回合就停。
+    // 写正文走普通 `write`（用户在 diff 上点头），不经过任何可挂门的工具；拍板这一环留在
+    // `propose-plan` 的 `halt` 上——规划交出去，本回合就停。
     const result = await ctx.runSubagent(args.agent, args.prompt);
     return {
       output: `<task agent="${args.agent}" state="completed">\n<task_result>\n${result}\n</task_result>\n</task>`,
@@ -57,7 +53,6 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
   },
 });
 
-/** skill：按名注入知识包正文 */
 export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: string }>({
   id: "skill",
   description: P("skill"),
@@ -73,7 +68,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
   },
 });
 
-/** ask-user：向用户要创作决策（非审批），返回答案文本给模型继续 */
+/** ask-user：向用户要创作决策，不是审批——审批走 confirm。 */
 export const askUserTool: RegisteredTool<{ question: string; options?: string[] }> = defineTool<{
   question: string;
   options?: string[];
@@ -98,8 +93,7 @@ export const askUserTool: RegisteredTool<{ question: string; options?: string[] 
     if (!question) {
       return { output: `ask-user 缺少必填 question（收到：${JSON.stringify(args).slice(0, 200)}）——请用合法 JSON 带 question 重新调用。` };
     }
-    // 这一个是"由我决定要不要开口问"，不是权限系统替你问——所以只求值、不弹窗
-    // （否则会先弹一句"允许提问吗"，再弹真正的问题）。
+    // 这里只用 check 求值、不弹窗——ask 会先弹一句"允许提问吗"，再弹真正的问题
     if (ctx.check("question", "*") === "deny") {
       return { output: "当前不允许打断用户（子代理不在场，或模式禁了提问）——把问题留在返回值里带回去。" };
     }
@@ -108,7 +102,7 @@ export const askUserTool: RegisteredTool<{ question: string; options?: string[] 
   },
 });
 
-/** confirm：给模型一个显式"落盘前征求主编确认"的动作入口 */
+/** confirm：落盘前显式征求主编确认的动作入口——审批通道，对应用户的"可/否"。 */
 export const confirmTool: RegisteredTool<{ action: string; summary: string }> = defineTool<{
   action: string;
   summary: string;
@@ -139,18 +133,9 @@ export const confirmTool: RegisteredTool<{ action: string; summary: string }> = 
 });
 
 /**
- * propose-plan：把**这一章**的规划交给用户拍板，并**结束本回合**等他回话。
- *
- * **与 propose-design 的区别：没有 apply 那一半。** 规划批准的是**执行**（照它去写正文），
- * 不是一份要落盘的文档——所以这里不判"同意后怎么写"，用户说"没问题"之后，mate 直接开写。
- * 用户要改 → 改完再交一次，这是个循环。
- *
- * `halt` 是它存在的全部理由：光靠纪律，mate 可能拿着没批准的规划直接开写。
- * 交出去就停，不靠模型自觉。
- *
- * **它自己落盘**（`.talemate/plans/ch_<N>.md`，见 `framework/plan.ts`）：规划归引擎工作区，
- * 不进 `design/`。所以这里既没有 `enter-draft` 前置（草稿模式只服务文档提案的三向审阅），
- * 也不走 `write_ops` 那条作品文档的路径。
+ * propose-plan：把这一章的规划交给用户拍板，并 halt 结束本回合等他回话——不靠模型自觉，
+ * 否则它可能拿着没批准的规划直接开写。没有 apply 那一半：批准的是执行（照它写正文），
+ * 不是要落盘的文档——所以没有 enter-draft 前置，草稿模式只服务文档提案的三向审阅。
  */
 export const proposePlanTool: RegisteredTool<{ chapter: number; content: string }> = defineTool<{
   chapter: number;
@@ -158,7 +143,7 @@ export const proposePlanTool: RegisteredTool<{ chapter: number; content: string 
 }>({
   id: "propose-plan",
   description: P("propose-plan"),
-  halt: true, // 规划交出去了，接下来该用户拍板——不靠模型自觉
+  halt: true,
   input: {
     type: "object",
     properties: {
@@ -177,9 +162,8 @@ export const proposePlanTool: RegisteredTool<{ chapter: number; content: string 
   },
   async execute(args, ctx) {
     const content = (args.content ?? "").trim();
-    // **本工具的每条自愈路径都必须 throw，不能 return**：runner 对任何 return 都置 halt，return
-    // 一个校验错误等于把回合停在一个本可自愈的错误上。throw 会变成 error part，模型同轮就能补上重调。
-    // （`tests/framework.test.ts` 的 "tool runner · halt" 钉的就是这条。）
+    // 本工具带 halt，而 runner 对任何 return 都置 halt——所以自愈路径必须 throw，throw 变成 error part 后
+    // 模型同轮就能重调；`tests/framework.test.ts` 的 "tool runner · halt" 钉着这条
     if (!content) {
       throw new Error(
         `propose-plan 缺少 content（收到：${JSON.stringify(args).slice(0, 200)}）——请带这一章的规划正文重新调用。`,
@@ -192,10 +176,10 @@ export const proposePlanTool: RegisteredTool<{ chapter: number; content: string 
           `——它回答"这是第几章"，规划工件按它命名。请带章号重新调用。`,
       );
     }
-    // 先落盘、再登记、再摆给用户：工件是这次执行的凭据，用户接受之后 mate 照它干。
+    // 先落盘、再登记、再摆给用户：工件是这次执行的凭据
     const path = await savePlan(ctx.projectId, chapter, content);
-    // 登记成"待执行的规划"。用户回话后由 harness 置 approved（模型自述无效）。同一章再交一份
-    // 即覆盖旧的那一份，approved 归零——用户没见过新版就不算同意。
+    // 登记成待执行的规划；approved 由 harness 按用户回话置（模型自述无效），同一章再交一份即覆盖
+    // 旧的那一份且 approved 归零——用户没见过新版就不算同意
     ctx.setProposal({
       name: PLAN_KEY,
       content,
@@ -213,12 +197,7 @@ export const proposePlanTool: RegisteredTool<{ chapter: number; content: string 
   },
 });
 
-/**
- * 「你不在草稿模式里」的自愈文案——只服务 `propose-design` 了。
- *
- * 从前 `propose-plan` 也用它（两者前置同一条）。规划搬出草稿模式之后，三向审阅就只剩文档提案
- * 这一条出口——这也正是这个模式本来的定位。
- */
+/** 「你不在草稿模式里」的自愈文案，给 propose-design 用。 */
 export function notInDraft(what: string): string {
   return (
     `还没进草稿模式——三向审阅（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就提不出东西。` +
@@ -227,11 +206,8 @@ export function notInDraft(what: string): string {
 }
 
 /**
- * enter-draft / exit-draft：会话模式的进出口（见 `agent/modes.ts`）。
- *
- * **模式的边界感全在这两个工具上**：进入之后只有两条路——用户接受或拒绝（正常路径，模式自己退）、
- * 或者 `exit-draft`（用户改主意不做了）。没有第二条会把 mate 关在"能读能问、但派不了活"的笼子里。
- *
+ * enter-draft / exit-draft：会话模式的进出口（见 `agent/modes.ts`）。进入之后只有两条路：
+ * 用户接受或拒绝（模式自己退）、或 exit-draft（用户改主意不做）——没有第三条把 mate 关在里面。
  * 进入不弹 confirm：用户刚说了"写第 1 章"，再问一句"要不要先规划"是噪音。
  */
 export const enterDraftTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
@@ -248,7 +224,6 @@ export const enterDraftTool: RegisteredTool<Record<string, never>> = defineTool<
   },
 });
 
-/** exit-draft：用户改主意不做了 → 离开草稿模式。正常路径不需要它（接受/拒绝会自己退）。 */
 export const exitDraftTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
   id: "exit-draft",
   description: P("exit-draft"),

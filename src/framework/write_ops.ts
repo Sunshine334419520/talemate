@@ -1,7 +1,7 @@
 /**
- * write_ops：**所有改文件的操作唯一的一条路径**。
+ * write_ops：所有改文件的操作唯一的一条路径。
  *
- * 八步，**顺序即不变量**：
+ * 七步，顺序即不变量：
  *
  *   1 解析目标    项目相对路径 → 绝对路径 + 安全校验 + 权限 pattern
  *   2 读当前      不存在 → undefined
@@ -11,13 +11,11 @@
  *   6 CAS + 原子写
  *   7 返回        diff / 统计 / 命中了哪一级
  *
- * 为什么要有这一层：从前"改一个文件"有六条入口、三套存储原语，各自读-改-写、各自问用户，
- * 于是 CAS 只有一处有、绕过写盘唯一实现的地方没人抓得到。收成一条之后，**每一笔都带 CAS**，
- * 而"唯一写路径"由 `ToolContext` 上只有一个写口来保证（不再是约定）。
+ * 每一笔都带 CAS；"唯一写路径"由 `ToolContext` 上只有一个写口保证，不是约定。
  *
  * 两个批准来源，一条路径：
  * - `via:"confirm"` —— 二向。算完结果、渲染 diff，再弹窗问用户（接受 / 拒绝）。
- * - `via:"pending"` —— 三向。op **不从这里进**，只从提案登记里取（`proposalOp`）——
+ * - `via:"pending"` —— 三向。op 不从这里进，只从提案登记里取（`proposalOp`）——
  *   所以"模型夹带用户没看过的字节"在结构上不可能，不是靠检查拦住的。
  *
  * 边界：不认识"层""角色卡""小节"。领域语义在工具层（派生成 op），内容不变量在 invariants.ts。
@@ -35,18 +33,16 @@ import type { MatchLevel } from "./match";
 import { proposalOp } from "./proposal";
 
 /**
- * 可写的根：**就是作品的三个根，与读口同一份清单**（`core/config.DOC_ROOTS`）。
+ * 可写的根：就是作品的三个根，与读口同一份清单（`core/config.DOC_ROOTS`）。这个导出留着，是因为
+ * 文档与工具 prompt 引的是这个名字。
  *
- * 从前这里是手抄的第二份（读口那份在 `corpus`），加根时两处必须同时改，漏一处就是"写得进去
- * 读不回来"。现在它是同一个数组的别名——这个导出留着，是因为文档与工具 prompt 引的是这个名字。
- *
- * 加一个根要同时想清楚的三件事：权限 pattern（`state/…` 落进规则表的哪一档）、常驻注入
- * （要不要每轮注入）、以及读写两处都到位（最后这条现在由共用清单保证）。
+ * 加一个根要同时想清楚三件事：权限 pattern（`state/…` 落进规则表的哪一档）、常驻注入（要不要每轮
+ * 注入）、读写两处都到位（读写同一份清单保证这条）。
  */
 export const WRITE_ROOTS = DOC_ROOTS;
 
 export type WriteFailure =
-  /** 目标文件不存在（replace / append / delete 用） */
+  /** 目标文件不存在（replace / delete 用） */
   | "notfound"
   /** 路径不合法、或指向不可写的根 */
   | "invalid"
@@ -63,11 +59,11 @@ export type WriteRequest =
   /**
    * 直写：算结果 → 渲染 diff → 弹窗二向 → 落盘。
    *
-   * `note` 是给用户**做判断用的额外材料**（如删小节前的引用检查），排在 diff 之前——
-   * 光有 diff 看不出"这个改动会牵连哪些别的文档"。
+   * `note` 是给用户做判断用的额外材料（如删小节前的引用检查），排在 diff 之前——光有 diff
+   * 看不出"这个改动会牵连哪些别的文档"。
    */
   | { via: "confirm"; op: FileOp; action: string; note?: string }
-  /** 落提案：op 只从提案登记取，**不接受正文**。 */
+  /** 落提案：op 只从提案登记取，不接受正文。 */
   | { via: "pending"; proposalKey: string; action: string };
 
 export type WriteOutcome =
@@ -108,7 +104,7 @@ function resolveTarget(projectId: string, path: string): Target | { error: strin
 /**
  * 走一遍写盘。校验不过 / 用户拒了 / 陈旧 → `{ ok:false, output }`（回给模型自愈，不抛）。
  *
- * 只有**调用方写错**才抛（提案那条路上 op 与登记不符），因为那不是模型能修的问题。
+ * 只有调用方写错才抛（提案那条路上 op 与登记不符），因为那不是模型能修的问题。
  */
 export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<WriteOutcome> {
   // ─── 5 之前先定 op：pending 那条路只认提案登记里的那一份 ───
@@ -157,7 +153,7 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
   if ("error" in target) return { ok: false, reason: "invalid", output: target.error };
   checkDeny = target.pattern;
 
-  // 读回来的字节**原样**留着（含 BOM）——CAS 比的就是它，得逐字节忠实。
+  // 读回来的字节原样留着（含 BOM）——CAS 比的就是它，得逐字节忠实。
   const raw = await readText(target.abs);
   const source = raw === undefined ? undefined : splitBom(raw);
   // 没有 BOM 的正文才是内容本身：匹配、算结果、算 diff 都用它，免得那个不可见字符
@@ -174,19 +170,19 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
   const desiredBom = (source?.bom ?? false) || nextSplit.bom;
   const after = nextSplit.text;
 
-  // **对结果做后验**（不是对提案）。放在算 diff 之前：违反不变量就不该问用户，
+  // 对结果做后验（不是对提案）。放在算 diff 之前：违反不变量就不该问用户，
   // 也不该让他看见一份注定落不下去的 diff。
   const violation = checkInvariants({ path: target.pattern, opKind: op.kind, before: current, after });
   if (violation) return { ok: false, reason: "invalid", output: violation };
 
-  // diff 按**归一行尾**的形态算：行尾是文件自己的属性，不归一的话一份 `\r\n` 的文档
+  // diff 按归一行尾的形态算：行尾是文件自己的属性，不归一的话一份 `\r\n` 的文档
   // 在 diff 里会每行都是改动，用户看到的全是噪音。
   const d = diffLines(normalizeLineEndings(current ?? ""), normalizeLineEndings(after));
   const diff = renderDiff(d);
 
   // ─── 取批准 ───
   if (req.via === "pending") {
-    // 三向的"同意"已经在提案那一轮拿过了，这里不再弹窗；但**仍然过规则表**——
+    // 三向的"同意"已经在提案那一轮拿过了，这里不再弹窗；但仍然过规则表——
     // "不许"不因为问过一次就失效（如计划模式的只读）。
     if (ctx.check("edit", checkDeny) === "deny") {
       return { ok: false, reason: "denied", output: `当前模式不允许改文件。要改就先离开这个模式。` };
@@ -197,7 +193,7 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
       pattern: checkDeny,
       always: checkDeny,
       summary: tryAction,
-      // 材料分两段，空行隔开：**先影响面，后这次具体动什么**。顺序反过来，用户得先读完 diff
+      // 材料分两段，空行隔开：先影响面，后这次具体动什么。顺序反过来，用户得先读完 diff
       // 才知道该拿什么去判断。没有前一段时不留空行（空串会被 filter 掉，不是塞个 "" 占位）。
       detail: [
         ...(req.note ? [req.note] : []),
