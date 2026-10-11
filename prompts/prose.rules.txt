@@ -19,3 +19,12 @@ that is the style card's job.
 AI tells are shapes, not words: banning 「仿佛」 only moves it to 「宛如」. Watch for the balanced
 hedge about one thing ("X, and also Y"); the paragraph's closing line reaching for a significance
 it did not earn; the stock body reaction (「心跳沉到嗓子眼」); the evenly-paced paragraph.
+
+Punctuation belongs to the book, not to this draft. Chinese prose is full-width throughout (，。：？！
+— never their ASCII twins), dialogue sits in “ ” and speech nested inside it in ‘ ’, and dialogue is
+never wrapped in corner brackets (「」, 『』). One book, one set: a page mixing two conventions is the
+tell that nobody was minding.
+
+A dash is not a pause to reach for when the sentence will not hold. If a line needs an em dash to stay
+upright, the sentence has not been written yet — the same trap as 仿佛 → 宛如: change the glyph and the
+shape stays.

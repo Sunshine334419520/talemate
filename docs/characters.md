@@ -2,7 +2,7 @@
 
 > **职责**：回答"角色卡长什么样、怎么维护、mate 在角色设计上做什么"。
 > **读者**：要改 `framework/characters.ts`、角色相关守卫，或定角色设计规范的人。
-> **对齐代码**：2026-10-01 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；状态不在卡上这件事见 `state.md`；"新人物的卡在正文之前落"这条由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> **对齐代码**：2026-10-12 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；状态不在卡上这件事见 `state.md`；"新人物的卡在正文之前落"这条由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载；卡的写法（含范例用什么引号）在 `framework/design_spec.ts` 的 characters 规范，正文那套标点见 `prompts/prose.rules.txt`
 > 相邻：`design-docs.md`（四层与两段式落盘）· `roadmap.md`（状态目录还没做）· `product.md`
 
 ## 一句话
@@ -32,7 +32,7 @@
 | 性格与矛盾 | 写成「既…又…」的矛盾，不是形容词堆 |
 | 想要 · 最怕 | 欲望与恐惧——行动引擎 |
 | 底线 · 绝不做 | 否定式约束，防 OOC。**好角色压不进一句话，但压得进"ta 绝不做 X"** |
-| 说话方式 | 语域 / 口头禅 / **声音范例原文** / 对谁不一样 |
+| 说话方式 | 语域 / 口头禅 / **声音范例原文** / 对谁不一样。范例里的对话用**正文那套引号**（外层 “ ”、内层 ‘ ’），**卡上不出现「」『』**——例子教错一次，正文就跟着错一本书 |
 
 **性格 / 想要 / 底线 / 说话方式不放进基本档案**：它们要写成有写法的段落（矛盾、一句范例原文），塞进「键：值」的一行会撑破那张表的可扫描性——所以各自成节。
 
