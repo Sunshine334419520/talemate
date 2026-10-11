@@ -359,40 +359,52 @@ export class Session {
     const agent = this.agents.get(agentId);
     this.markPendingApproval(input);
 
-    return runLoop(agent, input, {
-      signal: this.abort.signal,
-      steps: agent.steps,
-      onEvent: (e) => this.forwardEvent(e),
-      maybeCompact: () => this.maybeCompact(),
-      commitUser: (text, agId) => this.persistUser(text, agId),
-      buildRequest: (ag) => this.buildRequest(ag),
-      generate: (req, o) =>
-        chat({
-          model: this.model,
-          system: req.system,
-          messages: req.messages,
-          tools: req.tools?.length ? req.tools : undefined,
-          signal: o.signal,
-          onText: o.onText,
-          onReasoning: o.onReasoning,
-        }),
-      executeTool: async (ag, call) => {
-        // 详细打印事件：工具调用、task 子代理边界（子会话事件发生在 scope.open/close 之间）、工具结果
-        const isTask = call.name === "task";
-        this.io.onEvent({ type: "tool-call", id: call.id, name: call.name, input: JSON.stringify(call.input ?? {}) });
-        if (isTask) {
-          const sub = (call.input as { agent?: string }).agent ?? call.name;
-          this.io.onEvent({ type: "scope.open", label: `task → ${sub}` });
-        }
-        const part = await executeToolPart(agentId, call, this.tools, this.makeContext(agent));
-        if (isTask) this.io.onEvent({ type: "scope.close", label: "task" });
-        this.markPlanDone(call, part);
-        const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
-        this.io.onEvent({ type: "tool.result", id: call.id, name: call.name, output: out });
-        return part;
-      },
-      commitAssistant: (msg) => this.persistAssistant(msg.agent, msg.parts, msg.finish),
-    });
+    // 每回合一个新的控制器。`abort()` 是一次性的——信号一旦中止就**永远**中止，不重建的话
+    // 用户点过一次「停止」，这个会话就再也发不出去：之后每一轮的 signal 一上来就是已中止的。
+    const ctrl = new AbortController();
+    this.abort = ctrl;
+
+    try {
+      return await runLoop(agent, input, {
+        signal: ctrl.signal,
+        steps: agent.steps,
+        onEvent: (e) => this.forwardEvent(e),
+        maybeCompact: () => this.maybeCompact(),
+        commitUser: (text, agId) => this.persistUser(text, agId),
+        buildRequest: (ag) => this.buildRequest(ag),
+        generate: (req, o) =>
+          chat({
+            model: this.model,
+            system: req.system,
+            messages: req.messages,
+            tools: req.tools?.length ? req.tools : undefined,
+            signal: o.signal,
+            onText: o.onText,
+            onReasoning: o.onReasoning,
+          }),
+        executeTool: async (ag, call) => {
+          // 详细打印事件：工具调用、task 子代理边界（子会话事件发生在 scope.open/close 之间）、工具结果
+          const isTask = call.name === "task";
+          this.io.onEvent({ type: "tool-call", id: call.id, name: call.name, input: JSON.stringify(call.input ?? {}) });
+          if (isTask) {
+            const sub = (call.input as { agent?: string }).agent ?? call.name;
+            this.io.onEvent({ type: "scope.open", label: `task → ${sub}` });
+          }
+          const part = await executeToolPart(agentId, call, this.tools, this.makeContext(agent));
+          if (isTask) this.io.onEvent({ type: "scope.close", label: "task" });
+          this.markPlanDone(call, part);
+          const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
+          this.io.onEvent({ type: "tool.result", id: call.id, name: call.name, output: out });
+          return part;
+        },
+        commitAssistant: (msg) => this.persistAssistant(msg.agent, msg.parts, msg.finish),
+      });
+    } catch (err) {
+      // 用户按了停止：**中止不是错误**。状态收尾在 `runLoop` 的 finally 里，这里只把它转成
+      // 一次正常结束，免得壳把"用户主动停的"报成 [错误]。
+      if (ctrl.signal.aborted) return "";
+      throw err;
+    }
   }
 
   /** 组装一次请求：截窗后的历史 → NeutralMsg + system + 该角色可见工具 */

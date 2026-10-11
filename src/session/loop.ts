@@ -34,6 +34,18 @@ export interface LoopDeps {
 
 export async function runLoop(agent: AgentDef, input: string, deps: LoopDeps): Promise<string> {
   deps.onEvent({ type: "session.status", status: "busy" });
+  try {
+    return await runBody(agent, input, deps);
+  } finally {
+    // 收尾必须在 finally：中间任何一次 await 抛错（缺密钥、网络、限流、用户按停止）都要把状态
+    // 放回 idle。不放的后果不是"少发一个事件"——界面会永远停在「思考中」：发送按钮一直禁用、
+    // 停止按钮点了也没人接，整个会话卡死，而且**不报错**。
+    deps.onEvent({ type: "session.status", status: "idle" });
+  }
+}
+
+/** 循环本体。单独一层是为了让上面那对 busy / idle 一眼看出是 `try` / `finally` 的关系。 */
+async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<string> {
   await deps.commitUser(input, agent.id);
   if (deps.maybeCompact) await deps.maybeCompact();
 
@@ -103,6 +115,5 @@ export async function runLoop(agent: AgentDef, input: string, deps: LoopDeps): P
     }
   }
 
-  deps.onEvent({ type: "session.status", status: "idle" });
   return lastText;
 }

@@ -56,6 +56,40 @@ function harness(turns: AssistantTurn[], execute: (call: ToolCall) => AssistantP
   return { deps, committed, executed, generateCalls: () => i };
 }
 
+describe("runLoop · 出错也要收尾", () => {
+  /**
+   * `generate` 抛错（缺密钥、网络、限流）时，`runLoop` 仍然必须发出 `idle`。
+   *
+   * 这条漏了不会崩、不会报错，只会让界面**永远停在「思考中」**：发送按钮一直禁用、停止按钮
+   * 点了也没人接，整个会话卡死。所以它值得一条测试盯着——它是"静默"那一类里最贵的一种。
+   */
+  test("generate 抛错时照样发 idle——否则界面永远停在「思考中」", async () => {
+    const h = harness([], () => ({ type: "text", text: "" }));
+    const status: string[] = [];
+    const deps: LoopDeps = {
+      ...h.deps,
+      onEvent: (e) => {
+        if (e.type === "session.status") status.push(e.status);
+      },
+      generate: async () => {
+        throw new Error("Missing credentials.");
+      },
+    };
+
+    await expect(runLoop(AGENT, "讲个故事", deps)).rejects.toThrow("Missing credentials");
+    expect(status).toEqual(["busy", "idle"]); // 抛了错，idle 也得发出去
+  });
+
+  test("正常跑完时 busy / idle 成对，且不重复", async () => {
+    const h = harness([{ text: "写完了", toolCalls: [], finish: "stop" }], () => ({ type: "text", text: "" }));
+    const status: string[] = [];
+    const deps: LoopDeps = { ...h.deps, onEvent: (e) => e.type === "session.status" && status.push(e.status) };
+
+    await runLoop(AGENT, "讲个故事", deps);
+    expect(status).toEqual(["busy", "idle"]);
+  });
+});
+
 describe("runLoop · halt", () => {
   test("停在提案那一步：剩余调用不执行但补 error part，且不再请求模型", async () => {
     const h = harness(

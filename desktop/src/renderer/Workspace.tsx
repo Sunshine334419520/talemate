@@ -73,6 +73,14 @@ export function Workspace({
   /** 每一轮请求的用量（`usage` 事件）——界面靠它显示占比与走势 */
   const [uses, setUses] = useState<{ input: number; output: number }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /**
+   * 贴着底部才跟着新内容走。
+   *
+   * 不加这条的话流式输出期间**滑不上去**：`live` 每来一个 `text.delta` 就变一次，
+   * 每次都把 scrollTop 拉到 scrollHeight——用户往上翻一像素就被拽回来。
+   * 只在"他本来就在底部附近"时才跟，他主动往上翻了就由他。
+   */
+  const pinnedRef = useRef(true);
   const dragRef = useRef(false);
 
   const loadSessions = useCallback(async (): Promise<SessionRow[]> => {
@@ -116,6 +124,8 @@ export function Workspace({
       setBusy(false);
       setError(null);
       setWarn(opened.modelWarning ?? null);
+      // 切会话落在底部：上一个会话里往上翻过的位置不该带过来（历史整个换掉了）
+      pinnedRef.current = true;
       // 用量由 harness 记在会话元信息里：切会话切回来在、重启也还在
       setUses(await window.tm.sessionUsage(project.id, opened.sessionId));
       setState(await window.tm.sessionState(project.id));
@@ -239,7 +249,20 @@ export function Workspace({
     });
   }, [project.id, refreshTree, loadSessions, loadStyle]);
 
+  // 位置由用户的滚动决定，不由每次渲染算——内容变高但 scrollTop 没动时不会触发 scroll 事件，
+  // 所以"他没动过"这一点能一直保持，不会被新内容自己推翻
   useEffect(() => {
+    const el = scrollRef.current;
+    if (el === null) return;
+    const onScroll = (): void => {
+      pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!pinnedRef.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [live, history, confirm, ask]);
 
