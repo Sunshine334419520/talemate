@@ -44,6 +44,14 @@ export async function runLoop(agent: AgentDef, input: string, deps: LoopDeps): P
   }
 }
 
+/**
+ * 用户按下停止时补在正文后面的那一句。
+ *
+ * 它不是给人读的客气话，是**给模型读的**：一条被截断的助手消息如果不说明，下一轮它会以为自己
+ * 说完了，然后接着一个断句往下走。中文，因为它同时会长在界面里——用户也该看得见这一轮不算数。
+ */
+const INTERRUPTED = "（这一轮被用户中断，上面这段没有写完。）";
+
 /** 循环本体。单独一层是为了让上面那对 busy / idle 一眼看出是 `try` / `finally` 的关系。 */
 async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<string> {
   await deps.commitUser(input, agent.id);
@@ -54,14 +62,34 @@ async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<
   for (let step = 0; step < steps; step++) {
     deps.onEvent({ type: "step.start" });
     const { system, messages, tools } = await deps.buildRequest(agent);
-    const turn = await deps.generate(
-      { system, messages, tools },
-      {
-        signal: deps.signal,
-        onText: (d) => deps.onEvent({ type: "text.delta", text: d }),
-        onReasoning: (d) => deps.onEvent({ type: "reasoning.delta", text: d }),
-      },
-    );
+    // 本步已经流出去的正文。**中止时要用它**：正文落盘在整轮之后（`commitAssistant`），
+    // 而中止正好落在它之前——不接住的话，屏幕上流出来的那半截在历史里一个字都不存在，
+    // 下一轮模型不知道你指的"上面那句"是什么。
+    let streamed = "";
+    let turn: AssistantTurn;
+    try {
+      turn = await deps.generate(
+        { system, messages, tools },
+        {
+          signal: deps.signal,
+          onText: (d) => {
+            streamed += d;
+            deps.onEvent({ type: "text.delta", text: d });
+          },
+          onReasoning: (d) => deps.onEvent({ type: "reasoning.delta", text: d }),
+        },
+      );
+    } catch (err) {
+      // 只有"用户按了停止、而且确实已经流出来正文"才补这一条。别的情况（缺密钥、网络）照原样抛。
+      // 一个字都没流出来也不补——历史里塞一条空的助手消息比不写更糟。
+      if (!deps.signal.aborted || streamed === "") throw err;
+      await deps.commitAssistant({
+        agent: agent.id,
+        parts: [{ type: "text", text: `${streamed}\n\n${INTERRUPTED}` }],
+        finish: "stop",
+      });
+      return streamed;
+    }
 
     // 用量报给外面：它是界面那个"上下文占比"唯一的真实来源（估算的不算）
     if (turn.usage) deps.onEvent({ type: "usage", input: turn.usage.input, output: turn.usage.output });

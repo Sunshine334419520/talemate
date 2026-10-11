@@ -90,6 +90,61 @@ describe("runLoop · 出错也要收尾", () => {
   });
 });
 
+describe("runLoop · 用户按停止", () => {
+  /**
+   * 中止时把**已经流出去的正文**落盘。
+   *
+   * 不落的后果不是"少一条记录"：界面上明明显示过那半截、历史里却没有，下一轮模型不知道用户
+   * 说的"上面那句"是什么——**用户看到的和模型记得的成了两套事实**。
+   */
+  test("中止时落盘已流出的正文，并标出这是被打断的", async () => {
+    const h = harness([], () => ({ type: "text", text: "" }));
+    const ctrl = new AbortController();
+    const committed: AssistantPart[][] = [];
+    const deps: LoopDeps = {
+      ...h.deps,
+      signal: ctrl.signal,
+      commitAssistant: async (m) => {
+        committed.push(m.parts);
+      },
+      generate: async (_req, o) => {
+        o.onText("他推开门，");
+        o.onText("屋里没有人。");
+        ctrl.abort(); // 用户按了停止
+        throw new Error("The operation was aborted.");
+      },
+    };
+
+    const reply = await runLoop(AGENT, "写一段", deps);
+
+    expect(reply).toBe("他推开门，屋里没有人。");
+    expect(committed).toHaveLength(1);
+    const text = (committed[0][0] as { type: "text"; text: string }).text;
+    expect(text).toContain("他推开门，屋里没有人。");
+    expect(text).toContain("中断"); // 缺了这句，模型会以为自己写完了
+  });
+
+  test("一个字都没流出来就中止 → 不落盘空消息", async () => {
+    const h = harness([], () => ({ type: "text", text: "" }));
+    const ctrl = new AbortController();
+    let commits = 0;
+    const deps: LoopDeps = {
+      ...h.deps,
+      signal: ctrl.signal,
+      commitAssistant: async () => {
+        commits++;
+      },
+      generate: async () => {
+        ctrl.abort();
+        throw new Error("The operation was aborted.");
+      },
+    };
+
+    await expect(runLoop(AGENT, "写一段", deps)).rejects.toThrow();
+    expect(commits).toBe(0); // 历史里塞一条空的助手消息比不写更糟
+  });
+});
+
 describe("runLoop · halt", () => {
   test("停在提案那一步：剩余调用不执行但补 error part，且不再请求模型", async () => {
     const h = harness(
