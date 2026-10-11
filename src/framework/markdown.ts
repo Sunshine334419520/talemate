@@ -1,5 +1,5 @@
 /**
- * markdown 区块手术：以 `#{2,}` heading 为单位做 查 / 取 / 删。
+ * markdown 区块手术：以 `#{2,}` heading 为单位做 查 / 取 / 删 / 写。
  *
  * "区块"语义：一个 heading（如 `## 主角`）起，到"下一个 level ≤ 它的 heading"之前结束——
  * 因此 `## 主角` 覆盖其下的 `### 想要什么`；寻址 `### 想要什么` 则只动它一格。
@@ -119,6 +119,30 @@ export function leadLine(content: string, heading: string, max = 60): string | u
 export function matchesLevel2Heading(content: string): string | undefined {
   const m = content.match(/^##(?!#)\s+(.*)$/m);
   return m ? m[1].trim() : undefined;
+}
+
+/**
+ * 写一个区块（含其 heading）：有就整格换掉，没有就追加到文末。
+ *
+ * 与 `removeSection` 相反的方向，但**不是**它的逆——这里不需要"找不到就报错"，
+ * 因为"格还不存在"是正常起点（`design/core.md` 的「文风」格没指定过时就不存在）。
+ * 空 `content` 起手也走得通。
+ *
+ * 编辑整篇文档走 `edit` 的锚点替换就够了；这里要的是"替换或**新建**"，锚点覆盖不了后者。
+ */
+export function upsertSection(content: string, title: string, body: string): string {
+  const t = title.trim();
+  const block = [`## ${t}`, body.trim()].filter((s) => s.length > 0).join("\n");
+  const h = findHeading(content, t);
+  if (!h) {
+    const head = content.trimEnd();
+    return [head, block].filter((s) => s.length > 0).join("\n\n");
+  }
+  const lines = content.split("\n");
+  const before = lines.slice(0, h.line).join("\n").trimEnd();
+  const after = lines.slice(h.end).join("\n").trimStart();
+  // 与 removeSection 同一套边界：两段各自非空才拼，之间恰好一个空行
+  return [before, block, after].filter((s) => s.length > 0).join("\n\n");
 }
 
 /** 删除一个区块（含其 heading）。找不到 → throw。 */

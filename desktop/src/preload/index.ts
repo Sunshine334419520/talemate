@@ -19,6 +19,7 @@ import type {
   SessionRow,
   SessionState,
   StoredMessage,
+  StyleCatalog,
   TmApi,
 } from "../shared/api";
 
@@ -33,6 +34,9 @@ const api: TmApi = {
     ipcRenderer.invoke("docs:text", { projectId, path }) as Promise<string | undefined>,
   saveDoc: (projectId, path, text) =>
     ipcRenderer.invoke("docs:save", { projectId, path, text }) as Promise<"ok" | "stale">,
+  styleCatalog: (projectId) => ipcRenderer.invoke("style:list", projectId) as Promise<StyleCatalog>,
+  setStyle: (projectId, name) =>
+    ipcRenderer.invoke("style:set", { projectId, name }) as Promise<"ok" | "stale" | "unknown">,
   sessionState: (projectId) => ipcRenderer.invoke("session:state", projectId) as Promise<SessionState>,
   setEffort: (effort) => ipcRenderer.invoke("session:effort", effort) as Promise<void>,
   models: () =>

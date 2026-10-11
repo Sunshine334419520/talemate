@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { app, BrowserWindow, ipcMain } from "electron";
 import type { ConfirmReply, ModelConfig, ProjectMeta } from "../../../src/core/types";
 import { leadLine } from "../../../src/framework/markdown";
+import { CORE_DOC, styleCatalog, withStyle } from "../../../src/framework/prose";
 import { readDoc } from "../../../src/storage/corpus";
 import { writeProjectMeta } from "../../../src/storage/project";
 import { docTree } from "../../../src/framework/anchor";
@@ -267,6 +268,34 @@ function registerHandlers(): void {
       const before = await readDoc(p.projectId, p.path);
       try {
         await writeIfUnchanged({ abs, expected: before ?? null, content: p.text });
+        return "ok";
+      } catch {
+        return "stale";
+      }
+    },
+  );
+
+  ipcMain.handle("style:list", (_e, projectId: string) => styleCatalog(projectId));
+
+  /**
+   * 状态栏选定文风 → 直接写核心设定的「文风」格。
+   *
+   * 同 `docs:save` 那一类：**用户自己就是那个点头的人**，所以不走两阶段、不经模型。这里尤其
+   * 没有可生成的东西——值是库里一个卡名。库里没有这个名字就**不写**（回 `unknown`），
+   * 别把界面传来的一串字直接落进作品。
+   *
+   * 不需要手动广播刷新：`watchDocs` 盯着 `DOC_ROOTS`，这次写盘会和别的写盘一样被它带出去。
+   */
+  ipcMain.handle(
+    "style:set",
+    async (_e, p: { projectId: string; name: string }): Promise<"ok" | "stale" | "unknown"> => {
+      const { cards } = await styleCatalog(p.projectId);
+      if (!cards.some((c) => c.name === p.name)) return "unknown";
+      const abs = docAbs(p.projectId, CORE_DOC);
+      if (abs === undefined) return "stale";
+      const before = await readDoc(p.projectId, CORE_DOC);
+      try {
+        await writeIfUnchanged({ abs, expected: before ?? null, content: withStyle(before, p.name) });
         return "ok";
       } catch {
         return "stale";

@@ -64,4 +64,35 @@ describe("skill · 内置库", () => {
     }
     expect(bad).toEqual([]);
   });
+
+  /**
+   * 每张内置卡都要标 `kind: style` 且有一个**中文** `title`（不等于 id）。
+   *
+   * 两条都是为了界面那个文风选择器：`kind` 是它把文风卡从普通 skill 里挑出来的唯一判据
+   * （库是内置 + 全局 + 项目三处合并的，不筛的话查资料的 skill 也会进候选，选中它等于把
+   * 一份工作法当成"一种声音"注进正文窗口）；`title` 是给人看的——没有它界面只能退回显示
+   * `style-01-wangwen` 这种 id。
+   *
+   * 内置库现在全是文风卡，所以这里按"每张都是"来钉。**将来真加了非文风的内置 skill，
+   * 这条会红——那是要你显式做一次决定，不是它可以被绕过。**
+   */
+  test("内置库每张卡都标了 kind: style，且中文 title 不等于 id", async () => {
+    const dirs = (await readdir(builtinSkillsDir(), { withFileTypes: true }))
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+
+    const bad: string[] = [];
+    for (const dir of dirs) {
+      const file = join(builtinSkillsDir(), dir, "SKILL.md");
+      try {
+        const skill = parseSkillFile(await readFile(file, "utf-8"), file);
+        if (skill.kind !== "style") bad.push(`${dir}/ 没有标 kind: style`);
+        if (!skill.title) bad.push(`${dir}/ 没有 title——界面只能显示 id`);
+        else if (skill.title === skill.name) bad.push(`${dir}/ 的 title 还是 id 本身，没给中文名`);
+      } catch {
+        bad.push(`${dir}/ 没有能解析的 SKILL.md`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
 });

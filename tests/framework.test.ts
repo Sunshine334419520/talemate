@@ -3,12 +3,12 @@
  * 运行：bun test
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject, loadProjectMeta, removeDoc, writeDoc } from "../src/storage/project";
 import { enumerateDocs, readDoc, scanDocs } from "../src/storage/corpus";
-import { getSection, listHeadings, removeSection } from "../src/framework/markdown";
+import { getSection, listHeadings, removeSection, upsertSection } from "../src/framework/markdown";
 import { RESIDENT_DOCS, docTree } from "../src/framework/anchor";
 import { SPECS, renderSpec } from "../src/framework/design_spec";
 import { planAbs } from "../src/framework/plan";
@@ -22,7 +22,7 @@ import { designSpecTool } from "../src/tool/framework_tools";
 import { listTool, readTool, searchTool } from "../src/tool/read_tools";
 import { recallTool, rememberTool } from "../src/tool/research_tools";
 import { listNoteNames, noteAbs, readNote } from "../src/storage/notes";
-import { talemateHome } from "../src/core/config";
+import { projectPaths, talemateHome } from "../src/core/config";
 import { enterDraftTool, exitDraftTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
 import { MODES } from "../src/agent/modes";
 import {
@@ -44,7 +44,7 @@ import { AgentRegistry } from "../src/agent/registry";
 import { PLAN_KEY } from "../src/core/types";
 import { renderPendingNote, Session, writeSettlesPlan } from "../src/session/session";
 import { isChapterFile } from "../src/framework/plan";
-import { buildProseBrief, styleChoiceFrom } from "../src/framework/prose";
+import { DEFAULT_STYLE, STYLE_HEADING, buildProseBrief, styleCatalog, styleChoiceFrom, withStyle } from "../src/framework/prose";
 import type { ModelConfig } from "../src/core/types";
 import { ToolRegistry } from "../src/tool/registry";
 import { executeToolPart } from "../src/tool/runner";
@@ -121,6 +121,33 @@ describe("markdown 区块手术", () => {
     expect(next).toContain("## 第一节");
   });
 
+  test("upsertSection 命中就换掉那一格，别的格一个字节不动", () => {
+    const core = ["# 核心设定", "", "## 题材 · 频道", "男频", "", "## 文风", "prose", ""].join("\n");
+    const next = upsertSection(core, "文风", "网文爽感");
+    expect(next).toContain("## 文风\n网文爽感");
+    expect(next).not.toContain("prose");
+    expect(next).toContain("## 题材 · 频道\n男频");
+  });
+
+  test("upsertSection 命不中就追加——格还不存在是**正常起点**，不是错误", () => {
+    const core = "# 核心设定\n\n## 题材 · 频道\n男频\n";
+    const next = upsertSection(core, "文风", "prose");
+    expect(next).toContain("## 文风\nprose");
+    expect(next.indexOf("## 题材 · 频道")).toBeLessThan(next.indexOf("## 文风")); // 追加在末尾
+    expect(next.startsWith("# 核心设定")).toBe(true);
+  });
+
+  test("upsertSection 空内容起手也能用（新建项目没有 core.md）", () => {
+    expect(upsertSection("", "文风", "prose")).toBe("## 文风\nprose");
+  });
+
+  test("upsertSection 的区块语义与 removeSection 一致：`##` 连带它自己的 `###`", () => {
+    const next = upsertSection(sample, "第二节", "换掉了");
+    expect(next).toContain("## 第二节\n换掉了");
+    expect(next).not.toContain("### 子小节"); // 子格属于这一区块
+    expect(next).toContain("## 第一节");
+  });
+
 
   test("listHeadings 跳过 HTML 注释里的模板 heading（防幽灵卡）", () => {
     const c = [
@@ -165,9 +192,14 @@ describe("design-spec（结构规范）", () => {
     const core = at("core.md");
     expect(core).toContain("## 一句话简介");
     expect(core).toContain("## 金手指 / 超常设定");
-    expect(core).toContain("基调 · 情绪");
+    // 这两处必须一致，但**不能**互相 import（prose → plan → proposal → design_spec 已是链，
+    // 指回去就是循环，见 design_spec 里那条注释）。所以由这里钉住：规范告诉模型写哪个 heading，
+    // 读文风的那一侧就得按同一个找。
+    expect(core).toContain(`## ${STYLE_HEADING}`);
     expect(core).not.toContain("一句话卖点");
     expect(core).not.toContain("爽感承诺");
+    // 基调格是**故意移除**的（基调是读数不是合同，见 design_spec 的 core 段）——钉住它别被对称地加回来
+    expect(core).not.toContain("基调");
     const world = at("wiki/world.md");
     expect(world).toContain("## 空间与舞台");
     expect(world).toContain("## 规则与秩序");
@@ -1066,6 +1098,52 @@ describe("propose-plan · 规划工件与拍板", () => {
 });
 
 // ─── 正文写作窗口 ───
+
+describe("文风目录 · 状态栏那个选择器取的两样", () => {
+  test("withStyle：没有核心设定时起手一份，格内容就是卡名", () => {
+    const text = withStyle(undefined, "style-01-wangwen");
+    expect(text).toContain("# 核心设定");
+    expect(text).toContain(`## ${STYLE_HEADING}\nstyle-01-wangwen`);
+  });
+
+  test("withStyle：已有核心设定时只换那一格", () => {
+    const core = "# 核心设定\n\n## 题材 · 频道\n男频\n\n## 文风\nprose\n";
+    const text = withStyle(core, "style-01-wangwen");
+    expect(text).toContain("## 题材 · 频道\n男频");
+    expect(text).toContain("## 文风\nstyle-01-wangwen");
+  });
+
+  test("当前文风：没有 core.md → 默认卡，没什么可说的", async () => {
+    const id = (await createProject({ title: "文风 · 空项目" })).id;
+    const { current } = await styleCatalog(id);
+    expect(current.name).toBe(DEFAULT_STYLE);
+    expect(current.note).toBeUndefined();
+  });
+
+  test("当前文风：格里的字不是卡名 → 照样报出来，不静默换掉用户的声口", async () => {
+    const id = (await createProject({ title: "文风 · 大白话" })).id;
+    await writeDoc(id, "design/core.md", "# 核心设定\n\n## 文风\n写得顺一点的那种网文味道\n");
+    const { current } = await styleCatalog(id);
+    expect(current.name).toBe(DEFAULT_STYLE);
+    expect(current.note).toBeDefined();
+  });
+
+  test("候选集只列 `kind: style` 的卡——普通 skill 不许混进文风选择器", async () => {
+    const id = (await createProject({ title: "文风 · 混合库" })).id;
+    // 往项目库里丢一个**没有 kind** 的普通 skill：它会被 discoverSkills 看到，
+    // 但绝不该出现在文风候选里——选中它等于把一份工作法当成"一种声音"注进正文窗口
+    const dir = join(projectPaths(talemateHome(), id).skills, "lookup");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "SKILL.md"), "---\nname: lookup\ndescription: 查资料的普通 skill\n---\n\n正文\n");
+
+    const { cards } = await styleCatalog(id);
+    const names = cards.map((c) => c.name);
+    expect(names).not.toContain("lookup");
+    expect(names).toContain(DEFAULT_STYLE); // 内置那两张声明过 kind，在
+    // 界面上给人看的是中文 title；写进 core.md 的才是 name
+    expect(cards.find((c) => c.name === DEFAULT_STYLE)?.title).not.toBe(DEFAULT_STYLE);
+  });
+});
 
 describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () => {
   const CORE = (body: string): string => `# 核心\n\n## 文风\n${body}\n`;

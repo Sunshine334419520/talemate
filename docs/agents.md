@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-09-29 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；考据本（researcher 的笔记本）在 `framework/research.ts`；章节生产那条链见 `chapter-planning.md`
+> **对齐代码**：2026-10-11 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；考据本（researcher 的笔记本）在 `framework/research.ts`；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -209,18 +209,22 @@ task { agent: "planner", prompt: string }
 
 ## Skill 系统
 
-一个 skill = 一个目录 + `SKILL.md`（frontmatter 只强校验 `name` + `description`，其余字段容忍并忽略）。
+一个 skill = 一个目录 + `SKILL.md`（frontmatter 只强校验 `name`；`description` / `title` / `kind` 可选，其余字段容忍并忽略）。
 
 ```
 SKILL.md
 ---
 name: style-01-wangwen
+title: 网文爽感
+kind: style
 description: 网文 · 白话爽感文风（第三人称，快、顺、直给）。用户说要"网文风"，或想把这本书写得顺、快、有爽感时选它。
 ---
 （正文 = 完整文风卡：约束层 + 六维声音层 + 反例 + 声音范例）
 ```
 
 **用户切换文风就是写一个卡名**：`design/core.md` 的「文风」格写哪张卡的名字，写作窗口就取哪张（`framework/prose.ts`）；不写这一格用默认那张 `prose`。所以**卡名必须是目录名**——对不上，`buildProseBrief` 会报"文风库里没有这个名字"，而那张卡明明躺在库里，看得见却取不到（`tests/skill.test.ts` 守着这一条）。加一张可选卡 = 加一个目录，没有第二处要改。
+
+**文风卡要多标两样：`kind: style` 与中文 `title`。** `kind` 是**状态栏那个文风选择器**把文风卡从普通 skill 里挑出来的唯一判据——库是三处合并的，不筛的话一个"查资料"的 skill 也会进候选，选中它等于把那份工作法当成"一种声音"注进正文窗口。`title` 是界面上给人看的名字；`name` 只作**稳定 id**（写进 `design/core.md`，也是取卡的判据），两者别合并：中文写进 `name` 会同时踩两处（`prose.NAME_LIKE` 只认 ASCII；且中文之后"卡名"与"一句大白话"就分不开了）。`tests/skill.test.ts` 钉着内置库每张都有这两样。
 
 - **发现**：三个库、一条优先级——**内置库** `<repo>/skills/<name>/`（随产品发布，如 `prose`、`style-01-wangwen`）< **全局库** `~/.talemate/skills/<name>/`（作者级、跨作品）< **项目库** `novels/<id>/skills/<name>/`（本小说专属）。扫描顺序就是优先级，后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
 - **注入**：system 只放 `<available_skills>`（name + description + location）；`skill` 工具按名把正文载入为一条 tool-result。

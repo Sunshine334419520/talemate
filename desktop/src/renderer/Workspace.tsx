@@ -6,7 +6,7 @@
  * （谁在哪儿、什么时候取数），画法全在 `Thread` 里。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage } from "../shared/api";
+import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog } from "../shared/api";
 import { DocTree } from "./DocTree";
 import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
@@ -66,6 +66,8 @@ export function Workspace({
   /** 高亮在第几项——键盘和鼠标共用这一个，否则两边会各选各的 */
   const [menuIndex, setMenuIndex] = useState(0);
   const [profiles, setProfiles] = useState<{ name: string; models: string[] }[]>([]);
+  /** 这本书用的文风 + 库里可选的卡。**文件事实，不是会话状态**——所以它跟着盘上一起变。 */
+  const [style, setStyle] = useState<StyleCatalog | null>(null);
   /** 每一轮请求的用量（`usage` 事件）——界面靠它显示占比与走势 */
   const [uses, setUses] = useState<{ input: number; output: number }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -76,6 +78,30 @@ export function Workspace({
     setSessions(rows);
     return rows;
   }, [project.id]);
+
+  const loadStyle = useCallback(async (): Promise<void> => {
+    setStyle(await window.tm.styleCatalog(project.id));
+  }, [project.id]);
+
+  /**
+   * 换文风：写下去之后把目录重读一遍再改本地状态——**不乐观更新**。
+   * 判据是盘上那份文件，界面显示"已经换了"而其实被 CAS 拒掉，是这里最坏的失败。
+   */
+  const pickStyle = useCallback(
+    async (name: string): Promise<void> => {
+      const verdict = await window.tm.setStyle(project.id, name);
+      if (verdict === "unknown") {
+        setError(`文风库里没有「${name}」这张卡，没写进核心设定。`);
+        return;
+      }
+      if (verdict === "stale") {
+        setError("核心设定刚被别处改过，没敢覆盖——重开一次再换文风。");
+        return;
+      }
+      await loadStyle();
+    },
+    [loadStyle, project.id],
+  );
 
   /** 进一个会话：开它（续聊或新建）+ 拉历史投影。这两步是分开的——历史不依赖会话对象。 */
   const enter = useCallback(
@@ -99,12 +125,13 @@ export function Workspace({
     void (async () => {
       // 上次拖出来的宽度先用上，免得开场先闪一下默认宽度
       setProfiles((await window.tm.models()).profiles);
+      await loadStyle();
       const saved = (await window.tm.prefs()).paneWidth;
       if (typeof saved === "number") setPaneWidth(clampPane(saved));
       const rows = await loadSessions();
       await enter(rows[0]?.id);
     })();
-  }, [enter, loadSessions]);
+  }, [enter, loadSessions, loadStyle]);
 
   useEffect(() => {
     window.tm.onEvent((e: LLMEvent) => {
@@ -194,6 +221,8 @@ export function Workspace({
       // 盘上变的不只是文档：会话的名字也会变（第一句话发出去之后按它命名），所以列表也跟着刷
       void refreshTree();
       void loadSessions();
+      // 文风是 core.md 里的一格：mate 或用户手改过，状态栏那一格也得跟着变
+      void loadStyle();
       const open = paneRef.current;
       if (open === null || open.kind !== "doc") return;
       if (editingRef.current) {
@@ -205,7 +234,7 @@ export function Workspace({
         if (text !== undefined) setPane({ ...open, text });
       });
     });
-  }, [project.id, refreshTree, loadSessions]);
+  }, [project.id, refreshTree, loadSessions, loadStyle]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -484,26 +513,30 @@ export function Workspace({
         <span className="right">
           {info !== null && (
             <Cell label={info.model}>
-              {profiles.map((p) => (
-                <span key={p.name} className="pop-group">
-                  <span className="pop-title">{p.name}</span>
-                  {p.models.map((m) => (
-                    <button
-                      key={m}
-                      className="pop-item"
-                      aria-current={m === info.model}
-                      onClick={() => {
-                        void window.tm.useProfile(p.name, m);
-                        setInfo({ ...info, model: m });
-                      }}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </span>
-              ))}
+              {(close) =>
+                profiles.map((p) => (
+                  <span key={p.name} className="pop-group">
+                    <span className="pop-title">{p.name}</span>
+                    {p.models.map((m) => (
+                      <button
+                        key={m}
+                        className="pop-item"
+                        aria-current={m === info.model}
+                        onClick={() => {
+                          void window.tm.useProfile(p.name, m);
+                          setInfo({ ...info, model: m });
+                          close();
+                        }}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </span>
+                ))
+              }
             </Cell>
           )}
+          <StyleCell view={style} onPick={(n) => void pickStyle(n)} />
           {info !== null && (
             <EffortCell
               value={info.effort}
@@ -524,8 +557,16 @@ export function Workspace({
 }
 
 /** 状态栏里可点的一格：平时是个按钮，点开向上弹一层。 */
-function Cell({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+function Cell({
+  label,
+  children,
+}: {
+  label: React.ReactNode;
+  /** 收 `close`：**选完自己收**。开关状态在 `Cell` 里，孩子够不着它，所以要递下去。 */
+  children: (close: () => void) => React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
   return (
     <span className="pop-wrap">
       <button className="cell clickable" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
@@ -535,11 +576,57 @@ function Cell({ label, children }: { label: React.ReactNode; children: React.Rea
       {open && (
         <>
           {/* 点外面就收：一层透明垫子比全局监听便宜，也不会漏掉哪个角落 */}
-          <span className="pop-mask" onClick={() => setOpen(false)} />
-          <span className="pop">{children}</span>
+          <span className="pop-mask" onClick={close} />
+          <span className="pop">{children(close)}</span>
         </>
       )}
     </span>
+  );
+}
+
+/**
+ * 文风：这本书用哪种声音写。选中即写进核心设定的「文风」格——**不经过模型**。
+ *
+ * 触发按钮上显示的是卡的**中文名**（`title`），不是写进 core.md 的那个 id：id 是稳定标识，
+ * 给人看的是另一回事。
+ */
+function StyleCell({ view, onPick }: { view: StyleCatalog | null; onPick: (name: string) => void }) {
+  if (view === null) return null;
+  const now = view.cards.find((c) => c.name === view.current.name);
+  return (
+    <Cell label={`文风 ${now?.title ?? view.current.name}`}>
+      {(close) => (
+        <>
+          {/* 格里的字不是卡名时 harness 会带一句说明，且实际用的是默认那张——这一行必须显示出来，
+              否则用户以为在用 A、其实在用 B，正是 prose.ts 特意不静默的那件事 */}
+          {view.current.note !== undefined && <div className="pop-note">{view.current.note}</div>}
+          {view.cards.map((c) => (
+            <button
+              key={c.name}
+              className="pop-item lined"
+              aria-current={c.name === view.current.name}
+              onClick={() => {
+                close(); // 先收：选完这一格就没事了——写盘和可能的报错在别处
+                onPick(c.name);
+              }}
+            >
+              {c.title}
+              <span className="sub">{c.description}</span>
+            </button>
+          ))}
+          {/*
+            自定义文风的入口**现在只占位、故意 disabled**。
+            真做起来比"选一张现成的卡"复杂一档：要能写一张卡（正文 + 六维声音层 + 反例）并把它
+            落进库里（内置库是只读的，得进全局库或项目库），还要处理重名——那是另一件事。
+            先摆在这里免得忘掉；**不做成"能点但什么都不发生"**，那比不摆更糟。
+          */}
+          <button className="pop-item lined" disabled>
+            自定义…
+            <span className="sub">还没做——先占个位置</span>
+          </button>
+        </>
+      )}
+    </Cell>
   );
 }
 
@@ -549,12 +636,22 @@ function EffortCell({ value, onChange }: { value: string; onChange: (v: string) 
   const now = OPTIONS.find(([v]) => v === value)?.[1] ?? value;
   return (
     <Cell label={`effort ${now}`}>
-      {OPTIONS.map(([v, text]) => (
-        <button key={v} className="pop-item" aria-current={v === value} onClick={() => onChange(v)}>
-          {text}
-          <span className="pop-hint">{v}</span>
-        </button>
-      ))}
+      {(close) =>
+        OPTIONS.map(([v, text]) => (
+          <button
+            key={v}
+            className="pop-item"
+            aria-current={v === value}
+            onClick={() => {
+              onChange(v);
+              close();
+            }}
+          >
+            {text}
+            <span className="pop-hint">{v}</span>
+          </button>
+        ))
+      }
     </Cell>
   );
 }
@@ -581,16 +678,20 @@ function ContextCell({ uses, win }: { uses: { input: number; output: number }[];
         </span>
       }
     >
-      <div className="pop-big">
-        约 {tokens(last.input)} <span className="pop-hint">/ {tokens(win)} · {pct}%</span>
-      </div>
-      <div className="pop-hint">输出 {last.output}</div>
-      <div className="chart" title="每一轮发出去的 token">
-        {(uses.length > 0 ? uses : [last]).map((u, i) => (
-          <i key={i} style={{ height: `${Math.max(6, Math.round((u.input / peak) * 100))}%` }} />
-        ))}
-      </div>
-      <div className="pop-hint">{uses.length} 轮</div>
+      {() => (
+        <>
+          <div className="pop-big">
+            约 {tokens(last.input)} <span className="pop-hint">/ {tokens(win)} · {pct}%</span>
+          </div>
+          <div className="pop-hint">输出 {last.output}</div>
+          <div className="chart" title="每一轮发出去的 token">
+            {(uses.length > 0 ? uses : [last]).map((u, i) => (
+              <i key={i} style={{ height: `${Math.max(6, Math.round((u.input / peak) * 100))}%` }} />
+            ))}
+          </div>
+          <div className="pop-hint">{uses.length} 轮</div>
+        </>
+      )}
     </Cell>
   );
 }

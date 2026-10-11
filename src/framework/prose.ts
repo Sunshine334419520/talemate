@@ -18,13 +18,26 @@
  * 关：正文一落盘 `done` 置位，整块退出——判据是状态，不是模型自觉。
  */
 import { readPrompt } from "../prompts";
-import { loadSkillByName } from "../skill/discovery";
+import { discoverSkills, loadSkillByName } from "../skill/discovery";
 import { readDoc } from "../storage/corpus";
-import { getSection, isFiller } from "./markdown";
+import { getSection, isFiller, upsertSection } from "./markdown";
 import { chapterFileOf } from "./plan";
 
 /** 没指定文风时用的那张卡——内置库里随产品发布的那一份。 */
 export const DEFAULT_STYLE = "prose";
+
+/** 核心设定的「文风」格标题。**读（`styleChoiceFrom`）与写（`upsertSection`）必须是同一份**——
+ *  两处各写一个字面量，改了格名就会变成"写得进去、读不出来"。 */
+export const STYLE_HEADING = "文风";
+
+/** 文风卡在 frontmatter 里标的 `kind`。库是三处合并的，只认声明过的，见 `styleCatalog`。 */
+export const STYLE_KIND = "style";
+
+/** 核心设定的路径。写它的那条 UI 路径（`style:set`）也要用，所以导出。 */
+export const CORE_DOC = "design/core.md";
+
+/** 新建项目时 `core.md` 还不存在，起手用这个 H1——与 mock 草稿、界面里的显示名一致。 */
+const CORE_H1 = "# 核心设定";
 
 /** 卡名长这样：单行、无空格。用来把"写了个卡名"和"写了句大白话"分开。 */
 const NAME_LIKE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
@@ -44,7 +57,7 @@ export interface StyleChoice {
  */
 export function styleChoiceFrom(core: string | undefined): StyleChoice {
   if (core === undefined) return { name: DEFAULT_STYLE };
-  const s = getSection(core, "文风");
+  const s = getSection(core, STYLE_HEADING);
   if (!s.found || !s.body) return { name: DEFAULT_STYLE };
   const line = s.body
     .split("\n")
@@ -65,12 +78,50 @@ export function styleChoiceFrom(core: string | undefined): StyleChoice {
   return { name: token };
 }
 
+/** 界面那个文风选择器要的两样：当前用的是哪张、库里有哪些可选。 */
+export interface StyleCatalog {
+  current: StyleChoice;
+  cards: { name: string; title: string; description: string }[];
+}
+
+/**
+ * 状态栏的文风选择器取这个。`current` 直接复用 `styleChoiceFrom`——它已经分得出
+ * "格不存在"（静默用默认）与"格里的字不是卡名"（带一句说明），**界面必须把后者显出来**，
+ * 否则等于把这里特意做的可见性又抹掉。
+ *
+ * 只列声明了 `kind: style` 的卡。库是内置 + 全局 + 项目三处合并的，不筛的话一个查资料的
+ * skill 也会进来，而选中它等于把那份工作法当成"一种声音"注进正文窗口。
+ * `title` 只给人看；真正写进 `core.md`、也是取卡判据的是 `name`。
+ */
+export async function styleCatalog(projectId: string): Promise<StyleCatalog> {
+  const current = styleChoiceFrom(await readDoc(projectId, CORE_DOC));
+  const cards = (await discoverSkills(projectId))
+    .filter((s) => s.kind === STYLE_KIND)
+    .map((s) => ({ name: s.name, title: s.title ?? s.name, description: s.description }))
+    // 确定序：`discoverSkills` 的顺序来自 `readdir`，逐机器不同——界面上那一列会跟着乱。
+    // 默认卡排最前（它就是"没指定"时在用的那张），其余按中文名。
+    .sort((a, b) =>
+      a.name === DEFAULT_STYLE ? -1 : b.name === DEFAULT_STYLE ? 1 : a.title.localeCompare(b.title, "zh"),
+    );
+  return { current, cards };
+}
+
+/**
+ * 把文风写进核心设定，整篇字节给回来（调用方负责落盘与 CAS）。
+ *
+ * 文件还不存在是正常起点——`createProject` 不预种任何文件，所以新项目选文风时要从零起一份。
+ */
+export function withStyle(core: string | undefined, name: string): string {
+  const base = core === undefined || core.trim() === "" ? `${CORE_H1}\n` : core;
+  return upsertSection(base, STYLE_HEADING, name);
+}
+
 /**
  * 正文写作窗口那一块（进 system）：规范（恒定）+ 这本书的卡 + 落盘路径。路径由 harness 直接给，
  * 因为 `isChapterFile` 会拿它判"这一章写完了没有"——告诉它的名字必须就是认它的名字。
  */
 export async function buildProseBrief(projectId: string, chapter: number): Promise<string> {
-  const choice = styleChoiceFrom(await readDoc(projectId, "design/core.md"));
+  const choice = styleChoiceFrom(await readDoc(projectId, CORE_DOC));
   const card = await loadSkillByName(projectId, choice.name);
 
   const out: string[] = [

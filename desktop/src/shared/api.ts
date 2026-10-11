@@ -5,9 +5,10 @@
  * 编译它，所以这里不许 import electron 或 node。
  */
 import type { DocNode } from "../../../src/framework/anchor";
+import type { StyleCatalog } from "../../../src/framework/prose";
 import type { LLMEvent, StoredMessage } from "../../../src/core/types";
 
-export type { DocNode, LLMEvent, StoredMessage };
+export type { DocNode, LLMEvent, StoredMessage, StyleCatalog };
 
 /** 首屏的一张作品卡。全部现取、不缓存——真相在盘上。 */
 export interface ProjectCard {
@@ -117,6 +118,17 @@ export interface TmApi {
    * 判据在 harness 的 `storage/atomic.ts`（CAS），界面只是把它翻译成人话。
    */
   saveDoc(projectId: string, path: string, text: string): Promise<"ok" | "stale">;
+  /** 当前这本书用的文风，以及库里可选的文风卡 */
+  styleCatalog(projectId: string): Promise<StyleCatalog>;
+  /**
+   * 选定一种文风，直接写进 `design/core.md` 的「文风」格——不经模型、不走两阶段。
+   *
+   * 这里没有可生成的东西：值是库里的一个卡名，来自封闭集合。让模型经手只会多出"它改写了你没看过
+   * 的字节"这个风险，而两阶段存在的全部意义就是防后者；用户自己就是那个点头的人（同 `saveDoc`）。
+   *
+   * `unknown` = 库里没有这个名字（没写）；`stale` = 文件被别处改过，让用户看一眼再来。
+   */
+  setStyle(projectId: string, name: string): Promise<"ok" | "stale" | "unknown">;
   /** 会话当下是什么模式、有没有等着拍板的东西 */
   sessionState(projectId: string): Promise<SessionState>;
   /** 改当前这个会话的推理强度（off/low/high/max），不动全局默认 */

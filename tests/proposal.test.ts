@@ -36,8 +36,8 @@ const card = [
 const core = [
   "# 核心设定",
   "",
-  "## 基调 · 情绪",
-  "冷硬里带一点不甘。",
+  "## 一句话简介",
+  "沈越，被逐出家族的前首席，靠一门不能见光的本事往回爬。",
   "",
   "## 题材 · 频道",
   "男频 · 都市异能",
@@ -95,7 +95,6 @@ describe("itemsOf · 一个函数、两个数据源", () => {
       "题材 · 频道",
       "一句话简介",
       "金手指 / 超常设定",
-      "基调 · 情绪",
       "文风",
     ]);
   });
@@ -204,7 +203,7 @@ describe("renderProposal", () => {
     expect(text).toContain("1. 题材 · 频道");
     expect(text).toContain("男频 · 都市异能");
     expect(text).toContain("2. 一句话简介");
-    expect(text).toContain("第 2、3、5 格还没定"); // 没写的格被点出来问一句（第 5 格是后加的「文风」）
+    expect(text).toContain("第 3、4 格还没定"); // 没写的格被点出来问一句（第 3 格金手指、第 4 格文风）
     expect(text).toContain("先留白，还是现在给我一句？");
     expect(text).toContain("回复「没问题」就写入核心层；要改直接说第几格。");
     expect(text).not.toContain(".md");
@@ -219,7 +218,7 @@ describe("renderProposal", () => {
     const text = renderProposal({ name: "design/core.md", content: v2, previous: core });
 
     expect(text).toMatch(/题材 · 频道\s*★本版改动/);
-    expect(text).not.toMatch(/基调 · 情绪\s*★本版改动/); // 没动的格不打标
+    expect(text).not.toMatch(/一句话简介\s*★本版改动/); // 没动的格不打标
     expect(text).toContain("已替换上一版提案");
   });
 

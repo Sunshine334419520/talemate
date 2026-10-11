@@ -300,6 +300,15 @@ button { font: inherit; color: inherit; }
 .pop-item:hover { background: var(--hover); }
 .pop-item[aria-current="true"], .pop-item.sel { background: var(--hover); font-weight: 600; }
 .pop-hint { margin-left: auto; color: var(--faint); font-size: 11px; }
+/* 文风选择器：一格两行（中文名 + 一句话简介），所以要立起来。别改 `.pop-item` 本身——
+   模型那一格是"配置名 + 模型 id"并排一行，靠的正是它现在的横向布局。 */
+.pop-item.lined { flex-direction: column; align-items: flex-start; gap: 1px; }
+.pop-item.lined .sub { color: var(--faint); font-size: 11px; font-weight: 400; }
+/* 占位入口（还没做的功能）：看起来就是不能点，别给悬停反馈——**能点却什么都不发生比不摆更糟** */
+.pop-item:disabled { color: var(--faint); cursor: default; }
+.pop-item:disabled:hover { background: none; }
+/* 弹层顶部的说明（如"格里的字不是卡名，实际用的是默认那张"）——包一层好换行 */
+.pop-note { padding: 4px 6px 6px; color: var(--zhu); font-size: 11px; line-height: 1.5; }
 .pop-big { padding: 0 6px; font-size: 17px; font-variant-numeric: tabular-nums; }
 .pop-big .pop-hint { margin-left: 0; }
 .pop .chart { display: flex; align-items: flex-end; gap: 2px; height: 44px; margin: 10px 6px 4px; }

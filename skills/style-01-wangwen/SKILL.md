@@ -1,5 +1,7 @@
 ---
 name: style-01-wangwen
+title: 网文爽感
+kind: style
 description: 网文 · 白话爽感文风（第三人称，快、顺、直给）。用户说要"网文风"，或想把这本书写得顺、快、有爽感时选它。
 ---
 

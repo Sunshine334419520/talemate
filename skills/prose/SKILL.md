@@ -1,5 +1,7 @@
 ---
 name: prose
+title: 白话克制
+kind: style
 description: talemate 的默认正文声口（白话现代中文 · 克制）。这本书没在核心设定里指定文风时用它。
 ---
 
