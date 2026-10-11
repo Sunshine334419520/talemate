@@ -253,8 +253,18 @@ button { font: inherit; color: inherit; }
 .composer .box {
   max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; gap: 4px;
   border: 1px solid var(--line); border-radius: 16px; background: var(--card); padding: 10px 12px 8px;
+  position: relative; /* `.menu` 要贴着这个盒子向上弹，不能占位把输入框顶下去 */
 }
 .composer .box:focus-within { border-color: var(--faint); }
+/* `@` / `/` 的候选菜单：向上弹出的浮层。**别让它进文档流**——它是打字时的临时提示，
+   占位会把 textarea 推下去，整块输入区跟着跳。 */
+.composer .menu {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 20;
+  max-height: 232px; overflow-y: auto; padding: 4px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 10%);
+  display: flex; flex-direction: column; gap: 2px;
+}
 .composer textarea {
   border: 0; background: none; outline: none; resize: none; height: 44px;
   font: inherit; color: var(--ink);
@@ -342,6 +352,20 @@ button { font: inherit; color: inherit; }
 .tree .doc:hover { color: var(--ink); }
 .tree .doc.group { color: var(--faint); cursor: default; }
 .tree-empty { color: var(--faint); font-size: 12px; padding: 6px 14px; }
+/*
+ * 目录树的右键菜单。三条都不能少：
+ * - `fixed`：坐标是 `clientX/clientY`（视口），而且能躲开 `.side` 的 `overflow: hidden`
+ *   ——`absolute` 会被左栏裁掉。
+ * - `z-index` 必须高过 `.pop-mask`(40)：那张垫子铺满全屏且在 DOM 里排在前面，
+ *   菜单比它低就等于被压在下面——看得见、点不着，一点只会命中垫子把菜单关掉。
+ * - 别改成 `.pop` 的 `right/bottom`：那是"贴在被点的格子上面"，这里是跟着鼠标走。
+ */
+.ctx-menu {
+  position: fixed; z-index: 41;
+  min-width: 148px; padding: 4px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+}
 
 /* ── 右栏：看细节的地方。正文用宋体——稿件与工具的分野，在字上看得出来 ── */
 .sidepane { flex: none; }

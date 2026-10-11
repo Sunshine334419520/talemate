@@ -11,6 +11,12 @@
 import { useState } from "react";
 import type { DocNode } from "../shared/api";
 
+/**
+ * 右键菜单大致多高（两项 + 内边距）。只用来把它夹在窗口里——**估小了不会出错**，
+ * 最多是仍贴一点边；估大了菜单会离鼠标远一点。
+ */
+const CTX_MENU_H = 80;
+
 export function DocTree({
   nodes,
   current,
@@ -37,7 +43,8 @@ export function DocTree({
           onMenu={(e, node) => {
             if (node.path === undefined) return; // 纯分组没什么可加、可开的
             e.preventDefault();
-            setMenu({ x: e.clientX, y: e.clientY, node });
+            // 贴着鼠标放，但别掉出窗口下边界——点在树的最末一行时本来会掉出去
+            setMenu({ x: e.clientX, y: Math.min(e.clientY, window.innerHeight - CTX_MENU_H), node });
           }}
         />
       ))}
