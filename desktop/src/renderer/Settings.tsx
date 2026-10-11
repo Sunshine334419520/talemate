@@ -128,6 +128,9 @@ export function Settings({ onClose }: { onClose: () => void }) {
                 <span className="nm">
                   {p.name}
                   {defaultName === p.name && <span className="tag">默认</span>}
+                  {/* 密钥"只进不出"，所以这一条只能靠 `hasKey` 说。没有它，一套没密钥的配置和
+                      配好的在列表里长得一模一样，要等第一次调用失败才知道 */}
+                  {!p.hasKey && <span className="tag">没密钥</span>}
                 </span>
                 <span className="md">
                   {p.provider} · {p.models.join(" · ")}
@@ -136,7 +139,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
             ))}
             {env !== null && (
               <button className="row env" onClick={() => setEditing({ draft: asDraft(env), saved: false })}>
-                <span className="nm">{env.name}</span>
+                <span className="nm">
+                  {env.name}
+                  {!env.hasKey && <span className="tag">没密钥</span>}
+                </span>
                 <span className="md">
                   {env.provider} · {env.models.join(" · ")}
                 </span>

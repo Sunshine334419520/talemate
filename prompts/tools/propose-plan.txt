@@ -11,11 +11,20 @@ when what it names exists:
 - 产物（按序）— where the work lands, **in the order the work is done**. A person this chapter needs
   who has no card yet comes first (`design/characters/<名>.md`, landed the way design docs always
   land — propose-design, then the user's answer): the card is what fixes how they speak and what
-  they would never do, so it lands **before** the prose, never after. Then the chapter file
+  they would never do, so it lands **before** the prose, never after. A world fact the chapter needs
+  and the docs do not settle — a rule, what a term means, an ability's limit — lands before the prose
+  for the same reason (`design/wiki/world.md` or a topic page, again by propose-design): it constrains
+  what the prose may do. Bare naming is not this — a place that only needs to be called something can
+  be settled in the plan and stay there. Then the chapter file
   (chapters/chapter_ch<N>_v<M>.md), then what the state layer takes on: the state file of each
   character whose situation moves (state/characters/<名>.md), the ledger if a thread is planted or
   paid off (state/foreshadowing.md), and always this chapter's entry in state/progress.md. Name only
   the ones this chapter actually moves — a chapter that changes nothing does not get an empty update.
+  Then a look back at the world layer — 规则与秩序 and 术语表 against what the prose actually wrote: a
+  contradiction is reported for the user to rule on, never edited here; something the chapter settled
+  that was still open, or one of the hard facts the world was holding back now spent, is proposed as
+  that one cell (design/wiki/world.md, propose-design — the same two phases as every other design
+  change). A fact that appears once and is never asked for again goes nowhere: the prose is its home.
 - per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and you follow
   them); the characters the chapter must land and what each has to get across, each one checked
   against the cards you read — someone the design docs mention but who has no card is marked 要建卡

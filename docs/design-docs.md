@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-10-01 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`
+> **对齐代码**：2026-10-11 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -103,6 +103,8 @@ flowchart TD
 **一次只规划一章**，因为规划是**序列纲的投影**：序列纲说"这一节要兑现什么"，规划说"这一章怎么兑现"。
 
 **新人物的卡排在正文之前**（图里的 `W4B`）。卡的用途是约束"他下一次怎么说话、什么绝不做"，事后从正文反推出来的卡只能是对已写正文的总结——那是墓志铭，不是合同。所以建卡走的是**设计文档那条两段式**（`propose-design` → 用户拍板 → `apply-design`）：建卡是设计动作，不是写作动作，它只是被章节生产**触发**的。判据见 `characters.md` 的「谁需要一张卡」。
+
+**同一条测试也管世界事实**：一条规则、一个术语的含义、一条能力边界，同样"约束正文能做什么"，所以同样排在正文之前、同样走两阶段；事后补就只能是对已写正文的总结。**纯起名不算**——一个地方只需要有个称呼，在规划里定下就行。章末另有一次**世界层回看**：正文与「规则与秩序」「术语表」冲突的报给用户裁决（绝不静默改设定），把原本（待定）的钉死或揭开了某条硬事实的则提议改那一格。见 `chapter-planning.md` 的「七」。
 
 **门只剩一道，挂在 `propose-plan` 上：交出去就停**（`halt`，不靠模型自觉）。它同时把规划登记进会话内存，用户回话后由 harness 置 `approved`——**和 `apply-design` 是同一套**：propose 登记 → harness 判同意 → 模型据它执行。
 

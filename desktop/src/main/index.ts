@@ -189,11 +189,30 @@ function toModelConfig(p: ModelProfile, model?: string): ModelConfig {
   };
 }
 
-/** 新建会话用哪套：默认那套，没有就退回环境变量。 */
-async function modelForNewSession(): Promise<ModelConfig | undefined> {
+/**
+ * 新建会话用哪套：默认那套，没有就退回环境变量。
+ * 名字一并带出来——`describeMissingKey` 要靠它把话说清楚（"哪一套没密钥"）。
+ */
+async function modelForNewSession(): Promise<{ name: string; cfg: ModelConfig } | undefined> {
   const { profiles, default: name } = await readModels();
   const picked = profiles.find((p) => p.name === name) ?? profiles[0];
-  return picked === undefined ? undefined : toModelConfig(picked);
+  return picked === undefined ? undefined : { name: picked.name, cfg: toModelConfig(picked) };
+}
+
+/**
+ * 这套配置缺密钥时的提醒文案；不缺就 undefined。
+ *
+ * **只报，不补。** 静默拿 `.env` 的密钥顶上会把"其实没配好"藏起来（而且 env 换了 key，两处
+ * 就分家了）——这条路径真的踩过：从 `.env` 那条伪配置"借来改"存成具名配置时，密钥不会跟着
+ * 走（伪配置按设计不带密钥），存出来的就是一套没有密钥的配置，而它在界面上和配好的长得一样。
+ *
+ * 两种不算缺：`mock` 本来就不要密钥；provider 自己的环境变量在的话，SDK 会去读它。
+ */
+function describeMissingKey(name: string, cfg: ModelConfig): string | undefined {
+  if (cfg.provider === "mock" || cfg.apiKey) return undefined;
+  const fromEnv = cfg.provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
+  if (fromEnv) return undefined;
+  return `「${name}」这套配置还没有密钥，调模型会失败。去设置里给它填一个，或者删掉它退回 .env。`;
 }
 
 function registerHandlers(): void {
@@ -385,11 +404,12 @@ function registerHandlers(): void {
     "session:open",
     async (_e, p: { projectId: string; sessionId?: string }): Promise<OpenInfo> => {
       session?.abortCurrent();
+      const chosen = p.sessionId === undefined ? await modelForNewSession() : undefined;
       session = await openSession({
         projectId: p.projectId,
         sessionId: p.sessionId,
-        // 续聊用会话自己记的那套（`talemate.json` 的 agents / 会话元），新建才取默认那套
-        model: p.sessionId === undefined ? await modelForNewSession() : undefined,
+        // 续聊走 `.env`（会话元里不存 model），新建才取默认那套
+        model: chosen?.cfg,
         // 新会话先叫「新会话」，第一句话发出去之后按那句话命名（见 tm:prompt）——
         // 都叫"桌面端"的话列表里分不出哪条是哪条
         title: p.sessionId === undefined ? "新会话" : undefined,
@@ -399,12 +419,15 @@ function registerHandlers(): void {
       watchDocs(p.projectId);
       pushSessionState();
       const meta = await loadProjectMeta(p.projectId);
+      // 拿实际在用的那份配置判，不是拿"用户选的那套"判——续聊走的是 .env，两者可以不同
+      const warn = describeMissingKey(chosen?.name ?? "当前（.env）", session.model);
       return {
         sessionId: session.sessionId,
         book: meta.title,
         agent: session.agent.name,
         model: session.model.model,
         effort: session.model.reasoning,
+        ...(warn === undefined ? {} : { modelWarning: warn }),
       };
     },
   );

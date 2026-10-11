@@ -84,6 +84,8 @@ export interface OpenInfo {
   model: string;
   /** 推理强度（off/low/high/max）——状态栏显示，也是将来切换器的入口 */
   effort: string;
+  /** 在用的这套配置缺密钥时的中文提醒；不缺就没有这个字段 */
+  modelWarning?: string;
 }
 
 export interface ConfirmRequest {

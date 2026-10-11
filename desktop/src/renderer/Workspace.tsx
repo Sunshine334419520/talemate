@@ -55,6 +55,8 @@ export function Workspace({
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [ask, setAsk] = useState<AskRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 提醒（不是错误）：如"这套配置还没密钥"。与 `error` 分开，因为"会失败"和"已经失败"该分开说 */
+  const [warn, setWarn] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [tree, setTree] = useState<DocNode[]>([]);
   const [pane, setPane] = useState<Pane | null>(null);
@@ -113,6 +115,7 @@ export function Workspace({
       setLive([]);
       setBusy(false);
       setError(null);
+      setWarn(opened.modelWarning ?? null);
       // 用量由 harness 记在会话元信息里：切会话切回来在、重启也还在
       setUses(await window.tm.sessionUsage(project.id, opened.sessionId));
       setState(await window.tm.sessionState(project.id));
@@ -385,6 +388,7 @@ export function Workspace({
             onOpenDoc={(path) => void openChapter(path)}
             onOpenDiff={(name, text) => setPane({ kind: "diff", name, text })}
           />
+          {warn !== null && <p className="note zhu">［提醒］{warn}</p>}
           {error !== null && <p className="note">［错误］{error}</p>}
         </div>
 

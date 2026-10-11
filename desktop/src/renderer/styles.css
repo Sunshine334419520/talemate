@@ -198,6 +198,8 @@ button { font: inherit; color: inherit; }
 .md th, .md td { border-bottom: 1px solid var(--line-soft); padding: 5px 10px 5px 0; text-align: left; }
 .md a { color: var(--indigo); }
 .note { color: var(--faint); font-size: 12.5px; }
+/* 提醒（"这套配置还没密钥"这类）——是注意事项，不是错误，所以借用"只给要你注意"的那个色 */
+.note.zhu { color: var(--zhu); }
 
 /* 过程：折成一行，展开才看见细节 */
 .steps { font-size: 12.5px; }
