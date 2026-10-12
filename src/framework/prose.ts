@@ -16,6 +16,9 @@
  *
  * 窗口开：用户拍过板、而这一章的正文还没落盘（`pending` 里那份 `approved` 且未 `done` 的规划）；
  * 关：正文一落盘 `done` 置位，整块退出——判据是状态，不是模型自觉。
+ *
+ * 它还拥有 `design/core.md` 里**不经模型写的那两格**（文风 / 题材 · 频道）：值是用户在界面上从封闭
+ * 集合里挑的，没有可生成的东西，所以由交付层直接落盘（`withStyle` / `withShelf`，见 CLAUDE.md 的例外清单）。
  */
 import { readPrompt } from "../prompts";
 import { discoverSkills, loadSkillByName } from "../skill/discovery";
@@ -29,6 +32,10 @@ export const DEFAULT_STYLE = "prose";
 /** 核心设定的「文风」格标题。**读（`styleChoiceFrom`）与写（`upsertSection`）必须是同一份**——
  *  两处各写一个字面量，改了格名就会变成"写得进去、读不出来"。 */
 export const STYLE_HEADING = "文风";
+
+/** 核心设定的「题材 · 频道」格标题。同 `STYLE_HEADING`：写在这里，读在 `design_spec` 的规范里，
+ *  两处必须一致，由 `tests/framework.test.ts` 钉住。 */
+export const SHELF_HEADING = "题材 · 频道";
 
 /** 文风卡在 frontmatter 里标的 `kind`。库是三处合并的，只认声明过的，见 `styleCatalog`。 */
 export const STYLE_KIND = "style";
@@ -106,14 +113,37 @@ export async function styleCatalog(projectId: string): Promise<StyleCatalog> {
   return { current, cards };
 }
 
+/** `core.md` 还不存在时起手的那一份。两个写口共用一份起手式，别各抄一遍。 */
+function coreBase(core: string | undefined): string {
+  return core === undefined || core.trim() === "" ? `${CORE_H1}\n` : core;
+}
+
 /**
  * 把文风写进核心设定，整篇字节给回来（调用方负责落盘与 CAS）。
  *
  * 文件还不存在是正常起点——`createProject` 不预种任何文件，所以新项目选文风时要从零起一份。
  */
 export function withStyle(core: string | undefined, name: string): string {
-  const base = core === undefined || core.trim() === "" ? `${CORE_H1}\n` : core;
-  return upsertSection(base, STYLE_HEADING, name);
+  return upsertSection(coreBase(core), STYLE_HEADING, name);
+}
+
+/**
+ * 把书架声明（频道 / 题材）种进核心设定的那一格，整篇字节给回来。
+ *
+ * 两个值都空 → `undefined`：没有可写的东西就不该凭空造一份 `core.md`（懒建那条纪律）。
+ * 形制照 `design_spec` 给这一格的规范：先频道、后标签，各一行，只写名词不造句。
+ *
+ * **只在建书那一次调用**：之后书架上的分类与这一格各归各管（前者用来认书，后者是模型展开的定位），
+ * 在书架上改题材不会回头改它。
+ */
+export function withShelf(
+  core: string | undefined,
+  channel: string | undefined,
+  genre: string | undefined,
+): string | undefined {
+  const body = [channel, genre].map((s) => s?.trim()).filter((s): s is string => !!s);
+  if (body.length === 0) return undefined;
+  return upsertSection(coreBase(core), SHELF_HEADING, body.join("\n"));
 }
 
 /**

@@ -28,6 +28,7 @@ const api: TmApi = {
   createProject: (title, channel, genre) =>
     ipcRenderer.invoke("projects:create", { title, channel, genre }) as Promise<{ id: string }>,
   updateProject: (id, patch) => ipcRenderer.invoke("projects:update", { id, ...patch }) as Promise<void>,
+  deleteProject: (id) => ipcRenderer.invoke("projects:delete", id) as Promise<"ok" | "missing">,
   listSessions: (projectId) => ipcRenderer.invoke("sessions:list", projectId) as Promise<SessionRow[]>,
   docsTree: (projectId) => ipcRenderer.invoke("docs:tree", projectId) as Promise<DocNode[]>,
   docText: (projectId, path) =>

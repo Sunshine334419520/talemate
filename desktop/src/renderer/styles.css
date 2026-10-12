@@ -114,7 +114,9 @@ button { font: inherit; color: inherit; }
   font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--ground); color: var(--ink); width: 100%;
 }
+/* 破坏性动作在左、主操作在右，中间那个 `spacer` 把它们推开——与设置弹窗的 footer 同一条规矩 */
 .card.create .row { display: flex; gap: 8px; }
+.card.create .row .spacer { flex: 1; }
 
 /* 频道与题材：一排可选的小片。选中的填实——选项少的时候，填实比打勾好认 */
 .chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -438,6 +440,9 @@ button { font: inherit; color: inherit; }
 .modal { width: min(560px, 100%); }
 .modal .body { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px; }
 .modal .body.fields { padding: 14px 18px; gap: 10px; }
+/* 删除确认的正文：两句话，不是可选行——`.body` 那 8px 内边距是给可点的行留的 */
+.modal .confirm { padding: 14px 18px 2px; display: flex; flex-direction: column; gap: 8px; color: var(--muted); }
+.modal .confirm p { margin: 0; }
 .modal .body.plain .row { flex-direction: row; align-items: baseline; gap: 8px; }
 .modal .body.plain .row .md { margin-left: auto; color: var(--faint); }
 .modal .back { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 12px; padding: 0; }

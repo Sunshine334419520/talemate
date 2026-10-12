@@ -17,10 +17,10 @@
 import "./prelude";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import type { ConfirmReply, ModelConfig, ProjectMeta } from "../../../src/core/types";
 import { leadLine } from "../../../src/framework/markdown";
-import { CORE_DOC, styleCatalog, withStyle } from "../../../src/framework/prose";
+import { CORE_DOC, styleCatalog, withShelf, withStyle } from "../../../src/framework/prose";
 import { readDoc } from "../../../src/storage/corpus";
 import { writeProjectMeta } from "../../../src/storage/project";
 import { docTree } from "../../../src/framework/anchor";
@@ -30,10 +30,10 @@ import { enumerateDocs } from "../../../src/storage/corpus";
 import { listSessionIds, loadMessages, loadSessionMeta } from "../../../src/storage/session-store";
 import { createProject, listProjects, loadProjectMeta } from "../../../src/storage/project";
 import { writeIfUnchanged } from "../../../src/storage/atomic";
-import { watch, type FSWatcher } from "node:fs";
+import { existsSync, watch, type FSWatcher } from "node:fs";
 import { DOC_ROOTS, docAbs } from "../../../src/storage/corpus";
-import { rootAbs, talemateHome } from "../../../src/core/config";
-import { readFile, writeFile } from "node:fs/promises";
+import { projectPaths, rootAbs, talemateHome } from "../../../src/core/config";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { loadModelConfig } from "../../../src/core/config";
 import type {
   DocNode,
@@ -51,6 +51,8 @@ const SELFTEST = process.env.TALEMATE_DESKTOP_SELFTEST ?? "";
 let win: BrowserWindow | undefined;
 let session: Session | undefined;
 let watchers: FSWatcher[] = [];
+/** 这些 watcher 盯的是哪一本。删掉一本书时，只有它才知道该不该把手上的 watcher 与会话收掉。 */
+let watchedProjectId: string | undefined;
 /** 这一次开的是新会话——第一句话发出去时用它命名，只做一次 */
 let freshSession = false;
 
@@ -108,6 +110,7 @@ function pushSessionState(): void {
 function watchDocs(projectId: string): void {
   for (const w of watchers) w.close();
   watchers = [];
+  watchedProjectId = projectId;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const bump = (): void => {
     // 合并成一次：mate 写一章会连着落好几个文件，逐条通知只是白刷
@@ -120,6 +123,23 @@ function watchDocs(projectId: string): void {
     } catch {
       // 那个根还不存在（懒建）——没有目录就是还没有文档，也没什么可盯的
     }
+  }
+}
+
+/**
+ * CLI 的"上次打开哪本书"（`<home>/current.json`）若正指向这本刚被删掉的书，就把那份指针清掉——
+ * 否则 `talemate`（不带参数）下次启动会去开一个不存在的空间。
+ *
+ * 这个文件今天还写在 `src/cli.ts` 里、没挪进 `storage/`（见 docs/ui.md 十一.3），所以这里只做最小的
+ * 一步、不做收口：收口是那一项的事，顺手长第二份判据只会让那件事更难做。
+ */
+async function clearCurrentIf(projectId: string): Promise<void> {
+  const file = join(talemateHome(), "current.json");
+  try {
+    const raw = JSON.parse(await readFile(file, "utf-8")) as { id?: string };
+    if (raw.id === projectId) await rm(file, { force: true });
+  } catch {
+    // 没有这个文件、或读不动 —— 那就没有指针要清，不是错误
   }
 }
 
@@ -244,9 +264,40 @@ function registerHandlers(): void {
         channel: p.channel.trim() || undefined,
         genre: p.genre.trim() || undefined,
       });
+      // 建完就把书架声明种进核心设定的「题材 · 频道」格。同 `style:set` 那一类：值是用户在表单里
+      // 从封闭集合挑的，没有可生成的东西，所以不经模型、不走两阶段。mate 每轮常驻注入 core.md，
+      // 于是它第一轮就知道这本书的赛道，不会从零问起（见 docs/ui.md 的「首屏」）。
+      const core = docAbs(meta.id, CORE_DOC);
+      const seeded = withShelf(undefined, meta.channel, meta.genre);
+      if (core !== undefined && seeded !== undefined) {
+        // 期望"还不存在"：这是刚建出来的项目，这个文件此刻必然没有
+        await writeIfUnchanged({ abs: core, expected: null, content: seeded });
+      }
       return { id: meta.id };
     },
   );
+
+  /**
+   * 从书架上删掉一本书：整个项目目录移进系统回收站。
+   *
+   * **不是 `rm -rf`**：一本书是几年心血，回收站是唯一合理的默认（找得回来）。移不动就照实抛回去，
+   * 不退回静默删除——那会把"删不掉"变成"已经删了，找不回来了"。
+   */
+  ipcMain.handle("projects:delete", async (_e, projectId: string): Promise<"ok" | "missing"> => {
+    const root = projectPaths(talemateHome(), projectId).root;
+    if (!existsSync(root)) return "missing"; // 已经不在书架上：目标已达成，不必报错
+    // 先把挂在它上面的东西收掉：目录没了之后 watcher 还会继续报事件，会话也没了容身之处
+    if (watchedProjectId === projectId) {
+      for (const w of watchers) w.close();
+      watchers = [];
+      watchedProjectId = undefined;
+      session = undefined;
+      freshSession = false;
+    }
+    await shell.trashItem(root);
+    await clearCurrentIf(projectId);
+    return "ok";
+  });
 
   /** 改书名 / 题材。书名不是作品文档（在 talemate.json 里），所以不经模型、不问权限。 */
   ipcMain.handle(

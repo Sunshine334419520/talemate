@@ -67,7 +67,7 @@ export function App() {
   }
   return (
     <>
-      <Picker projects={projects} onOpen={setOpened} onCreated={refresh} onSettings={() => setSettings(true)} />
+      <Picker projects={projects} onOpen={setOpened} onChanged={refresh} onSettings={() => setSettings(true)} />
       {settingsModal}
     </>
   );

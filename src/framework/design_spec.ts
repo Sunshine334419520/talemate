@@ -75,6 +75,8 @@ export const SPECS: DocSpec[] = [
     title: "核心层（小说介绍）",
     sections: [
       {
+        // 这个格建书时就被种下（用户在书架上选的频道与题材，见 `prose.SHELF_HEADING` 与 `withShelf`）——
+        // 所以模型进来时它往往已经有字，要做的是补标签、对齐措辞，不是从零问起。
         heading: "题材 · 频道",
         write: "频道（男频/女频/双频）+ 题材标签，用货架上能搜到的词。",
         avoid: "读者会得到什么的承诺、定位分析、与别的作品比较。",

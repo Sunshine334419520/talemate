@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-10-11 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> **对齐代码**：2026-10-12 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -29,6 +29,8 @@
 ## 懒建：文件不预种
 
 `createProject` 只建目录、不种文件——`design/` 初始为空。用户要完善某处时，mate 调 `design-spec` 拿那**份文档**（或那个**目录**）的结构规范（该有哪些小节、每格装什么、成稿做法），据此成稿。
+
+**一处例外**：桌面端建书时会把用户在书架上选的频道与题材种进 `core.md` 的「题材 · 频道」那一格（`withShelf`）——值是用户从封闭集合里挑的，没有可生成的东西，与文风选择器同一类。它**只种这一次**：此后那一格归企划管，在书架上改题材不会回头改它。CLI 建的书仍是空的。
 
 **结构与内容分离**：`design_spec.ts` 只定义"长什么样"；文件一旦建立即内容与真相。所以 `design-spec` 是**参考**，不是校验器——文档不按规范组织也能存在，只是模型没拿到引导。规范描述的是**还不存在的文档**，所以它按"将来那个路径"取，不必等文件出现。
 

@@ -31,12 +31,13 @@ function coverChar(title: string): string {
 export function Picker({
   projects,
   onOpen,
-  onCreated,
+  onChanged,
   onSettings,
 }: {
   projects: ProjectCard[];
   onOpen: (card: ProjectCard) => void;
-  onCreated: () => Promise<void>;
+  /** 书架变了（新建 / 改名 / 删掉）——重取一遍，界面不留自己那一份 */
+  onChanged: () => Promise<void>;
   onSettings: () => void;
 }) {
   const [creating, setCreating] = useState(projects.length === 0);
@@ -53,11 +54,11 @@ export function Picker({
 
       <div className="cards">
         {projects.map((card) => (
-          <Card key={card.id} card={card} onOpen={onOpen} />
+          <Card key={card.id} card={card} onOpen={onOpen} onChanged={onChanged} />
         ))}
         {creating ? (
           <NewCard
-            onCreated={onCreated}
+            onChanged={onChanged}
             onOpen={onOpen}
             onCancel={projects.length > 0 ? () => setCreating(false) : undefined}
           />
@@ -133,11 +134,26 @@ function Basics({
   );
 }
 
-/** 一本书的卡。默认只读；点铅笔切到修改（书名 / 频道 / 题材）。 */
-function Card({ card, onOpen }: { card: ProjectCard; onOpen: (c: ProjectCard) => void }) {
+/**
+ * 一本书的卡。默认只读；点铅笔切到修改（书名 / 频道 / 题材）。
+ *
+ * 删除也长在修改态里，不另挂一个悬停图标：它跟"改个名"不是一个量级的动作，并列会挤、也会误触。
+ * 进来两步才够得着，外面还有一层确认——一本书是几年心血，这条路上不该有一步是随手能踩的。
+ */
+function Card({
+  card,
+  onOpen,
+  onChanged,
+}: {
+  card: ProjectCard;
+  onOpen: (c: ProjectCard) => void;
+  onChanged: () => Promise<void>;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: card.title, channel: card.channel ?? "", genre: card.genre ?? "" });
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function save(): Promise<void> {
     if (busy || !draft.title.trim()) return;
@@ -153,20 +169,65 @@ function Card({ card, onOpen }: { card: ProjectCard; onOpen: (c: ProjectCard) =>
     }
   }
 
+  async function remove(): Promise<void> {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await window.tm.deleteProject(card.id);
+      await onChanged();
+    } catch (err) {
+      // 删不动（回收站不可用之类）照实说，不假装删掉了——那会让人以为书没了
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (editing) {
     return (
-      <div className="card create">
-        <span className="meta">改这本书</span>
-        <Basics {...draft} onChange={(next) => setDraft((d) => ({ ...d, ...next }))} />
-        <div className="row">
-          <button className="btn primary" onClick={() => void save()} disabled={busy || !draft.title.trim()}>
-            保存
-          </button>
-          <button className="btn" onClick={() => setEditing(false)}>
-            取消
-          </button>
+      <>
+        <div className="card create">
+          <span className="meta">改这本书</span>
+          <Basics {...draft} onChange={(next) => setDraft((d) => ({ ...d, ...next }))} />
+          <div className="row">
+            <button className="btn zhu" onClick={() => setConfirming(true)} disabled={busy}>
+              删除这本书
+            </button>
+            <span className="spacer" />
+            <button className="btn primary" onClick={() => void save()} disabled={busy || !draft.title.trim()}>
+              保存
+            </button>
+            <button className="btn" onClick={() => setEditing(false)} disabled={busy}>
+              取消
+            </button>
+          </div>
         </div>
-      </div>
+        {confirming && (
+          <div className="mask" onClick={() => !busy && setConfirming(false)}>
+            {/* 点弹层自己不该关掉它——只有点在周围那层才算反悔 */}
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <header>
+                <h2>删除《{card.title}》</h2>
+              </header>
+              <div className="confirm">
+                <p>整本书都会移出书架：企划、正文、现状，连同它的会话记录。</p>
+                <p>它会进系统回收站——后悔了可以从那里找回来。</p>
+                {error !== null && <p className="note zhu">［没删掉］{error}</p>}
+              </div>
+              <footer>
+                <button className="btn zhu" onClick={() => void remove()} disabled={busy}>
+                  删除这本书
+                </button>
+                <span className="spacer" />
+                <button className="btn" onClick={() => setConfirming(false)} disabled={busy}>
+                  取消
+                </button>
+              </footer>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -207,11 +268,11 @@ function Card({ card, onOpen }: { card: ProjectCard; onOpen: (c: ProjectCard) =>
 
 /** 新建：与书卡同尺寸，免得点"新建"时整个版面跳一下。 */
 function NewCard({
-  onCreated,
+  onChanged,
   onOpen,
   onCancel,
 }: {
-  onCreated: () => Promise<void>;
+  onChanged: () => Promise<void>;
   onOpen: (c: ProjectCard) => void;
   onCancel?: () => void;
 }) {
@@ -223,7 +284,7 @@ function NewCard({
     setBusy(true);
     try {
       const { id } = await window.tm.createProject(draft.title, draft.channel, draft.genre);
-      await onCreated();
+      await onChanged();
       onOpen({
         id,
         title: draft.title.trim(),

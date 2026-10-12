@@ -111,6 +111,13 @@ export interface TmApi {
   createProject(title: string, channel: string, genre: string): Promise<{ id: string }>;
   /** 改书名 / 题材——卡上直接改，不经模型 */
   updateProject(id: string, patch: { title?: string; channel?: string; genre?: string }): Promise<void>;
+  /**
+   * 把一本书移出书架：整个项目目录进系统回收站（**不是永久删除**，找得回来）。
+   *
+   * `missing` = 盘上已经没有它了（别人删过、或目录是坏的）。那不是失败，是目标已达成。
+   * 真删不动（回收站不可用）会抛，界面照实把原因显示出来，不假装删掉了。
+   */
+  deleteProject(id: string): Promise<"ok" | "missing">;
   listSessions(projectId: string): Promise<SessionRow[]>;
   docsTree(projectId: string): Promise<DocNode[]>;
   /**

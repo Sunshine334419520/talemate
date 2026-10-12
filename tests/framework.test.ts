@@ -44,7 +44,7 @@ import { AgentRegistry } from "../src/agent/registry";
 import { PLAN_KEY } from "../src/core/types";
 import { renderPendingNote, Session, writeSettlesPlan } from "../src/session/session";
 import { isChapterFile } from "../src/framework/plan";
-import { DEFAULT_STYLE, STYLE_HEADING, buildProseBrief, styleCatalog, styleChoiceFrom, withStyle } from "../src/framework/prose";
+import { DEFAULT_STYLE, SHELF_HEADING, STYLE_HEADING, buildProseBrief, styleCatalog, styleChoiceFrom, withShelf, withStyle } from "../src/framework/prose";
 import type { ModelConfig } from "../src/core/types";
 import { ToolRegistry } from "../src/tool/registry";
 import { executeToolPart } from "../src/tool/runner";
@@ -192,10 +192,12 @@ describe("design-spec（结构规范）", () => {
     const core = at("core.md");
     expect(core).toContain("## 一句话简介");
     expect(core).toContain("## 金手指 / 超常设定");
-    // 这两处必须一致，但**不能**互相 import（prose → plan → proposal → design_spec 已是链，
+    // 这几处必须一致，但**不能**互相 import（prose → plan → proposal → design_spec 已是链，
     // 指回去就是循环，见 design_spec 里那条注释）。所以由这里钉住：规范告诉模型写哪个 heading，
-    // 读文风的那一侧就得按同一个找。
+    // 读/写那两格的那一侧就得按同一个找。题材格尤其要紧——建书时是 prose 的 `withShelf` 写进去的，
+    // 格名对不上就成了"写得进去、规范里读不出来"。
     expect(core).toContain(`## ${STYLE_HEADING}`);
+    expect(core).toContain(`## ${SHELF_HEADING}`);
     expect(core).not.toContain("一句话卖点");
     expect(core).not.toContain("爽感承诺");
     // 基调格是**故意移除**的（基调是读数不是合同，见 design_spec 的 core 段）——钉住它别被对称地加回来
@@ -1098,6 +1100,34 @@ describe("propose-plan · 规划工件与拍板", () => {
 });
 
 // ─── 正文写作窗口 ───
+
+// ─── 建书时种下的书架声明 ───
+
+describe("withShelf · 书架声明种进核心设定", () => {
+  test("没有 core.md 时起手一份：先频道、后题材，各一行", () => {
+    const text = withShelf(undefined, "男频", "都市");
+    expect(text).toContain("# 核心设定");
+    expect(text).toContain(`## ${SHELF_HEADING}\n男频\n都市`);
+  });
+
+  test("已经有这一格时只换那一格，别的一格不动", () => {
+    const core = `# 核心设定\n\n## ${SHELF_HEADING}\n女频\n古言\n\n## 一句话简介\n她回了一趟老家。\n`;
+    const text = withShelf(core, "男频", "玄幻");
+    expect(text).toContain(`## ${SHELF_HEADING}\n男频\n玄幻`);
+    expect(text).toContain("## 一句话简介\n她回了一趟老家。");
+    expect(text).not.toContain("古言");
+  });
+
+  test("只选了频道没选题材，也写得进去", () => {
+    expect(withShelf(undefined, "女频", "")).toContain(`## ${SHELF_HEADING}\n女频`);
+  });
+
+  test("两个值都空 → 不写：没有可写的东西就不该凭空造一份 core.md", () => {
+    expect(withShelf(undefined, undefined, undefined)).toBeUndefined();
+    expect(withShelf(undefined, "", "  ")).toBeUndefined();
+    expect(withShelf("# 核心设定\n", "", "")).toBeUndefined();
+  });
+});
 
 describe("文风目录 · 状态栏那个选择器取的两样", () => {
   test("withStyle：没有核心设定时起手一份，格内容就是卡名", () => {
