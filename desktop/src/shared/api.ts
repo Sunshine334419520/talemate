@@ -118,6 +118,20 @@ export interface TmApi {
    * 真删不动（回收站不可用）会抛，界面照实把原因显示出来，不假装删掉了。
    */
   deleteProject(id: string): Promise<"ok" | "missing">;
+  /**
+   * `/status` 的那段文本：四层现状（核心设定 / 世界观 / 角色 / 大纲）+ 一句下一步。
+   *
+   * 与 CLI 的 `/status` 调的是同一个 `buildProjectStatus`——同一条命令在两个外壳里说两套话，
+   * 是这类界面最典型的烂法。
+   */
+  projectStatus(projectId: string): Promise<string>;
+  /**
+   * `/permissions` 的那段文本：当前生效的规则表（每类动作是什么、是哪一层定的、各层贡献了什么）。
+   *
+   * 无参：规则表属于**当前这个会话**（模式与会话级已批准都挂在会话上），而会话在主进程手里。
+   * 渲染同样在 harness（`renderPermissionView`），与 CLI 共用一份。
+   */
+  permissions(): Promise<string>;
   listSessions(projectId: string): Promise<SessionRow[]>;
   docsTree(projectId: string): Promise<DocNode[]>;
   /**

@@ -8,11 +8,19 @@
 import { randomUUID } from "node:crypto";
 import { AgentRegistry } from "../agent/registry";
 import { DRAFT_MODE, MODES } from "../agent/modes";
-import { BASE_PERMISSIONS, deriveSubagentPermission, evaluate, fromConfig, mergeConfigs, visibleTools } from "../permission";
+import {
+  BASE_PERMISSIONS,
+  deriveSubagentPermission,
+  evaluate,
+  evaluateWithSource,
+  fromConfig,
+  mergeConfigs,
+  visibleTools,
+} from "../permission";
 import { loadModelConfig } from "../core/config";
 import { PLAN_KEY } from "../core/types";
 import type { ModeDef } from "../agent/modes";
-import type { PermissionConfig, Rule, Ruleset } from "../permission";
+import type { Action, PermissionConfig, Rule, Ruleset } from "../permission";
 import type {
   AgentDef,
   AssistantPart,
@@ -59,7 +67,7 @@ export interface UserIO {
 }
 
 /**
- * 规则表的展示视图（`Session.permissionView` 的产物）。给 CLI 的 `/permissions` 用——
+ * 规则表的展示视图（`Session.permissionView` 的产物）。给两个外壳的 `/permissions` 用——
  * 它要回答"我配的那条生效没有"，所以除了结论还得有每一层各自贡献了什么。
  */
 export interface PermissionView {
@@ -71,6 +79,48 @@ export interface PermissionView {
   layers: { label: string; rules: Ruleset }[];
   /** 会话级 approved：用户说过「以后都允许」的规则 */
   approved: Ruleset;
+}
+
+/** 一份规则集的紧凑写法：`edit: *→ask  design/core.md→allow`。 */
+function renderRuleset(rules: Ruleset): string {
+  if (!rules.length) return "（无）";
+  const byPerm = new Map<string, string[]>();
+  for (const r of rules) {
+    byPerm.set(r.permission, [...(byPerm.get(r.permission) ?? []), `${r.pattern}→${r.action}`]);
+  }
+  return [...byPerm].map(([p, list]) => `${p}: ${list.join("  ")}`).join("   ");
+}
+
+/**
+ * 规则表渲染成文本——`/permissions` 在两个外壳里的输出都是它，一份实现。
+ *
+ * 先给结论（每类动作现在是什么、是哪一层定的），再给分层（每层贡献了什么）：只有结论不够用——
+ * 用户配了一条想放宽、看到的却还是 deny，得能一眼看出是被模式盖住了（`deny` 单调，不受层级顺序影响）。
+ *
+ * `paint` 只给 CLI 上色用（终端能着色），界面不传。**动作类别取自 `BASE_PERMISSIONS` 的键**——
+ * 那是这些类别的唯一定义处，不在这里再抄一份。
+ */
+export function renderPermissionView(
+  view: PermissionView,
+  paint: (action: Action) => string = (a) => a,
+): string {
+  const where = view.derived
+    ? `${view.agentName}（子会话）`
+    : `${view.agentName}${view.modeTitle ? ` · 模式：${view.modeTitle}` : " · 无模式"}`;
+  const out: string[] = [`规则表 · ${where}`, "  现在（按 `*` 算；点名到具体文件的例外见「分层」）："];
+
+  const sets = [...view.layers.map((l) => l.rules), view.approved];
+  const labels = [...view.layers.map((l) => l.label), "会话已批准"];
+  for (const p of Object.keys(BASE_PERMISSIONS)) {
+    const { rule, layer } = evaluateWithSource(p, "*", ...sets);
+    const from = layer < 0 ? "没有规则匹配 → 默认问" : labels[layer];
+    out.push(`    ${p.padEnd(10)}${paint(rule.action)} ← ${from}`);
+  }
+
+  out.push("", `  ${view.derived ? "派生" : "分层"}（后写的优先；deny 例外——任何一层说不许就是不许）：`);
+  for (const l of view.layers) out.push(`    · ${l.label} — ${renderRuleset(l.rules)}`);
+  if (!view.derived) out.push(`    · 会话已批准 — ${renderRuleset(view.approved)}`);
+  return out.join("\n");
 }
 
 /** 自动 IO：一律放行（`once`，不写 approved——无人值守时不该替用户改规则）、askUser 返回占位 */

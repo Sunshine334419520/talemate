@@ -25,7 +25,8 @@ import { readDoc } from "../../../src/storage/corpus";
 import { writeProjectMeta } from "../../../src/storage/project";
 import { docTree } from "../../../src/framework/anchor";
 import { chapterNumberOf } from "../../../src/framework/plan";
-import { openSession, type Session, type UserIO } from "../../../src/session/session";
+import { openSession, renderPermissionView, type Session, type UserIO } from "../../../src/session/session";
+import { buildProjectStatus } from "../../../src/framework/report";
 import { enumerateDocs } from "../../../src/storage/corpus";
 import { listSessionIds, loadMessages, loadSessionMeta } from "../../../src/storage/session-store";
 import { createProject, listProjects, loadProjectMeta } from "../../../src/storage/project";
@@ -298,6 +299,17 @@ function registerHandlers(): void {
     await clearCurrentIf(projectId);
     return "ok";
   });
+
+  /** `/status`：四层现状。只读，与 CLI 那条命令调的是同一个函数。 */
+  ipcMain.handle("projects:status", (_e, projectId: string) => buildProjectStatus(projectId));
+
+  /**
+   * `/permissions`：当前这个会话的规则表。渲染也在 harness（`renderPermissionView`），与 CLI 一份。
+   * 还没有会话时回一句话而不是抛——命令面板打得开，只是还没有能谈权限的会话。
+   */
+  ipcMain.handle("session:permissions", (): string =>
+    session === undefined ? "（还没有打开会话）" : renderPermissionView(session.permissionView()),
+  );
 
   /** 改书名 / 题材。书名不是作品文档（在 talemate.json 里），所以不经模型、不问权限。 */
   ipcMain.handle(

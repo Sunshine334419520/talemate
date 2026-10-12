@@ -14,9 +14,8 @@ import { buildProjectStatus } from "./framework/report";
 import { createProject, loadProjectMeta } from "./storage/project";
 import { enumerateDocs, readDoc } from "./storage/corpus";
 import { listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
-import { openSession, type Session, type UserIO } from "./session/session";
-import { BASE_PERMISSIONS, evaluateWithSource } from "./permission";
-import type { Action, Ruleset } from "./permission";
+import { openSession, renderPermissionView, type Session, type UserIO } from "./session/session";
+import type { Action } from "./permission";
 
 // ─────────────────────────── 受管根 / current 指针 ───────────────────────────
 
@@ -152,40 +151,11 @@ function paintAction(a: Action): string {
   return `${color}${a.padEnd(5)}${RESET}`;
 }
 
-/** 一份规则集的紧凑写法：`edit: *→ask  design/core.md→allow`。 */
-function renderRuleset(rules: Ruleset): string {
-  if (!rules.length) return "（无）";
-  const byPerm = new Map<string, string[]>();
-  for (const r of rules) {
-    byPerm.set(r.permission, [...(byPerm.get(r.permission) ?? []), `${r.pattern}→${r.action}`]);
-  }
-  return [...byPerm].map(([p, list]) => `${p}: ${list.join("  ")}`).join("   ");
-}
-
 /**
- * 先给结论（每类动作现在是什么、是哪一层定的），再给分层（每层贡献了什么）——只有结论不够用：
- * 用户配了一条想放宽、看到的却还是 deny，得能一眼看出是被模式盖住了；`deny` 单调，不受层级顺序影响。
+ * 规则表由 harness 渲染（`renderPermissionView`，界面那条命令读的是同一份）——这里只负责上色与换行。
  */
 function printPermissions(session: Session): void {
-  const view = session.permissionView();
-  const where = view.derived
-    ? `${view.agentName}（子会话）`
-    : `${view.agentName}${view.modeTitle ? ` · 模式：${view.modeTitle}` : " · 无模式"}`;
-  console.log(`\n规则表 · ${where}`);
-
-  const sets = [...view.layers.map((l) => l.rules), view.approved];
-  const labels = [...view.layers.map((l) => l.label), "会话已批准"];
-  console.log("  现在（按 `*` 算；点名到具体文件的例外见「分层」）：");
-  // 动作类别取自 BASE_PERMISSIONS 的键——那是这些类别的唯一定义处，不在这里再抄一份
-  for (const p of Object.keys(BASE_PERMISSIONS)) {
-    const { rule, layer } = evaluateWithSource(p, "*", ...sets);
-    console.log(`    ${p.padEnd(10)}${paintAction(rule.action)} ← ${layer < 0 ? "没有规则匹配 → 默认问" : labels[layer]}`);
-  }
-
-  console.log(`\n  ${view.derived ? "派生" : "分层"}（后写的优先；deny 例外——任何一层说不许就是不许）：`);
-  for (const l of view.layers) console.log(`    · ${l.label} — ${renderRuleset(l.rules)}`);
-  if (!view.derived) console.log(`    · 会话已批准 — ${renderRuleset(view.approved)}`);
-  console.log();
+  console.log(`\n${renderPermissionView(session.permissionView(), paintAction)}\n`);
 }
 
 // ─────────────────────────── io（详细打印渲染） ───────────────────────────

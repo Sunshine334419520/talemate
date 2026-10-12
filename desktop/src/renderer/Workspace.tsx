@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog } from "../shared/api";
+import { COMMANDS } from "./commands";
 import { DocTree } from "./DocTree";
 import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
@@ -323,6 +324,28 @@ export function Workspace({
     [draft, menu],
   );
 
+  /**
+   * 跑一条 `/` 命令。表在 `commands.ts`（名字与 CLI 一致），行为在这里——与 CLI 那个 switch 同形。
+   *
+   * 输出一律进右栏：`docs/ui.md` 那条"需要展示详细的，都在右栏"，对话里连一行都不留
+   * （右栏弹出来就是反馈，再在对话里说一句"我打开了右栏"是噪音）。
+   */
+  const runCommand = useCallback(
+    async (name: string): Promise<void> => {
+      try {
+        if (name === "status") {
+          setPane({ kind: "text", name: "现状", text: await window.tm.projectStatus(project.id) });
+        } else if (name === "permissions") {
+          setPane({ kind: "text", name: "规则表", text: await window.tm.permissions() });
+        }
+      } catch (err) {
+        // 命令失败要说出来：静默什么都不发生，人就以为是自己打错了
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [project.id],
+  );
+
   /** 眼下这一层候选：`@` 取文档，`/` 取命令。 */
   const menuItems = useMemo((): { key: string; label: string; hint?: string; run: () => void }[] => {
     if (menu === null) return [];
@@ -332,19 +355,21 @@ export function Workspace({
         .slice(0, 8)
         .map((d) => ({ key: d.path, label: d.name, hint: d.path, run: () => pick(d.name) }));
     }
-    const cmds: [string, () => void][] = [
-      ["新会话", () => void enter()],
-      ["设置", onSettings],
-      ["所有作品", onExit],
-    ];
-    return cmds
-      .filter(([label]) => label.includes(menu.token))
-      .map(([label, run]) => ({ key: label, label: `/${label}`, run: () => pick("", run) }));
-  }, [enter, menu, onExit, onSettings, pick, tree]);
+    // 前缀匹配：命令表就两条，打一半就该收窄；子串匹配会让 `/e` 这种明明没戏的前缀也留下候选
+    return COMMANDS.filter((c) => c.name.startsWith(menu.token)).map((c) => ({
+      key: c.name,
+      label: `/${c.name}`,
+      hint: c.hint,
+      run: () => pick("", () => void runCommand(c.name)),
+    }));
+  }, [menu, pick, runCommand, tree]);
 
   function send(): void {
     const text = draft.trim();
     if (!text || busy) return;
+    // 斜杠开头的行永远不发给模型——与 CLI 一致（那边 `startsWith("/")` 拦下一切，未知的只回一句）。
+    // 命令不存在时菜单里已经写着「没有这个命令」，这里不发送、也不清草稿，文本留着让人改。
+    if (text.startsWith("/")) return;
     setDraft("");
     setMenu(null);
     // `@名字` 只是你看的：真正发出去时补一段"指的是哪些文件"，mate 拿的是确切地址。
@@ -417,19 +442,26 @@ export function Workspace({
 
         <div className="composer">
           <div className="box">
-            {menu !== null && menuItems.length > 0 && (
+            {menu !== null && (
               <div className="menu">
-                {menuItems.map((it, i) => (
-                  <button
-                    key={it.key}
-                    className={`pop-item${i === menuIndex ? " sel" : ""}`}
-                    onMouseEnter={() => setMenuIndex(i)}
-                    onClick={() => it.run()}
-                  >
-                    {it.label}
-                    {it.hint !== undefined && <span className="pop-hint">{it.hint}</span>}
-                  </button>
-                ))}
+                {menuItems.length === 0 ? (
+                  // 空候选也要说一句：什么都不显示，人会以为是自己打错了键
+                  <div className="menu-empty">
+                    {menu.kind === "slash" ? "（没有这个命令）" : "（没有这个文档）"}
+                  </div>
+                ) : (
+                  menuItems.map((it, i) => (
+                    <button
+                      key={it.key}
+                      className={`pop-item${i === menuIndex ? " sel" : ""}`}
+                      onMouseEnter={() => setMenuIndex(i)}
+                      onClick={() => it.run()}
+                    >
+                      {it.label}
+                      {it.hint !== undefined && <span className="pop-hint">{it.hint}</span>}
+                    </button>
+                  ))
+                )}
               </div>
             )}
             <textarea
@@ -440,6 +472,8 @@ export function Workspace({
               scanMenu(e.target.value, e.target.selectionStart ?? e.target.value.length);
             }}
               onKeyDown={(e) => {
+                // 输入法正在组合时，回车是在选字（中文输入的常规操作）——不是发送，也不是选命令
+                if (e.nativeEvent.isComposing) return;
                 // 菜单展开时键盘事件优先给菜单，回车选中项而非发送
                 if (menu !== null && menuItems.length > 0) {
                   const n = menuItems.length;

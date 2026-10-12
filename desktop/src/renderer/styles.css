@@ -272,6 +272,8 @@ button { font: inherit; color: inherit; }
   box-shadow: 0 8px 24px rgb(0 0 0 / 10%);
   display: flex; flex-direction: column; gap: 2px;
 }
+/* 候选一条都没有时也要占一行说话（如 `/foo`、`@不存在的文档`）——空着的人会以为按键没生效 */
+.menu-empty { padding: 7px 10px; color: var(--faint); font-size: 13px; }
 .composer textarea {
   border: 0; background: none; outline: none; resize: none; height: 44px;
   font: inherit; color: var(--ink);
@@ -382,6 +384,8 @@ button { font: inherit; color: inherit; }
 .pane-head .stale { color: var(--zhu); font-size: 11px; }
 .pane-head .path { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pane-body { flex: 1; overflow-y: auto; padding: 18px 22px 40px; }
+/* 命令输出那一屏：逐行的文本，保行不保列——它不是表格，别为对齐去换等宽字体 */
+.pane-body.plain { white-space: pre-wrap; line-height: 1.8; }
 
 /* diff：逐行着色，等宽。加粗斜体会把 +/- 淹掉，所以它不走 markdown */
 .diff { font-family: var(--mono); font-size: 12px; line-height: 1.7; padding: 14px 0; }

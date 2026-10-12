@@ -14,7 +14,14 @@ import { useMemo, useState } from "react";
 export type Pane =
   | { kind: "doc"; name: string; path: string; text: string }
   /** 一次落盘的改动（`write_ops` 给用户看的那两段：先影响面，后这次动了什么） */
-  | { kind: "diff"; name: string; text: string };
+  | { kind: "diff"; name: string; text: string }
+  /**
+   * 纯文本的一屏（`/` 命令的输出，如 `/status`、`/permissions`）。
+   *
+   * **不走 markdown**：那两份都是对齐过的、一行一条的文本，markdown 会把空格吃掉、把 `◇` 开头的行
+   * 并成一段。也不给编辑——命令输出不是作品，改它没有去处。
+   */
+  | { kind: "text"; name: string; text: string };
 
 export function SidePane({
   pane,
@@ -55,7 +62,9 @@ export function SidePane({
     <div className="sidepane" style={{ width }}>
       <div className="pane-head">
         <span className="name">{pane.name}</span>
-        <span className="path">{pane.kind === "doc" ? pane.path : "改动"}</span>
+        <span className="path">
+          {pane.kind === "doc" ? pane.path : pane.kind === "diff" ? "改动" : "命令"}
+        </span>
         {stale && !editing && <span className="stale">已在别处更新</span>}
         <span className="spacer" />
         {pane.kind === "doc" &&
@@ -85,6 +94,8 @@ export function SidePane({
       {note !== null && <div className="pane-note">{note}</div>}
       {pane.kind === "diff" ? (
         <Diff text={pane.text} />
+      ) : pane.kind === "text" ? (
+        <div className="pane-body plain">{pane.text}</div>
       ) : editing ? (
         <textarea className="pane-edit" value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false} />
       ) : (

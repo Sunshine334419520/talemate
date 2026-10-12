@@ -30,6 +30,7 @@ import {
   deriveSubagentPermission,
   evaluate,
   evaluateWithSource,
+  BASE_PERMISSIONS,
   match,
   merge,
   mergeConfigs,
@@ -42,7 +43,7 @@ import {
 import { BUILTIN_TOOLS } from "../src/tool";
 import { AgentRegistry } from "../src/agent/registry";
 import { PLAN_KEY } from "../src/core/types";
-import { renderPendingNote, Session, writeSettlesPlan } from "../src/session/session";
+import { renderPendingNote, renderPermissionView, Session, writeSettlesPlan } from "../src/session/session";
 import { isChapterFile } from "../src/framework/plan";
 import { DEFAULT_STYLE, SHELF_HEADING, STYLE_HEADING, buildProseBrief, styleCatalog, styleChoiceFrom, withShelf, withStyle } from "../src/framework/prose";
 import type { ModelConfig } from "../src/core/types";
@@ -1436,6 +1437,17 @@ describe("权限 · 规则表视图（CLI 的 /permissions）", () => {
     expect(view.layers[2].rules).toEqual([]);
     // 空层不参与求值，`question` 仍然由第一层（内置默认）的 allow 定
     expect(evaluateWithSource("question", "*", ...view.layers.map((l) => l.rules)).layer).toBe(0);
+  });
+
+  test("渲染成文本：每类动作都有结论、来源点到具体那一层（CLI 与界面共用这一份）", async () => {
+    const text = renderPermissionView((await sessionWith({ edit: "deny" })).permissionView());
+
+    // 类别取自 BASE_PERMISSIONS 的键——这里不再抄一份清单，直接拿它数
+    for (const p of Object.keys(BASE_PERMISSIONS)) expect(text).toContain(p);
+    // 用户配的那条要说得出是哪一层定的（这正是这张表存在的理由）
+    expect(text).toMatch(/edit\s+deny\s+←\s+项目配置 talemate\.json/);
+    expect(text).toContain("分层");
+    expect(text).toContain("会话已批准");
   });
 });
 
