@@ -2,7 +2,7 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：**设计稿，尚未实现**（2026-10-11）· 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`
+> **对齐代码**：2026-10-12 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
@@ -326,7 +326,7 @@ rm -rf node_modules/electron && bun install && ./node_modules/.bin/electron --ve
 | 松 | `#4A6B57` | `#7FA98F` | 已就绪 / 已收 |
 | 靛 | `#3C5A7A` | `#8FB0D8` | 模型侧的动作（工具调用） |
 
-- **字体三分**：界面用黑体（`system-ui` / PingFang SC），**正文用宋体**（Songti SC / Source Han Serif），路径与数据用等宽。稿件与工具的分野，在字上就看得出来。
+- **字体三分**：界面用黑体（`system-ui` / PingFang SC），**正文用宋体**（Songti SC / Source Han Serif），路径与数据用等宽。稿件与工具的分野，在字上就看得出来。**Windows 上没有宋体 SC，中文一律微软雅黑**——字体栈里它排在 SimSun 前面，于是只在 Windows 生效，mac 上 Songti SC 早在它前面就选走了。
 - 间距走 4 的倍数；圆角只有两档（6 / 10）；卡片不用阴影。
 - 深色跟随系统，不是另做一套——同一组令牌换值。
 - **三种非正常状态各自要说清话**：空（"这本书还没有正文，说一句'写第 1 章'"）、加载（骨架屏，不用转圈）、出错（说清哪一步失败、下一步做什么）。

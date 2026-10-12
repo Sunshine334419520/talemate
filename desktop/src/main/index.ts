@@ -17,7 +17,7 @@
 import "./prelude";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import type { ConfirmReply, ModelConfig, ProjectMeta } from "../../../src/core/types";
 import { leadLine } from "../../../src/framework/markdown";
 import { CORE_DOC, styleCatalog, withStyle } from "../../../src/framework/prose";
@@ -564,6 +564,9 @@ async function selftestWindow(): Promise<void> {
 }
 
 app.whenReady().then(() => {
+  // Windows/Linux 把默认菜单栏画在窗口里，而那五项没有一项是这个应用的动作——新建/打开/保存指向的是
+  // 一个不存在的文档概念。macOS 的菜单在系统菜单栏，且 Cmd+C/V/Q 都得靠它，那边不动。
+  if (process.platform !== "darwin") Menu.setApplicationMenu(null);
   registerHandlers();
   if (SELFTEST === "window") return selftestWindow();
   if (SELFTEST === "1") return selftest();

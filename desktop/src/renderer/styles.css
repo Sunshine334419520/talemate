@@ -1,7 +1,7 @@
 /*
  * 视觉令牌：色值从设计图上取样。冷调、无彩度（灰是微微偏蓝的冷灰），主区纯白、左栏浅灰，
  * 分层靠底色差、不靠线，所以 `--line` 用得极少。朱砂只用于"要你注意"（待补 / 拒绝 / 正在写），
- * 不做装饰。字体是正文宋体、界面黑体——稿件与工具的分野。
+ * 不做装饰。字体是正文宋体、界面黑体——稿件与工具的分野；Windows 上没有宋体 SC，中文一律微软雅黑。
  */
 :root {
   --ground: #f4f5fa;      /* 整体底色（左栏直接坐在它上面，没有面板） */
@@ -21,7 +21,10 @@
   --indigo: #4a5b78;
 
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
-  --serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun", Georgia, serif;
+  /* 微软雅黑插在 SimSun 前面：前三项都是 macOS 的，Windows 上必然落空，于是这一档只在 Windows
+     改道去雅黑；mac 那边 Songti SC 早在它前面就选走了，不受影响。Windows 自带的宋体只有 SimSun，
+     那是点阵时代的字形，1080p 下又细又糊。 */
+  --serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "Microsoft YaHei", "SimSun", Georgia, serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 
