@@ -20,6 +20,15 @@ when what it names exists:
   character whose situation moves (state/characters/<名>.md), the ledger if a thread is planted or
   paid off (state/foreshadowing.md), and always this chapter's entry in state/progress.md. Name only
   the ones this chapter actually moves — a chapter that changes nothing does not get an empty update.
+  state/progress.md is a **window of the last 7 chapters**, not a growing log: one section per chapter
+  with two lines each (内容 and 落), written whole each time so the oldest chapter drops out — what it
+  said further back is in the chapter prose. The foreshadowing and the end-of-chapter state do
+  not belong here; the ledger and the character state files already carry them.
+  What a state file carries is what is true of that character **now**, not what happened: every line
+  answers one question — is this the present, or something that occurred? What occurred belongs in the
+  prose. A wall already climbed, a fact already learned, a debt
+  already settled is **deleted**, not left with a note saying it is over. A state file that grows with
+  the chapter count means this was skipped.
   Then a look back at the world layer — 规则与秩序 and 术语表 against what the prose actually wrote: a
   contradiction is reported for the user to rule on, never edited here; something the chapter settled
   that was still open, or one of the hard facts the world was holding back now spent, is proposed as

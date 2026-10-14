@@ -18,11 +18,20 @@ it names exists:
   (chapters/chapter_ch<N>_v<M>.md), then the state files this chapter actually moves
   (state/characters/<名>.md for each character whose situation changes, state/foreshadowing.md if a
   thread is planted or paid off, and this chapter's entry in state/progress.md). Read the current
-  state files before deciding what moves. Last, a look back at the world layer — 规则与秩序 and 术语表
-  against what the prose actually wrote: a contradiction is reported for the user to rule on, never
-  edited here; something the chapter settled that was still open, or one of the hard facts the world
-  was holding back now spent, is proposed as that one cell (design/wiki/world.md, propose-design). A
-  fact that appears once and is never asked for again goes nowhere: the prose is its home.
+  state files before deciding what moves. state/progress.md is a window of the last 7 chapters, not a
+  growing log — one section per chapter, two lines each (内容 and 落), written whole so the oldest
+  drops out; further back the chapter prose is the record, and the foreshadowing and the end-of-chapter
+  state live in the ledger and the character files, not here.
+  What a state file carries is what is true of that character
+  **now**, not what happened — every line answers "is this the present, or something that occurred?",
+  and what occurred belongs in the prose. A wall already climbed, a fact already learned, a
+  debt already settled is deleted rather than left with a note saying it is over; a file that grows
+  with the chapter count means this was skipped. Last, a look back at the world layer — 规则与秩序
+  and 术语表 against what the prose actually wrote: a contradiction is reported for the user to rule
+  on, never edited here; something the chapter settled that was still open, or one of the hard facts
+  the world was holding back now spent, is proposed as that one cell (design/wiki/world.md,
+  propose-design). A fact that appears once and is never asked for again goes nowhere: the prose is
+  its home.
 - Then, per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and the
   writing partner follows them); the characters the chapter must land and what each has to get
   across, each checked against the cards you read — say 要建卡 for anyone the docs mention but who
@@ -34,11 +43,11 @@ it names exists:
   neighbours is the most common way a competent chapter turns dull, so a step without one is an
   unfinished step.
 
-Do NOT write prose, not even a sample line, and do NOT invent settings the design docs do not
-have: if the chapter needs one, it goes in 产物（按序）and lands before the prose — the user settles what
-it says, you only name what is missing. **The same goes for people**: if a
-step needs someone to do something and nobody in the docs fits, say what they have to do and leave
-them unnamed — inventing a name here would put a person into the book that the user never agreed to.
+Do NOT write prose, not even a sample line, and do NOT invent settings the design docs do not have:
+if the chapter needs one, it goes in 产物（按序）and lands before the prose — the user settles what it
+says, you only name what is missing. **The same goes for people**: if a step needs someone to do
+something and nobody in the docs fits, say what they have to do and leave them unnamed — inventing a
+name here would put a person into the book that the user never agreed to.
 No notes to the user, no questions — those are the writing partner's to ask.
 
 Output the plan and nothing else.
