@@ -82,8 +82,15 @@ export interface OpenInfo {
   book: string;
   agent: string;
   model: string;
-  /** 推理强度（off/low/high/max）——状态栏显示，也是将来切换器的入口 */
+  /** 推理强度（off/low/high/max）——输入框那一格显示 */
   effort: string;
+  /** 这套配置在 `models.json` 里的名字；环境变量那套没有。模型菜单只列这个厂商的模型。 */
+  profile?: string;
+  /**
+   * 这一次请求三段的字符数（系统提示词 / 工具定义 / 对话消息）。
+   * 一行正文都还没写时，界面靠它显示上下文基线——那时显示 0% 是错的。
+   */
+  contextParts?: { system: number; tools: number; messages: number };
   /** 在用的这套配置缺密钥时的中文提醒；不缺就没有这个字段 */
   modelWarning?: string;
 }
@@ -107,6 +114,11 @@ export interface AskRequest {
  * 自己 walk 目录——"什么算一份文档"的判据在 harness 那边只有一处。
  */
 export interface TmApi {
+  /**
+   * 这个壳跑在哪个系统上（`darwin` / `win32` / `linux`）——窗口外观按系统分区：
+   * macOS 没标题栏（红绿灯在最左），Windows 有一整行标题栏（系统按钮在最右）。
+   */
+  readonly platform: string;
   listProjects(): Promise<ProjectCard[]>;
   createProject(title: string, channel: string, genre: string): Promise<{ id: string }>;
   /** 改书名 / 题材——卡上直接改，不经模型 */
@@ -156,7 +168,7 @@ export interface TmApi {
   sessionState(projectId: string): Promise<SessionState>;
   /** 改当前这个会话的推理强度（off/low/high/max），不动全局默认 */
   setEffort(effort: string): Promise<void>;
-  models(): Promise<{ profiles: ProfileView[]; default?: string; env: ProfileView }>;
+  models(): Promise<{ profiles: ProfileView[]; default?: string }>;
   /** `apiKey` 省略 = 沿用已存的那一份（表单里没重填就别动它） */
   saveProfile(p: Omit<ModelProfile, "apiKey"> & { apiKey?: string }): Promise<void>;
   deleteProfile(name: string): Promise<void>;

@@ -91,8 +91,20 @@ async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<
       return streamed;
     }
 
-    // 用量报给外面：它是界面那个"上下文占比"唯一的真实来源（估算的不算）
-    if (turn.usage) deps.onEvent({ type: "usage", input: turn.usage.input, output: turn.usage.output });
+    // 用量报给外面：它是界面那个"上下文占比"唯一的真实来源（估算的不算）。
+    // `parts` 只给**比例**——三段各自的字符数，界面据此把真总数分摊开（见 core/types 的说明）。
+    if (turn.usage) {
+      deps.onEvent({
+        type: "usage",
+        input: turn.usage.input,
+        output: turn.usage.output,
+        parts: {
+          system: system.length,
+          tools: JSON.stringify(tools ?? []).length,
+          messages: JSON.stringify(messages).length,
+        },
+      });
+    }
 
     const parts: AssistantPart[] = [];
     if (turn.reasoning) parts.push({ type: "reasoning", text: turn.reasoning });

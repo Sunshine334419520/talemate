@@ -260,6 +260,8 @@ export interface SessionMeta {
   title: string;
   agent: string; // 当前角色
   model?: ModelConfig;
+  /** 这套配置在 `models.json` 里的名字；环境变量那套没有。续聊靠它把厂商认回来。 */
+  profile?: string;
   /**
    * 每一轮请求的真实用量（provider 报回来的，不是估算）。
    *
@@ -317,7 +319,19 @@ export type LLMEvent =
    * 这一次请求的用量（provider 每次都拿到 `usage`）。界面靠它显示"这个会话用了多少上下文"
    * ——`input` 就是这一次发出去的全部 token（≈当前上下文大小）。
    */
-  | { type: "usage"; input: number; output: number }
+  /**
+   * 这一次请求的用量。`input` 是 provider 报回的**真总数**。
+   *
+   * `parts` 是这次请求**各段的字符数**（系统提示词 / 工具定义 / 对话消息）。为什么是字符而不是
+   * token：provider 只报总 token，没有分段 token。界面拿它**按比例分摊**那个总数，并标「~」——
+   * 总量是真的，构成是分摊的，不冒充精确。
+   */
+  | {
+      type: "usage";
+      input: number;
+      output: number;
+      parts?: { system: number; tools: number; messages: number };
+    }
   | { type: "step.start" }
   | { type: "step.end"; finish: "stop" | "tool_calls" | "error" }
   | { type: "session.status"; status: "busy" | "idle" };

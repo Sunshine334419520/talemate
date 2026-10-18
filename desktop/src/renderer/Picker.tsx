@@ -9,6 +9,7 @@
 import { useState } from "react";
 import type { ProjectCard } from "../shared/api";
 import { CHANNELS, genresFor } from "../shared/genres";
+import { SlidersIcon } from "./icons";
 
 function progress(card: ProjectCard): string {
   return card.chapter === null ? "还没有正文" : `写到第 ${card.chapter} 章`;
@@ -41,9 +42,17 @@ export function Picker({
   onSettings: () => void;
 }) {
   const [creating, setCreating] = useState(projects.length === 0);
+  const platform = window.tm.platform;
 
   return (
-    <div className="app">
+    <div className={`app platform-${platform}`}>
+      {/* 和写作台同一套窗口外观：macOS 没有标题栏（这一行给系统红绿灯留位），
+          Windows 是一整行标题栏。两者都是拖拽区——这一屏原来整屏拖不动就是漏了它。 */}
+      {platform === "win32" ? (
+        <div className="titlebar" />
+      ) : (
+        <div className={`railtop${platform === "darwin" ? " has-lights" : ""}`} />
+      )}
     <div className="picker">
       <header className="shelf">
         <h1>talemate</h1>
@@ -69,14 +78,13 @@ export function Picker({
         )}
       </div>
     </div>
-      {/* 状态栏在每一屏都在同一个位置；这一屏没有会话，所以只有右边那个设置 */}
-      <footer className="statusbar">
-        <span className="right">
-          <button className="cell clickable" title="模型与设置" onClick={onSettings}>
-            ⚙ 设置
-          </button>
-        </span>
-      </footer>
+      {/* 设置与写作台同款、同位置：左下角 */}
+      <div className="picker-foot">
+        <button className="settings" title="模型与设置" onClick={onSettings}>
+          <span className="avatar"><SlidersIcon /></span>
+          <span>设置</span>
+        </button>
+      </div>
     </div>
   );
 }

@@ -24,6 +24,7 @@ import type {
 } from "../shared/api";
 
 const api: TmApi = {
+  platform: process.platform,
   listProjects: () => ipcRenderer.invoke("projects:list") as Promise<ProjectCard[]>,
   createProject: (title, channel, genre) =>
     ipcRenderer.invoke("projects:create", { title, channel, genre }) as Promise<{ id: string }>,

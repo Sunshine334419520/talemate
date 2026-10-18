@@ -263,6 +263,8 @@ export interface SessionDeps {
   /** 会话角色，缺省 primary 第一个 */
   agentId?: string;
   model?: ModelConfig;
+  /** 这套配置在 `models.json` 里的名字（环境变量那套没有名字）。**续聊靠它把厂商认回来**。 */
+  profile?: string;
   io?: UserIO;
   /** 保留现有会话（续聊）时传入；缺省新建并落盘 */
   sessionId?: string;
@@ -279,6 +281,8 @@ export class Session {
   readonly depth: number;
   readonly agentId: string;
   model: ModelConfig;
+  /** 这套配置的名字；没有（环境变量那套）时为 undefined。 */
+  readonly profile?: string;
   io: UserIO;
   meta: ProjectMeta;
   agents: AgentRegistry;
@@ -319,6 +323,7 @@ export class Session {
     this.parentRuleset = deps.parentRuleset;
     this.agentId = deps.agentId ?? deps.agents.getDefaultPrimary().id;
     this.model = deps.model;
+    this.profile = deps.profile;
     this.io = deps.io ?? autoIO;
     this.meta = deps.meta;
     this.agents = deps.agents;
@@ -348,6 +353,7 @@ export class Session {
       title: title ?? this.agent.name,
       agent: this.agentId,
       model: this.model,
+      profile: this.profile,
     });
   }
 
@@ -455,6 +461,21 @@ export class Session {
       if (ctrl.signal.aborted) return "";
       throw err;
     }
+  }
+
+  /**
+   * 这一次请求的三段各有多少字符（系统提示词 / 工具定义 / 对话消息）。
+   *
+   * 给界面算"上下文基线"用：一行正文都还没写时，系统提示词和工具定义已经在窗口里占着位置，
+   * 那时显示 0% 是错的。**字符不是 token**——界面按比例估，标「~」。
+   */
+  async requestSizes(): Promise<{ system: number; tools: number; messages: number }> {
+    const req = await this.buildRequest(this.agent);
+    return {
+      system: req.system.length,
+      tools: JSON.stringify(req.tools ?? []).length,
+      messages: JSON.stringify(req.messages).length,
+    };
   }
 
   /** 组装一次请求：截窗后的历史 → NeutralMsg + system + 该角色可见工具 */
@@ -701,8 +722,20 @@ export async function openSession(deps: SessionDeps): Promise<Session> {
   agents.applyProject(meta);
   const tools = new ToolRegistry();
   for (const t of BUILTIN_TOOLS) tools.register(t);
-  const model = deps.model ?? loadModelConfig();
-  const session = new Session({ ...deps, meta, agents, tools, model });
+  // 续聊：把这份会话自己记的模型配置读回来。不读的话每开一次就退回 `.env`——用户配的那套
+  // 等于只在"新建会话"那一次生效，重开 app 就悄悄换了厂商。
+  const stored = deps.sessionId
+    ? await loadSessionMeta(deps.projectId, deps.sessionId).catch(() => undefined)
+    : undefined;
+  const model = deps.model ?? stored?.model ?? loadModelConfig();
+  const session = new Session({
+    ...deps,
+    meta,
+    agents,
+    tools,
+    model,
+    profile: deps.profile ?? stored?.profile,
+  });
   if (!deps.sessionId) await session.saveMeta(deps.title);
   return session;
 }

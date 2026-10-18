@@ -60,36 +60,51 @@ export function SidePane({
 
   return (
     <div className="sidepane" style={{ width }}>
-      <div className="pane-head">
-        <span className="name">{pane.name}</span>
-        <span className="path">
-          {pane.kind === "doc" ? pane.path : pane.kind === "diff" ? "改动" : "命令"}
+      {/* 顶行与参考界面一致：一个文件标签 + 右侧的图标动作；整行可拖窗口 */}
+      <div className="doc-tabs">
+        <span className="tab active">
+          <FileIcon />
+          {pane.name}
         </span>
-        {stale && !editing && <span className="stale">已在别处更新</span>}
-        <span className="spacer" />
-        {pane.kind === "doc" &&
-          (editing ? (
-            <>
-              <button className="btn primary" disabled={!dirty} onClick={() => void save()}>
-                保存
-              </button>
-              <button className="btn" onClick={() => { setEditing(false); onEditingChange(false); }}>放弃</button>
-            </>
-          ) : (
+        <span className="end">
+          {pane.kind === "doc" && !editing && (
             <button
-              className="btn"
+              className="iconbtn"
+              title="编辑"
               onClick={() => {
                 setDraft(pane.text);
                 setEditing(true);
                 onEditingChange(true);
               }}
             >
-              编辑
+              <PencilIcon />
             </button>
-          ))}
-        <button className="btn" onClick={onClose}>
-          关闭
-        </button>
+          )}
+          {pane.kind === "doc" && editing && (
+            <>
+              <button className="iconbtn" title="保存" disabled={!dirty} onClick={() => void save()}>
+                <SaveIcon />
+              </button>
+              <button
+                className="iconbtn"
+                title="放弃"
+                onClick={() => {
+                  setEditing(false);
+                  onEditingChange(false);
+                }}
+              >
+                <UndoIcon />
+              </button>
+            </>
+          )}
+          <button className="iconbtn" title="关闭" onClick={onClose}>
+            <XIcon />
+          </button>
+        </span>
+      </div>
+      <div className="pathbar">
+        {pane.kind === "doc" ? pane.path : pane.kind === "diff" ? "改动" : "命令"}
+        {stale && !editing && <span className="stale">已在别处更新</span>}
       </div>
       {note !== null && <div className="pane-note">{note}</div>}
       {pane.kind === "diff" ? (
@@ -102,6 +117,49 @@ export function SidePane({
         <Doc text={pane.text} />
       )}
     </div>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 2.5h5l3 3v8H4z" />
+      <path d="M9 2.5v3h3" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 13h2.5L13 5.5 10.5 3 3 10.5z" />
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 2.5h8l2 2v9H3z" />
+      <path d="M5.5 2.5v3h5v-3M5.5 13v-3.5h5V13" />
+    </svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 4 2.5 6.5 5 9" />
+      <path d="M2.5 6.5H10a3.5 3.5 0 0 1 0 7H8" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+      <path d="m4 4 8 8M12 4l-8 8" />
+    </svg>
   );
 }
 

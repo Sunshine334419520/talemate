@@ -17,7 +17,7 @@
 import "./prelude";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell } from "electron";
 import type { ConfirmReply, ModelConfig, ProjectMeta } from "../../../src/core/types";
 import { leadLine } from "../../../src/framework/markdown";
 import { CORE_DOC, styleCatalog, withShelf, withStyle } from "../../../src/framework/prose";
@@ -35,7 +35,6 @@ import { existsSync, watch, type FSWatcher } from "node:fs";
 import { DOC_ROOTS, docAbs } from "../../../src/storage/corpus";
 import { projectPaths, rootAbs, talemateHome } from "../../../src/core/config";
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { loadModelConfig } from "../../../src/core/config";
 import type {
   DocNode,
   ModelProfile,
@@ -177,20 +176,6 @@ function view(p: ModelProfile, isDefault: boolean): ProfileView & { isDefault?: 
   return { ...rest, hasKey: apiKey !== undefined && apiKey !== "", isDefault };
 }
 
-/** 环境变量那套（`.env`）——一份配置都没有时实际在用的就是它，界面上要看得见。 */
-function envProfile(): ProfileView {
-  const cfg = loadModelConfig();
-  return {
-    name: "当前（.env）",
-    provider: cfg.provider,
-    models: [cfg.model],
-    baseURL: cfg.baseURL,
-    maxTokens: cfg.maxTokens,
-    reasoning: cfg.reasoning,
-    hasKey: Boolean(cfg.apiKey ?? process.env.ANTHROPIC_API_KEY),
-  };
-}
-
 function modelsFile(): string {
   return join(talemateHome(), "models.json");
 }
@@ -229,11 +214,14 @@ async function modelForNewSession(): Promise<{ name: string; cfg: ModelConfig } 
  *
  * 两种不算缺：`mock` 本来就不要密钥；provider 自己的环境变量在的话，SDK 会去读它。
  */
-function describeMissingKey(name: string, cfg: ModelConfig): string | undefined {
+function describeMissingKey(name: string | undefined, cfg: ModelConfig): string | undefined {
   if (cfg.provider === "mock" || cfg.apiKey) return undefined;
   const fromEnv = cfg.provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
   if (fromEnv) return undefined;
-  return `「${name}」这套配置还没有密钥，调模型会失败。去设置里给它填一个，或者删掉它退回 .env。`;
+  // 一条配置都没有时，`.env` 是开发自用的退路，不该出现在给用户的提示里——直接让他去配一套
+  return name === undefined
+    ? "还没有配置模型。去设置里加一套、填好密钥，再新建会话。"
+    : `「${name}」这套配置还没有密钥，调模型会失败。去设置里给它填一个。`;
 }
 
 function registerHandlers(): void {
@@ -397,7 +385,6 @@ function registerHandlers(): void {
     return {
       profiles: profiles.map((p) => view(p, p.name === d)),
       default: d,
-      env: envProfile(),
     };
   });
 
@@ -471,8 +458,9 @@ function registerHandlers(): void {
       session = await openSession({
         projectId: p.projectId,
         sessionId: p.sessionId,
-        // 续聊走 `.env`（会话元里不存 model），新建才取默认那套
+        // 续聊由 `openSession` 从会话元里读回自己那套；新建才取默认那套
         model: chosen?.cfg,
+        profile: chosen?.name,
         // 新会话先叫「新会话」，第一句话发出去之后按那句话命名（见 tm:prompt）——
         // 都叫"桌面端"的话列表里分不出哪条是哪条
         title: p.sessionId === undefined ? "新会话" : undefined,
@@ -482,14 +470,18 @@ function registerHandlers(): void {
       watchDocs(p.projectId);
       pushSessionState();
       const meta = await loadProjectMeta(p.projectId);
-      // 拿实际在用的那份配置判，不是拿"用户选的那套"判——续聊走的是 .env，两者可以不同
-      const warn = describeMissingKey(chosen?.name ?? "当前（.env）", session.model);
+      // 上下文基线：一行正文都没写时，系统提示词和工具定义也已经占着窗口了，界面不该显示 0%
+      const contextParts = await session.requestSizes().catch(() => undefined);
+      // 拿实际在用的那份配置判，不是拿"用户选的那套"判——续聊读的是会话元里那套
+      const warn = describeMissingKey(chosen?.name ?? session.profile, session.model);
       return {
         sessionId: session.sessionId,
         book: meta.title,
         agent: session.agent.name,
         model: session.model.model,
         effort: session.model.reasoning,
+        ...(session.profile === undefined ? {} : { profile: session.profile }),
+        ...(contextParts === undefined ? {} : { contextParts }),
         ...(warn === undefined ? {} : { modelWarning: warn }),
       };
     },
@@ -533,13 +525,49 @@ function makeIO(): UserIO {
   };
 }
 
+/**
+ * 窗口外观按系统分区（渲染层用 `tm.platform` 画对应的 chrome）：
+ *
+ * - **macOS**：没有标题栏，红绿灯由系统内嵌在最左（`hiddenInset`）；
+ *   渲染层在左栏顶行给它们留位置，收起/展开靠那一行的右缘。
+ * - **Windows**：一整行标题栏。最小化/最大化/关闭由 `titleBarOverlay` 画在右上，
+ *   位置、悬停、双击最大化全由系统保证——自绘只会多出一堆要维护的边界情况。
+ * - **其余（Linux）**：保留系统默认边框。overlay 在那边不保证，不做自绘。
+ *
+ * `titleBarOverlay` 的颜色不跟主题走的话，切深色后标题栏会留一条浅色，所以监听 `nativeTheme`。
+ */
+const PLATFORM = process.platform;
+/** 主题监听只挂一次（窗口可能重建，回调里现取 `win`）。 */
+let overlayWired = false;
+const WINDOW_CHROME: Electron.BrowserWindowConstructorOptions =
+  PLATFORM === "darwin"
+    ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 15 } }
+    : PLATFORM === "win32"
+      ? {
+          titleBarStyle: "hidden",
+          titleBarOverlay: { color: "#f2f3f9", symbolColor: "#62636e", height: 44 },
+        }
+      : {};
+
+/** Windows 标题栏的颜色要跟着系统主题走（`titleBarOverlay` 不会自己变）。 */
+function syncTitleBarOverlay(w: BrowserWindow | undefined): void {
+  if (PLATFORM !== "win32" || w === undefined) return;
+  const dark = nativeTheme.shouldUseDarkColors;
+  w.setTitleBarOverlay({
+    color: dark ? "#181920" : "#f2f3f9",
+    symbolColor: dark ? "#a4a5b0" : "#62636e",
+    height: 44,
+  });
+}
+
 async function openWindow(show: boolean): Promise<BrowserWindow> {
   const w = new BrowserWindow({
+    ...WINDOW_CHROME,
     width: 1357, // 1180 × 1.15：两块面板并排之后中栏才够读
     height: 780,
     show: false,
     title: "talemate",
-    backgroundColor: "#f6f5f2",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#14151a" : "#f7f8fb",
     webPreferences: {
       // 预加载是 CJS（沙箱下必须是），产物由 electron-vite 按包类型决定
       preload: join(__dirname, "../preload/index.js"),
@@ -550,6 +578,11 @@ async function openWindow(show: boolean): Promise<BrowserWindow> {
   // 必须挂到模块级：事件、确认、提问、报错全都经 `win` 发出去，漏了 `win?.webContents.send(...)`
   // 就变成静默空操作——界面照常打开、照常能发话，但一个实时回复都看不到，而且不报错。
   win = w;
+  // 主题切换时把 Windows 的标题栏颜色跟着换（只挂一次；`win` 可能换，所以回调里现取）
+  if (PLATFORM === "win32" && !overlayWired) {
+    overlayWired = true;
+    nativeTheme.on("updated", () => syncTitleBarOverlay(win));
+  }
   w.on("closed", () => {
     if (win === w) win = undefined;
   });

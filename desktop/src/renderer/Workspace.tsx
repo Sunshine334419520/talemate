@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog } from "../shared/api";
 import { COMMANDS } from "./commands";
 import { DocTree } from "./DocTree";
+import { ChevronIcon, PanelIcon, PlusIcon, SlidersIcon } from "./icons";
 import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
 import { tokens } from "../shared/tokens";
@@ -37,6 +38,13 @@ function when(ts: number): string {
   const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   return d.toDateString() === today.toDateString() ? `今天 ${hhmm}` : `${d.getMonth() + 1}月${d.getDate()}日`;
 }
+
+/** 一轮请求的用量。`parts` 是三段的字符数，界面据此把真总数分摊开（见 core/types 的 usage 事件）。 */
+type Usage = {
+  input: number;
+  output: number;
+  parts?: { system: number; tools: number; messages: number };
+};
 
 export function Workspace({
   project,
@@ -72,8 +80,15 @@ export function Workspace({
   /** 这本书用的文风 + 库里可选的卡。**文件事实，不是会话状态**——所以它跟着盘上一起变。 */
   const [style, setStyle] = useState<StyleCatalog | null>(null);
   /** 每一轮请求的用量（`usage` 事件）——界面靠它显示占比与走势 */
-  const [uses, setUses] = useState<{ input: number; output: number }[]>([]);
+  const [uses, setUses] = useState<Usage[]>([]);
+  /** 窗口外观按系统分区：macOS 无标题栏、Windows 一整行。见 `main/index.ts` 的 `WINDOW_CHROME`。 */
+  const platform = window.tm.platform;
+  const [collapsed, setCollapsed] = useState(false);
+  /** 左栏两段各自的折叠状态：默认都展开，用户想专心看目录时可以收掉会话。 */
+  const [showSessions, setShowSessions] = useState(true);
+  const [showTree, setShowTree] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   /**
    * 贴着底部才跟着新内容走。
    *
@@ -188,7 +203,7 @@ export function Workspace({
         }
         return next;
       });
-      if (e.type === "usage") setUses((prev) => [...prev, { input: e.input, output: e.output }]);
+      if (e.type === "usage") setUses((prev) => [...prev, { input: e.input, output: e.output, parts: e.parts }]);
       if (e.type === "session.status") setBusy(e.status === "busy");
     });
     window.tm.onSessionState(setState);
@@ -289,6 +304,21 @@ export function Workspace({
   // 窗口大小按当前模型查表（认不出给保守默认值）——显示时永远带"约"，不把估算说成事实
   const win = contextWindow(info?.model ?? "");
 
+  /** 输入框工具栏的 `@`：插在光标处并**立刻把候选菜单打开**——不打开的话，按钮看着没反应。 */
+  const insertMention = (): void => {
+    const el = textareaRef.current;
+    if (el === null) return;
+    const at = el.selectionStart ?? draft.length;
+    const next = `${draft.slice(0, at)}@${draft.slice(at)}`;
+    setDraft(next);
+    el.focus();
+    // 等 React 把新值写进 DOM，再定光标位置并扫描
+    requestAnimationFrame(() => {
+      el.selectionStart = el.selectionEnd = at + 1;
+      scanMenu(next, at + 1);
+    });
+  };
+
   /** 光标前那一段是不是 `@…` 或 `/…`。只在词首认：`a@b` 里的 @ 是邮箱，不是提及。 */
   function scanMenu(text: string, caret: number): void {
     const before = text.slice(0, caret);
@@ -382,41 +412,87 @@ export function Workspace({
     say(text, body);
   }
 
+  const isMac = platform === "darwin";
+  const isWin = platform === "win32";
+  const collapseLabel = collapsed ? "展开侧边栏" : "收起侧边栏";
+  /** 中栏顶部显示的是**会话名**（书名在左栏品牌行里）——与参考界面一致。 */
+  const sessionTitle = sessions.find((s) => s.id === current)?.title ?? info?.book ?? "正在开会话…";
+
   return (
-    <div className="app">
+    <div className={`app platform-${platform}`} data-collapsed={collapsed}>
+      {isWin && (
+        <div className="titlebar">
+          <button className="collapse" aria-label={collapseLabel} aria-pressed={collapsed} onClick={() => setCollapsed((v) => !v)}>
+            <PanelIcon open={collapsed} />
+          </button>
+        </div>
+      )}
       <div className="shell">
       <aside className="side">
-        <div className="book">
-          <b>{project.title}</b>
-          <button onClick={onExit}>所有作品</button>
-        </div>
-        <div className="label">会话</div>
-        <div className="list sessions">
-          {sessions.map((s) => (
-            <button key={s.id} className="sess" aria-current={s.id === current} onClick={() => void enter(s.id)}>
-              {s.title}
-              <span className="when">{when(s.updatedAt)}</span>
+        {!isWin && (
+          <div className={`railtop${isMac ? " has-lights" : ""}`}>
+            <button className="collapse" aria-label={collapseLabel} aria-pressed={collapsed} onClick={() => setCollapsed((v) => !v)}>
+              <PanelIcon open={collapsed} />
             </button>
-          ))}
+          </div>
+        )}
+        <div className="brand">
+          <span className="mark">t</span>
+          <b>talemate</b>
+          <span className="bookname">{project.title}</span>
+          <button className="book-exit" onClick={onExit}>所有作品</button>
         </div>
-        <button className="new" onClick={() => void enter()}>
-          ＋ 新会话
+        <button className="newbtn" onClick={() => void enter()}>
+          <PlusIcon /> 新会话
         </button>
+        {/* 一整条滚动，两段各自可折叠：不再有两个嵌套滚动条，也没有拍脑袋的高度上限 */}
+        <div className="rail-scroll">
+          <button className="section-head" aria-expanded={showSessions} onClick={() => setShowSessions((v) => !v)}>
+            <ChevronIcon open={showSessions} />
+            会话
+            <span className="count">{sessions.length}</span>
+          </button>
+          {showSessions && (
+            <div className="list sessions">
+              {sessions.map((s) => (
+                <button key={s.id} className="sess" aria-current={s.id === current} onClick={() => void enter(s.id)}>
+                  <span className="title">{s.title}</span>
+                  <span className="when">{when(s.updatedAt)}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
-        <div className="label split">目录</div>
-        <div className="list docs">
-          <DocTree
-            nodes={tree}
-            current={pane?.kind === "doc" ? pane.path : null}
-            onOpen={(n) => void openDoc(n)}
-            onMention={(n) => setDraft((d) => (d === "" ? `@${n.name} ` : `${d}@${n.name} `))}
-          />
+          <button className="section-head" aria-expanded={showTree} onClick={() => setShowTree((v) => !v)}>
+            <ChevronIcon open={showTree} />
+            目录
+          </button>
+          {showTree && (
+            <div className="list docs">
+              <DocTree
+                nodes={tree}
+                current={pane?.kind === "doc" ? pane.path : null}
+                onOpen={(n) => void openDoc(n)}
+                onMention={(n) => setDraft((d) => (d === "" ? `@${n.name} ` : `${d}@${n.name} `))}
+              />
+            </div>
+          )}
+        </div>
+        {/* 设置从左下角起（原来是状态栏最右）——对应参考界面账号的位置 */}
+        <div className="rail-tail">
+          <button className="settings" title="模型与设置" onClick={onSettings}>
+            <span className="avatar"><SlidersIcon /></span>
+            <span>设置</span>
+          </button>
         </div>
       </aside>
 
       <main className="main">
         <header className="head">
-          <div className="book-name">{info?.book ?? "正在开会话…"}</div>
+          <div className="book-name">{sessionTitle}</div>
+          {/* 模式徽章从中栏顶部起（原来在状态栏左侧） */}
+          {state.mode !== undefined && <span className="mode"><i />{state.mode}</span>}
+          {state.pending !== undefined && <span className="badge zhu">待你拍板：{state.pending}</span>}
           <span className="sub">{info ? `${info.agent}${busy ? " · ● 正在写" : ""}` : ""}</span>
         </header>
 
@@ -465,6 +541,7 @@ export function Workspace({
               </div>
             )}
             <textarea
+              ref={textareaRef}
               value={draft}
               placeholder="说点什么…"
               onChange={(e) => {
@@ -505,8 +582,29 @@ export function Workspace({
               }}
             />
             <div className="box-actions">
+              <button className="tool" title="提及文档" onClick={insertMention}>
+                @
+              </button>
+              <span className="spacer" />
+              {info !== null && (
+                <ModelEffortChip
+                  model={info.model}
+                  effort={info.effort}
+                  profile={info.profile}
+                  profiles={profiles}
+                  onModel={(profile, m) => {
+                    void window.tm.useProfile(profile, m);
+                    setInfo({ ...info, model: m });
+                  }}
+                  onEffort={(v) => {
+                    setInfo({ ...info, effort: v });
+                    void window.tm.setEffort(v);
+                  }}
+                />
+              )}
+              <StyleChip view={style} onPick={(n) => void pickStyle(n)} />
               {busy && (
-                <button className="ghost" title="停下" onClick={() => window.tm.stop()}>
+                <button className="tool stop" title="停下" onClick={() => window.tm.stop()}>
                   ■
                 </button>
               )}
@@ -515,6 +613,8 @@ export function Workspace({
               </button>
             </div>
           </div>
+          {/* 上下文与用量：居中的一条细信息（原来占着整条状态栏） */}
+          <ContextStats uses={uses} win={win} baseline={info?.contextParts} />
         </div>
       </main>
       {pane !== null && (
@@ -566,80 +666,131 @@ export function Workspace({
       )}
       </div>
 
-      <footer className="statusbar">
-        <span className="left">
-          {state.mode !== undefined && <span className="badge">{state.mode}</span>}
-          {state.pending !== undefined && <span className="badge zhu">待你拍板：{state.pending}</span>}
-        </span>
-        <span className="right">
-          {info !== null && (
-            <Cell label={info.model}>
-              {(close) =>
-                profiles.map((p) => (
-                  <span key={p.name} className="pop-group">
-                    <span className="pop-title">{p.name}</span>
-                    {p.models.map((m) => (
-                      <button
-                        key={m}
-                        className="pop-item"
-                        aria-current={m === info.model}
-                        onClick={() => {
-                          void window.tm.useProfile(p.name, m);
-                          setInfo({ ...info, model: m });
-                          close();
-                        }}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </span>
-                ))
-              }
-            </Cell>
-          )}
-          <StyleCell view={style} onPick={(n) => void pickStyle(n)} />
-          {info !== null && (
-            <EffortCell
-              value={info.effort}
-              onChange={(v) => {
-                setInfo({ ...info, effort: v });
-                void window.tm.setEffort(v);
-              }}
-            />
-          )}
-          <ContextCell uses={uses} win={win} />
-          <button className="cell clickable" title="模型与设置" onClick={onSettings}>
-            ⚙ 设置
-          </button>
-        </span>
-      </footer>
     </div>
   );
 }
 
-/** 状态栏里可点的一格：平时是个按钮，点开向上弹一层。 */
-function Cell({
-  label,
-  children,
+/** 点外面就收：一层透明垫子，比全局监听便宜，也不会漏掉哪个角落。 */
+function Mask({ onClose }: { onClose: () => void }) {
+  return <span className="pop-mask" onClick={onClose} />;
+}
+
+/**
+ * 模型 + 推理强度合成一个入口（`模型 · 推理`）。
+ *
+ * 两级：一级两行（模型 / 推理等级），二级是各自的候选。**Esc 退一级**——二级回到一级，
+ * 一级再按才收起。这条是照着参考界面的操作逻辑来的，不是一次全关。
+ */
+function ModelEffortChip({
+  model,
+  effort,
+  profile,
+  profiles,
+  onModel,
+  onEffort,
 }: {
-  label: React.ReactNode;
-  /** 收 `close`：**选完自己收**。开关状态在 `Cell` 里，孩子够不着它，所以要递下去。 */
-  children: (close: () => void) => React.ReactNode;
+  model: string;
+  effort: string;
+  /** 当前这套配置在清单里的名字。模型只在**同一个厂商**里换，不该跨厂商。 */
+  profile?: string;
+  profiles: { name: string; models: string[] }[];
+  onModel: (profile: string, model: string) => void;
+  onEffort: (v: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
+  const EFFORT: [string, string][] = [["off", "关"], ["low", "低"], ["high", "高"], ["max", "最高"]];
+  const [level, setLevel] = useState<"closed" | "menu" | "model" | "effort">("closed");
+  const close = useCallback(() => setLevel("closed"), []);
+  const effortText = EFFORT.find(([v]) => v === effort)?.[1] ?? effort;
+  // 认厂商：优先用会话记着的那个名字；旧会话没记名字时，只有"唯一一个包含这个模型"的
+  // 配置才敢认它（两个配置都有同名模型时宁可不猜）。
+  const owners = profiles.filter((p) => p.models.includes(model));
+  const current = profiles.find((p) => p.name === profile) ?? (owners.length === 1 ? owners[0] : undefined);
+
+  useEffect(() => {
+    if (level === "closed") return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      // 二级 → 一级；一级 → 收起。
+      setLevel((l) => (l === "menu" ? "closed" : "menu"));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [level]);
+
   return (
     <span className="pop-wrap">
-      <button className="cell clickable" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {label}
-        <span className="caret">▴</span>
+      <button
+        className="chip"
+        aria-expanded={level !== "closed"}
+        aria-haspopup="menu"
+        onClick={() => setLevel((l) => (l === "closed" ? "menu" : "closed"))}
+      >
+        <span className="dot" />
+        {model} · {effortText}
+        <span className="caret">▾</span>
       </button>
-      {open && (
-        <>
-          {/* 点外面就收：一层透明垫子比全局监听便宜，也不会漏掉哪个角落 */}
-          <span className="pop-mask" onClick={close} />
-          <span className="pop">{children(close)}</span>
-        </>
+
+      {level !== "closed" && <Mask onClose={close} />}
+
+      {level === "menu" && (
+        <span className="pop modelpop">
+          <button className="mrow" onClick={() => setLevel("model")}>
+            <span className="mlabel">模型</span>
+            <span className="mval">{model}</span>
+            <span className="chev">›</span>
+          </button>
+          <button className="mrow" onClick={() => setLevel("effort")}>
+            <span className="mlabel">推理等级</span>
+            <span className="mval">{effortText}</span>
+            <span className="chev">›</span>
+          </button>
+        </span>
+      )}
+
+      {level === "model" && (
+        <span className="pop modelpop">
+          {current === undefined ? (
+            // 认不出厂商（如环境变量那套）：只报当前的，不给跨厂商切
+            <button className="pop-item" aria-current="true" onClick={close}>
+              {model}
+              <span className="pop-hint">当前</span>
+            </button>
+          ) : (
+            current.models.map((m) => (
+              <button
+                key={m}
+                className="pop-item"
+                aria-current={m === model}
+                onClick={() => {
+                  onModel(current.name, m);
+                  close();
+                }}
+              >
+                {m}
+              </button>
+            ))
+          )}
+        </span>
+      )}
+
+      {level === "effort" && (
+        <span className="pop modelpop">
+          {EFFORT.map(([v, text]) => (
+            <button
+              key={v}
+              className="pop-item"
+              aria-current={v === effort}
+              onClick={() => {
+                onEffort(v);
+                close();
+              }}
+            >
+              {text}
+              <span className="pop-hint">{v}</span>
+            </button>
+          ))}
+        </span>
       )}
     </span>
   );
@@ -648,111 +799,133 @@ function Cell({
 /**
  * 文风：这本书用哪种声音写。选中即写进核心设定的「文风」格——**不经过模型**。
  *
- * 触发按钮上显示的是卡的**中文名**（`title`），不是写进 core.md 的那个 id：id 是稳定标识，
- * 给人看的是另一回事。
+ * 触发按钮上显示的是卡的**中文名**（`title`），不是写进 core.md 的那个 id。
  */
-function StyleCell({ view, onPick }: { view: StyleCatalog | null; onPick: (name: string) => void }) {
+function StyleChip({ view, onPick }: { view: StyleCatalog | null; onPick: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
   if (view === null) return null;
   const now = view.cards.find((c) => c.name === view.current.name);
   return (
-    <Cell label={`文风 ${now?.title ?? view.current.name}`}>
-      {(close) => (
+    <span className="pop-wrap">
+      <button className="chip" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((v) => !v)}>
+        文风 {now?.title ?? view.current.name}
+        <span className="caret">▾</span>
+      </button>
+      {open && (
         <>
-          {/* 格里的字不是卡名时 harness 会带一句说明，且实际用的是默认那张——这一行必须显示出来，
-              否则用户以为在用 A、其实在用 B，正是 prose.ts 特意不静默的那件事 */}
-          {view.current.note !== undefined && <div className="pop-note">{view.current.note}</div>}
-          {view.cards.map((c) => (
-            <button
-              key={c.name}
-              className="pop-item lined"
-              aria-current={c.name === view.current.name}
-              onClick={() => {
-                close(); // 先收：选完这一格就没事了——写盘和可能的报错在别处
-                onPick(c.name);
-              }}
-            >
-              {c.title}
-              <span className="sub">{c.description}</span>
+          <Mask onClose={close} />
+          <span className="pop stylepop">
+            {/* 格里的字不是卡名时 harness 会带一句说明，且实际用的是默认那张——这一行必须显示出来 */}
+            {view.current.note !== undefined && <div className="pop-note">{view.current.note}</div>}
+            {view.cards.map((c) => (
+              <button
+                key={c.name}
+                className="pop-item lined"
+                aria-current={c.name === view.current.name}
+                onClick={() => {
+                  close(); // 先收：写盘和可能的报错在别处
+                  onPick(c.name);
+                }}
+              >
+                {c.title}
+                <span className="sub">{c.description}</span>
+              </button>
+            ))}
+            {/* 占位入口，故意 disabled：能点却什么都不发生比不摆更糟 */}
+            <button className="pop-item lined" disabled>
+              自定义…
+              <span className="sub">还没做——先占个位置</span>
             </button>
-          ))}
-          {/*
-            自定义文风的入口**现在只占位、故意 disabled**。
-            真做起来比"选一张现成的卡"复杂一档：要能写一张卡（正文 + 六维声音层 + 反例）并把它
-            落进库里（内置库是只读的，得进全局库或项目库），还要处理重名——那是另一件事。
-            先摆在这里免得忘掉；**不做成"能点但什么都不发生"**，那比不摆更糟。
-          */}
-          <button className="pop-item lined" disabled>
-            自定义…
-            <span className="sub">还没做——先占个位置</span>
-          </button>
+          </span>
         </>
       )}
-    </Cell>
-  );
-}
-
-/** effort：四档，选了当场换这个会话的（不动全局默认）。 */
-function EffortCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const OPTIONS: [string, string][] = [["off", "关"], ["low", "低"], ["high", "高"], ["max", "最高"]];
-  const now = OPTIONS.find(([v]) => v === value)?.[1] ?? value;
-  return (
-    <Cell label={`effort ${now}`}>
-      {(close) =>
-        OPTIONS.map(([v, text]) => (
-          <button
-            key={v}
-            className="pop-item"
-            aria-current={v === value}
-            onClick={() => {
-              onChange(v);
-              close();
-            }}
-          >
-            {text}
-            <span className="pop-hint">{v}</span>
-          </button>
-        ))
-      }
-    </Cell>
+    </span>
   );
 }
 
 /**
- * 上下文：点开是真实的用量——总数，以及每一轮的走势。
+ * 上下文：一个环形百分比，点开是**真实总量 + 分摊出来的构成**。
  *
- * 不给构成（系统提示 / 工具 / 消息各占多少）：那是 `claude /context` 干的事，它自己知道每一段
- * 各有多长；我们只知道 provider 报回来的总数，要拆就得估，所以不估也不画。走势是真的。
+ * 构成只给比例：`usage.parts` 是这次请求三段的字符数，界面按比例摊 provider 报回的真总数，
+ * 所以分量标「~」。总量是真的，构成是分摊的——不冒充精确（参考界面也是这么标的）。
  */
-function ContextCell({ uses, win }: { uses: { input: number; output: number }[]; win: number }) {
-  // 没有统计就是 0：这一格在不在，只该由"有没有这个会话"决定，不该由"发没发过话"决定
+function ContextStats({
+  uses,
+  win,
+  baseline,
+}: {
+  uses: Usage[];
+  win: number;
+  /** 这一次请求的段大小（新建/续聊时由 harness 算好）。一行正文都没写时靠它显示基线。 */
+  baseline?: { system: number; tools: number; messages: number };
+}) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
   const last = uses[uses.length - 1] ?? { input: 0, output: 0 };
-  const pct = Math.round((last.input / win) * 100);
-  const peak = Math.max(1, ...uses.map((u) => u.input));
+  // 有真用量用真的；还没有就退回基线——系统提示词与工具定义在第一次请求之前就已经占着窗口了。
+  const parts = last.parts ?? baseline;
+  const chars = parts === undefined ? 0 : parts.system + parts.tools + parts.messages;
+  /** 粗估 token（只给基线用）：中英混排按约 2.5 字符一个。标「~」，不冒充真数。 */
+  const estimated = Math.round(chars / 2.5);
+  const measured = uses.length > 0;
+  const input = measured ? last.input : estimated;
+  const pct = Math.round((input / win) * 100);
+  const share = (n: number): number => (chars === 0 ? 0 : Math.round((last.input * n) / chars));
+  const R = 7;
+  const C = 2 * Math.PI * R;
+
   return (
-    <Cell
-      label={
-        <span className={`ctx${last.input / win > 0.8 ? " hot" : ""}`}>
-          <span className="bar">
-            <i style={{ width: `${Math.min(100, pct)}%` }} />
-          </span>
-          上下文约 {tokens(last.input)} / {tokens(win)}
-        </span>
-      }
-    >
-      {() => (
-        <>
-          <div className="pop-big">
-            约 {tokens(last.input)} <span className="pop-hint">/ {tokens(win)} · {pct}%</span>
-          </div>
-          <div className="pop-hint">输出 {last.output}</div>
-          <div className="chart" title="每一轮发出去的 token">
-            {(uses.length > 0 ? uses : [last]).map((u, i) => (
-              <i key={i} style={{ height: `${Math.max(6, Math.round((u.input / peak) * 100))}%` }} />
-            ))}
-          </div>
-          <div className="pop-hint">{uses.length} 轮</div>
-        </>
-      )}
-    </Cell>
+    <div className="stats">
+      <span className="pop-wrap">
+        <button className="ctxbtn" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((v) => !v)}>
+          <svg className="ring" viewBox="0 0 18 18" aria-hidden="true">
+            <circle className="track" cx="9" cy="9" r={R} fill="none" strokeWidth="2.4" />
+            <circle
+              className="arc"
+              cx="9"
+              cy="9"
+              r={R}
+              fill="none"
+              strokeWidth="2.4"
+              strokeDasharray={`${(C * Math.min(100, pct)) / 100} ${C}`}
+            />
+          </svg>
+          {measured ? `${pct}%` : `~${pct}%`}
+        </button>
+        {open && (
+          <>
+            <Mask onClose={close} />
+            <span className="pop ctxpop">
+              <div className="ctxhead">
+                <span>上下文已用 <b>{pct}%</b></span>
+                <span className="total">{measured ? tokens(last.input) : `~${tokens(estimated)}`} / {tokens(win)}</span>
+              </div>
+              {parts !== undefined && (
+                <>
+                  <span className="segbar" aria-hidden="true">
+                    <i className="sys" style={{ width: `${(parts.system / chars) * 100}%` }} />
+                    <i className="tool" style={{ width: `${(parts.tools / chars) * 100}%` }} />
+                    <i className="msg" style={{ width: `${(parts.messages / chars) * 100}%` }} />
+                  </span>
+                  <div className="legend">
+                    <div className="lrow"><span className="sq sys" />系统提示词<span className="v">~{tokens(share(parts.system))}</span></div>
+                    <div className="lrow"><span className="sq tool" />工具定义<span className="v">~{tokens(share(parts.tools))}</span></div>
+                    <div className="lrow"><span className="sq msg" />对话消息<span className="v">~{tokens(share(parts.messages))}</span></div>
+                  </div>
+                  <div className="ctxfoot">总量是 provider 报回的真数；构成按请求各段的字数分摊，所以标“~”。</div>
+                </>
+              )}
+              {parts === undefined && <div className="ctxfoot">还没有可用的分段数据。</div>}
+              {!measured && parts !== undefined && (
+                <div className="ctxfoot">还没发过话；这是按请求各段字数估的基线，标「~」。</div>
+              )}
+            </span>
+          </>
+        )}
+      </span>
+      <span>上下文约 {measured ? tokens(last.input) : `~${tokens(estimated)}`} / {tokens(win)}</span>
+      <span className="sep">·</span><span>{uses.length} 轮</span>
+    </div>
   );
 }

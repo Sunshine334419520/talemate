@@ -2,8 +2,9 @@
  * 设置：一个居中的弹窗（左边清单、右边字段），不是一整屏——配模型是随手改一下就走的事，
  * 弹窗也天然回答了"改完去哪"：关掉就回到刚才在的地方。
  *
- * 两条写在这里免得被改没的：一套都没有时一律退回环境变量（`.env` 那套照旧能用，不是被替代了）；
- * 改清单 ≠ 切会话——这里改的默认只管下一次新建，当前会话用哪套在状态栏那一格上切。
+ * 两条写在这里免得被改没的：**界面里不出现 `.env`**——那是开发自用的退路，不是产品配置，
+ * 用户只该看到自己配的那几套；改清单 ≠ 切会话——这里改的默认只管下一次新建，当前会话
+ * 在输入框那一格上切。
  */
 import { useEffect, useState } from "react";
 import type { ModelProfile, ProfileView } from "../shared/api";
@@ -61,19 +62,17 @@ setInput: (v: string) => void;
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
-  const [env, setEnv] = useState<ProfileView | null>(null);
   const [defaultName, setDefaultName] = useState<string | undefined>();
-  /** `null` = 在看清单；有值 = 在编辑某一套（`saved: false` 表示它还没进清单，是从 .env 借来改的） */
+  /** `null` = 在看清单；有值 = 在编辑某一套（`saved: false` 表示它还没进清单、还没存过） */
   const [editing, setEditing] = useState<{ draft: Draft; saved: boolean } | null>(null);
   const [modelInput, setModelInput] = useState("");
 
   const asDraft = (p: ProfileView): Draft => ({ ...p, apiKey: "" });
 
   async function reload(): Promise<void> {
-    const { profiles: list, default: d, env: e } = await window.tm.models();
+    const { profiles: list, default: d } = await window.tm.models();
     setProfiles(list);
     setDefaultName(d);
-    setEnv(e);
   }
   useEffect(() => {
     void reload();
@@ -137,17 +136,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
                 </span>
               </button>
             ))}
-            {env !== null && (
-              <button className="row env" onClick={() => setEditing({ draft: asDraft(env), saved: false })}>
-                <span className="nm">
-                  {env.name}
-                  {!env.hasKey && <span className="tag">没密钥</span>}
-                </span>
-                <span className="md">
-                  {env.provider} · {env.models.join(" · ")}
-                </span>
-              </button>
-            )}
             <button className="row add" onClick={() => setEditing({ draft: { ...BLANK }, saved: false })}>
               ＋ 新建供应商
             </button>
