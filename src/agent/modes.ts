@@ -44,7 +44,7 @@ export const MODES: Record<string, ModeDef> = {
   /** 落盘不问，其余照问：委派和联网仍是 `ask`，只放开 `edit` 这一类。 */
   "accept-edits": {
     id: "accept-edits",
-    title: "免确认落盘",
+    title: "工作区内修改",
     note: readPrompt("modes/accept-edits"),
     permission: { edit: "allow" },
   },

@@ -7,7 +7,9 @@
  */
 import { contextBridge, ipcRenderer } from "electron";
 import type {
-  AskRequest,
+  AskPendingReason,
+  AskReply,
+  AskView,
   ConfirmRequest,
   DocNode,
   LLMEvent,
@@ -22,10 +24,22 @@ import type {
   StoredMessage,
   StyleCatalog,
   TmApi,
+  WindowMaterial,
 } from "../shared/api";
+
+/**
+ * 材质由主进程经 `additionalArguments` 同步带进来；`index.html` 的内联脚本会把它
+ * 写进 `data-material`，赶在样式与 React 之前，避免首帧闪一下实色底。
+ */
+const MATERIAL_FLAG = "--app-material=";
+const material: WindowMaterial =
+  (process.argv.find((arg) => arg.startsWith(MATERIAL_FLAG))?.slice(MATERIAL_FLAG.length) as
+    | WindowMaterial
+    | undefined) ?? "none";
 
 const api: TmApi = {
   platform: process.platform,
+  material,
   listProjects: () => ipcRenderer.invoke("projects:list") as Promise<ProjectCard[]>,
   createProject: (title, channel, genre) =>
     ipcRenderer.invoke("projects:create", { title, channel, genre }) as Promise<{ id: string }>,
@@ -67,7 +81,13 @@ const api: TmApi = {
 
   onEvent: (cb) => ipcRenderer.on("tm:event", (_e, evt: LLMEvent) => cb(evt)),
   onConfirm: (cb) => ipcRenderer.on("tm:confirm", (_e, req: ConfirmRequest) => cb(req)),
-  onAsk: (cb) => ipcRenderer.on("tm:ask", (_e, req: AskRequest) => cb(req)),
+  onAsk: (cb) => ipcRenderer.on("tm:ask", (_e, view: AskView) => cb(view)),
+  onAskPending: (cb) =>
+    ipcRenderer.on("tm:ask-pending", (_e, p: { callId: string; reason: AskPendingReason }) => cb(p)),
+  onAskClosed: (cb) => ipcRenderer.on("tm:ask-closed", (_e, p: { callId: string }) => cb(p)),
+  answerAsk: (reply: AskReply) =>
+    ipcRenderer.invoke("ask:answer", reply) as Promise<"ok" | "stale" | "invalid" | "queued">,
+  holdAsk: (callId, mode) => ipcRenderer.send("ask:hold", { callId, mode }),
   onError: (cb) => ipcRenderer.on("tm:error", (_e, msg: string) => cb(msg)),
 
   prompt: (text) => ipcRenderer.send("tm:prompt", text),

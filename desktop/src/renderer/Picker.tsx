@@ -45,7 +45,7 @@ export function Picker({
   const platform = window.tm.platform;
 
   return (
-    <div className={`app platform-${platform}`}>
+    <div className={`app picker-app platform-${platform}`}>
       {/* 和写作台同一套窗口外观：macOS 没有标题栏（这一行给系统红绿灯留位），
           Windows 是一整行标题栏。两者都是拖拽区——这一屏原来整屏拖不动就是漏了它。 */}
       {platform === "win32" ? (
@@ -55,7 +55,7 @@ export function Picker({
       )}
     <div className="picker">
       <header className="shelf">
-        <h1>talemate</h1>
+        <h1>Talemate</h1>
         <p className="sub">
           {projects.length === 0 ? "还没有作品" : `${projects.length} 部作品`}
         </p>

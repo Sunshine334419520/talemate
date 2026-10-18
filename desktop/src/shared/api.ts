@@ -6,9 +6,25 @@
  */
 import type { DocNode } from "../../../src/framework/anchor";
 import type { StyleCatalog } from "../../../src/framework/prose";
-import type { LLMEvent, StoredMessage, WriteChange } from "../../../src/core/types";
+import type {
+  AskAnswer,
+  AskQuestion,
+  AskRecord,
+  LLMEvent,
+  StoredMessage,
+  WriteChange,
+} from "../../../src/core/types";
 
-export type { DocNode, LLMEvent, StoredMessage, StyleCatalog, WriteChange };
+export type {
+  AskAnswer,
+  AskQuestion,
+  AskRecord,
+  DocNode,
+  LLMEvent,
+  StoredMessage,
+  StyleCatalog,
+  WriteChange,
+};
 
 /** 一轮的文件改动。消息流是唯一来源，主进程按会话聚合后交给右栏的历史视图。 */
 export interface SessionTurnChanges {
@@ -41,9 +57,23 @@ export interface ProjectCard {
  * 壳自己的偏好：拖出来的宽度这类东西。不属于作品（不进 `talemate.json`）、不是会话状态，只是
  * "这台机器上这个人习惯的样子"，所以单独一个文件。
  */
+export type Appearance = "light" | "dark" | "system";
+/** 窗口材质：macOS vibrancy / Windows acrylic、mica / 无材质 */
+export type WindowMaterial = "vibrancy" | "acrylic" | "mica" | "none";
+/** 新会话默认权限：每次都问 / 工作区内免确认落盘（对应 `agent/modes.ts` 的 accept-edits） */
+export type PermissionDefault = "ask" | "accept-edits";
+
 export interface Prefs {
   /** 右栏宽度（px）；没拖过就用默认 */
   paneWidth?: number;
+  /** 对话与文件内容的字号（px）；默认 14 */
+  fontSize?: number;
+  /** 浅色 / 深色 / 跟随系统；由主进程的 nativeTheme 统一 */
+  appearance?: Appearance;
+  /** 目前只有中文；这一格先把通用设置的结构立住 */
+  language?: "zh";
+  /** 新会话的默认权限模式 */
+  permissionMode?: PermissionDefault;
 }
 
 /**
@@ -77,10 +107,12 @@ export interface ProfileView extends Omit<ModelProfile, "apiKey"> {
 
 /** 顶栏那两个标记：当前模式、有没有等你拍板的东西。 */
 export interface SessionState {
-  /** 「草稿模式」/「免确认落盘」…没有就是普通模式 */
+  /** 「草稿模式」/「工作区内修改」…没有就是普通模式 */
   mode?: string;
   /** 等你拍板的那份东西的名字（`pendingLabel`） */
   pending?: string;
+  /** 当前会话的写文件权限：工作区内免确认 / 每次询问 */
+  permissionMode?: PermissionDefault;
 }
 
 export interface SessionRow {
@@ -105,6 +137,8 @@ export interface OpenInfo {
   contextParts?: { system: number; tools: number; messages: number };
   /** 在用的这套配置缺密钥时的中文提醒；不缺就没有这个字段 */
   modelWarning?: string;
+  /** 重开/刷新后仍然开着的提问；没有就不带 */
+  ask?: AskView;
 }
 
 export interface ConfirmRequest {
@@ -113,10 +147,26 @@ export interface ConfirmRequest {
   summary: string;
 }
 
-export interface AskRequest {
-  id: string;
-  question: string;
-  options: string[];
+/** 提问为什么变成 pending：决定卡片上那句话，不决定能不能答。 */
+export type AskPendingReason = "timeout" | "deferred" | "interrupted" | "restarted";
+
+/**
+ * 渲染层看到的提问。`pending` 不是结束：卡片仍然可答，只是这个回合已经停了。
+ * `deadline` 由主进程持有；渲染层只按它显示倒计时，不自己决定超时。
+ */
+export interface AskView {
+  callId: string;
+  questions: AskQuestion[];
+  /** epoch ms；undefined = 不限时（已暂停/慢慢回答） */
+  deadline?: number;
+  pending: boolean;
+  reason?: AskPendingReason;
+}
+
+/** 回答一个提问：同一回合的等待走原请求，已 pending 的走一条新用户消息。 */
+export interface AskReply {
+  callId: string;
+  answers: AskAnswer[];
 }
 
 /**
@@ -131,6 +181,8 @@ export interface TmApi {
    * macOS 没标题栏（红绿灯在最左），Windows 有一整行标题栏（系统按钮在最右）。
    */
   readonly platform: string;
+  /** 侧栏材质：由主进程在开窗前定好，首帧前写进 `data-material` */
+  readonly material: WindowMaterial;
   listProjects(): Promise<ProjectCard[]>;
   createProject(title: string, channel: string, genre: string): Promise<{ id: string }>;
   /** 改书名 / 题材——卡上直接改，不经模型 */
@@ -202,7 +254,15 @@ export interface TmApi {
   openSession(projectId: string, sessionId?: string): Promise<OpenInfo>;
   onEvent(cb: (e: LLMEvent) => void): void;
   onConfirm(cb: (req: ConfirmRequest) => void): void;
-  onAsk(cb: (req: AskRequest) => void): void;
+  onAsk(cb: (view: AskView) => void): void;
+  /** 主进程的计时器到点/用户稍后/中断：卡片翻成 pending，但仍可回答 */
+  onAskPending(cb: (p: { callId: string; reason: AskPendingReason }) => void): void;
+  /** 问题已经结束（取消、或排队中的迟到回答已送达）：卡片可以收起 */
+  onAskClosed(cb: (p: { callId: string }) => void): void;
+  /** `queued` = 这一轮还在跑，回答先记着，结束之后自动送达 */
+  answerAsk(reply: AskReply): Promise<"ok" | "stale" | "invalid" | "queued">;
+  /** 倒计时控制：聚焦暂停 / 移开恢复 / 首次编辑转不限时 / 稍后回答 */
+  holdAsk(callId: string, mode: "pause" | "resume" | "hold" | "defer"): void;
   onError(cb: (msg: string) => void): void;
   prompt(text: string): void;
   stop(): void;

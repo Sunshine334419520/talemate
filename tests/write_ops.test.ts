@@ -48,6 +48,7 @@ function makeCtx(): TestCtx {
     projectId: pid,
     sessionId: "t",
     agent: "mate",
+    callId: "test-call",
     signal: new AbortController().signal,
     confirm: async () => "once",
     check: () => "ask",
@@ -55,7 +56,7 @@ function makeCtx(): TestCtx {
       ctx.lastAsk = req;
       return answer;
     },
-    askUser: async () => "",
+    askUser: async () => ({ kind: "answered", answers: [] }),
     showProposal: () => {},
     getProposal: (k) => pending.get(k),
     setProposal: (p) => {

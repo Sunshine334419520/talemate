@@ -39,16 +39,83 @@ export interface AgentDef {
 
 /** ─── 工具 ─── */
 
-/** 工具入参的 JSON Schema；只支持 JSONSchema 的一个极小子集 */
-export type JsonSchema = {
-  type: "object";
-  properties?: Record<
-    string,
-    { type: string; description?: string; enum?: string[]; items?: { type: string } }
-  >;
-  required?: string[];
+/** 工具入参的 JSON Schema；只支持 JSONSchema 的一个极小子集（可递归） */
+export type JsonSchema =
+  | { type: "string"; description?: string; enum?: string[] }
+  | { type: "number"; description?: string }
+  | { type: "boolean"; description?: string }
+  | { type: "array"; description?: string; items: JsonSchema }
+  | {
+      type: "object";
+      description?: string;
+      properties?: Record<string, JsonSchema>;
+      required?: string[];
+    };
+
+/** 一条提问选项：label 是用户看见、也是回传的值；description 讲取舍。 */
+export interface AskOption {
+  label: string;
   description?: string;
-};
+}
+
+/**
+ * 一条要用户回答的问题。
+ *
+ * JSON 里字段叫 `multi_select`（模型侧），域模型用 `multiSelect`——工具 execute 负责映射。
+ * 推荐项不另设字段：label 以「（推荐）」或「(Recommended)」结尾，UI 只认这一种写法。
+ */
+export interface AskQuestion {
+  id: string;
+  header?: string;
+  question: string;
+  options?: AskOption[];
+  multiSelect?: boolean;
+}
+
+/** 一项答案。`selected` 为空且没有 `custom` = 用户明确跳过；这不是 pending，也不是同意。 */
+export interface AskAnswer {
+  id: string;
+  selected: string[];
+  custom?: string;
+}
+
+/** 一次提问的请求：交付层据 timeoutMs 决定什么时候返回 pending。 */
+export interface AskRequest {
+  callId: string;
+  questions: AskQuestion[];
+  /** 等待毫秒数；undefined = 不限时（只有用户明确要求“等到我答”时才用）。 */
+  timeoutMs?: number;
+  /** 用户中止这一轮时，交付层据此把问题转成 pending，而不是永远挂着。 */
+  signal?: AbortSignal;
+}
+
+/**
+ * 一次提问的结局。`pending` 不是答案：它是“这一轮先停，问题仍可回答”，
+ * 因此调用方必须 halt，且绝不能把沉默当成同意。
+ */
+export type AskOutcome =
+  | { kind: "answered"; answers: AskAnswer[] }
+  | { kind: "pending"; callId: string }
+  | { kind: "cancelled"; reason: "no-answerer" | "aborted" };
+
+/** 一次提问的结构化记录：挂在 tool part 上落盘，界面据此回看。 */
+export interface AskRecord {
+  callId: string;
+  questions: AskQuestion[];
+  outcome: "answered" | "pending" | "cancelled";
+  answers?: AskAnswer[];
+  at: number;
+}
+
+/**
+ * 未答提问的 write-ahead 记录：只覆盖“提问已开始、助手消息还没提交”那段窗口。
+ * 助手消息一旦落盘，问题就从 tool part 投影；这个文件随即清掉，不是第二份真相。
+ */
+export interface PendingAskRecord {
+  callId: string;
+  questions: AskQuestion[];
+  at: number;
+}
 
 /**
  * `propose-plan` 登记的章节规划在待执行表里的键。
@@ -117,6 +184,8 @@ export interface ToolContext {
   projectId: string;
   sessionId: string;
   agent: string;
+  /** 当前这次工具调用的 id——ask-user 用它把 pending 的回答关联回这次调用。 */
+  callId: string;
   /**
    * 原始确认口，不走权限：只有 `ask`（拿它当弹窗）和 `confirm` 工具该调它，其余工具一律走 `ask`
    * ——那才是带权限判定的那道口。
@@ -126,8 +195,8 @@ export interface ToolContext {
   check(permission: PermissionName, pattern: string): Action;
   /** 求值 + 该问就问：`ask` 那一档弹给用户，并按答复记下「以后都允许」；所有改世界的工具走这一个口 */
   ask(req: PermissionRequest): Promise<PermissionVerdict>;
-  /** 向用户提问要创作决策（非审批），返回答案文本 */
-  askUser(question: string, options?: string[]): Promise<string>;
+  /** 向用户提问要创作决策（非审批）。answered 才带答案；pending 必须 halt，且不是同意 */
+  askUser(req: AskRequest): Promise<AskOutcome>;
   /** 把一份待审阅的提案整块展示给用户（只读、无返回值）——走事件通道，CLI/TUI 各自渲染 */
   showProposal(text: string): void;
   getProposal(name: string): PendingProposal | undefined;
@@ -181,6 +250,10 @@ export interface ToolResult {
   metadata?: Record<string, unknown>; // 结构化信息
   /** 写文件成功时带上的改动记录；只给界面汇总，不进模型上下文 */
   change?: WriteChange;
+  /** ask-user 的结构化记录；runner 原样挂到 tool part 上，界面回看用 */
+  ask?: AskRecord;
+  /** 覆盖 ToolDef.halt：pending / cancelled 时结束本回合（只有成功返回才生效） */
+  halt?: boolean;
 }
 
 /** 用户对一次确认的答复。`always` = 这一类以后都别问（记进会话级 approved 表，重启即清）。 */
@@ -247,6 +320,8 @@ export type AssistantPart =
       halt?: boolean;
       /** 写文件成功后的结构化记录；界面按轮汇总，模型上下文不读它 */
       change?: WriteChange;
+      /** ask-user 的结构化记录：问答内容、跳过、pending——界面回看用 */
+      ask?: AskRecord;
       time?: { ran?: number; completed?: number };
     };
 
@@ -263,6 +338,12 @@ export interface StoredMessage {
   text?: string;
   /** role=assistant：内容单元 */
   parts?: AssistantPart[];
+  /**
+   * role=user：这条消息是在回答一次已经 pending 的提问。
+   *
+   * 问题原文一并带上，使这条消息自包含——助手那条提问可能已经压缩掉，回看卡仍能画出问答。
+   */
+  answersTo?: { callId: string; questions: AskQuestion[]; answers: AskAnswer[] };
   finish?: "stop" | "tool_calls" | "error";
   summary?: string;
   recent?: string;
@@ -327,7 +408,7 @@ export type LLMEvent =
   | { type: "text.delta"; text: string }
   | { type: "reasoning.delta"; text: string }
   | { type: "tool-call"; id: string; name: string; input: string }
-  | { type: "tool.result"; id: string; name: string; output: string; change?: WriteChange }
+  | { type: "tool.result"; id: string; name: string; output: string; change?: WriteChange; ask?: AskRecord }
   | { type: "scope.open"; label: string }
   | { type: "scope.close"; label: string }
   /** 只读展示给用户的块（提案逐格清单等）——无返回值，与 confirm/askUser 的交互式提示区分 */

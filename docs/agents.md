@@ -2,8 +2,8 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-10-11 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；考据本（researcher 的笔记本）在 `framework/research.ts`；章节生产那条链见 `chapter-planning.md`
-> 相邻：`permissions.md`（谁能做什么、什么要问）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
+> **对齐代码**：2026-10-18 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
+> 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
 
@@ -118,7 +118,7 @@
 |---|---|
 | `task` | 委派 subagent（可派列表由运行时拼进 description）。**它没有硬门了**：从前挡的是"没拍板就派 writer"，正文改由 mate 自己写之后，写正文不再经过任何一个可挂门的工具 |
 | `skill` | 按名注入 SKILL.md 正文 |
-| `ask-user` | 向用户提问要**创作裁决**（不是权限审批） |
+| `ask-user` | 向用户提问要**创作裁决**（不是权限审批）。1–3 题，可带选项/多选/自定义；超时是 pending 不是同意，见 `ask-user.md` |
 | `propose-plan` | 把**一章**的规划交给用户拍板并结束本回合。规划**落** `<novel>/.talemate/plans/ch_<N>.md`（引擎工作区，见 `framework/plan.ts`），**不落 design/**；用户回话后由 harness 置 `approved`。**不需要先 enter-draft**——草稿模式只服务文档提案的三向审阅 |
 | `enter-draft` | 进入**草稿模式**（`edit`/`delegate` 一律 deny，那些工具从 schema 里消失）。**三向审阅的唯一通道** |
 | `exit-draft` | 用户改主意不做了 → 离开草稿模式（正常路径不需要它：接受/拒绝会自己退） |
@@ -241,6 +241,10 @@ description: 网文 · 白话爽感文风（第三人称，快、顺、直给）
 ## 人机交互两个工具（对应"用户当主编"）
 
 - **`ask-user`**：agent 需要用户出想法/裁决时用（"主角的金手指是什么？"）。**不是权限审批，是参谋要决策。**
+  一次 1–3 题，用户可以答、逐题跳过、收起、走开；超时返回 `pending`，搭档停下这一轮但问题仍可回答。
+  界面是占住输入框位置的底部卡片，收起后留提示条。契约与三态见 `ask-user.md`。
 - **`confirm`**：模型**主动**要用户点头时用。它正在变得边缘——落盘那一类确认现在由权限系统自动发起（`edit: ask`），不再靠模型记得调工具。**它和 `ask-user` 都受 `question` 权限管**：子代理默认 `deny`，因为子代理跑在隔离上下文里、用户不在场，它一开口就会把用户从自己的对话里硬拽出来。
+  两者的沉默默认**相反**：提问超时是 pending，审批没有回答方是拒绝（fail closed）。
+  界面上审批也是占住输入框的底部弹窗，但没有收起——它是道门，不能藏起来。
 
 **放行规则不在这里写**——见 `permissions.md`。

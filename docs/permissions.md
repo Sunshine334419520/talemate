@@ -2,8 +2,8 @@
 
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
-> **对齐代码**：2026-09-29 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`
-> 相邻：`agents.md`（角色与工具名册）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
+> **对齐代码**：2026-10-18 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`；桌面端默认模式在 `desktop/src/main/index.ts`
+> 相邻：`agents.md`（角色与工具名册）· `ask-user.md`（提问的三态与回答路由）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
 
@@ -30,6 +30,10 @@
 | **`extern`** | `webfetch` · `websearch` | URL / 查询词 |
 | **`question`** | `ask-user` · `confirm` | `*`（这两个工具没有"对什么做"） |
 | **`notes`** | `remember` | 考据本的**题目**（它没有路径参数——目录由项目推死，见 `research_tools`） |
+
+**`ask-user` 与 `confirm` 同属 `question`，但不是同一种语义**：提问超时是 `pending`（问题还在，
+不授权，也不是跳过）；审批没有回答方是**拒绝**。`always` 只属于审批。
+界面上两者共用底部弹窗外壳，但审批卡**不能收起**——它占住输入框直到用户给答复。见 `ask-user.md`。
 
 **`notes` 是第五类，理由不是"更好管"**：它**装不进 `edit`**。求值第 1 步让任何匹配的 `deny` 恒赢、不受层级顺序影响，而子代理的规则集又是从父的 deny 派生的——researcher 身上挂着 `edit: "*": deny`，那条 deny 压得住 `edit` 里任何"考据本例外"。可它必须在**隔离上下文**里记下一笔、还不能弹用户的脸（子代理的 `ask` 就是一次 `io.confirm`），所以只能自成一类。
 
@@ -113,6 +117,19 @@ type PermissionConfig = Record<string, Action | Record<string, Action>>;
 
 **`deny` 单调意味着用户配置不能给模式松绑**：模式写 `edit: deny` 时，用户配 `edit: allow` 也进不去。想写就退出模式。
 
+### 桌面端的「默认权限」
+
+设置 → 通用设置 → 权限，每次打开会话时应用：
+
+- **工作区内修改**（默认）：以 `accept-edits` 模式起步（`edit: allow`，委派与联网仍然是 `ask`）。
+- **每次询问**：不套模式，按规则表逐次 `ask`。
+
+模式不落盘；重开会话按这里的默认值重新起步，而不是读回上一次的模式。这个选择存在壳偏好 `<talemateHome>/desktop.json`，不会写进作品的 `talemate.json`。
+
+对话框输入区左侧也有同一枚「工作区内修改 / 每次询问」入口，和设置里的这一格是同一个偏好；改完立即作用于当前会话。
+
+**它只松开"写文件"这一道门。** 计划/设计提案的三向审阅、落盘前的 pending 审批不受影响——那些不是 `edit` 权限的同一条规则，`accept-edits` 也不会替用户点头。
+
 ### 配完怎么确认它生效了
 
 REPL 里 `/permissions` 打印当前规则表——先给**结论**（每类动作现在是什么、**是哪一层定的**），再给**分层**（每层各自贡献了什么）：
@@ -178,7 +195,7 @@ deriveSubagentPermission(parent: Ruleset, sub: AgentDef): Ruleset
 
 **父的 `allow` 不往下传。** 所以 `mate` 在 `accept-edits` 模式里落盘不问，**它派出去的子代理不会跟着免确认**——它们按自己的规则走。
 
-**子代理默认不能委派**（除非它自己声明了 `delegate`），这是防链式 spawn。子代理也不能 `question`——**它跑在隔离上下文里，用户不在场，它一旦能提问就会把用户从自己的对话里硬拽出来。**
+**子代理默认不能委派**（除非它自己声明了 `delegate`），这是防链式 spawn。子代理也不能 `question`——**它跑在隔离上下文里，用户不在场，它一旦能提问就会把用户从自己的对话里硬拽出来。** 这条 deny 在工具层生效：`ask-user` 的 pending/超时不会替用户回答，也绝不能被当成同意（见 `ask-user.md`）。
 
 **同一条理由也适用于 `notes`：子代理绝不能把它留给默认值。** 留空的求值结果是 `ask`，而 `ask` 会走到 `ctx.ask` → `io.confirm`——同样是一次从隔离上下文里弹出来的问候。所以愿意写的（researcher）明写 `allow`，其余一律明写 `deny`，`tests/agents.test.ts` 有一条守着"每个子代理都表了态"。
 

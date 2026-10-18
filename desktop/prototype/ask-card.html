@@ -1,0 +1,1591 @@
+<title>搭档的提问卡</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 设计计划
+   页面：设计评审台 —— 冷灰制图纸上放一台暖色的 talemate 工作台。
+   颜色：纸 #e9ebee / 墨 #1d2329 / 蓝 #2f5d8a / 朱 #b4432f / 线 #c9ced3
+   字体：Noto Serif SC（评审标题）+ Noto Sans SC（正文）+ IBM Plex Mono（契约与数据）
+   布局：单列评审文档，宽 1180；原型是一扇嵌在页面里的窗口，不是页面本身。
+   签名：窗口右侧的四条评审批注，分别钉住推荐、收起、超时、提交四个决定。
+*/
+:root {
+  color-scheme: light;
+  --paper: #e9ebee;
+  --paper-2: #f4f5f6;
+  --ink: #1d2329;
+  --muted: #5c666f;
+  --faint: #8a949c;
+  --rule: #c9ced3;
+  --rule-soft: #dadee2;
+  --accent: #2f5d8a;
+  --accent-soft: #dbe6f0;
+  --zhu: #b4432f;
+  --zhu-soft: #f2e2de;
+  --code-bg: #f7f8f9;
+  --code-ink: #26323b;
+  --shadow: 0 18px 50px rgb(29 35 41 / 0.16), 0 2px 6px rgb(29 35 41 / 0.08);
+  --grid: rgb(47 93 138 / 0.055);
+  --serif: "Noto Serif SC", "Songti SC", "STSong", serif;
+  --sans: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #15191d;
+    --paper-2: #1b2025;
+    --ink: #e6e8e9;
+    --muted: #a4adb4;
+    --faint: #7c868d;
+    --rule: #333b42;
+    --rule-soft: #272e34;
+    --accent: #8db4d6;
+    --accent-soft: #22303b;
+    --zhu: #e07963;
+    --zhu-soft: #352522;
+    --code-bg: #111518;
+    --code-ink: #d6dde2;
+    --shadow: 0 18px 50px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
+    --grid: rgb(141 180 214 / 0.06);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #15191d;
+  --paper-2: #1b2025;
+  --ink: #e6e8e9;
+  --muted: #a4adb4;
+  --faint: #7c868d;
+  --rule: #333b42;
+  --rule-soft: #272e34;
+  --accent: #8db4d6;
+  --accent-soft: #22303b;
+  --zhu: #e07963;
+  --zhu-soft: #352522;
+  --code-bg: #111518;
+  --code-ink: #d6dde2;
+  --shadow: 0 18px 50px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
+  --grid: rgb(141 180 214 / 0.06);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  padding-inline: 24px;
+  padding-block: 0 72px;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--accent-soft); color: var(--ink); }
+
+.sheet { max-width: 1180px; margin: 0 auto; }
+
+.topbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding-block: 11px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(14px);
+}
+.topbar .brand {
+  display: flex; align-items: baseline; gap: 9px;
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; color: var(--muted);
+}
+.topbar .brand b { color: var(--ink); font-family: var(--sans); font-size: 13px; letter-spacing: 0.02em; }
+.topbar nav { display: flex; gap: 16px; margin-left: auto; }
+.topbar nav a { color: var(--muted); font-size: 12.5px; text-decoration: none; }
+.topbar nav a:hover { color: var(--ink); }
+.topbar .state {
+  border: 1px solid var(--rule); border-radius: 999px; padding: 2px 9px;
+  color: var(--zhu); font-size: 11px; letter-spacing: 0.06em; white-space: nowrap;
+}
+
+.masthead { padding-block: 58px 30px; }
+.eyebrow {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+h1, h2, h3 { font-family: var(--serif); font-weight: 600; text-wrap: balance; }
+h1 { margin: 0; font-size: clamp(34px, 4.6vw, 52px); line-height: 1.16; letter-spacing: -0.025em; }
+.dek { max-width: 62ch; margin: 18px 0 0; color: var(--muted); font-size: 17px; line-height: 1.75; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 20px; color: var(--faint); font-family: var(--mono); font-size: 11.5px; }
+.meta b { color: var(--muted); font-weight: 500; }
+
+.verdicts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-block: 1px solid var(--rule);
+}
+.verdict { padding: 20px 22px 22px; border-left: 1px solid var(--rule-soft); }
+.verdict:first-child { border-left: 0; padding-left: 0; }
+.verdict .k { display: block; margin-bottom: 7px; color: var(--accent); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+.verdict b { display: block; font-size: 15px; font-weight: 600; line-height: 1.5; }
+.verdict p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+
+.section { margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--rule); }
+.section-label { color: var(--accent); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+.section h2 { margin: 8px 0 0; font-size: clamp(24px, 2.6vw, 31px); line-height: 1.35; letter-spacing: -0.015em; }
+.section .lead { max-width: 68ch; margin: 12px 0 0; color: var(--muted); font-size: 14.5px; }
+.section h3 { margin: 28px 0 8px; font-size: 17px; letter-spacing: -0.005em; }
+.section p { max-width: 72ch; }
+
+.proto-bar { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; margin-top: 22px; }
+.proto-bar, .tabs, .tools { min-width: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 3px; border: 1px solid var(--rule); border-radius: 9px; background: var(--paper-2); }
+.tab {
+  border: 0; border-radius: 6px; padding: 5px 10px; background: transparent;
+  color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.tab:hover { color: var(--ink); }
+.tab.on { background: var(--ink); color: var(--paper); }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.tool-btn {
+  border: 1px solid var(--rule); border-radius: 7px; padding: 5px 10px;
+  background: transparent; color: var(--muted); font-size: 12px; cursor: pointer;
+}
+.tool-btn:hover { color: var(--ink); border-color: var(--faint); }
+.tool-btn:disabled { opacity: 0.4; cursor: default; }
+.proto-hint { margin: 10px 0 0; color: var(--faint); font-size: 12px; }
+
+.proto-grid { display: grid; grid-template-columns: minmax(0, 1fr) 216px; gap: 30px; align-items: start; margin-top: 14px; }
+.frame {
+  min-width: 0; overflow: hidden; border: 1px solid var(--rule); border-radius: 14px;
+  background: var(--paper-2); box-shadow: var(--shadow);
+}
+.frame-bar {
+  display: flex; align-items: center; gap: 10px; padding: 9px 13px;
+  border-bottom: 1px solid var(--rule-soft); background: var(--paper-2);
+}
+.lights { display: flex; gap: 6px; }
+.lights i { display: block; width: 10px; height: 10px; border-radius: 50%; }
+.lights .r { background: #d4776c; }
+.lights .y { background: #d7b46a; }
+.lights .g { background: #8aae86; }
+.frame-title { overflow: hidden; color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.frame-live { margin-left: auto; color: var(--faint); font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; }
+
+.annotations { display: flex; flex-direction: column; gap: 0; padding-top: 4px; }
+.ann { padding: 13px 0 14px; border-top: 1px solid var(--rule); }
+.ann:first-child { border-top: 0; padding-top: 0; }
+.ann .n {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; margin-bottom: 6px;
+  border: 1px solid var(--accent); border-radius: 50%; color: var(--accent);
+  font-family: var(--mono); font-size: 10px;
+}
+.ann b { display: block; font-size: 12.5px; font-weight: 600; line-height: 1.5; }
+.ann p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+/* ── 原型里的 talemate 工作台：一套独立主题，不跟评审页换色 ── */
+.tm-app {
+  position: relative;
+  display: grid;
+  grid-template-columns: 212px minmax(0, 1fr);
+  height: 664px;
+  overflow: hidden;
+  background: var(--tm-ground);
+  color: var(--tm-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color-scheme: light;
+  --tm-ground: #f6f6f3;
+  --tm-card: #ffffff;
+  --tm-panel: #f2f2ee;
+  --tm-panel-2: #eeeeea;
+  --tm-hover: #ecece7;
+  --tm-bubble: #eef1f8;
+  --tm-line: #e6e5df;
+  --tm-line-soft: #efeee9;
+  --tm-ink: #1e1d1a;
+  --tm-muted: #66645f;
+  --tm-faint: #9a978f;
+  --tm-accent: #4d6bfe;
+  --tm-accent-soft: #edf1ff;
+  --tm-zhu: #a8402f;
+  --tm-zhu-soft: #f7ebe8;
+  --tm-indigo: #4a5b78;
+  --tm-shadow: 0 18px 44px rgb(30 29 26 / 0.16), 0 2px 8px rgb(30 29 26 / 0.06);
+}
+.tm-app[data-theme="dark"] {
+  color-scheme: dark;
+  --tm-ground: #151513;
+  --tm-card: #1e1e1c;
+  --tm-panel: #252523;
+  --tm-panel-2: #242421;
+  --tm-hover: #2a2a26;
+  --tm-bubble: #242833;
+  --tm-line: #2f2f2b;
+  --tm-line-soft: #282825;
+  --tm-ink: #e9e8e3;
+  --tm-muted: #a8a59f;
+  --tm-faint: #7b7872;
+  --tm-accent: #8096ff;
+  --tm-accent-soft: #232a44;
+  --tm-zhu: #d9705c;
+  --tm-zhu-soft: #33231f;
+  --tm-indigo: #93a7c8;
+  --tm-shadow: 0 18px 44px rgb(0 0 0 / 0.5), 0 2px 8px rgb(0 0 0 / 0.3);
+}
+
+.tm-side {
+  display: flex; flex-direction: column; min-height: 0; padding: 12px 10px 10px;
+  border-right: 1px solid var(--tm-line); background: var(--tm-ground);
+}
+.tm-brand { display: flex; align-items: center; gap: 8px; padding: 2px 4px 12px; font-size: 13.5px; }
+.tm-mark {
+  display: grid; place-items: center; width: 23px; height: 23px; border-radius: 7px;
+  background: var(--tm-ink); color: var(--tm-ground); font-size: 13px; font-weight: 600;
+}
+.tm-new {
+  margin: 0 2px 12px; padding: 9px 10px; border: 1px solid var(--tm-line); border-radius: 9px;
+  background: transparent; color: var(--tm-ink); text-align: left; font-size: 12.5px; cursor: default;
+}
+.tm-scrollside { min-height: 0; overflow-y: auto; }
+.tm-sec {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 6px 5px; color: var(--tm-faint); font-size: 10.5px; letter-spacing: 0.06em;
+}
+.tm-sess {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 7px;
+  border: 0; border-radius: 7px; background: transparent; color: var(--tm-muted);
+  text-align: left; font-size: 12px; cursor: default;
+}
+.tm-sess span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tm-sess .tm-when { margin-left: auto; flex: none; color: var(--tm-faint); font-size: 9.5px; }
+.tm-sess.on { background: var(--tm-hover); color: var(--tm-ink); }
+.tm-doc { padding: 4px 7px; color: var(--tm-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-doc .tm-sub { margin-left: 5px; color: var(--tm-faint); font-size: 10.5px; }
+
+.tm-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--tm-card); }
+.tm-head {
+  display: flex; align-items: center; gap: 10px; flex: none; height: 43px; padding: 0 20px;
+  border-bottom: 1px solid var(--tm-line);
+}
+.tm-title { font-size: 13px; font-weight: 600; }
+.tm-mode {
+  display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px;
+  border: 1px solid var(--tm-line); border-radius: 999px; color: var(--tm-muted); font-size: 10.5px;
+}
+.tm-mode i { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--tm-accent); }
+.tm-agent { margin-left: auto; color: var(--tm-faint); font-size: 11px; }
+
+.tm-scroll { flex: 1 1 auto; min-height: 76px; overflow-y: auto; padding: 18px 24px 8px; }
+.tm-thread { display: flex; flex-direction: column; gap: 14px; max-width: 44rem; margin: 0 auto; }
+.tm-me { display: flex; justify-content: flex-end; }
+.tm-bubble {
+  max-width: 78%; padding: 9px 13px; border-radius: 14px 14px 4px 14px;
+  background: var(--tm-bubble); color: var(--tm-ink); font-size: 13px; line-height: 1.65;
+}
+.tm-say { color: var(--tm-ink); font-size: 13.5px; line-height: 1.8; }
+.tm-steps { display: flex; align-items: baseline; gap: 6px; color: var(--tm-faint); font-size: 11.5px; }
+.tm-caret { font-size: 9px; }
+
+.tm-dock { flex: none; padding: 0 24px 12px; }
+.tm-composer { flex: none; padding: 4px 24px 12px; }
+.tm-composer[hidden] { display: none; }
+.tm-box {
+  max-width: 44rem; margin: 0 auto; padding: 10px 13px 8px;
+  border: 1px solid var(--tm-line); border-radius: 17px; background: var(--tm-card);
+  box-shadow: 0 8px 24px rgb(30 29 26 / 0.06);
+}
+.tm-ta { min-height: 24px; color: var(--tm-faint); font-size: 13px; }
+.tm-boxfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
+.tm-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px;
+  border: 1px solid var(--tm-line); border-radius: 7px; color: var(--tm-muted); font-size: 10.5px;
+}
+.tm-spacer { flex: 1; }
+.tm-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--tm-accent); }
+.tm-send {
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--tm-ink); color: var(--tm-card); font-size: 13px; opacity: 0.35;
+}
+
+/* ── 提问卡 ── */
+.ask {
+  display: flex; flex-direction: column; max-width: 44rem; max-height: 400px; margin: 0 auto;
+  overflow: hidden; border: 1px solid var(--tm-line); border-radius: 16px;
+  background: var(--tm-card); box-shadow: var(--tm-shadow);
+}
+.ask-head { display: flex; align-items: center; gap: 10px; flex: none; padding: 12px 16px 4px; }
+.ask-eyebrow { color: var(--tm-muted); font-size: 11px; letter-spacing: 0.02em; }
+.ask-status { margin-left: auto; color: var(--tm-faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.ask-status.pending { color: var(--tm-zhu); }
+.ask-collapse {
+  display: grid; place-items: center; width: 24px; height: 24px; margin-left: 2px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--tm-faint);
+  font-size: 14px; cursor: pointer;
+}
+.ask-collapse:hover { background: var(--tm-hover); color: var(--tm-ink); }
+.ask-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 5px 16px 12px; }
+.ask-q { color: var(--tm-ink); font-size: 15px; font-weight: 550; line-height: 1.66; letter-spacing: -0.005em; }
+.ask-q p { margin: 0 0 8px; }
+.ask-q p:last-child { margin-bottom: 0; }
+.ask-q ul { margin: 6px 0 8px; padding-left: 18px; }
+.ask-q li { margin: 3px 0; }
+.ask-q code { padding: 1px 4px; border-radius: 4px; background: var(--tm-panel-2); font-family: var(--mono); font-size: 0.88em; }
+.ask-options { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
+.opt {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 10px 11px;
+  border: 1px solid transparent; border-radius: 10px; background: transparent;
+  color: inherit; text-align: left; cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.opt:hover { background: var(--tm-hover); }
+.opt.on { background: var(--tm-accent-soft); border-color: color-mix(in srgb, var(--tm-accent) 32%, transparent); }
+.num {
+  display: grid; place-items: center; flex: none; width: 21px; height: 21px; margin-top: 1px;
+  border-radius: 6px; background: var(--tm-panel-2); color: var(--tm-muted);
+  font-size: 10.5px; font-variant-numeric: tabular-nums;
+}
+.opt.on .num { background: var(--tm-accent); color: var(--tm-card); }
+.box {
+  display: grid; place-items: center; flex: none; width: 18px; height: 18px; margin-top: 2px;
+  border: 1.5px solid var(--tm-line); border-radius: 5px; color: var(--tm-card); font-size: 11px;
+}
+.opt.on .box { border-color: var(--tm-accent); background: var(--tm-accent); }
+.opt-main { min-width: 0; }
+.opt-label { display: block; color: var(--tm-ink); font-size: 13px; font-weight: 500; line-height: 1.55; }
+.opt-desc { display: block; margin-top: 2px; color: var(--tm-muted); font-size: 11.5px; line-height: 1.6; }
+.rec {
+  display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 999px;
+  background: var(--tm-accent-soft); color: var(--tm-accent); font-size: 9.5px; font-weight: 500;
+  vertical-align: 1px; white-space: nowrap;
+}
+.tick { flex: none; margin-left: auto; color: var(--tm-accent); font-size: 12px; }
+.ask-custom {
+  display: flex; align-items: flex-start; gap: 9px; margin-top: 7px; padding: 8px 10px;
+  border: 1px dashed var(--tm-line); border-radius: 10px; background: transparent;
+}
+.ask-custom.on, .ask-custom:focus-within { border-style: solid; border-color: color-mix(in srgb, var(--tm-accent) 42%, var(--tm-line)); background: var(--tm-accent-soft); }
+.pen { display: grid; place-items: center; flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--tm-faint); }
+.custom-box {
+  display: grid; place-items: center; flex: none; width: 18px; height: 18px; margin-top: 2px;
+  padding: 0; border: 1.5px solid var(--tm-line); border-radius: 5px;
+  background: transparent; color: var(--tm-card); font-size: 11px; cursor: pointer;
+}
+.custom-box.on { border-color: var(--tm-accent); background: var(--tm-accent); }
+.ask-custom textarea {
+  flex: 1; min-width: 0; min-height: 21px; max-height: 92px; padding: 0; border: 0; outline: 0;
+  background: transparent; color: var(--tm-ink); resize: none; overflow-y: auto;
+  font: inherit; font-size: 12.5px; line-height: 1.6;
+}
+.ask-custom textarea::placeholder { color: var(--tm-faint); }
+.ask-foot { flex: none; border-top: 1px solid var(--tm-line-soft); }
+.ask-note { padding: 7px 16px 0; color: var(--tm-faint); font-size: 10.5px; line-height: 1.6; }
+.ask-note .note-pending { color: var(--tm-zhu); }
+.link {
+  padding: 0; border: 0; background: none; color: var(--tm-indigo);
+  font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.link:hover { color: var(--tm-ink); }
+.ask-actions { display: flex; align-items: center; gap: 8px; padding: 8px 16px 11px; }
+.pager { display: flex; align-items: center; gap: 2px; color: var(--tm-muted); }
+.pg {
+  display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--tm-faint); font-size: 15px; cursor: pointer;
+}
+.pg:hover:not(:disabled) { background: var(--tm-hover); color: var(--tm-ink); }
+.pg:disabled { opacity: 0.28; cursor: default; }
+.pg-count { min-width: 34px; color: var(--tm-muted); font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+.ask-actions .grow { flex: 1; }
+.btn {
+  padding: 6px 13px; border: 1px solid var(--tm-line); border-radius: 9px;
+  background: var(--tm-card); color: var(--tm-ink); font-size: 12px; cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: var(--tm-hover); }
+.btn.primary { border-color: var(--tm-ink); background: var(--tm-ink); color: var(--tm-panel); }
+.btn.primary:hover:not(:disabled) { opacity: 0.9; }
+.btn.ghost { color: var(--tm-muted); }
+.btn:disabled { opacity: 0.34; cursor: default; }
+
+.ask-pill {
+  display: flex; align-items: center; gap: 9px; width: 100%; max-width: 44rem; margin: 0 auto;
+  padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--tm-accent) 30%, var(--tm-line));
+  border-radius: 12px; background: var(--tm-accent-soft); color: var(--tm-ink);
+  text-align: left; font: inherit; cursor: pointer;
+}
+.ask-pill:hover { border-color: var(--tm-accent); }
+.pill-q {
+  display: grid; place-items: center; flex: none; width: 21px; height: 21px;
+  border-radius: 50%; background: var(--tm-accent); color: var(--tm-card);
+  font-size: 11px; font-weight: 600;
+}
+.pill-main { font-size: 12px; }
+.pill-time { margin-left: auto; color: var(--tm-muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.pill-open { color: var(--tm-accent); font-size: 11px; white-space: nowrap; }
+
+.hist {
+  width: 100%; max-width: 44rem; margin: 2px 0 0; overflow: hidden;
+  border: 1px solid var(--tm-line); border-radius: 12px; background: var(--tm-card);
+}
+.hist-head {
+  display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 13px;
+  border: 0; border-bottom: 1px solid var(--tm-line-soft);
+  background: var(--tm-panel); color: var(--tm-muted); text-align: left; font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.hist-check { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--tm-accent-soft); color: var(--tm-accent); font-size: 9px; }
+.hist-sub { color: var(--tm-faint); }
+.hist-chev { margin-left: auto; color: var(--tm-faint); font-size: 12px; }
+.hist-body { padding: 2px 14px 12px; }
+.hist-q { padding: 11px 0; border-top: 1px solid var(--tm-line-soft); }
+.hist-q:first-child { border-top: 0; }
+.hist-qtext { color: var(--tm-muted); font-size: 11.5px; line-height: 1.65; }
+.hist-qtext p { margin: 0; }
+.hist-a { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.pick {
+  padding: 2px 7px; border: 1px solid var(--tm-line); border-radius: 6px;
+  background: var(--tm-panel); color: var(--tm-ink); font-size: 10.5px;
+}
+.pick.custom { border-style: dashed; color: var(--tm-muted); }
+.skip { padding: 2px 7px; color: var(--tm-faint); font-size: 10.5px; }
+
+.tm-toast {
+  position: absolute; left: 50%; bottom: 94px; z-index: 5;
+  padding: 7px 12px; border-radius: 9px; background: var(--tm-ink); color: var(--tm-card);
+  font-size: 11.5px; opacity: 0; pointer-events: none; transform: translate(-50%, 6px);
+  transition: opacity 0.18s ease, transform 0.18s ease; max-width: 80%;
+}
+.tm-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ── 评审页正文 ── */
+.table-wrap { margin-top: 18px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.65; }
+th, td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule-soft); text-align: left; vertical-align: top; }
+th { color: var(--faint); font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+td:first-child { color: var(--ink); font-weight: 500; white-space: nowrap; }
+td code, p code, li code { padding: 1px 4px; border-radius: 4px; background: var(--code-bg); color: var(--code-ink); font-family: var(--mono); font-size: 0.88em; }
+
+.code {
+  margin: 16px 0 0; padding: 15px 17px; overflow-x: auto;
+  border: 1px solid var(--rule-soft); border-radius: 10px; background: var(--code-bg);
+  color: var(--code-ink); font-family: var(--mono); font-size: 11.5px; line-height: 1.72;
+  white-space: pre; tab-size: 2;
+}
+.code .c { color: var(--faint); }
+.code .k { color: var(--accent); }
+
+.rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 34px; margin-top: 14px; }
+.rule { padding: 12px 0 13px; border-top: 1px solid var(--rule-soft); }
+.rule b { display: block; font-size: 13px; font-weight: 600; line-height: 1.55; }
+.rule p { margin: 3px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.65; }
+
+.phases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 30px; margin-top: 18px; }
+.phase { padding-top: 14px; border-top: 1px solid var(--rule); }
+.phase .p-k { color: var(--accent); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+.phase h3 { margin: 5px 0 6px; font-family: var(--sans); font-size: 14px; font-weight: 600; }
+.phase p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.65; }
+.phase ul { margin: 8px 0 0; padding-left: 16px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+
+details { margin-top: 20px; border-top: 1px solid var(--rule-soft); }
+summary { padding: 11px 0; color: var(--muted); font-size: 13px; cursor: pointer; }
+summary:hover { color: var(--ink); }
+details ul { margin: 2px 0 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; line-height: 1.75; }
+details li { margin: 2px 0; }
+
+.footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--faint); font-size: 12px; }
+.footer b { color: var(--muted); font-weight: 500; }
+
+@media (max-width: 1040px) {
+  .proto-grid { grid-template-columns: minmax(0, 1fr); }
+  .annotations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+  .ann:nth-child(2) { border-top: 0; padding-top: 0; }
+}
+@media (max-width: 860px) {
+  body { padding-inline: 18px; }
+  .topbar nav { display: none; }
+  .masthead { padding-block: 40px 22px; }
+  .verdicts { grid-template-columns: 1fr; }
+  .verdict { border-left: 0; padding-inline: 0; border-top: 1px solid var(--rule-soft); }
+  .verdict:first-child { border-top: 0; }
+  .tm-app { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 620px; }
+  .tm-side { display: none; }
+  .tm-scroll { min-height: 150px; }
+  .ask { max-height: 60vh; }
+  .rules, .phases { grid-template-columns: 1fr; }
+  .phase { padding-top: 10px; }
+}
+@media (max-width: 560px) {
+  body { padding-inline: 14px; }
+  h1 { font-size: 31px; }
+  .dek { font-size: 15px; }
+  .tools { margin-left: 0; }
+  .tabs { width: 100%; }
+  .tab { flex: 1 1 auto; text-align: center; }
+  .annotations { grid-template-columns: 1fr; }
+  .ann:nth-child(2) { border-top: 1px solid var(--rule); padding-top: 13px; }
+  .tm-head { padding: 0 14px; }
+  .tm-agent { display: none; }
+  .tm-scroll { padding-inline: 14px; }
+  .tm-dock, .tm-composer { padding-inline: 14px; }
+  .ask-actions { flex-wrap: wrap; }
+  .ask-actions .grow { display: none; }
+  .ask-note { padding-inline: 12px; }
+  .ask-head, .ask-body { padding-inline: 12px; }
+  .ask-actions { padding-inline: 12px; }
+  .pill-time { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+</style>
+
+<div class="sheet">
+  <div class="topbar">
+    <div class="brand"><b>talemate</b><span>设计评审</span></div>
+    <nav aria-label="页内导航">
+      <a href="#prototype">原型</a>
+      <a href="#contract">契约</a>
+      <a href="#now">现在的洞</a>
+      <a href="#probes">验收</a>
+      <a href="#landing">落地</a>
+    </nav>
+    <span class="state">待确认</span>
+  </div>
+
+  <header class="masthead">
+    <p class="eyebrow">ask-user · 提问卡片</p>
+    <h1>搭档的提问卡</h1>
+    <p class="dek">现在的提问卡能把问题递到你面前，也能把搭档永远挂在那里。这个方案把它改成一套有超时、有跳过、有回看的对话契约：卡片占住输入框的位置，超时只是 pending，收起不等于回答。</p>
+    <div class="meta">
+      <span><b>2026-10-18</b> 设计稿</span>
+      <span><b>影响</b> src/session · src/tool · desktop/src/renderer</span>
+      <span><b>状态</b> 等你点过原型再动代码</span>
+    </div>
+  </header>
+
+  <div class="verdicts">
+    <div class="verdict">
+      <span class="k">位置</span>
+      <b>卡片占住输入框的位置</b>
+      <p>打开时输入框让位，像底部弹窗一样贴在中栏底部；对话仍然可以读。收起后输入框回来，提示条还在。</p>
+    </div>
+    <div class="verdict">
+      <span class="k">超时</span>
+      <b>pending 不是同意</b>
+      <p>到点搭档停下这一轮，问题还在。你回来答，答案作为一条新消息送达，不由沉默替你做决定。</p>
+    </div>
+    <div class="verdict">
+      <span class="k">收起</span>
+      <b>收起不是回答</b>
+      <p>收起只把卡片折成一条提示，不发送任何内容。只有「跳过」或「提交」才产生答案。</p>
+    </div>
+  </div>
+
+  <section class="section" id="prototype">
+    <div class="section-label">原型</div>
+    <h2>先看它怎么动</h2>
+    <p class="lead">下面是一个可点的原型：两题翻页、推荐预选、多选、自定义、收起、超时、回看。打开时卡片会占住输入框的位置，像底部弹窗一样贴在中栏底部；收起后输入框回来。计时器缩短到 90 秒；点「跳到超时」可以直接看 pending。所有状态都在这一页里，不会发出去。</p>
+
+    <div class="proto-bar">
+      <div class="tabs" role="tablist" aria-label="原型场景">
+        <button class="tab on" data-scenario="single" role="tab" aria-selected="true">推荐单选 · 两题</button>
+        <button class="tab" data-scenario="multi" role="tab" aria-selected="false">多选 · 一题</button>
+        <button class="tab" data-scenario="long" role="tab" aria-selected="false">长问题 · 六选项</button>
+        <button class="tab" data-scenario="timeout" role="tab" aria-selected="false">已超时</button>
+        <button class="tab" data-scenario="history" role="tab" aria-selected="false">已答回看</button>
+      </div>
+      <div class="tools">
+        <button class="tool-btn" id="btn-theme" type="button">深色原型</button>
+        <button class="tool-btn" id="btn-reload" type="button">模拟刷新</button>
+        <button class="tool-btn" id="btn-timeout" type="button">跳到超时</button>
+        <button class="tool-btn" id="btn-reset" type="button">重置</button>
+      </div>
+    </div>
+    <p class="proto-hint">键盘：↑↓ 移动选项，Enter 提交或跳到第一道没答的题，Esc 收起；输入框里 Enter 继续、Shift+Enter 换行。输入法组合中的 Enter 不会提交。</p>
+
+    <div class="proto-grid">
+      <div class="frame">
+        <div class="frame-bar">
+          <span class="lights" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i></span>
+          <span class="frame-title">Talemate — 第 4 章 · 县衙</span>
+          <span class="frame-live">原型</span>
+        </div>
+        <div class="tm-app" id="tm-app" data-theme="light">
+          <aside class="tm-side" aria-label="作品导航（原型）">
+            <div class="tm-brand"><span class="tm-mark">t</span><b>Talemate</b></div>
+            <button class="tm-new" type="button">＋ 新会话</button>
+            <div class="tm-scrollside">
+              <div class="tm-sec">茶馆（会话） <span>3</span></div>
+              <button class="tm-sess on" type="button"><span>第 4 章 · 县衙</span><span class="tm-when">今天 14:20</span></button>
+              <button class="tm-sess" type="button"><span>第 3 章的节奏</span><span class="tm-when">昨天</span></button>
+              <button class="tm-sess" type="button"><span>人物：沈越</span><span class="tm-when">9月28日</span></button>
+              <div class="tm-sec">目录</div>
+              <div class="tm-doc">核心设定</div>
+              <div class="tm-doc">世界观 <span class="tm-sub">漕运</span></div>
+              <div class="tm-doc">角色 <span class="tm-sub">沈越</span></div>
+              <div class="tm-doc">大纲 <span class="tm-sub">第 1 卷</span></div>
+              <div class="tm-doc">正文 <span class="tm-sub">第 3 章</span></div>
+              <div class="tm-doc">现状 <span class="tm-sub">伏笔账</span></div>
+            </div>
+          </aside>
+          <main class="tm-main">
+            <header class="tm-head">
+              <span class="tm-title">第 4 章 · 县衙</span>
+              <span class="tm-mode"><i></i>工作区内修改</span>
+              <span class="tm-agent">搭档 · 正在写</span>
+            </header>
+            <div class="tm-scroll" id="tm-scroll">
+              <div class="tm-thread" id="tm-thread"></div>
+            </div>
+            <div class="tm-dock" id="tm-dock"></div>
+            <div class="tm-composer" aria-hidden="true">
+              <div class="tm-box">
+                <div class="tm-ta">说点什么…</div>
+                <div class="tm-boxfoot">
+                  <span class="tm-chip">@</span>
+                  <span class="tm-chip"><span class="tm-dot"></span>工作区内修改</span>
+                  <span class="tm-spacer"></span>
+                  <span class="tm-chip"><span class="tm-dot"></span>deepseek-v4 · 高</span>
+                  <span class="tm-chip">文风 冷峻</span>
+                  <span class="tm-send">↑</span>
+                </div>
+              </div>
+            </div>
+          </main>
+          <div class="tm-toast" id="tm-toast" role="status" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <aside class="annotations" aria-label="评审批注">
+        <div class="ann">
+          <span class="n">1</span>
+          <b>推荐只是预选</b>
+          <p>第一项带「推荐」时会先勾上，但不暂停计时、不提交。你可以直接换。</p>
+        </div>
+        <div class="ann">
+          <span class="n">2</span>
+          <b>打开时输入框让位</b>
+          <p>卡片贴在底部，占住输入框的位置；收起后输入框回来，草稿和剩余时间都还在。</p>
+        </div>
+        <div class="ann">
+          <span class="n">3</span>
+          <b>超时是 pending</b>
+          <p>到点搭档先停下，问题仍在。你回答之后，答案作为一条新消息送达。</p>
+        </div>
+        <div class="ann">
+          <span class="n">4</span>
+          <b>最后一题不自动提交</b>
+          <p>点击只选中。提交要一次明确的动作；Enter 是键盘用户的快捷路径。</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section" id="contract">
+    <div class="section-label">契约</div>
+    <h2>契约比样式重要</h2>
+    <p class="lead">DSH 的弹窗好看是表面，真正难的是它背后的状态。直接抄 UI，会得到一个“会卡住搭档的漂亮弹窗”。这里只抄契约，并且按 talemate 的形状落。</p>
+
+    <h3>线上形状保持极简</h3>
+    <pre class="code"><span class="c">// 模型给的：1–3 题；options 可选；multi_select 默认 false</span>
+<span class="k">interface</span> AskQuestion {
+  id: string;                    <span class="c">// 稳定 id，答案里回传</span>
+  header?: string;               <span class="c">// 卡片左上角的小标题</span>
+  question: string;              <span class="c">// 用户语言；正文走 markdown</span>
+  options?: { label: string; description?: string }[];
+  multi_select?: boolean;
+}
+
+<span class="c">// 用户回的：selected 为空且没有 custom = 明确跳过</span>
+<span class="k">interface</span> AskAnswer { id: string; selected: string[]; custom?: string }
+
+<span class="c">// 交付层回给工具的：pending 不是答案，是“这一轮先停”</span>
+<span class="k">type</span> AskOutcome =
+  | { kind: "answered"; answers: AskAnswer[] }
+  | { kind: "pending"; callId: string }
+  | { kind: "cancelled"; reason: "no-answerer" | "aborted" };</pre>
+
+    <h3>状态机：收起不是终态</h3>
+    <pre class="code">open ──提交──────────────────&gt; answered
+ ├──逐题跳过───────────────&gt; answered（该项 selected: []）
+ ├──收起───────────────────&gt; open（不发任何消息）
+ ├──超时 / 稍后────────────&gt; pending ──回答──&gt; answered（作为新回合送达）
+ └──没有回答方 / 中止──────&gt; cancelled</pre>
+
+    <h3>回答只走一条路</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>此刻</th><th>回答去哪</th><th>结果</th></tr></thead>
+        <tbody>
+          <tr><td>工具调用还开着</td><td>resolve 那个等待中的 Promise</td><td>同一回合继续</td></tr>
+          <tr><td>已经 pending</td><td>追加一条 <code>answer_to_pending_question</code> 用户消息</td><td>开一个新回合</td></tr>
+          <tr><td>callId 不认识</td><td>拒绝，回 stale</td><td>卡片显示“这个问题已经结束了”</td></tr>
+          <tr><td>子代理调用</td><td><code>question: deny</code></td><td>返回自愈文案，不弹用户的脸</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>提示词：行为约定写在字段里</h3>
+    <p>推荐项不另加 <code>recommended: true</code>——UI 只认 label 末尾的「（推荐）」。这是模型和界面之间唯一需要约定的写法。工具 description 管“怎么问”，system 里那一段管“什么时候不该问”。</p>
+    <pre class="code"># prompts/tools/ask-user.txt
+Ask the user 1–3 concise, self-contained questions when an answer cannot be inferred
+from the project or the conversation: a creative choice, a missing preference, or a
+decision between options with real trade-offs.
+
+Each question needs a stable id. Offer 2–5 options when choices exist; put your
+recommendation first and end its label with （推荐）. Each option's description says
+what it buys and what it costs. Use multi_select only when the choices are not
+exclusive. The user may type a custom answer or skip a question; a skipped answer is
+empty, not consent.
+
+timeout is the seconds to wait for the whole batch (default 120); use -1 only when
+you cannot proceed without an answer. A timeout returns pending, not skipped: the
+turn ends, the user can still answer, and you must not act as if they agreed.
+
+# prompts/mate.system.txt（新增一段）
+# Asking
+Ask only when the answer cannot be read from the project or inferred from what the
+user said. Use ask-user for creative decisions, never as a permission gate. At most
+3 questions per call, 2–5 options each; lead with your recommendation and say what
+each option costs. If the user skips or the question times out, that is not consent:
+do not act on silence.</pre>
+
+    <h3>持久化：两个事实，不是两份状态</h3>
+    <p>已提交的提问落在 tool part 的 <code>ask</code> 记录里；迟到回答落在用户消息的 <code>answersTo</code> 里。界面的“还开着哪些问题”由两者投影出来，不另存一份问题状态。唯一额外的是 <code>.talemate/sessions/&lt;id&gt;/pending-ask.json</code>：它只覆盖“提问已经开始、助手消息还没提交”那段窗口，是 write-ahead 记录，不是第二份真相。</p>
+  </section>
+
+  <section class="section" id="now">
+    <div class="section-label">现状</div>
+    <h2>现在的三个洞</h2>
+    <p class="lead">不是样式问题。现在的 <code>ask-user</code> 是一张卡、一个问题、一个永不超时的 Promise；窗口一关，搭档就卡在工具调用里，而且不会报错。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>现在</th><th>会发生什么</th><th>方案里改成</th></tr></thead>
+        <tbody>
+          <tr><td>窗口关掉 / 刷新</td><td><code>ask()</code> 的 Promise 永远不 resolve，搭档卡在工具调用里</td><td>没有回答方立即失败；主进程持有截止时间；草稿落本机</td></tr>
+          <tr><td>只有一张卡、一个问题</td><td>长问题把按钮顶出屏幕；多选和自定义没有位置</td><td>卡片限高、内部滚动；1–3 题翻页；单选 / 多选 / 自定义同一套</td></tr>
+          <tr><td>没有跳过和超时</td><td>用户只能答或不管；沉默被当成默认</td><td>answered / pending / cancelled 三态分离；跳过是显式空答案</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section" id="rules">
+    <div class="section-label">界面</div>
+    <h2>十条规则，按优先级</h2>
+    <p class="lead">前六条决定“好不好用”，后面是打磨。每一条都能在原型里点到。</p>
+    <div class="rules">
+      <div class="rule"><b>1 · 卡片占住输入框的位置</b><p>像底部弹窗一样贴在中栏底部，打开时输入框让位，不做独立模态框。对话仍然可以读。</p></div>
+      <div class="rule"><b>2 · 一题一页，提交整批</b><p>1–3 题用翻页器走；不把所有题垂直堆满屏幕。</p></div>
+      <div class="rule"><b>3 · 单选点击前进，最后一题不自动提交</b><p>多选只切换。提交永远是一次明确的动作。</p></div>
+      <div class="rule"><b>4 · Enter 与输入法</b><p>输入框里 Enter 继续、Shift+Enter 换行；组合中的 Enter 只确认候选。</p></div>
+      <div class="rule"><b>5 · 卡片限高</b><p>标题、翻页器、提交按钮固定；长问题和长选项共享内部滚动区。</p></div>
+      <div class="rule"><b>6 · 每个会话 + 每个 callId 一份草稿</b><p>切会话、刷新页面、重开应用都能恢复；只在本机，不跨设备。</p></div>
+      <div class="rule"><b>7 · 倒计时会停，但不会停死</b><p>聚焦暂停；首次编辑或「慢慢回答」转不限时；「稍后回答」立即转 pending。</p></div>
+      <div class="rule"><b>8 · 结束时是只读卡</b><p>已回答 / 已跳过 / 已超时都能回看；跳过的那题说明“当时跳过”。</p></div>
+      <div class="rule"><b>9 · 问题正文 markdown，选项 label 纯文本</b><p>复用助手输出的渲染原语；选项不做富文本，避免把答案变成另一段正文。</p></div>
+      <div class="rule"><b>10 · 收起后输入框回来</b><p>提示条一直在；工具行和提示条都能重开卡片，草稿和剩余时间不丢。</p></div>
+    </div>
+  </section>
+
+  <section class="section" id="probes">
+    <div class="section-label">验收</div>
+    <h2>八个探针，过了才算一样好</h2>
+    <p class="lead">前五个是产品行为，后三个是工程边界。都能在离线测试或桌面自检里跑，不需要模型。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>场景</th><th>期望</th></tr></thead>
+        <tbody>
+          <tr><td>用户离开 2 分钟</td><td>到点返回 <code>pending</code>，搭档停下这一轮；问题仍可回答</td></tr>
+          <tr><td>点「跳过」</td><td>该项 <code>{selected: []}</code>，其余答案保留，批次正常返回</td></tr>
+          <tr><td>收起卡片、吃饭、回来</td><td>提示条还在；重开后草稿还在；没有误提交</td></tr>
+          <tr><td>刷新页面</td><td>问题重新出现；剩余时间正确，不是重新计时</td></tr>
+          <tr><td>子代理调用</td><td>拒绝（<code>question: deny</code>），不影响父 agent</td></tr>
+          <tr><td>没有前端连着</td><td>阻塞调用立即报错（不是挂死）；timed 调用到期返回 pending</td></tr>
+          <tr><td>2000 字问题 + 6 个选项</td><td>卡片限高、内部滚动，按钮始终可见</td></tr>
+          <tr><td>两个客户端回答同一题</td><td>一个成功；另一个拿到 stale，不重复作答</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section" id="landing">
+    <div class="section-label">落地</div>
+    <h2>分三步落，每步都能用</h2>
+    <p class="lead">第一步先把卡片和契约做对；第二步才上计时与持久化；第三步收口与探针。不要一次把 8 个场景全写完。</p>
+    <div class="phases">
+      <div class="phase">
+        <div class="p-k">第一步</div>
+        <h3>卡片 + 单题/多题</h3>
+        <p>递归 JSON schema、AskQuestion / AskAnswer、工具校验、runner 的 <code>ask</code> 与 <code>halt</code>、桌面 dock、翻页、跳过、自定义、收起/重开、CLI 批量输入。</p>
+        <ul><li>覆盖 80% 场景</li><li>没有回答方时 fail closed</li><li>先不碰超时</li></ul>
+      </div>
+      <div class="phase">
+        <div class="p-k">第二步</div>
+        <h3>计时 + pending</h3>
+        <p>主进程截止时间、pending 三态、稍后回答、迟到回答走新回合、草稿持久化、只读回看卡、system 里的未答问题注记。</p>
+        <ul><li>这一步最容易被漏掉</li><li>也是“不卡住搭档”的关键</li></ul>
+      </div>
+      <div class="phase">
+        <div class="p-k">第三步</div>
+        <h3>收口 + 探针</h3>
+        <p>confirm 的窗口丢失改为 fail closed；多个 pending 的队列；键盘与无障碍；八个探针进 CI；docs 与 prompts 对齐。</p>
+        <ul><li>探针不需要模型</li><li>子代理 deny 继续由测试钉住</li></ul>
+      </div>
+    </div>
+
+    <details>
+      <summary>要动的文件（展开）</summary>
+      <ul>
+        <li><code>src/core/types.ts</code> — 递归 JsonSchema；AskQuestion / AskAnswer / AskRecord；ToolContext.callId；ToolResult.ask / halt；AssistantPart.ask；StoredMessage.answersTo</li>
+        <li><code>src/session/session.ts</code> — UserIO 新签名；pending 日志；answerPending；未答问题注记；makeContext 带 callId</li>
+        <li><code>src/session/asks.ts</code>（新）— 输入校验、答案校验、从消息投影未答问题</li>
+        <li><code>src/session/loop.ts</code> — 尊重 per-result halt；从已持久化的回答恢复一轮</li>
+        <li><code>src/tool/core_tools.ts</code> — ask-user 新 schema 与 execute</li>
+        <li><code>src/tool/runner.ts</code> — 把 ask 记录与 halt 覆盖挂到 tool part</li>
+        <li><code>src/storage/session-store.ts</code> — pending-ask.json 的读写</li>
+        <li><code>src/llm/provider.ts</code> — mock 的 sampleArgs 认识嵌套数组</li>
+        <li><code>desktop/src/shared/api.ts</code>、<code>preload/index.ts</code>、<code>main/index.ts</code> — AskView、answerAsk、holdAsk、计时器、重连</li>
+        <li><code>desktop/src/renderer/Workspace.tsx</code>、<code>Thread.tsx</code>、<code>styles.css</code> — AskDock、AskCard、AskPill、只读回看卡</li>
+        <li><code>prompts/tools/ask-user.txt</code>、<code>prompts/mate.system.txt</code> — 何时问、何时不问、推荐项写法、pending 的语义</li>
+        <li><code>src/cli.ts</code>、<code>src/smoke.ts</code>、<code>src/probe/advance.ts</code>、测试里的 fake ctx — 新签名</li>
+        <li><code>docs/agents.md</code>、<code>docs/ui.md</code>、<code>docs/permissions.md</code>、<code>docs/ask-user.md</code>（新）</li>
+        <li>测试：<code>tests/ask_user.test.ts</code>（新）；<code>tests/framework.test.ts</code>、<code>tests/write_ops.test.ts</code> 的 fake ctx</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>明确不做（这一版）</summary>
+      <ul>
+        <li>不给 schema 加 <code>type: "confirm" | "choice" | "multi" | "form"</code>。形态由 options + multi_select 推出来，未知形态退化成通用选项列表。</li>
+        <li>不做独立模态框，也不把提问塞进右栏。它是对话的一部分。</li>
+        <li>不单独存一份“问题状态”。未答问题从消息投影；pending-ask 只覆盖提交前的窗口。</li>
+        <li>不把 <code>confirm</code> 合并进提问卡。沉默时两者的安全默认相反（ask → pending，confirm → 拒绝），答案形状与副作用也不同；共用视觉外壳，不共用契约。</li>
+        <li>不做双窗口。协议已经用 callId + stale 准备好了，这一版的壳只有一个窗口。</li>
+        <li>不做点击即提交。点击只选中；Enter 是键盘用户的快捷路径。</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer class="footer">
+    <b>下一步</b>：你确认原型与这三步顺序后，我先落第一步的契约与工具，再上计时与持久化。界面里如果有想改的间距、措辞或状态，直接在这页上批注。
+  </footer>
+</div>
+
+<script>
+(function () {
+  const REC_RE = /[（(]\s*(?:推荐|recommended)\s*[)）]\s*$/i;
+  const STORE = "tm.ask.prototype.v3";
+
+  const SINGLE_QUESTIONS = [
+    {
+      id: "focus",
+      header: "第 4 章 · 重心",
+      question: "沈越第一次进县城，这一章的重心放在哪？",
+      options: [
+        { label: "先写他眼里的县城（推荐）", description: "把第一个新场景立住；节奏慢一点，人物关系往后放。" },
+        { label: "先写他和牙人的拉扯", description: "冲突来得快；县城只能借他的眼睛带过去。" },
+        { label: "先写他藏起的那件事", description: "伏笔先埋；这一章的爽感会弱一些。" }
+      ]
+    },
+    {
+      id: "artifacts",
+      header: "这一章要落的东西",
+      question: "除了正文，这一章还要落哪些东西？（可多选）",
+      multiSelect: true,
+      options: [
+        { label: "角色卡 · 牙人陈六", description: "这一章第一次正面出场，卡要立在正文之前。" },
+        { label: "现状回写 · 沈越", description: "他从县衙出来之后，处境变了。" },
+        { label: "伏笔账 · 那封没寄出的信", description: "这一章埋，第三卷收。" },
+        { label: "章节流水 · 第 4 章", description: "写完正文顺手记一行。" }
+      ]
+    }
+  ];
+
+  const LONG_QUESTIONS = [
+    {
+      id: "weight",
+      header: "第 4 章 · 取舍",
+      question: "这一章要接三条线：沈越第一次进县城、牙人陈六第一次正面出场、还有那封没寄出的信。\n\n前两条可以合成一个场景：他在城门口被拦下，陈六替他解了围，代价是欠下一个人情。第三条只能贴着沈越的视线走——他看见驿站的旗，想起信，但不解释。\n\n现在的问题是重心。放进这一章的字数只够把一件事写透：\n\n- 写县城，世界立得住，但陈六会变成一个带路的人；\n- 写陈六，关系立得住，但县城会退成背景；\n- 写信，伏笔立得住，但这一章的当下会显得慢。\n\n你希望读者合上这一章时，记住的是哪一个？",
+      options: [
+        { label: "县城先立住（推荐）", description: "读者跟着沈越的眼睛走一遍城门、街市、衙门口；陈六只露一面，关系留到下一章。" },
+        { label: "陈六先立住", description: "城门口那场拉扯写满；县城借他的嘴和沈越的眼睛带过去。" },
+        { label: "那封信先立住", description: "这一章从驿站开始，县城只是背景；伏笔最强，当下最慢。" },
+        { label: "三条线各给一段", description: "每一条都点到，但每一条都不深；适合过渡章，不适合第一次进县城。" },
+        { label: "先写县衙里的规矩", description: "把官府的秩序立住；沈越和陈六都退成观察者。" },
+        { label: "先写他身上的钱", description: "用钱串起城门、牙人、驿站的三个价码；最具体，但格局最小。" }
+      ]
+    }
+  ];
+
+  const SCENARIOS = {
+    single: {
+      questions: SINGLE_QUESTIONS,
+      preselect: true
+    },
+    multi: {
+      questions: [
+        {
+          id: "keep",
+          header: "这一章先保住什么",
+          question: "这一章你最想先保住哪几样？（可多选）",
+          multiSelect: true,
+          options: [
+            { label: "沈越第一次看见县城", description: "新场景的第一次亮相，后面几章都要靠它。" },
+            { label: "陈六的第一次正面出场", description: "他的说话方式要在这里立住。" },
+            { label: "那封信的第一次露头", description: "只给一个物件，不解释。" },
+            { label: "县衙里的规矩", description: "官府的秩序，后面要反复用。" }
+          ]
+        }
+      ],
+      preselect: false
+    },
+    long: {
+      questions: LONG_QUESTIONS,
+      preselect: true
+    },
+    timeout: {
+      questions: [SINGLE_QUESTIONS[0]],
+      preselect: true,
+      pending: true,
+      pendingReason: "timeout"
+    },
+    history: {
+      questions: SINGLE_QUESTIONS,
+      preselect: true,
+      submitted: true,
+      hidden: true,
+      draftOverrides: {
+        artifacts: {
+          selected: ["角色卡 · 牙人陈六", "伏笔账 · 那封没寄出的信"],
+          custom: "",
+          skipped: false
+        }
+      }
+    }
+  };
+
+  const dock = document.getElementById("tm-dock");
+  const thread = document.getElementById("tm-thread");
+  const scroller = document.getElementById("tm-scroll");
+  const app = document.getElementById("tm-app");
+  const composer = document.querySelector(".tm-composer");
+  const toastEl = document.getElementById("tm-toast");
+  const themeBtn = document.getElementById("btn-theme");
+  const reloadBtn = document.getElementById("btn-reload");
+  const timeoutBtn = document.getElementById("btn-timeout");
+  const resetBtn = document.getElementById("btn-reset");
+  const tabs = Array.from(document.querySelectorAll(".tab"));
+
+  let state = null;
+  let toastTimer = 0;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  function inlineMd(s) {
+    return s
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+
+  function md(text) {
+    const paragraphs = esc(text).split(/\n{2,}/);
+    return paragraphs.map((p) => {
+      const lines = p.split("\n");
+      if (lines.length > 1 && lines.every((l) => l.startsWith("- "))) {
+        return "<ul>" + lines.map((l) => "<li>" + inlineMd(l.slice(2)) + "</li>").join("") + "</ul>";
+      }
+      return "<p>" + lines.map(inlineMd).join("<br>") + "</p>";
+    }).join("");
+  }
+
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+  function initState(id, opts) {
+    opts = opts || {};
+    const sc = SCENARIOS[id];
+    const draft = {};
+    for (const q of sc.questions) {
+      draft[q.id] = { selected: [], custom: "", skipped: false };
+      if (sc.preselect) {
+        const rec = (q.options || []).find((o) => REC_RE.test(o.label));
+        if (rec) draft[q.id].selected = [rec.label];
+      }
+    }
+    for (const qid of Object.keys(sc.draftOverrides || {})) {
+      if (draft[qid]) Object.assign(draft[qid], clone(sc.draftOverrides[qid]));
+    }
+    const base = {
+      scenario: id,
+      page: 0,
+      draft: draft,
+      hidden: !!sc.hidden,
+      held: false,
+      pausedRemaining: null,
+      pending: !!sc.pending,
+      pendingReason: sc.pendingReason || "",
+      submitted: !!sc.submitted,
+      deadline: Date.now() + 90000,
+      focusIndex: 0,
+      appTheme: opts.appTheme || "light",
+      historyOpen: true
+    };
+    if (base.pending) base.deadline = Date.now() - 1000;
+    return base;
+  }
+
+  function questions() { return SCENARIOS[state.scenario].questions; }
+  function question() { return questions()[state.page]; }
+  function draftOf(q) { return state.draft[q.id]; }
+
+  function hasDraft(qid) {
+    const d = state.draft[qid];
+    return !!d && (d.skipped || d.selected.length > 0 || d.custom.trim() !== "");
+  }
+  function allDrafted() { return questions().every((q) => hasDraft(q.id)); }
+  function firstUndrafted() { return questions().findIndex((q) => !hasDraft(q.id)); }
+  function remaining() {
+    if (state.held || state.pending || state.submitted) return null;
+    if (state.pausedRemaining !== null) return state.pausedRemaining;
+    return Math.max(0, state.deadline - Date.now());
+  }
+  function fmt(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (_) { /* 本机草稿不可用就算了 */ }
+  }
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !SCENARIOS[parsed.scenario] || !parsed.draft) return null;
+      return parsed;
+    } catch (_) { return null; }
+  }
+  function clearSave() {
+    try { localStorage.removeItem(STORE); } catch (_) { /* 同上 */ }
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2600);
+  }
+
+  function timerNoteHTML() {
+    if (state.submitted) return "";
+    if (state.pending) {
+      const why = state.pendingReason === "deferred" ? "已稍后" : "已超时";
+      return '<span class="note-pending">' + why + "。你现在回答，会作为一条新消息发给搭档。</span>";
+    }
+    const defer = ' · <button type="button" class="link" data-act="defer">稍后回答</button>';
+    if (state.held) return "不限时。搭档会一直等你。" + defer;
+    if (state.pausedRemaining !== null) return "已暂停（你正在看这道题），移开光标后继续计时。" + defer;
+    return fmt(state.deadline - Date.now()) +
+      ' 后自动继续 · <button type="button" class="link" data-act="slow">慢慢回答</button>' + defer;
+  }
+
+  function optionHTML(q, d) {
+    const multi = !!q.multiSelect;
+    return (q.options || []).map((o, i) => {
+      const checked = d.selected.includes(o.label);
+      const rec = REC_RE.test(o.label);
+      const label = o.label.replace(REC_RE, "").trim();
+      return '<button type="button" class="opt' + (checked ? " on" : "") + (multi ? " multi" : "") +
+        '" role="' + (multi ? "checkbox" : "radio") + '" aria-checked="' + checked +
+        '" data-label="' + esc(o.label) + '">' +
+        (multi
+          ? '<span class="box" aria-hidden="true">' + (checked ? "✓" : "") + "</span>"
+          : '<span class="num">' + (i + 1) + "</span>") +
+        '<span class="opt-main"><span class="opt-label">' + esc(label) +
+        (rec ? '<span class="rec">推荐</span>' : "") + "</span>" +
+        (o.description ? '<span class="opt-desc">' + esc(o.description) + "</span>" : "") +
+        "</span>" +
+        (!multi && checked ? '<span class="tick" aria-hidden="true">✓</span>' : "") +
+        "</button>";
+    }).join("");
+  }
+
+  const PEN = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M11.4 2.6l2 2L5.2 12.8H3.2v-2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+
+  function cardHTML() {
+    const q = question();
+    const d = draftOf(q);
+    const multi = !!q.multiSelect;
+    const total = questions().length;
+    const last = state.page === total - 1;
+    const customOn = d.custom.trim() !== "";
+    const forwardDisabled = last ? !allDrafted() : !hasDraft(q.id);
+    const forwardLabel = last ? (state.pending ? "回答（作为新消息）" : "提交") : "下一题";
+    const status = (state.page + 1) + " / " + total +
+      (state.pending ? (state.pendingReason === "deferred" ? " · 已稍后" : " · 已超时") : "");
+
+    return '<section class="ask" aria-label="搭档的提问">' +
+      '<header class="ask-head">' +
+        '<span class="ask-eyebrow">' + esc(q.header || "需要你定一下") + "</span>" +
+        '<span class="ask-status' + (state.pending ? " pending" : "") + '">' + status + "</span>" +
+        '<button type="button" class="ask-collapse" data-act="hide" title="收起（不会提交）" aria-label="收起提问">⌄</button>' +
+      "</header>" +
+      '<div class="ask-body">' +
+        '<div class="ask-q">' + md(q.question) + "</div>" +
+        '<div class="ask-options">' + optionHTML(q, d) + "</div>" +
+        '<div class="ask-custom' + (customOn ? " on" : "") + '">' +
+          (multi
+            ? '<button type="button" class="custom-box' + (customOn ? " on" : "") + '" aria-label="使用自定义答案" aria-pressed="' + customOn + '">' + (customOn ? "✓" : "") + "</button>"
+            : '<span class="pen">' + PEN + "</span>") +
+          '<textarea id="ask-custom" rows="1" placeholder="输入你的答案" aria-label="自定义答案">' + esc(d.custom) + "</textarea>" +
+        "</div>" +
+      "</div>" +
+      '<footer class="ask-foot">' +
+        '<div class="ask-note" id="ask-note">' + timerNoteHTML() + "</div>" +
+        '<div class="ask-actions">' +
+          '<div class="pager">' +
+            '<button type="button" class="pg" data-act="prev" aria-label="上一题"' + (state.page === 0 ? " disabled" : "") + ">‹</button>" +
+            '<span class="pg-count">' + (state.page + 1) + "/" + total + "</span>" +
+            '<button type="button" class="pg" data-act="next" aria-label="下一题"' + (last ? " disabled" : "") + ">›</button>" +
+          "</div>" +
+          '<span class="grow"></span>' +
+          '<button type="button" class="btn ghost" data-act="skip">' + (d.skipped ? "取消跳过" : "跳过") + "</button>" +
+          '<button type="button" class="btn primary" id="ask-forward" data-act="forward"' + (forwardDisabled ? " disabled" : "") + ">" + forwardLabel + "</button>" +
+        "</div>" +
+      "</footer>" +
+    "</section>";
+  }
+
+  function pillHTML() {
+    const r = remaining();
+    const timeText = state.pending
+      ? (state.pendingReason === "deferred" ? "已稍后" : "已超时")
+      : state.held ? "不限时" : fmt(r);
+    return '<button type="button" class="ask-pill" data-act="open" aria-label="打开提问">' +
+      '<span class="pill-q" aria-hidden="true">?</span>' +
+      '<span class="pill-main">搭档在等你回答 · ' + questions().length + " 个问题</span>" +
+      '<span class="pill-time" id="pill-time">' + timeText + "</span>" +
+      '<span class="pill-open">打开</span>' +
+    "</button>";
+  }
+
+  function historyHTML() {
+    const qs = questions();
+    const rows = qs.map((q) => {
+      const d = state.draft[q.id];
+      const parts = [];
+      if (d.skipped) {
+        parts.push('<span class="skip">当时跳过</span>');
+      } else {
+        for (const label of d.selected) {
+          parts.push('<span class="pick">' + esc(label.replace(REC_RE, "").trim()) + "</span>");
+        }
+        if (d.custom.trim()) parts.push('<span class="pick custom">' + esc(d.custom.trim()) + "</span>");
+        if (!parts.length) parts.push('<span class="skip">当时跳过</span>');
+      }
+      const text = q.question.length > 150 ? q.question.slice(0, 150) + "…" : q.question;
+      return '<div class="hist-q"><div class="hist-qtext">' + md(text) + "</div>" +
+        '<div class="hist-a">' + parts.join("") + "</div></div>";
+    }).join("");
+    return '<div class="hist">' +
+      '<button type="button" class="hist-head" data-act="history-toggle" aria-expanded="' + state.historyOpen + '">' +
+        '<span class="hist-check" aria-hidden="true">✓</span><span>提问 · 已回答</span>' +
+        '<span class="hist-sub">' + qs.length + ' 个问题</span>' +
+        '<span class="hist-chev">' + (state.historyOpen ? "⌄" : "›") + "</span>" +
+      "</button>" +
+      (state.historyOpen ? '<div class="hist-body">' + rows + "</div>" : "") +
+    "</div>";
+  }
+
+  function answerSummary() {
+    return questions().map((q) => {
+      const d = state.draft[q.id];
+      if (d.skipped) return "（跳过）";
+      const picks = d.selected.map((l) => l.replace(REC_RE, "").trim());
+      if (d.custom.trim()) picks.push(d.custom.trim());
+      return picks.length ? picks.join("、") : "（跳过）";
+    }).join("；");
+  }
+
+  function renderThread() {
+    let html = '<div class="tm-me"><div class="tm-bubble">写第 4 章。让他第一次进县城，别急着见官。</div></div>' +
+      '<div class="tm-say">我先看了一下第 3 章留下的现状，和第 4 章要接的线。县城的第一次出场有两种写法，都会影响后面两章的节奏。</div>' +
+      '<div class="tm-steps"><span class="tm-caret">▸</span>用了 3 步 · 查阅文档 · 提交章节规划</div>';
+    if (state.submitted) {
+      html += '<div class="tm-me"><div class="tm-bubble">' + esc(answerSummary()) + "</div></div>" +
+        '<div class="tm-say">收到。我按这个重心往下走。</div>' + historyHTML();
+    } else if (state.pending) {
+      html += '<div class="tm-say">那我先把这一轮停在这里。你回答之后我再往下走。</div>';
+    }
+    thread.innerHTML = html;
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  function syncComposer() {
+    composer.hidden = !(state.submitted || state.scenario === "history" || state.hidden);
+  }
+
+  function renderDock() {
+    syncComposer();
+    if (state.submitted || state.scenario === "history") {
+      dock.innerHTML = "";
+      return;
+    }
+    dock.innerHTML = state.hidden ? pillHTML() : cardHTML();
+  }
+
+  function refreshChrome() {
+    const q = question();
+    const d = draftOf(q);
+    const options = Array.from(dock.querySelectorAll(".opt"));
+    options.forEach((el, i) => {
+      const label = q.options[i].label;
+      const on = d.selected.includes(label);
+      el.classList.toggle("on", on);
+      el.setAttribute("aria-checked", String(on));
+      const tick = el.querySelector(".tick");
+      if (tick) tick.style.display = on ? "" : "none";
+      const box = el.querySelector(".box");
+      if (box) box.textContent = on ? "✓" : "";
+    });
+    const custom = dock.querySelector(".ask-custom");
+    if (custom) custom.classList.toggle("on", d.custom.trim() !== "");
+    const cb = dock.querySelector(".custom-box");
+    if (cb) {
+      cb.classList.toggle("on", d.custom.trim() !== "");
+      cb.setAttribute("aria-pressed", String(d.custom.trim() !== ""));
+      cb.textContent = d.custom.trim() !== "" ? "✓" : "";
+    }
+    const note = dock.querySelector("#ask-note");
+    if (note) note.innerHTML = timerNoteHTML();
+    const forward = dock.querySelector("#ask-forward");
+    if (forward) {
+      const total = questions().length;
+      const last = state.page === total - 1;
+      forward.disabled = last ? !allDrafted() : !hasDraft(q.id);
+      forward.textContent = last ? (state.pending ? "回答（作为新消息）" : "提交") : "下一题";
+    }
+    const status = dock.querySelector(".ask-status");
+    if (status) {
+      const total = questions().length;
+      status.textContent = (state.page + 1) + " / " + total +
+        (state.pending ? (state.pendingReason === "deferred" ? " · 已稍后" : " · 已超时") : "");
+      status.classList.toggle("pending", state.pending);
+    }
+  }
+
+  function renderAppTheme() {
+    app.setAttribute("data-theme", state.appTheme);
+    themeBtn.textContent = state.appTheme === "dark" ? "浅色原型" : "深色原型";
+  }
+
+  function renderTabs() {
+    tabs.forEach((t) => {
+      const on = t.dataset.scenario === state.scenario;
+      t.classList.toggle("on", on);
+      t.setAttribute("aria-selected", String(on));
+    });
+  }
+
+  function render() {
+    renderThread();
+    renderDock();
+    renderTabs();
+    renderAppTheme();
+    timeoutBtn.disabled = state.pending || state.submitted || state.scenario === "history";
+  }
+
+  function goPage(next) {
+    const total = questions().length;
+    if (next < 0 || next >= total) return;
+    state.page = next;
+    state.focusIndex = 0;
+    renderDock();
+    save();
+  }
+
+  function submit() {
+    if (!allDrafted()) {
+      const i = firstUndrafted();
+      if (i >= 0) {
+        state.page = i;
+        renderDock();
+        save();
+        toast("第 " + (i + 1) + " 题还没答，先补上。");
+      }
+      return;
+    }
+    const wasPending = state.pending;
+    state.submitted = true;
+    state.pending = false;
+    state.hidden = false;
+    render();
+    save();
+    toast(wasPending ? "已回答。搭档会在新的一轮里看到它。" : "已提交。搭档继续往下走。");
+  }
+
+  function deferAsk(reason) {
+    state.pending = true;
+    state.pendingReason = reason;
+    state.held = false;
+    state.pausedRemaining = null;
+    state.deadline = Date.now();
+    render();
+    save();
+    toast(reason === "deferred" ? "已转成 pending：搭档先停下，你随时可以回答。" : "已超时：问题还在，你随时可以回答。");
+  }
+
+  function forward() {
+    const total = questions().length;
+    if (state.page === total - 1) {
+      submit();
+      return;
+    }
+    if (!hasDraft(question().id)) {
+      toast("先选一项，或者点「跳过」。");
+      return;
+    }
+    goPage(state.page + 1);
+  }
+
+  function toggleSkip() {
+    const q = question();
+    const d = draftOf(q);
+    d.skipped = !d.skipped;
+    if (d.skipped) {
+      d.selected = [];
+      d.custom = "";
+    }
+    const total = questions().length;
+    if (d.skipped && state.page < total - 1) {
+      setTimeout(() => goPage(state.page + 1), 140);
+      return;
+    }
+    renderDock();
+    save();
+  }
+
+  dock.addEventListener("click", (e) => {
+    const opt = e.target.closest(".opt");
+    if (opt) {
+      const q = question();
+      const d = draftOf(q);
+      const label = opt.dataset.label;
+      if (q.multiSelect) {
+        d.selected = d.selected.includes(label)
+          ? d.selected.filter((x) => x !== label)
+          : d.selected.concat([label]);
+      } else {
+        d.selected = [label];
+        d.custom = "";
+      }
+      d.skipped = false;
+      refreshChrome();
+      save();
+      if (!q.multiSelect && state.page < questions().length - 1) {
+        setTimeout(() => goPage(state.page + 1), 160);
+      }
+      return;
+    }
+
+    const cb = e.target.closest(".custom-box");
+    if (cb) {
+      const ta = dock.querySelector("#ask-custom");
+      if (cb.classList.contains("on")) {
+        const d = draftOf(question());
+        d.custom = "";
+        if (ta) ta.value = "";
+        refreshChrome();
+        save();
+        if (ta) ta.focus();
+      } else if (ta) {
+        ta.focus();
+      }
+      return;
+    }
+
+    const act = e.target.closest("[data-act]");
+    if (!act) return;
+    const name = act.dataset.act;
+    if (name === "hide") { state.hidden = true; renderDock(); save(); return; }
+    if (name === "open") { state.hidden = false; renderDock(); save(); return; }
+    if (name === "slow") { state.held = true; state.pausedRemaining = null; renderDock(); save(); return; }
+    if (name === "defer") { deferAsk("deferred"); return; }
+    if (name === "skip") { toggleSkip(); return; }
+    if (name === "prev") { goPage(state.page - 1); return; }
+    if (name === "next") { goPage(state.page + 1); return; }
+    if (name === "forward") { forward(); return; }
+    if (name === "history-toggle") { state.historyOpen = !state.historyOpen; renderThread(); save(); return; }
+  });
+
+  dock.addEventListener("input", (e) => {
+    if (!e.target || e.target.id !== "ask-custom") return;
+    const q = question();
+    const d = draftOf(q);
+    d.custom = e.target.value;
+    if (!q.multiSelect) d.selected = [];
+    d.skipped = false;
+    if (e.target.value.trim() !== "") {
+      state.held = true;
+      state.pausedRemaining = null;
+    }
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 92) + "px";
+    refreshChrome();
+    save();
+  });
+
+  dock.addEventListener("keydown", (e) => {
+    if (e.isComposing) return;
+    const inCustom = e.target && e.target.id === "ask-custom";
+    if (inCustom) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        forward();
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      state.hidden = true;
+      renderDock();
+      save();
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const opts = Array.from(dock.querySelectorAll(".opt"));
+      if (!opts.length) return;
+      e.preventDefault();
+      state.focusIndex = (state.focusIndex + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+      opts[state.focusIndex].focus();
+      return;
+    }
+    if (e.key === "Enter") {
+      const opt = e.target.closest(".opt");
+      if (!opt) return;
+      e.preventDefault();
+      opt.click();
+      setTimeout(() => {
+        if (allDrafted()) submit();
+        else {
+          const i = firstUndrafted();
+          if (i >= 0) {
+            state.page = i;
+            renderDock();
+            save();
+          }
+        }
+      }, 0);
+    }
+  });
+
+  dock.addEventListener("focusin", () => {
+    if (state.held || state.pending || state.submitted) return;
+    if (state.pausedRemaining === null) {
+      state.pausedRemaining = Math.max(0, state.deadline - Date.now());
+      const note = dock.querySelector("#ask-note");
+      if (note) note.innerHTML = timerNoteHTML();
+    }
+  });
+
+  dock.addEventListener("focusout", () => {
+    setTimeout(() => {
+      if (dock.contains(document.activeElement)) return;
+      if (state.pausedRemaining !== null && !state.held && !state.pending && !state.submitted) {
+        state.deadline = Date.now() + state.pausedRemaining;
+        state.pausedRemaining = null;
+        const note = dock.querySelector("#ask-note");
+        if (note) note.innerHTML = timerNoteHTML();
+        save();
+      }
+    }, 0);
+  });
+
+  thread.addEventListener("click", (e) => {
+    const act = e.target.closest("[data-act]");
+    if (!act) return;
+    if (act.dataset.act === "history-toggle") {
+      state.historyOpen = !state.historyOpen;
+      renderThread();
+      save();
+    }
+  });
+
+  tabs.forEach((t) => {
+    t.addEventListener("click", () => {
+      const id = t.dataset.scenario;
+      if (!SCENARIOS[id]) return;
+      state = initState(id, { appTheme: state.appTheme });
+      render();
+      save();
+    });
+  });
+
+  themeBtn.addEventListener("click", () => {
+    state.appTheme = state.appTheme === "dark" ? "light" : "dark";
+    renderAppTheme();
+    save();
+  });
+
+  reloadBtn.addEventListener("click", () => {
+    save();
+    const saved = load();
+    if (!saved) {
+      toast("本机没有草稿可恢复。");
+      return;
+    }
+    state = saved;
+    render();
+    const where = state.submitted ? "已回答" : state.hidden ? "已收起" : "第 " + (state.page + 1) + " 题";
+    toast("已从本机草稿恢复：" + where + "，选择还在。");
+  });
+
+  timeoutBtn.addEventListener("click", () => {
+    if (state.pending || state.submitted) return;
+    deferAsk("timeout");
+  });
+
+  resetBtn.addEventListener("click", () => {
+    clearSave();
+    state = initState(state.scenario, { appTheme: state.appTheme });
+    render();
+    toast("已重置这一屏。");
+  });
+
+  setInterval(() => {
+    if (!state || state.submitted || state.pending || state.held) return;
+    if (state.pausedRemaining !== null) return;
+    if (Date.now() >= state.deadline) {
+      state.pending = true;
+      state.pendingReason = "timeout";
+      render();
+      save();
+      return;
+    }
+    const note = document.getElementById("ask-note");
+    if (note) note.innerHTML = timerNoteHTML();
+    const pillTime = document.getElementById("pill-time");
+    if (pillTime) pillTime.textContent = fmt(state.deadline - Date.now());
+  }, 500);
+
+  state = load() || initState("single", { appTheme: "light" });
+  render();
+})();
+</script>

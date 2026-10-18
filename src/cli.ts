@@ -9,7 +9,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { join } from "node:path";
 import { loadModelConfig, hasCredentials, talemateHome } from "./core/config";
-import type { LLMEvent, StoredMessage } from "./core/types";
+import type { AskAnswer, AskOutcome, AskRequest, LLMEvent, StoredMessage } from "./core/types";
 import { buildProjectStatus } from "./framework/report";
 import { createProject, loadProjectMeta } from "./storage/project";
 import { enumerateDocs, readDoc } from "./storage/corpus";
@@ -186,6 +186,53 @@ function flushThinking(): void {
   think = undefined;
 }
 
+/**
+ * 终端里的提问读取。序号选选项，直接输入文字 = 自定义答案，空行 = 跳过。
+ * timeout 在 REPL 里不生效：用户就在提示符前，超时只会把还在想的人打断。
+ */
+async function readAsk(req: AskRequest): Promise<AskOutcome> {
+  const answers: AskAnswer[] = [];
+  for (const q of req.questions) {
+    if (q.header) console.log(`\n${DIM}${q.header}${RESET}`);
+    console.log(`\n${YELLOW}❓ 主编提问${RESET}：${q.question}`);
+    if (q.options?.length) {
+      q.options.forEach((o, i) =>
+        console.log(`   ${i + 1}. ${o.label}${o.description ? ` ${DIM}— ${o.description}${RESET}` : ""}`),
+      );
+      console.log(
+        `   ${DIM}${q.multiSelect ? "可多选，序号用逗号分隔" : "输入序号"}；直接打字 = 自定义答案；回车 = 跳过${RESET}`,
+      );
+    }
+    const ans = (await rl.question("   > ")).trim();
+    if (ans === "") {
+      answers.push({ id: q.id, selected: [] });
+      continue;
+    }
+    if (q.options?.length) {
+      const picked: string[] = [];
+      const rest: string[] = [];
+      for (const token of ans.split(/[\s,，]+/).filter(Boolean)) {
+        const n = Number(token);
+        if (Number.isInteger(n) && n >= 1 && n <= q.options.length) picked.push(q.options[n - 1].label);
+        else rest.push(token);
+      }
+      if (picked.length === 0) {
+        answers.push({ id: q.id, selected: [], custom: ans });
+        continue;
+      }
+      const selected = q.multiSelect === true ? picked : picked.slice(0, 1);
+      answers.push({
+        id: q.id,
+        selected,
+        ...(rest.length > 0 ? { custom: rest.join(" ") } : {}),
+      });
+      continue;
+    }
+    answers.push({ id: q.id, selected: [], custom: ans });
+  }
+  return { kind: "answered", answers };
+}
+
 function makeIO(): UserIO {
   const onEvent = (e: LLMEvent): void => {
     if (e.type !== "reasoning.delta") flushThinking(); // 任何别的事件都表示这段推理已经结束
@@ -253,12 +300,7 @@ function makeIO(): UserIO {
       if (ans === "a" || ans === "always") return "always";
       return ans === "y" || ans === "yes" ? "once" : "no";
     },
-    askUser: async (question, options) => {
-      console.log(`\n${YELLOW}❓ 主编提问${RESET}：${question}`);
-      if (options?.length) console.log(`   选项：${options.map((o, i) => `${i + 1}. ${o}`).join("  ")}`);
-      const ans = (await rl.question("   > ")).trim();
-      return ans;
-    },
+    askUser: (req) => readAsk(req),
   };
 }
 

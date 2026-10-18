@@ -23,10 +23,14 @@ import type { ModeDef } from "../agent/modes";
 import type { Action, PermissionConfig, Rule, Ruleset } from "../permission";
 import type {
   AgentDef,
+  AskAnswer,
+  AskOutcome,
+  AskRequest,
   AssistantPart,
   ConfirmReply,
   LLMEvent,
   ModelConfig,
+  PendingAskRecord,
   PendingProposal,
   ProjectMeta,
   StoredMessage,
@@ -47,14 +51,26 @@ import { readDoc, scanDocs } from "../storage/corpus";
 import {
   appendMessage,
   appendUsage,
+  clearPendingAsk,
   createSession,
   loadMessages,
   loadModelWindow,
+  loadPendingAsk,
   loadSessionMeta,
+  savePendingAsk,
 } from "../storage/session-store";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
 import { executeToolPart } from "../tool/runner";
+import {
+  mergeJournalAsk,
+  openAsks,
+  renderAnswerMessage,
+  renderOpenAskNote,
+  settledCallIds,
+  validateAnswers,
+  type OpenAsk,
+} from "./asks";
 import { compact, isOverBudget } from "./compaction";
 import { runLoop } from "./loop";
 
@@ -63,7 +79,8 @@ export interface UserIO {
   onEvent(e: LLMEvent): void;
   /** `always` = 这一类以后都别问（进会话级 approved 表）。这个答复是权限系统唯一的记忆来源。 */
   confirm(action: string, summary: string): Promise<ConfirmReply>;
-  askUser(question: string, options?: string[]): Promise<string>;
+  /** answered 才带答案；pending 表示这一轮先停、问题仍可回答；cancelled 是拒绝/没有回答方 */
+  askUser(req: AskRequest): Promise<AskOutcome>;
 }
 
 /**
@@ -123,14 +140,17 @@ export function renderPermissionView(
   return out.join("\n");
 }
 
-/** 自动 IO：一律放行（`once`，不写 approved——无人值守时不该替用户改规则）、askUser 返回占位 */
+/**
+ * 自动 IO：一律放行（`once`，不写 approved——无人值守时不该替用户改规则）。
+ * 提问没有回答方，必须 fail closed：返回 cancelled，而不是编一个答案继续。
+ */
 export const autoIO: UserIO = {
   onEvent() {},
   async confirm() {
     return "once";
   },
-  async askUser(q) {
-    return `（自动答复：${q}）`;
+  async askUser(): Promise<AskOutcome> {
+    return { kind: "cancelled", reason: "no-answerer" };
   },
 };
 
@@ -299,6 +319,15 @@ export class Session {
   readonly pending = new Map<string, PendingProposal>();
 
   /**
+   * 提问已开始、助手消息还没提交时的那一条 write-ahead 记录。
+   * 助手消息一提交，问题就从 tool part 投影出来，这条随即清掉（见 `hydrate`）。
+   */
+  private pendingAskRecord?: PendingAskRecord;
+
+  /** 有没有一轮正在跑。迟到回答要排队，不能在同一个会话上并发开两轮。 */
+  private running = false;
+
+  /**
    * 当前会话模式（见 agent/modes.ts）。只在内存里——和 pending 同生命周期，进程重启即回默认模式。
    * 硬保证不靠它：三向审阅的前置是模式，但那条链的"停"靠 `propose-design` 自己的 `halt`，丢了也不漏。
    */
@@ -411,9 +440,25 @@ export class Session {
 
   /** 跑完一轮：输入 → runLoop（agent 循环）→ 返回最终 assistant 正文 */
   async post(input: string, opts?: { agentId?: string }): Promise<string> {
-    const agentId = opts?.agentId ?? this.agentId;
-    const agent = this.agents.get(agentId);
+    const agent = this.agents.get(opts?.agentId ?? this.agentId);
+    // 三向裁决只认用户这轮的话；迟到回答不是对提案的裁决，绝不能在这里被当成“同意”
     this.markPendingApproval(input);
+    return this.runTurn(agent, input, (text, agId) => this.persistUser(text, agId));
+  }
+
+  /** 迟到回答已经落成一条用户消息，这里只跑模型这一轮，不再提交 user 消息。 */
+  async resumeAfterAnswer(): Promise<string> {
+    return this.runTurn(this.agent, "", async () => {});
+  }
+
+  /** 一轮的真身。`post` 与 `resumeAfterAnswer` 的差别只在“user 消息由谁落盘”。 */
+  private async runTurn(
+    agent: AgentDef,
+    input: string,
+    commitUser: (text: string, agentId: string) => Promise<void>,
+  ): Promise<string> {
+    if (this.running) throw new Error("会话正在运行，不能并发开第二轮");
+    this.running = true;
 
     // 每回合一个新的控制器。`abort()` 是一次性的——信号一旦中止就**永远**中止，不重建的话
     // 用户点过一次「停止」，这个会话就再也发不出去：之后每一轮的 signal 一上来就是已中止的。
@@ -426,7 +471,7 @@ export class Session {
         steps: agent.steps,
         onEvent: (e) => this.forwardEvent(e),
         maybeCompact: () => this.maybeCompact(),
-        commitUser: (text, agId) => this.persistUser(text, agId),
+        commitUser,
         buildRequest: (ag) => this.buildRequest(ag),
         generate: (req, o) =>
           chat({
@@ -446,7 +491,7 @@ export class Session {
             const sub = (call.input as { agent?: string }).agent ?? call.name;
             this.io.onEvent({ type: "scope.open", label: `task → ${sub}` });
           }
-          const part = await executeToolPart(agentId, call, this.tools, this.makeContext(agent));
+          const part = await executeToolPart(ag.id, call, this.tools, this.makeContext(ag, call.id));
           if (isTask) this.io.onEvent({ type: "scope.close", label: "task" });
           this.markPlanDone(call, part);
           const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
@@ -456,6 +501,7 @@ export class Session {
             name: call.name,
             output: out,
             change: part.type === "tool" ? part.change : undefined,
+            ask: part.type === "tool" ? part.ask : undefined,
           });
           return part;
         },
@@ -466,7 +512,68 @@ export class Session {
       // 一次正常结束，免得壳把"用户主动停的"报成 [错误]。
       if (ctrl.signal.aborted) return "";
       throw err;
+    } finally {
+      this.running = false;
     }
+  }
+
+  get isBusy(): boolean {
+    return this.running;
+  }
+
+  /** 会话打开时把 journal 接回来；助手消息已经提交的同一条记录直接清掉。 */
+  async hydrate(): Promise<void> {
+    const journal = await loadPendingAsk(this.projectId, this.sessionId);
+    if (journal === undefined) return;
+    const messages = await this.ensureLoaded();
+    const committed = messages.some(
+      (m) => m.parts?.some((p) => p.type === "tool" && p.ask?.callId === journal.callId) === true,
+    );
+    if (committed) {
+      await clearPendingAsk(this.projectId, this.sessionId);
+      return;
+    }
+    this.pendingAskRecord = journal;
+  }
+
+  /**
+   * 仍然开着、可回答的提问：消息投影 + journal。顺序即提问先后。
+   *
+   * 扫**全部**消息而不是模型窗口：问题可能已经被压缩掉，但它仍然开着。压缩只影响模型上下文，
+   * 不该让一个没答的问题从界面上消失。
+   */
+  async openAskViews(): Promise<OpenAsk[]> {
+    const messages = await this.ensureLoaded();
+    const settled = settledCallIds(messages);
+    const journal =
+      this.pendingAskRecord !== undefined && !settled.has(this.pendingAskRecord.callId)
+        ? this.pendingAskRecord
+        : undefined;
+    return mergeJournalAsk(openAsks(messages), journal);
+  }
+
+  /**
+   * 把一条迟到回答落成用户消息，并清掉 journal；不跑模型。
+   * 跑模型由壳在后台调 `resumeAfterAnswer`——IPC 不该等一整轮生成。
+   */
+  async preparePendingAnswer(
+    callId: string,
+    answers: AskAnswer[],
+  ): Promise<"ok" | "stale" | "invalid"> {
+    const open = await this.openAskViews();
+    const ask = open.find((a) => a.callId === callId);
+    if (ask === undefined) return "stale";
+    if (validateAnswers(ask.questions, answers) !== undefined) return "invalid";
+    const m = await appendMessage(this.projectId, this.sessionId, {
+      role: "user",
+      agent: this.agentId,
+      text: renderAnswerMessage(ask.questions, answers, callId),
+      answersTo: { callId, questions: ask.questions, answers },
+    });
+    await this.push(m);
+    await clearPendingAsk(this.projectId, this.sessionId);
+    if (this.pendingAskRecord?.callId === callId) this.pendingAskRecord = undefined;
+    return "ok";
   }
 
   /**
@@ -530,6 +637,11 @@ export class Session {
     return this.mode ? MODES[this.mode] : undefined;
   }
 
+  /** 壳给新会话定默认权限模式（见设置里的「权限」）；运行中切模式仍走 ctx.setMode。 */
+  setMode(mode: string | undefined): void {
+    this.mode = mode;
+  }
+
   /** 见 `PermissionView`：`rulesetFor` 只给结论，这里要的是每一层各自的来源。 */
   permissionView(): PermissionView {
     if (this.parentRuleset) {
@@ -579,8 +691,10 @@ export class Session {
     // 模式注记排在角色壳之后、状态注记之前：它是"眼下在干什么"，压过角色的默认姿态。
     const mode = this.mode ? MODES[this.mode] : undefined;
     const note = renderPendingNote(this.pending);
+    // 未答提问每轮都在场：压缩或换轮之后，模型仍要知道“有个问题还挂着，别把沉默当同意”
+    const askNote = renderOpenAskNote(await this.openAskViews());
     const prose = await this.proseWindow(agent);
-    return [base, mode?.note, note, prose].filter(Boolean).join("\n\n");
+    return [base, mode?.note, note, askNote, prose].filter(Boolean).join("\n\n");
   }
 
   /**
@@ -597,11 +711,12 @@ export class Session {
     return buildProseBrief(this.projectId, plan.chapter);
   }
 
-  private makeContext(agent: AgentDef): ToolContext {
+  private makeContext(agent: AgentDef, callId: string): ToolContext {
     return {
       projectId: this.projectId,
       sessionId: this.sessionId,
       agent: agent.id,
+      callId,
       signal: this.abort.signal,
       // 原始确认口：ask 拿它当弹窗，confirm 工具也用它。其余工具不该碰。
       confirm: (action, summary) => this.io.confirm(action, summary),
@@ -619,12 +734,35 @@ export class Session {
         }
         return "allow";
       },
-      askUser: (q, options) => this.io.askUser(q, options),
+      askUser: async (req) => {
+        const pending: PendingAskRecord = {
+          callId: req.callId,
+          questions: req.questions,
+          at: Date.now(),
+        };
+        // journal 是崩溃窗口的保险，不是提问成功的前提；写不动也不挡这次提问
+        await savePendingAsk(this.projectId, this.sessionId, pending).catch(() => {});
+        try {
+          const outcome = await this.io.askUser({
+            ...req,
+            signal: req.signal ?? this.abort.signal,
+          });
+          if (outcome.kind === "pending") {
+            this.pendingAskRecord = pending;
+          } else {
+            this.pendingAskRecord = undefined;
+            await clearPendingAsk(this.projectId, this.sessionId).catch(() => {});
+          }
+          return outcome;
+        } catch (err) {
+          this.pendingAskRecord = undefined;
+          await clearPendingAsk(this.projectId, this.sessionId).catch(() => {});
+          throw err;
+        }
+      },
       showProposal: (text) => this.io.onEvent({ type: "proposal", text }),
       // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
-      setMode: (m) => {
-        this.mode = m;
-      },
+      setMode: (m) => this.setMode(m),
       getMode: () => this.mode,
       getProposal: (name) => this.pending.get(name),
       setProposal: (p) => {
@@ -743,5 +881,7 @@ export async function openSession(deps: SessionDeps): Promise<Session> {
     profile: deps.profile ?? stored?.profile,
   });
   if (!deps.sessionId) await session.saveMeta(deps.title);
+  // 续聊/重开：把“提问已开始、助手消息还没提交”的那条 journal 接回来
+  await session.hydrate();
   return session;
 }

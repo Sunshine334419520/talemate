@@ -28,7 +28,8 @@ const io: UserIO = {
     if (e.type === "proposal") proposals.push(e.text);
   },
   confirm: async () => "once",
-  askUser: async (q) => `（自动答复：${q}）`,
+  // 无人值守时没有回答方：fail closed，不能编一个答案继续
+  askUser: async () => ({ kind: "cancelled", reason: "no-answerer" }),
 };
 
 try {

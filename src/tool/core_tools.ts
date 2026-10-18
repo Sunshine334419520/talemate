@@ -8,8 +8,15 @@
  */
 import { DRAFT_MODE } from "../agent/modes";
 import { PLAN_KEY } from "../core/types";
+import type { AskOutcome, AskRecord } from "../core/types";
 import { renderPlan, savePlan } from "../framework/plan";
 import { readPrompt } from "../prompts";
+import {
+  parseAskArgs,
+  renderAskResult,
+  renderCancelledResult,
+  renderPendingResult,
+} from "../session/asks";
 import { defineTool, type RegisteredTool } from "./define";
 
 const P = (id: string) => readPrompt(`tools/${id}`);
@@ -68,37 +75,107 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
   },
 });
 
-/** ask-user：向用户要创作决策，不是审批——审批走 confirm。 */
-export const askUserTool: RegisteredTool<{ question: string; options?: string[] }> = defineTool<{
-  question: string;
-  options?: string[];
-}>({
+/**
+ * ask-user：向用户要创作决策，不是审批——审批走 confirm。
+ *
+ * 一次 1–3 题，可以带选项、多选、自定义答案。`pending` 是这一轮先停、问题仍可回答，
+ * 不是跳过更不是同意——所以它必须 halt；交付层负责在超时/稍后/中断时给出这个结局。
+ */
+type AskUserArgs = { questions?: unknown; timeout?: unknown };
+
+export const askUserTool: RegisteredTool<AskUserArgs> = defineTool<AskUserArgs>({
   id: "ask-user",
   description: P("ask-user"),
   input: {
     type: "object",
     properties: {
-      question: { type: "string", description: "The creative question to ask the user" },
-      options: {
+      questions: {
         type: "array",
-        items: { type: "string" },
-        description: "Optional choices for a quick pick (max 4)",
+        description:
+          "1–3 questions. Ask only what cannot be inferred from the project or the conversation. " +
+          "A recommended option goes first and ends its label with （推荐）.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Stable id for this question; echoed in the answer." },
+            header: {
+              type: "string",
+              description: 'Optional short heading for the question, such as "Confirm" or "Choose Mode".',
+            },
+            question: { type: "string", description: "The specific question to ask the user, in their language." },
+            options: {
+              type: "array",
+              description:
+                "Optional choices. If you recommend one, put it first and end its label with （推荐）.",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string", description: "Short user-facing option label." },
+                  description: {
+                    type: "string",
+                    description: "One sentence explaining the tradeoff or impact.",
+                  },
+                },
+                required: ["label"],
+              },
+            },
+            multi_select: {
+              type: "boolean",
+              description: "Whether the user may select more than one option. Defaults to false.",
+            },
+          },
+          required: ["id", "question"],
+        },
+      },
+      timeout: {
+        type: "number",
+        description:
+          "Seconds to wait for the whole batch (default 120); omit unless the user specifies a duration. " +
+          "Use -1 only when an answer is required before proceeding.",
       },
     },
-    required: ["question"],
+    required: ["questions"],
   },
   permission: "question",
   async execute(args, ctx) {
-    const question = args.question?.trim();
-    if (!question) {
-      return { output: `ask-user 缺少必填 question（收到：${JSON.stringify(args).slice(0, 200)}）——请用合法 JSON 带 question 重新调用。` };
-    }
+    const parsed = parseAskArgs(args);
+    if (!parsed.ok) return { output: parsed.error };
     // 这里只用 check 求值、不弹窗——ask 会先弹一句"允许提问吗"，再弹真正的问题
     if (ctx.check("question", "*") === "deny") {
       return { output: "当前不允许打断用户（子代理不在场，或模式禁了提问）——把问题留在返回值里带回去。" };
     }
-    const answer = await ctx.askUser(question, args.options);
-    return { output: `用户回答：${answer}`, metadata: { answer } };
+
+    const outcome: AskOutcome = await ctx.askUser({
+      callId: ctx.callId,
+      questions: parsed.value.questions,
+      timeoutMs: parsed.value.timeoutMs,
+      signal: ctx.signal,
+    });
+    const record: AskRecord = {
+      callId: ctx.callId,
+      questions: parsed.value.questions,
+      outcome: outcome.kind,
+      ...(outcome.kind === "answered" ? { answers: outcome.answers } : {}),
+      at: Date.now(),
+    };
+
+    if (outcome.kind === "answered") {
+      return { output: renderAskResult(record), ask: record, metadata: { outcome: "answered", callId: ctx.callId } };
+    }
+    if (outcome.kind === "pending") {
+      return {
+        output: renderPendingResult(record),
+        ask: record,
+        halt: true,
+        metadata: { outcome: "pending", callId: ctx.callId },
+      };
+    }
+    return {
+      output: renderCancelledResult(record),
+      ask: record,
+      halt: true,
+      metadata: { outcome: "cancelled", callId: ctx.callId },
+    };
   },
 });
 

@@ -45,9 +45,12 @@ export async function executeToolPart(
       output: res.output,
       // 改动记录只给界面汇总，模型上下文不读它
       change: res.change,
+      // 提问的结构化记录随 tool part 落盘；界面回看与 pending 的回答路由都靠它
+      ask: res.ask,
       // 只有成功才允许结束本回合：被拒/校验失败必须留给模型同轮自纠，
-      // 否则循环会死在一个本可自愈的错误上（见 prompt 工具返回的"可用小节"这类自愈文案）
-      halt: tool.halt === true,
+      // 否则循环会死在一个本可自愈的错误上（见 prompt 工具返回的"可用小节"这类自愈文案）。
+      // 工具可以按结果覆盖（ask-user 的 pending / cancelled 必须停）。
+      halt: res.halt ?? tool.halt === true,
       time: { ...base.time, completed: Date.now() },
     };
   } catch (e) {

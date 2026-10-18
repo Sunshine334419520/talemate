@@ -466,6 +466,7 @@ function makeCtx(
     projectId,
     sessionId: "test-session",
     agent: "mate",
+    callId: "test-call",
     signal: new AbortController().signal,
     confirm: async () => confirmReply,
     check: (permission, pattern) => evaluate(permission, pattern, ...rules, approved).action,
@@ -479,7 +480,7 @@ function makeCtx(
       }
       return "allow";
     },
-    askUser: async () => "（测试）",
+    askUser: async () => ({ kind: "answered", answers: [] }),
     showProposal: (text) => {
       shown.push(text);
     },

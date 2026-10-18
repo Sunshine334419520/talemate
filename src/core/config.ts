@@ -114,7 +114,13 @@ export function projectPaths(home: string, projectId: string) {
 
 export function sessionPaths(home: string, projectId: string, sessionId: string) {
   const dir = join(home, "novels", projectId, ".talemate", "sessions", sessionId);
-  return { dir, meta: join(dir, "session.json"), messages: join(dir, "messages.jsonl") };
+  return {
+    dir,
+    meta: join(dir, "session.json"),
+    messages: join(dir, "messages.jsonl"),
+    /** 提问已开始、助手消息还没提交时的 write-ahead 记录（见 session/asks.ts） */
+    pendingAsk: join(dir, "pending-ask.json"),
+  };
 }
 
 /** 从环境变量加载项目默认模型（各角色可覆盖） */

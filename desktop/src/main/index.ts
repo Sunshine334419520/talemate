@@ -25,6 +25,7 @@ import { readDoc } from "../../../src/storage/corpus";
 import { writeProjectMeta } from "../../../src/storage/project";
 import { docTree } from "../../../src/framework/anchor";
 import { listTurnChanges } from "./changes";
+import { resolveWindowMaterial } from "./material";
 import { chapterNumberOf } from "../../../src/framework/plan";
 import { openSession, renderPermissionView, type Session, type UserIO } from "../../../src/session/session";
 import { buildProjectStatus } from "../../../src/framework/report";
@@ -37,6 +38,8 @@ import { DOC_ROOTS, docAbs } from "../../../src/storage/corpus";
 import { projectPaths, rootAbs, talemateHome } from "../../../src/core/config";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import type {
+  AskReply,
+  AskView,
   DocNode,
   ModelProfile,
   ProfileView,
@@ -46,6 +49,7 @@ import type {
   SessionRow,
   SessionState,
 } from "../shared/api";
+import { createAskBroker } from "./ask_broker";
 
 const SELFTEST = process.env.TALEMATE_DESKTOP_SELFTEST ?? "";
 
@@ -57,15 +61,68 @@ let watchedProjectId: string | undefined;
 /** 这一次开的是新会话——第一句话发出去时用它命名，只做一次 */
 let freshSession = false;
 
-/** 等渲染层回答的请求（确认、提问）：一条一个 id，答完即删。 */
-const waiting = new Map<string, (value: string) => void>();
+/** 等渲染层点头的审批（确认）。提问的等待在 ask_broker.ts，那里可离线测。 */
+const waitingConfirms = new Map<string, (v: ConfirmReply) => void>();
+/** 这一轮还在跑时收到的迟到回答：等 idle 再送达，不在同一会话上并发开两轮。 */
+const answerQueue: AskReply[] = [];
+let drainingAnswers = false;
 
-function ask(channel: string, payload: Record<string, unknown>): Promise<string> {
+const askBroker = createAskBroker({
+  send: (view) => win?.webContents.send("tm:ask", view),
+  sendPending: (p) => win?.webContents.send("tm:ask-pending", p),
+  canAsk: () => win !== undefined && !win.isDestroyed(),
+});
+
+function askConfirm(channel: string, payload: Record<string, unknown>): Promise<ConfirmReply> {
+  // 没有窗口 = 没有回答方。审批必须 fail closed：不挂死，也不替用户点头。
+  if (win === undefined || win.isDestroyed()) return Promise.resolve("no");
   const id = randomUUID();
   return new Promise((resolve) => {
-    waiting.set(id, resolve);
+    waitingConfirms.set(id, resolve);
     win?.webContents.send(channel, { id, ...payload });
   });
+}
+
+/**
+ * 回答只走这一条路：工具调用还开着 → resolve 原 Promise；已经 pending → 落一条用户消息并开新回合。
+ * 会话正在跑时先排队——同一个 Session 不能并发开两轮。
+ */
+async function submitAskAnswer(reply: AskReply): Promise<"ok" | "stale" | "invalid" | "queued"> {
+  const verdict = askBroker.answer(reply);
+  if (verdict === "answered") return "ok";
+  if (verdict === "invalid") return "invalid";
+  if (session === undefined) return "stale";
+  if (session.isBusy) {
+    answerQueue.push(reply);
+    return "queued";
+  }
+  const pending = await session.preparePendingAnswer(reply.callId, reply.answers);
+  if (pending === "ok") {
+    void session.resumeAfterAnswer().catch((err) => {
+      win?.webContents.send("tm:error", err instanceof Error ? err.message : String(err));
+    });
+  }
+  return pending;
+}
+
+async function drainAnswerQueue(): Promise<void> {
+  if (drainingAnswers || session === undefined || session.isBusy) return;
+  const next = answerQueue.shift();
+  if (next === undefined) return;
+  drainingAnswers = true;
+  try {
+    const verdict = await submitAskAnswer(next);
+    if (verdict === "ok" || verdict === "stale") {
+      win?.webContents.send("tm:ask-closed", { callId: next.callId });
+    } else if (verdict === "queued") {
+      answerQueue.unshift(next);
+    } else if (verdict === "invalid") {
+      win?.webContents.send("tm:error", "这条回答没有通过校验，请重新打开问题再答一次。");
+    }
+  } finally {
+    drainingAnswers = false;
+    if (answerQueue.length > 0) setTimeout(() => void drainAnswerQueue(), 0);
+  }
 }
 
 // ─── 取数口（全部现取，不缓存） ───
@@ -94,7 +151,11 @@ async function sessionsOf(projectId: string): Promise<SessionRow[]> {
 
 /** 顶栏那两个标记的当下值，现取——模式会在回合中间变（进/出草稿模式都是工具调用）。 */
 function sessionState(): SessionState {
-  return { mode: session?.currentMode?.title, pending: session?.pendingLabel };
+  return {
+    mode: session?.currentMode?.title,
+    pending: session?.pendingLabel,
+    permissionMode: session?.currentMode?.id === "accept-edits" ? "accept-edits" : "ask",
+  };
 }
 
 function pushSessionState(): void {
@@ -147,6 +208,15 @@ async function clearCurrentIf(projectId: string): Promise<void> {
 /** 壳自己的偏好文件。读失败一律当没有——偏好丢了只是回到默认值，不值得为它报错。 */
 function prefsFile(): string {
   return join(talemateHome(), "desktop.json");
+}
+
+/** 读壳的偏好；读失败一律当没有——偏好丢了只是回到默认值，不值得为它报错。 */
+async function readPrefs(): Promise<Prefs> {
+  try {
+    return JSON.parse(await readFile(prefsFile(), "utf-8")) as Prefs;
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -427,23 +497,18 @@ function registerHandlers(): void {
     session.model = { ...session.model, reasoning: effort as ModelConfig["reasoning"] };
   });
 
-  ipcMain.handle("prefs:get", async (): Promise<Prefs> => {
-    try {
-      return JSON.parse(await readFile(prefsFile(), "utf-8")) as Prefs;
-    } catch {
-      return {};
-    }
-  });
+  ipcMain.handle("prefs:get", (): Promise<Prefs> => readPrefs());
 
   ipcMain.handle("prefs:save", async (_e, patch: Prefs): Promise<void> => {
-    const now = await (async (): Promise<Prefs> => {
-      try {
-        return JSON.parse(await readFile(prefsFile(), "utf-8")) as Prefs;
-      } catch {
-        return {};
-      }
-    })();
+    const now = await readPrefs();
     await writeFile(prefsFile(), JSON.stringify({ ...now, ...patch }, null, 2), "utf-8");
+    // 外观是原生主题的一部分：改完立刻让标题栏、媒体查询与页面一起换
+    if (patch.appearance !== undefined) nativeTheme.themeSource = patch.appearance;
+    // 权限偏好同时作用于当前会话：对话框左侧那一格和设置里的这一格是同一个开关
+    if (patch.permissionMode !== undefined) {
+      session?.setMode(patch.permissionMode === "accept-edits" ? "accept-edits" : undefined);
+      pushSessionState();
+    }
   });
 
   /** 历史投影：进会话先拉这一次，之后靠事件增量（`architecture.md` 给薄 TUI 写下的那条）。 */
@@ -457,47 +522,92 @@ function registerHandlers(): void {
   ipcMain.handle(
     "session:open",
     async (_e, p: { projectId: string; sessionId?: string }): Promise<OpenInfo> => {
-      session?.abortCurrent();
-      const chosen = p.sessionId === undefined ? await modelForNewSession() : undefined;
-      session = await openSession({
-        projectId: p.projectId,
-        sessionId: p.sessionId,
-        // 续聊由 `openSession` 从会话元里读回自己那套；新建才取默认那套
-        model: chosen?.cfg,
-        profile: chosen?.name,
-        // 新会话先叫「新会话」，第一句话发出去之后按那句话命名（见 tm:prompt）——
-        // 都叫"桌面端"的话列表里分不出哪条是哪条
-        title: p.sessionId === undefined ? "新会话" : undefined,
-        io: makeIO(),
-      });
-      freshSession = p.sessionId === undefined;
-      watchDocs(p.projectId);
-      pushSessionState();
+      // 同一个会话的重连（渲染层刷新/重开同一本）不要 abort：那会把正在等待的提问打断。
+      // 只有真的换会话/新建才收掉上一轮。
+      const same =
+        session !== undefined &&
+        p.sessionId !== undefined &&
+        session.projectId === p.projectId &&
+        session.sessionId === p.sessionId;
+      if (!same) {
+        session?.abortCurrent();
+        // 换会话：上一轮的审批一律拒绝（fail closed），排队中的迟到回答属于旧会话，丢掉；
+        // 旧会话里 pending 的提问仍在 journal / tool part 里，切回去还能答。
+        askBroker.pendingAll("interrupted");
+        for (const [id, resolve] of [...waitingConfirms]) {
+          waitingConfirms.delete(id);
+          resolve("no");
+        }
+        answerQueue.length = 0;
+        const chosen = p.sessionId === undefined ? await modelForNewSession() : undefined;
+        session = await openSession({
+          projectId: p.projectId,
+          sessionId: p.sessionId,
+          // 续聊由 `openSession` 从会话元里读回自己那套；新建才取默认那套
+          model: chosen?.cfg,
+          profile: chosen?.name,
+          // 新会话先叫「新会话」，第一句话发出去之后按那句话命名（见 tm:prompt）——
+          // 都叫"桌面端"的话列表里分不出哪条是哪条
+          title: p.sessionId === undefined ? "新会话" : undefined,
+          io: makeIO(),
+        });
+        freshSession = p.sessionId === undefined;
+        // 默认权限：设置里选了「工作区内修改」（默认）就带着 accept-edits 起步。
+        // 模式不落盘，所以每次打开会话都按这里的默认值重新应用，而不是读回上一次的模式。
+        const prefs = await readPrefs();
+        if ((prefs.permissionMode ?? "accept-edits") === "accept-edits") session.setMode("accept-edits");
+        watchDocs(p.projectId);
+        pushSessionState();
+      }
+      const active = session;
+      if (active === undefined) throw new Error("会话没有打开");
       const meta = await loadProjectMeta(p.projectId);
       // 上下文基线：一行正文都没写时，系统提示词和工具定义也已经占着窗口了，界面不该显示 0%
-      const contextParts = await session.requestSizes().catch(() => undefined);
+      const contextParts = await active.requestSizes().catch(() => undefined);
       // 拿实际在用的那份配置判，不是拿"用户选的那套"判——续聊读的是会话元里那套
-      const warn = describeMissingKey(chosen?.name ?? session.profile, session.model);
+      const warn = describeMissingKey(active.profile, active.model);
+
+      // 重开后把还开着的提问带回去：journal 里有的是“提问已开始、助手消息还没提交”的那条；
+      // 消息投影里的是已经 pending 的那条。取最早的一条，其余由界面从历史里点开。
+      const open = await active.openAskViews();
+      const first = open[0];
+      const live = first === undefined ? undefined : askBroker.view(first.callId);
+      const ask: AskView | undefined =
+        first === undefined
+          ? undefined
+          : live !== undefined
+            ? live
+            : { callId: first.callId, questions: first.questions, pending: true, reason: "restarted" };
+
       return {
-        sessionId: session.sessionId,
+        sessionId: active.sessionId,
         book: meta.title,
-        agent: session.agent.name,
-        model: session.model.model,
-        effort: session.model.reasoning,
-        ...(session.profile === undefined ? {} : { profile: session.profile }),
+        agent: active.agent.name,
+        model: active.model.model,
+        effort: active.model.reasoning,
+        ...(active.profile === undefined ? {} : { profile: active.profile }),
         ...(contextParts === undefined ? {} : { contextParts }),
         ...(warn === undefined ? {} : { modelWarning: warn }),
+        ...(ask === undefined ? {} : { ask }),
       };
     },
   );
 
   ipcMain.on("tm:reply", (_e, msg: { id: string; value: string }) => {
-    const resolve = waiting.get(msg.id);
-    if (resolve) {
-      waiting.delete(msg.id);
-      resolve(msg.value);
-    }
+    const resolve = waitingConfirms.get(msg.id);
+    if (resolve === undefined) return;
+    waitingConfirms.delete(msg.id);
+    resolve(msg.value as ConfirmReply);
   });
+
+  ipcMain.handle("ask:answer", (_e, reply: AskReply) => submitAskAnswer(reply));
+
+  ipcMain.on(
+    "ask:hold",
+    (_e, msg: { callId: string; mode: "pause" | "resume" | "hold" | "defer" }) => {
+      askBroker.hold(msg.callId, msg.mode);
+    },
+  );
 
   ipcMain.on("tm:prompt", async (_e, text: string) => {
     try {
@@ -523,9 +633,12 @@ function makeIO(): UserIO {
       win?.webContents.send("tm:event", e);
       // 模式/待落盘会在回合中间变（进草稿模式就是一次工具调用）——每步之后重报一次，代价是一次取值
       if (e.type === "tool.result" || e.type === "step.end") pushSessionState();
+      // idle 发生在 runLoop 的 finally 里，而 session.running 要到 runTurn 的 finally 才落；
+      // 延到下一个微任务再排空，才不会把“刚结束的这一轮”误判成还在忙。
+      if (e.type === "session.status" && e.status === "idle") queueMicrotask(() => void drainAnswerQueue());
     },
-    confirm: (action, summary) => ask("tm:confirm", { action, summary }) as Promise<ConfirmReply>,
-    askUser: (question, options) => ask("tm:ask", { question, options: options ?? [] }),
+    confirm: (action, summary) => askConfirm("tm:confirm", { action, summary }),
+    askUser: (req) => askBroker.wait(req),
   };
 }
 
@@ -541,56 +654,89 @@ function makeIO(): UserIO {
  * `titleBarOverlay` 的颜色不跟主题走的话，切深色后标题栏会留一条浅色，所以监听 `nativeTheme`。
  */
 const PLATFORM = process.platform;
+/** 材质在开窗前定死（平台与系统版本决定，运行中不变）。 */
+const WINDOW_MATERIAL = resolveWindowMaterial();
 /** 主题监听只挂一次（窗口可能重建，回调里现取 `win`）。 */
 let overlayWired = false;
-const WINDOW_CHROME: Electron.BrowserWindowConstructorOptions =
-  PLATFORM === "darwin"
-    ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 15 } }
-    : PLATFORM === "win32"
-      ? {
-          titleBarStyle: "hidden",
-          titleBarOverlay: { color: "#f2f3f9", symbolColor: "#62636e", height: 44 },
-        }
-      : {};
+
+/** Windows 标题栏按钮区：有材质时透明；没有材质时用实色。 */
+function overlayConfig() {
+  const dark = nativeTheme.shouldUseDarkColors;
+  const clear = WINDOW_MATERIAL !== "none";
+  return {
+    color: clear ? "#00000000" : dark ? "#181920" : "#f2f3f9",
+    symbolColor: dark ? "#e9e8e3" : "#1e1d1a",
+    height: 44,
+  };
+}
+
+function windowChrome(): Electron.BrowserWindowConstructorOptions {
+  if (PLATFORM === "darwin") {
+    return {
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 16, y: 15 },
+      ...(WINDOW_MATERIAL === "vibrancy"
+        ? { vibrancy: "sidebar" as const, visualEffectState: "active" as const }
+        : {}),
+    };
+  }
+  if (PLATFORM === "win32") {
+    return {
+      titleBarStyle: "hidden",
+      titleBarOverlay: overlayConfig(),
+      ...(WINDOW_MATERIAL === "acrylic" || WINDOW_MATERIAL === "mica"
+        ? { backgroundMaterial: WINDOW_MATERIAL }
+        : {}),
+    };
+  }
+  return {};
+}
 
 /** Windows 标题栏的颜色要跟着系统主题走（`titleBarOverlay` 不会自己变）。 */
 function syncTitleBarOverlay(w: BrowserWindow | undefined): void {
   if (PLATFORM !== "win32" || w === undefined) return;
-  const dark = nativeTheme.shouldUseDarkColors;
-  w.setTitleBarOverlay({
-    color: dark ? "#181920" : "#f2f3f9",
-    symbolColor: dark ? "#a4a5b0" : "#62636e",
-    height: 44,
-  });
+  w.setTitleBarOverlay(overlayConfig());
 }
 
 async function openWindow(show: boolean): Promise<BrowserWindow> {
+  const dark = nativeTheme.shouldUseDarkColors;
   const w = new BrowserWindow({
-    ...WINDOW_CHROME,
+    ...windowChrome(),
     width: 1357, // 1180 × 1.15：两块面板并排之后中栏才够读
     height: 780,
     show: false,
-    title: "talemate",
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#14151a" : "#f7f8fb",
+    title: "Talemate",
+    // 有材质时窗口必须透明，否则材质被盖住；没材质时给实底，否则黑窗
+    backgroundColor: WINDOW_MATERIAL === "none" ? (dark ? "#151513" : "#f6f6f3") : "#00000000",
     webPreferences: {
       // 预加载是 CJS（沙箱下必须是），产物由 electron-vite 按包类型决定
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // 首帧前让 preload 拿到材质，避免异步 IPC 闪一下实色底
+      additionalArguments: [`--app-material=${WINDOW_MATERIAL}`],
     },
   });
   // 必须挂到模块级：事件、确认、提问、报错全都经 `win` 发出去，漏了 `win?.webContents.send(...)`
   // 就变成静默空操作——界面照常打开、照常能发话，但一个实时回复都看不到，而且不报错。
   win = w;
   // 主题切换时把 Windows 的标题栏颜色跟着换（只挂一次；`win` 可能换，所以回调里现取）
-  if (PLATFORM === "win32" && !overlayWired) {
-    overlayWired = true;
-    nativeTheme.on("updated", () => syncTitleBarOverlay(win));
+  if (PLATFORM === "win32") {
+    syncTitleBarOverlay(w);
+    if (!overlayWired) {
+      overlayWired = true;
+      nativeTheme.on("updated", () => syncTitleBarOverlay(win));
+    }
   }
   w.on("closed", () => {
     if (win === w) win = undefined;
+    // 没有窗口就没有回答方：审批一律拒绝（fail closed）；提问转 pending，
+    // journal 与 tool part 会留着，重开之后还能回答。
+    askBroker.pendingAll("interrupted");
+    for (const resolve of waitingConfirms.values()) resolve("no");
+    waitingConfirms.clear();
   });
-  w.once("ready-to-show", () => w.setTitle("talemate") ?? (show && w.show()));
+  w.once("ready-to-show", () => w.setTitle("Talemate") ?? (show && w.show()));
   await w.loadFile(join(__dirname, "../renderer/index.html"));
   return w;
 }
@@ -607,7 +753,7 @@ async function selftest(): Promise<void> {
       if (e.type === "tool-call") tools.push(e.name);
     },
     confirm: async () => "once",
-    askUser: async (q) => `（自动答复：${q}）`,
+    askUser: async () => ({ kind: "cancelled", reason: "no-answerer" }),
   };
 
   const s = await openSession({ projectId: book.id, io, title: "自检" });
@@ -663,7 +809,9 @@ async function selftestWindow(): Promise<void> {
   app.exit(ok ? 0 : 1);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 外观偏好要在开窗之前落到 nativeTheme：窗口底色与 Windows 标题栏都按它取色
+  nativeTheme.themeSource = (await readPrefs()).appearance ?? "system";
   // Windows/Linux 把默认菜单栏画在窗口里，而那五项没有一项是这个应用的动作——新建/打开/保存指向的是
   // 一个不存在的文档概念。macOS 的菜单在系统菜单栏，且 Cmd+C/V/Q 都得靠它，那边不动。
   if (process.platform !== "darwin") Menu.setApplicationMenu(null);

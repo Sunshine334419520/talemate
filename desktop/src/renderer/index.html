@@ -2,7 +2,15 @@
 <html lang="zh">
   <head>
     <meta charset="utf-8" />
-    <title>talemate</title>
+    <title>Talemate</title>
+    <!-- 材质属性必须在样式与 React 之前落好，否则首帧会闪一下实色底 -->
+    <script>
+      (() => {
+        const root = document.documentElement;
+        root.dataset.platform = window.tm?.platform ?? "web";
+        root.dataset.material = window.tm?.material ?? "none";
+      })();
+    </script>
     <!-- type="module" 是必须的：不然打包器不认它，产物里干脆没有这个文件（界面白屏、且不报错） -->
     <script type="module" src="main.tsx"></script>
   </head>

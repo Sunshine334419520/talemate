@@ -213,7 +213,14 @@ async function runOnce(variant: Variant, run: number, outRoot: string, model: Mo
     },
     confirm: async () => "once",
     // 中性：既不授权也不阻止——真实的用户被问到时未必答得上来。
-    askUser: async () => "（探针：这个我还没想好）",
+    askUser: async (req) => ({
+      kind: "answered",
+      answers: req.questions.map((q) => ({
+        id: q.id,
+        selected: [],
+        custom: "（探针：这个我还没想好）",
+      })),
+    }),
   };
 
   const session = new Session({

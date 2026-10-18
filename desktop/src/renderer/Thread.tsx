@@ -1,45 +1,36 @@
 /**
  * 对话区：把性质不同的东西按"谁在说话 / 要不要你动手"分四种画法——用户的话是右侧气泡
- * （只有它是气泡：一次打断，不是正文），mate 的话是页面正文（宋体、内容列宽），跑过的工具
+ * （只有它是气泡：一次打断，不是正文），mate 的话是页面正文（内容列宽），跑过的工具
  * 折成一行"用了 N 步"（工具是过程，不是内容），要动手的（提案 / 落盘确认 / 提问）是卡片，
  * 动作按钮长在卡片上。
  *
  * 正文不铺在这里（用户定的）：mate 写一章时那几千字只给一张进度卡，否则会把对话淹掉。
  */
-import DOMPurify from "dompurify";
-import { marked } from "marked";
 import { useEffect, useMemo, useState } from "react";
+import { settledCallIds } from "../../../src/session/asks";
 import { messageTurns } from "../../../src/session/turn_changes";
-import type { AskRequest, ConfirmRequest, StoredMessage, WriteChange } from "../shared/api";
+import type { AskRecord, StoredMessage, WriteChange } from "../shared/api";
 import { VERDICT_TEXT } from "../shared/verdict";
+import { AskHistory } from "./AskCard";
+import { Markdown } from "./Markdown";
 import { TurnChangesCard } from "./TurnChanges";
-
-/**
- * mate 说的话是 markdown（加粗、列表、行内代码），所以得渲染，不能当纯文本贴出来——
- * 贴出来就是一堆星号。
- *
- * 必过 DOMPurify：它和右栏预览走的是同一件事（外部文本进渲染层，而渲染层有网络）。
- * 两处共用 `styles.css` 里那一份 `.md` 元素样式。
- */
-function Markdown({ text }: { text: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false })), [text]);
-  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
-}
 
 export type LiveItem =
   | { kind: "me"; text: string }
   | { kind: "text"; text: string }
   | { kind: "think"; text: string }
-  | { kind: "tool"; name: string; subject?: string; output?: string; change?: WriteChange }
+  | { kind: "tool"; name: string; subject?: string; output?: string; change?: WriteChange; ask?: AskRecord }
   | { kind: "chapter"; path: string; words: number }
   | { kind: "proposal"; text: string }
+  /** 一次已经答完/取消的提问：在对话里留一张只读回看卡 */
+  | { kind: "ask"; record: AskRecord }
   | { kind: "note"; text: string }
   /** 一轮跑完之后，界面按落盘记录补上的一张汇总卡 */
   | { kind: "changes"; changes: WriteChange[] };
 
 /** 一格过程：连续的几个工具调用加稿子进度，合成一段可展开的过程。 */
 export type Step =
-  | { kind: "tool"; name: string; subject?: string; output?: string }
+  | { kind: "tool"; name: string; subject?: string; output?: string; ask?: AskRecord }
   | { kind: "chapter"; path: string; words: number };
 
 /**
@@ -171,7 +162,7 @@ export function subjectOf(input?: string): string | undefined {
 function stepWords(steps: Step[]): string {
   const counts = new Map<string, number>();
   for (const s of steps) {
-    const word = s.kind === "chapter" ? "撰写正文" : toolWord(s.name);
+    const word = s.kind === "chapter" ? "撰写正文" : s.ask !== undefined ? "提问" : toolWord(s.name);
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
   return [...counts].map(([word, n]) => (n > 1 ? `${word} ${n} 次` : word)).join(" · ");
@@ -187,12 +178,13 @@ export function Thread({
   history,
   live,
   busy,
-  confirm,
-  ask,
-  onReply,
+  confirmOpen,
+  askOpen,
+  answeredAskIds,
   onVerdict,
   onOpenDoc,
   onOpenDiff,
+  onOpenAsk,
   labelOf,
   rankOf,
   onOpenHistory,
@@ -201,22 +193,43 @@ export function Thread({
   live: LiveItem[];
   /** 这一轮还没跑完——用它决定"正在想"要不要动 */
   busy: boolean;
-  confirm: ConfirmRequest | null;
-  ask: AskRequest | null;
-  onReply: (id: string, value: string) => void;
+  /** 底部审批卡开着：不要同时在对话里显示“思考中” */
+  confirmOpen: boolean;
+  /** 底部有提问在等（无论卡片是否收起）：不要同时在对话里显示“思考中” */
+  askOpen: boolean;
+  /** 本屏刚答掉的提问（历史里的 pending 行要立刻停止“等待回答”） */
+  answeredAskIds: Set<string>;
   onVerdict: (text: string) => void;
   /** 点"稿子"卡 → 右栏读全文 */
   onOpenDoc: (path: string) => void;
   /** 点"看改动" → 右栏显示 diff；改动清单还会带上路径 */
   onOpenDiff: (name: string, text: string, path?: string) => void;
+  /** 从过程行重新打开一个 pending 的提问 */
+  onOpenAsk: (record: AskRecord) => void;
   /** 作品目录里的显示名与先后——改动清单不另写一份文档清单 */
   labelOf: (path: string) => string;
   rankOf: (path: string) => number;
   onOpenHistory: () => void;
 }) {
+  // 已经答掉的 callId：pending 的 tool part 由后面的用户回答消息代替，不在过程里再开一个入口
+  const answered = useMemo(() => {
+    const out = settledCallIds(history);
+    for (const id of answeredAskIds) out.add(id);
+    return out;
+  }, [history, answeredAskIds]);
   const rows: React.ReactNode[] = [];
   messageTurns(history).forEach((turn, ti) => {
-    turn.messages.forEach((m, i) => rows.push(<Stored key={`${ti}-${i}`} m={m} onOpenDoc={onOpenDoc} />));
+    turn.messages.forEach((m, i) =>
+      rows.push(
+        <Stored
+          key={`${ti}-${i}`}
+          m={m}
+          onOpenDoc={onOpenDoc}
+          onOpenAsk={onOpenAsk}
+          answeredCallIds={answered}
+        />,
+      ),
+    );
     if (turn.changes.length > 0) {
       rows.push(
         <TurnChangesCard
@@ -236,19 +249,32 @@ export function Thread({
   let steps: Step[] = [];
   const flush = (): void => {
     if (steps.length) {
-      rows.push(<Steps key={`s${rows.length}`} steps={steps} running={steps.length > 0} onOpenDoc={onOpenDoc} />);
+      rows.push(
+        <Steps
+          key={`s${rows.length}`}
+          steps={steps}
+          running={steps.length > 0}
+          onOpenDoc={onOpenDoc}
+          onOpenAsk={onOpenAsk}
+        />,
+      );
       steps = [];
     }
   };
   live.forEach((it, i) => {
-    if (it.kind === "tool") steps.push({ kind: "tool", name: it.name, subject: it.subject, output: it.output });
-    else if (it.kind === "chapter") steps.push({ kind: "chapter", path: it.path, words: it.words });
+    if (it.kind === "tool") {
+      // 已经答完的提问由 `ask` 项单独画回看卡；只有仍 pending 的才留一个过程入口
+      if (it.ask === undefined || (it.ask.outcome === "pending" && !answered.has(it.ask.callId))) {
+        steps.push({ kind: "tool", name: it.name, subject: it.subject, output: it.output, ask: it.ask });
+      }
+    } else if (it.kind === "chapter") steps.push({ kind: "chapter", path: it.path, words: it.words });
     else {
       flush();
       if (it.kind === "me") rows.push(<Me key={`l${i}`} text={it.text} />);
       if (it.kind === "text") rows.push(<Said key={`l${i}`} text={it.text} />);
       if (it.kind === "think") rows.push(<Thought key={`l${i}`} text={it.text} live={busy && i === live.length - 1} />);
       if (it.kind === "proposal") rows.push(<Proposal key={`l${i}`} text={it.text} onVerdict={onVerdict} />);
+      if (it.kind === "ask") rows.push(<AskHistory key={`l${i}`} record={it.record} />);
       if (it.kind === "note") rows.push(<p key={`l${i}`} className="note">{it.text}</p>);
       if (it.kind === "changes") {
         rows.push(
@@ -273,17 +299,31 @@ export function Thread({
   const showingActivity =
     lastLive !== undefined &&
     (lastLive.kind === "think" || lastLive.kind === "tool" || lastLive.kind === "chapter" || lastLive.kind === "text");
-  if (busy && !showingActivity && confirm === null && ask === null) rows.push(<Activity key="act" />);
-
-  if (confirm !== null) rows.push(<Confirm key="c" req={confirm} onReply={onReply} onOpenDiff={onOpenDiff} />);
-  if (ask !== null) rows.push(<Ask key="a" req={ask} onReply={onReply} />);
+  if (busy && !showingActivity && !confirmOpen && !askOpen) rows.push(<Activity key="act" />);
 
   return <div className="thread">{rows}</div>;
 }
 
 /** 一条落盘的消息。认不出的角色与单元一律不画——界面不替 harness 编故事。 */
-function Stored({ m, onOpenDoc }: { m: StoredMessage; onOpenDoc: (path: string) => void }) {
-  if (m.role === "user") return <Me text={m.text ?? ""} />;
+function Stored({
+  m,
+  onOpenDoc,
+  onOpenAsk,
+  answeredCallIds,
+}: {
+  m: StoredMessage;
+  onOpenDoc: (path: string) => void;
+  onOpenAsk: (record: AskRecord) => void;
+  answeredCallIds: Set<string>;
+}) {
+  if (m.role === "user") {
+    // 迟到回答：只画只读卡。`m.text` 是给模型看的带标记正文，不是用户手打的一句话，
+    // 再画一个用户气泡会像“我没输入过的东西出现在输入框里”。
+    if (m.answersTo !== undefined) {
+      return <AskHistory questions={m.answersTo.questions} answers={m.answersTo.answers} />;
+    }
+    return <Me text={m.text ?? ""} />;
+  }
   if (m.role === "compaction") return <p className="note">（前情摘要：{m.summary?.slice(0, 50) ?? ""}…）</p>;
   if (m.role !== "assistant") return null;
 
@@ -291,13 +331,24 @@ function Stored({ m, onOpenDoc }: { m: StoredMessage; onOpenDoc: (path: string) 
   let steps: Step[] = [];
   const flush = (): void => {
     if (steps.length) {
-      out.push(<Steps key={`s${out.length}`} steps={steps} onOpenDoc={onOpenDoc} />);
+      out.push(
+        <Steps key={`s${out.length}`} steps={steps} onOpenDoc={onOpenDoc} onOpenAsk={onOpenAsk} />,
+      );
       steps = [];
     }
   };
   (m.parts ?? []).forEach((p, i) => {
     // `output` 必须带上：只取 input 的话，展开那一行就只剩一个名字
     if (p.type === "tool") {
+      if (p.ask !== undefined) {
+        if (p.ask.outcome !== "pending") {
+          flush();
+          out.push(<AskHistory key={`ask${i}`} record={p.ask} />);
+        } else if (!answeredCallIds.has(p.ask.callId)) {
+          steps.push({ kind: "tool", name: p.name, subject: subjectOf(p.input), output: p.output, ask: p.ask });
+        }
+        return;
+      }
       const step = classifyStep(p.name, p.input);
       steps.push(step.kind === "chapter" ? step : { ...step, subject: subjectOf(p.input), output: p.output });
     }
@@ -324,7 +375,17 @@ function Said({ text }: { text: string }) {
 }
 
 /** 过程折叠：一行摘要加展开。工具是过程，一眼扫过就行，别占着对话的地方。 */
-function Steps({ steps, running, onOpenDoc }: { steps: Step[]; running?: boolean; onOpenDoc: (path: string) => void }) {
+function Steps({
+  steps,
+  running,
+  onOpenDoc,
+  onOpenAsk,
+}: {
+  steps: Step[];
+  running?: boolean;
+  onOpenDoc: (path: string) => void;
+  onOpenAsk: (record: AskRecord) => void;
+}) {
   const [open, setOpen] = useState(false);
   const words = stepWords(steps);
 
@@ -343,6 +404,14 @@ function Steps({ steps, running, onOpenDoc }: { steps: Step[]; running?: boolean
                 {chapterLabel(s.path)}
                 <span className="words">{s.words.toLocaleString()} 字</span>
                 <span className="caret">›</span>
+              </button>
+            ) : s.ask !== undefined ? (
+              <button type="button" className="ask-step" key={i} onClick={() => onOpenAsk(s.ask as AskRecord)}>
+                <span className="ask-step-icon" aria-hidden="true">
+                  ?
+                </span>
+                <span className="tool-name">提问</span>
+                <span className="tool-subject">等待回答 · 打开</span>
               </button>
             ) : (
               <div className="step" key={i}>
@@ -425,76 +494,4 @@ function Proposal({ text, onVerdict }: { text: string; onVerdict: (text: string)
   );
 }
 
-/** 落盘确认：影响面在上、这次动什么在下（材料顺序同 harness 给的那两段）。 */
-function Confirm({
-  req,
-  onReply,
-  onOpenDiff,
-}: {
-  req: ConfirmRequest;
-  onReply: (id: string, value: string) => void;
-  onOpenDiff: (name: string, text: string) => void;
-}) {
-  const lines = req.summary.split("\n");
-  const head = lines[0] ?? "";
-  const body = lines.slice(1).join("\n").trim();
 
-  return (
-    <div className="card-box">
-      <div className="card-title">要落盘</div>
-      <div className="confirm-head">{req.action}</div>
-      <pre className="proposal">{head}</pre>
-      {body !== "" && (
-        // 细节去右栏（"需要展示详细的都在右侧"）：这一行只是个入口，不在这里摊开
-        <button className="steps-head" onClick={() => onOpenDiff(req.action, body)}>
-          <span className="caret">›</span>
-          看改动（右栏）
-        </button>
-      )}
-      <div className="card-actions">
-        <button className="btn primary" onClick={() => onReply(req.id, "once")}>
-          允许一次
-        </button>
-        <button className="btn" onClick={() => onReply(req.id, "always")}>
-          这一类都允许
-        </button>
-        <button className="btn zhu" onClick={() => onReply(req.id, "no")}>
-          拒绝
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** 提问：mate 在等一个答案（`askUser`）；有选项就给按钮，没有就给输入框。 */
-function Ask({ req, onReply }: { req: AskRequest; onReply: (id: string, value: string) => void }) {
-  const [value, setValue] = useState("");
-  const answer = (v: string): void => onReply(req.id, v);
-  return (
-    <div className="card-box">
-      <div className="card-title">mate 在问你</div>
-      <div className="ask-q">{req.question}</div>
-      {req.options.length > 0 ? (
-        <div className="card-actions">
-          {req.options.map((o) => (
-            <button key={o} className="btn" onClick={() => answer(o)}>
-              {o}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="card-actions">
-          <input
-            autoFocus
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && value.trim() && answer(value.trim())}
-          />
-          <button className="btn primary" onClick={() => value.trim() && answer(value.trim())}>
-            回答
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}

@@ -25,6 +25,24 @@ export function PanelIcon({ open }: { open: boolean }) {
   );
 }
 
+/** 下拉入口的箭头：与左栏段头同一套描边；闭着朝下，打开朝上 */
+export function DropdownIcon({ open }: { open: boolean }) {
+  return (
+    <svg className="dropdown-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {open ? <path d="m4 10 4-4 4 4" /> : <path d="m4 6 4 4 4-4" />}
+    </svg>
+  );
+}
+
+/** 权限：一面盾牌，配"工作区内修改 / 每次询问" */
+export function ShieldIcon() {
+  return (
+    <svg className="shield-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 2.2 13 4v4.1c0 2.6-2 4.6-5 5.7-3-1.1-5-3.1-5-5.7V4z" />
+    </svg>
+  );
+}
+
 /** 改动记录：一圈时钟，对应"过去发生了什么" */
 export function HistoryIcon() {
   return (
@@ -51,6 +69,15 @@ export function SlidersIcon() {
       <circle cx="6" cy="4" r="1.6" fill="var(--card)" />
       <circle cx="10.5" cy="8" r="1.6" fill="var(--card)" />
       <circle cx="6.5" cy="12" r="1.6" fill="var(--card)" />
+    </svg>
+  );
+}
+
+/** 提问卡的自定义答案：一支铅笔，和右栏批注的语义一致（写自己的话）。 */
+export function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11.4 2.6l2 2L5.2 12.8H3.2v-2z" />
     </svg>
   );
 }

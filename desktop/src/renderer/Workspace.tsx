@@ -6,11 +6,14 @@
  * （谁在哪儿、什么时候取数），画法全在 `Thread` 里。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
+import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
 import { composeAnnotationMessage, type Annotation } from "./annotations";
+import { AskDock } from "./AskCard";
 import { COMMANDS } from "./commands";
+import { ConfirmDock } from "./ConfirmDock";
 import { DocTree } from "./DocTree";
-import { ChevronIcon, HistoryIcon, PanelIcon, PlusIcon, SlidersIcon } from "./icons";
+import { ChevronIcon, DropdownIcon, HistoryIcon, PanelIcon, PlusIcon, ShieldIcon, SlidersIcon } from "./icons";
+import { applyReadingSize, DEFAULT_READING_SIZE } from "./reading";
 import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
 import type { ChangeScope } from "./TurnChanges";
@@ -99,7 +102,13 @@ export function Workspace({
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<OpenInfo | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
-  const [ask, setAsk] = useState<AskRequest | null>(null);
+  const [ask, setAsk] = useState<AskView | null>(null);
+  /** 提问卡是否收起成提示条；收起时输入框回来 */
+  const [askHidden, setAskHidden] = useState(false);
+  /** 排队中的迟到回答：等主进程送达后，把只读卡补进对话 */
+  const queuedAsk = useRef<AskRecord | null>(null);
+  /** 本屏已经答过的提问：让历史里那条 pending 过程行立刻停止“等待回答” */
+  const [answeredAskIds, setAnsweredAskIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   /** 提醒（不是错误）：如"这套配置还没密钥"。与 `error` 分开，因为"会失败"和"已经失败"该分开说 */
   const [warn, setWarn] = useState<string | null>(null);
@@ -201,6 +210,11 @@ export function Workspace({
       setBusy(false);
       setError(null);
       setWarn(opened.modelWarning ?? null);
+      // 重开/刷新后仍开着的提问（主进程从 journal 或消息投影里取回）
+      setAsk(opened.ask ?? null);
+      setAskHidden(false);
+      queuedAsk.current = null;
+      setAnsweredAskIds(new Set());
       // 切会话落在底部：上一个会话里往上翻过的位置不该带过来（历史整个换掉了）
       pinnedRef.current = true;
       // 用量由 harness 记在会话元信息里：切会话切回来在、重启也还在
@@ -216,8 +230,9 @@ export function Workspace({
       // 上次拖出来的宽度先用上，免得开场先闪一下默认宽度
       setProfiles((await window.tm.models()).profiles);
       await loadStyle();
-      const saved = (await window.tm.prefs()).paneWidth;
-      if (typeof saved === "number") setPaneWidth(clampPane(saved));
+      const prefs = await window.tm.prefs();
+      if (typeof prefs.paneWidth === "number") setPaneWidth(clampPane(prefs.paneWidth));
+      applyReadingSize(prefs.fontSize ?? DEFAULT_READING_SIZE);
       const rows = await loadSessions();
       await enter(rows[0]?.id);
     })();
@@ -247,15 +262,25 @@ export function Workspace({
             next.push(step.kind === "chapter" ? step : { ...step, subject: subjectOf(e.input) });
             break;
           }
-          case "tool.result":
+          case "tool.result": {
             for (let i = next.length - 1; i >= 0; i--) {
               const it = next[i];
               if (it.kind === "tool" && it.name === e.name && it.output === undefined) {
-                next[i] = { ...it, output: e.output.slice(0, 120), change: e.change };
+                next[i] = { ...it, output: e.output.slice(0, 120), change: e.change, ask: e.ask };
                 break;
               }
             }
+            // 答完/取消的提问在对话里留一张只读卡；pending 的由底部卡片负责
+            const asked = e.ask;
+            if (
+              asked !== undefined &&
+              asked.outcome !== "pending" &&
+              !next.some((it) => it.kind === "ask" && it.record.callId === asked.callId)
+            ) {
+              next.push({ kind: "ask", record: asked });
+            }
             break;
+          }
           case "proposal":
             next.push({ kind: "proposal", text: e.text });
             break;
@@ -269,7 +294,31 @@ export function Workspace({
     });
     window.tm.onSessionState(setState);
     window.tm.onConfirm(setConfirm);
-    window.tm.onAsk(setAsk);
+    window.tm.onAsk((view) => {
+      setAsk(view);
+      setAskHidden(false);
+    });
+    window.tm.onAskPending((p) => {
+      setAsk((prev) =>
+        prev !== null && prev.callId === p.callId
+          ? { ...prev, pending: true, reason: p.reason, deadline: undefined }
+          : prev,
+      );
+    });
+    window.tm.onAskClosed((p) => {
+      setAsk((prev) => (prev !== null && prev.callId === p.callId ? null : prev));
+      setAskHidden(false);
+      // 排队中的迟到回答送达了：把本地那份只读卡补进对话（同回合的回答由 tool.result 补）
+      const rec = queuedAsk.current;
+      if (rec !== null && rec.callId === p.callId) {
+        queuedAsk.current = null;
+        setLive((prev) =>
+          prev.some((it) => it.kind === "ask" && it.record.callId === rec.callId)
+            ? prev
+            : [...prev, { kind: "ask", record: rec }],
+        );
+      }
+    });
     window.tm.onError(setError);
     // 订阅只挂一次；事件是推的，不轮询
   }, []);
@@ -405,6 +454,71 @@ export function Workspace({
   const say = useCallback((text: string, sent?: string): void => {
     setLive((prev) => [...prev, { kind: "me", text }]);
     window.tm.prompt(sent ?? text);
+  }, []);
+
+  /**
+   * 回答底部提问卡。main 决定走哪条路：工具调用还开着 → 同一回合；已 pending → 新回合；
+   * 这一轮还在跑 → 先排队。界面只根据返回值把卡片收起/翻成 pending。
+   */
+  const submitAsk = useCallback(
+    async (answers: AskAnswer[]): Promise<"ok" | "stale" | "invalid" | "queued"> => {
+      const currentAsk = ask;
+      if (currentAsk === null) return "stale";
+      let verdict: "ok" | "stale" | "invalid" | "queued";
+      try {
+        verdict = await window.tm.answerAsk({ callId: currentAsk.callId, answers });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        return "invalid";
+      }
+      if (verdict === "ok" || verdict === "queued") {
+        const record: AskRecord = {
+          callId: currentAsk.callId,
+          questions: currentAsk.questions,
+          outcome: "answered",
+          answers,
+          at: Date.now(),
+        };
+        setAnsweredAskIds((prev) => new Set(prev).add(currentAsk.callId));
+        // 只留只读回看卡，不再把答案伪装成用户手打的一句话塞进对话流
+        setLive((prev) =>
+          prev.some((it) => it.kind === "ask" && it.record.callId === record.callId)
+            ? prev
+            : [...prev, { kind: "ask", record }],
+        );
+        if (verdict === "queued") {
+          queuedAsk.current = record;
+          setAsk((prev) =>
+            prev !== null && prev.callId === currentAsk.callId
+              ? { ...prev, pending: true, deadline: undefined }
+              : prev,
+          );
+          setLive((prev) => [...prev, { kind: "note", text: "这条回答先记着；这一轮结束后会自动送达。" }]);
+        } else {
+          setAsk(null);
+          setAskHidden(false);
+        }
+      } else if (verdict === "stale") {
+        setAsk(null);
+        setAskHidden(false);
+        setError("这个问题已经结束了——可能是另一个窗口先答了。");
+      } else {
+        setError("这条回答没有通过校验，请重新选一次。");
+      }
+      return verdict;
+    },
+    [ask],
+  );
+
+  /** 从过程行重新打开一个仍 pending 的提问；草稿由 AskDock 从本机恢复。 */
+  const reopenAsk = useCallback((record: AskRecord) => {
+    setAsk({
+      callId: record.callId,
+      questions: record.questions,
+      pending: record.outcome === "pending",
+      ...(record.outcome === "pending" ? { reason: "restarted" as const } : {}),
+    });
+    setAskHidden(false);
   }, []);
 
   /**
@@ -558,8 +672,7 @@ export function Workspace({
         )}
         <div className="brand">
           <span className="mark">t</span>
-          <b>talemate</b>
-          <span className="bookname">{project.title}</span>
+          <b>Talemate</b>
           <button className="book-exit" onClick={onExit}>所有作品</button>
         </div>
         <button className="newbtn" onClick={() => void enter()}>
@@ -569,7 +682,7 @@ export function Workspace({
         <div className="rail-scroll">
           <button className="section-head" aria-expanded={showSessions} onClick={() => setShowSessions((v) => !v)}>
             <ChevronIcon open={showSessions} />
-            会话
+            <span className="section-title">{project.title}（会话）</span>
             <span className="count">{sessions.length}</span>
           </button>
           {showSessions && (
@@ -631,16 +744,13 @@ export function Workspace({
             history={history}
             live={live}
             busy={busy}
-            confirm={confirm}
-            ask={ask}
-            onReply={(id, value) => {
-              window.tm.reply(id, value);
-              setConfirm(null);
-              setAsk(null);
-            }}
+            confirmOpen={confirm !== null}
+            askOpen={ask !== null}
+            answeredAskIds={answeredAskIds}
             onVerdict={say}
             onOpenDoc={(path) => void openChapter(path)}
             onOpenDiff={(name, text, path) => openPane({ kind: "diff", name, text, path })}
+            onOpenAsk={reopenAsk}
             labelOf={labelOf}
             rankOf={rankOf}
             onOpenHistory={() => void openHistory("session")}
@@ -649,6 +759,33 @@ export function Workspace({
           {error !== null && <p className="note">［错误］{error}</p>}
         </div>
 
+        {/* 审批是道门：占住输入框、不能收起；没有回答方时主进程直接按拒绝处理 */}
+        {confirm !== null ? (
+          <div className="askdock">
+            <ConfirmDock
+              req={confirm}
+              onReply={(value) => {
+                window.tm.reply(confirm.id, value);
+                setConfirm(null);
+              }}
+              onOpenDiff={(name, text) => openPane({ kind: "diff", name, text })}
+            />
+          </div>
+        ) : ask !== null ? (
+          <div className="askdock">
+            <AskDock
+              key={ask.callId}
+              view={ask}
+              sessionId={current ?? ""}
+              hidden={askHidden}
+              onHidden={setAskHidden}
+              onSubmit={submitAsk}
+              onHold={(mode) => window.tm.holdAsk(ask.callId, mode)}
+            />
+          </div>
+        ) : null}
+
+        {confirm === null && (ask === null || askHidden) && (
         <div className="composer">
           <div className="box">
             {menu !== null && (
@@ -718,6 +855,10 @@ export function Workspace({
               <button className="tool" title="提及文档" onClick={insertMention}>
                 @
               </button>
+              <PermissionChip
+                value={state.permissionMode ?? "accept-edits"}
+                onChange={(v) => void window.tm.savePrefs({ permissionMode: v })}
+              />
               <span className="spacer" />
               {info !== null && (
                 <ModelEffortChip
@@ -749,6 +890,7 @@ export function Workspace({
           {/* 上下文与用量：居中的一条细信息（原来占着整条状态栏） */}
           <ContextStats uses={uses} win={win} baseline={info?.contextParts} />
         </div>
+        )}
       </main>
       {pane !== null && (
         <div
@@ -827,6 +969,64 @@ function Mask({ onClose }: { onClose: () => void }) {
 }
 
 /**
+ * 输入区左侧的权限入口：和设置里的「权限」是同一个偏好。
+ *
+ * 它只回答"写文件要不要逐次确认"；计划/设计提案与 pending 落盘是另外几道门，
+ * 不在这枚开关里，也不会被它自动点头。
+ */
+function PermissionChip({
+  value,
+  onChange,
+}: {
+  value: PermissionDefault;
+  onChange: (value: PermissionDefault) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const OPTIONS: [PermissionDefault, string, string][] = [
+    ["accept-edits", "工作区内修改", "落盘不再逐次确认；计划与提案照常审阅"],
+    ["ask", "每次询问", "每次改文件都先给你看 diff"],
+  ];
+  const current = OPTIONS.find(([v]) => v === value) ?? OPTIONS[0];
+
+  return (
+    <span className="pop-wrap">
+      <button
+        type="button"
+        className="chip permission-chip"
+        title="写文件权限"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <ShieldIcon />
+        {current[1]}
+        <DropdownIcon open={open} />
+      </button>
+      {open && <Mask onClose={() => setOpen(false)} />}
+      {open && (
+        <span className="pop perm-pop">
+          {OPTIONS.map(([v, label, hint]) => (
+            <button
+              key={v}
+              type="button"
+              className="pop-item"
+              aria-current={v === value ? "true" : undefined}
+              onClick={() => {
+                onChange(v);
+                setOpen(false);
+              }}
+            >
+              <span>{label}</span>
+              <span className="pop-hint">{hint}</span>
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
  * 模型 + 推理强度合成一个入口（`模型 · 推理`）。
  *
  * 两级：一级两行（模型 / 推理等级），二级是各自的候选。**Esc 退一级**——二级回到一级，
@@ -879,7 +1079,7 @@ function ModelEffortChip({
       >
         <span className="dot" />
         {model} · {effortText}
-        <span className="caret">▾</span>
+        <DropdownIcon open={level !== "closed"} />
       </button>
 
       {level !== "closed" && <Mask onClose={close} />}
@@ -961,7 +1161,7 @@ function StyleChip({ view, onPick }: { view: StyleCatalog | null; onPick: (name:
     <span className="pop-wrap">
       <button className="chip" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((v) => !v)}>
         文风 {now?.title ?? view.current.name}
-        <span className="caret">▾</span>
+        <DropdownIcon open={open} />
       </button>
       {open && (
         <>
@@ -1043,6 +1243,7 @@ function ContextStats({
             />
           </svg>
           {measured ? `${pct}%` : `~${pct}%`}
+          <DropdownIcon open={open} />
         </button>
         {open && (
           <>

@@ -351,13 +351,21 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
   return { text: reply, toolCalls: [], finish: "stop" };
 }
 
-/** 按 schema.required 生成样例入参（mock 用） */
+/** 按 schema 生成样例入参（mock 用）。数组给一个样例元素，嵌套对象递归。 */
+function sampleValue(schema: JsonSchema | undefined): unknown {
+  if (schema === undefined) return "mock";
+  if (schema.type === "array") return [sampleValue(schema.items)];
+  if (schema.type === "object") return sampleArgs(schema);
+  if (schema.type === "number") return 1;
+  if (schema.type === "boolean") return true;
+  return "mock";
+}
+
 function sampleArgs(schema: JsonSchema | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if (!schema?.properties) return out;
+  if (schema === undefined || schema.type !== "object" || !schema.properties) return out;
   for (const key of schema.required ?? Object.keys(schema.properties)) {
-    const p = schema.properties[key];
-    out[key] = p.type === "array" ? [] : p.type === "number" ? 1 : "mock " + key;
+    out[key] = sampleValue(schema.properties[key]);
   }
   return out;
 }

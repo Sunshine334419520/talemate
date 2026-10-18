@@ -107,6 +107,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | What is this product, and what is it deliberately *not*? | `docs/product.md` |
 | How is the code organised; what happens in one turn? | `docs/architecture.md` |
 | Agents, tools, skills — how to classify and add them | `docs/agents.md` |
+| How questions, skipping, timeouts and pending answers work | `docs/ask-user.md` |
 | The four design doc families; two-phase writes; chapter production | `docs/design-docs.md` |
 | Who plans a chapter, who approves it, who writes it — and what that retires | `docs/chapter-planning.md` |
 | Character cards | `docs/characters.md` |
