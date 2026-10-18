@@ -444,3 +444,49 @@ describe("write_ops · 原子写", () => {
     expect(await readFile(chaptersAbs("sub/deep.md"), "utf-8")).toBe("深一层\n");
   });
 });
+
+describe("write_ops · 改动记录", () => {
+  test("新建/修改带上记录；内容相同的写不产生记录", async () => {
+    const ctx = makeCtx();
+    const created = await writeFile(
+      ctx,
+      confirm({ kind: "write", path: "chapters/ch_rec.md", content: "甲\n" }, "写入"),
+    );
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.change).toMatchObject({
+      path: "chapters/ch_rec.md",
+      kind: "created",
+      diff: "",
+      additions: 1,
+      deletions: 0,
+    });
+
+    const same = await writeFile(
+      ctx,
+      confirm({ kind: "write", path: "chapters/ch_rec.md", content: "甲\n" }, "写入"),
+    );
+    expect(same.ok).toBe(true);
+    if (same.ok) expect(same.change).toBeUndefined();
+
+    const edited = await writeFile(
+      ctx,
+      confirm({ kind: "replace", path: "chapters/ch_rec.md", find: "甲", replace: "乙" }, "改写"),
+    );
+    expect(edited.ok).toBe(true);
+    if (!edited.ok) return;
+    expect(edited.change?.kind).toBe("modified");
+    expect(edited.change?.diff).toContain("-甲");
+    expect(edited.change?.diff).toContain("+乙");
+  });
+
+  test("删除带上 deleted 与被删内容的 diff", async () => {
+    const ctx = makeCtx();
+    await writeFile(ctx, confirm({ kind: "write", path: "design/tmp-del.md", content: "要删的\n" }));
+    const r = await writeFile(ctx, confirm({ kind: "delete", path: "design/tmp-del.md" }, "删除"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.change).toMatchObject({ kind: "deleted", path: "design/tmp-del.md" });
+    expect(r.change?.diff).toContain("-要删的");
+  });
+});

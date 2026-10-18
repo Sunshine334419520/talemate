@@ -6,9 +6,21 @@
  */
 import type { DocNode } from "../../../src/framework/anchor";
 import type { StyleCatalog } from "../../../src/framework/prose";
-import type { LLMEvent, StoredMessage } from "../../../src/core/types";
+import type { LLMEvent, StoredMessage, WriteChange } from "../../../src/core/types";
 
-export type { DocNode, LLMEvent, StoredMessage, StyleCatalog };
+export type { DocNode, LLMEvent, StoredMessage, StyleCatalog, WriteChange };
+
+/** 一轮的文件改动。消息流是唯一来源，主进程按会话聚合后交给右栏的历史视图。 */
+export interface SessionTurnChanges {
+  sessionId: string;
+  /** 会话名（左栏那一行）——历史里用它认这是哪次会话 */
+  sessionTitle: string;
+  /** 这一轮的第一条用户消息（第一行，已截断） */
+  user: string;
+  /** 这一轮的起点（用户消息的时间） */
+  ts: number;
+  changes: WriteChange[];
+}
 
 /** 首屏的一张作品卡。全部现取、不缓存——真相在盘上。 */
 export interface ProjectCard {
@@ -185,6 +197,8 @@ export interface TmApi {
   /** 读一份文档的全文；读不到（路径不合法或文件不在）回 `undefined` */
   docText(projectId: string, path: string): Promise<string | undefined>;
   history(projectId: string, sessionId: string): Promise<StoredMessage[]>;
+  /** 每个会话每一轮的文件改动，最新在前——历史视图按会话/全书筛选 */
+  changes(projectId: string): Promise<SessionTurnChanges[]>;
   openSession(projectId: string, sessionId?: string): Promise<OpenInfo>;
   onEvent(cb: (e: LLMEvent) => void): void;
   onConfirm(cb: (req: ConfirmRequest) => void): void;

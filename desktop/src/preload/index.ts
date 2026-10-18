@@ -18,6 +18,7 @@ import type {
   ProjectCard,
   SessionRow,
   SessionState,
+  SessionTurnChanges,
   StoredMessage,
   StyleCatalog,
   TmApi,
@@ -59,6 +60,8 @@ const api: TmApi = {
   onSessionState: (cb) => ipcRenderer.on("tm:session-state", (_e, s: SessionState) => cb(s)),
   history: (projectId, sessionId) =>
     ipcRenderer.invoke("sessions:history", { projectId, sessionId }) as Promise<StoredMessage[]>,
+  changes: (projectId) =>
+    ipcRenderer.invoke("sessions:changes", projectId) as Promise<SessionTurnChanges[]>,
   openSession: (projectId, sessionId) =>
     ipcRenderer.invoke("session:open", { projectId, sessionId }) as Promise<OpenInfo>,
 

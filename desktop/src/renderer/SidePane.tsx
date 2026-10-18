@@ -7,21 +7,26 @@
  *   HTML），而渲染层是有网络的那一侧。一个 `<img onerror>` 就够把稿子送出去。不是洁癖。
  * - diff 按行着色，不渲染 markdown：它是逐字的证据，加粗斜体只会把 `+`/`-` 淹掉。
  */
-import DOMPurify from "dompurify";
-import { marked } from "marked";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { AnnotatedDoc } from "./AnnotatedDoc";
+import type { Annotation } from "./annotations";
+import { HistoryIcon } from "./icons";
+import { ChangeHistory, type ChangeScope } from "./TurnChanges";
+import type { SessionTurnChanges } from "../shared/api";
 
 export type Pane =
   | { kind: "doc"; name: string; path: string; text: string }
-  /** 一次落盘的改动（`write_ops` 给用户看的那两段：先影响面，后这次动了什么） */
-  | { kind: "diff"; name: string; text: string }
+  /** 一次落盘的改动（`write_ops` 给用户看的那两段：先影响面，后这次动了什么）；带路径时显示具体文件 */
+  | { kind: "diff"; name: string; text: string; path?: string }
   /**
    * 纯文本的一屏（`/` 命令的输出，如 `/status`、`/permissions`）。
    *
    * **不走 markdown**：那两份都是对齐过的、一行一条的文本，markdown 会把空格吃掉、把 `◇` 开头的行
    * 并成一段。也不给编辑——命令输出不是作品，改它没有去处。
    */
-  | { kind: "text"; name: string; text: string };
+  | { kind: "text"; name: string; text: string }
+  /** 改动记录：按轮分组的时间线；点一行再进 doc/diff，右上角留返回 */
+  | { kind: "changes"; name: string; groups: SessionTurnChanges[]; currentSessionId: string };
 
 export function SidePane({
   pane,
@@ -30,6 +35,17 @@ export function SidePane({
   stale,
   onEditingChange,
   width,
+  annotations,
+  onAnnotationsChange,
+  onSubmitAnnotations,
+  busy,
+  onBack,
+  historyScope,
+  onHistoryScope,
+  labelOf,
+  rankOf,
+  onOpenDoc,
+  onOpenDiff,
 }: {
   pane: Pane;
   /** 宽度由外面给——分隔缝拖动改的是它（见 Workspace 的 splitter） */
@@ -41,11 +57,35 @@ export function SidePane({
   onSave: (text: string) => Promise<"ok" | "stale">;
   /** 别处把这一份改了（界面据此提示，不抢正在编辑的光标） */
   stale: boolean;
+  /** 当前文档的未提交备注。按文档路径存在外面，切走再回来还在 */
+  annotations: Annotation[];
+  onAnnotationsChange: (notes: Annotation[]) => void;
+  /** 把备注交给上层拼成一条用户消息；清空也由上层做 */
+  onSubmitAnnotations: (notes: readonly Annotation[]) => void;
+  /** 搭档正在跑一轮：提交钮置灰 */
+  busy: boolean;
+  /** 从改动记录点进来的详情才有：回到那一屏 */
+  onBack?: () => void;
+  /** 改动记录的范围，以及切换它 */
+  historyScope: ChangeScope;
+  onHistoryScope: (scope: ChangeScope) => void;
+  /** 文档的显示名与先后（改动记录用；来自目录树） */
+  labelOf: (path: string) => string;
+  rankOf: (path: string) => number;
+  onOpenDoc: (path: string) => void;
+  onOpenDiff: (name: string, text: string, path: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState<string | null>(null);
-  const dirty = editing && draft !== pane.text;
+  const dirty = editing && pane.kind === "doc" && draft !== pane.text;
+
+  // 换文档/换一屏时退出编辑态；同一份文档的正文刷新不动它（见 stale 分支）
+  useEffect(() => {
+    setEditing(false);
+    setNote(null);
+    onEditingChange(false);
+  }, [pane.kind, pane.kind === "doc" ? pane.path : ""]);
 
   async function save(): Promise<void> {
     const verdict = await onSave(draft);
@@ -63,10 +103,15 @@ export function SidePane({
       {/* 顶行与参考界面一致：一个文件标签 + 右侧的图标动作；整行可拖窗口 */}
       <div className="doc-tabs">
         <span className="tab active">
-          <FileIcon />
+          {pane.kind === "changes" ? <HistoryIcon /> : <FileIcon />}
           {pane.name}
         </span>
         <span className="end">
+          {onBack !== undefined && (
+            <button className="btn tiny" type="button" onClick={onBack}>
+              ← 改动记录
+            </button>
+          )}
           {pane.kind === "doc" && !editing && (
             <button
               className="iconbtn"
@@ -103,18 +148,44 @@ export function SidePane({
         </span>
       </div>
       <div className="pathbar">
-        {pane.kind === "doc" ? pane.path : pane.kind === "diff" ? "改动" : "命令"}
-        {stale && !editing && <span className="stale">已在别处更新</span>}
+        {pane.kind === "doc"
+          ? pane.path
+          : pane.kind === "diff"
+            ? (pane.path ?? "改动")
+            : pane.kind === "changes"
+              ? (historyScope === "session" ? "本次会话" : "本书")
+              : "命令"}
+        {stale && pane.kind === "doc" && !editing && <span className="stale">已在别处更新</span>}
       </div>
       {note !== null && <div className="pane-note">{note}</div>}
       {pane.kind === "diff" ? (
         <Diff text={pane.text} />
       ) : pane.kind === "text" ? (
         <div className="pane-body plain">{pane.text}</div>
+      ) : pane.kind === "changes" ? (
+        <div className="pane-body">
+          <ChangeHistory
+            groups={pane.groups}
+            currentSessionId={pane.currentSessionId}
+            scope={historyScope}
+            onScope={onHistoryScope}
+            labelOf={labelOf}
+            rankOf={rankOf}
+            onOpenDoc={onOpenDoc}
+            onOpenDiff={onOpenDiff}
+          />
+        </div>
       ) : editing ? (
         <textarea className="pane-edit" value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck={false} />
       ) : (
-        <Doc text={pane.text} />
+        <AnnotatedDoc
+          key={pane.path}
+          text={pane.text}
+          annotations={annotations}
+          onChange={onAnnotationsChange}
+          onSubmit={onSubmitAnnotations}
+          busy={busy}
+        />
       )}
     </div>
   );
@@ -161,11 +232,6 @@ function XIcon() {
       <path d="m4 4 8 8M12 4l-8 8" />
     </svg>
   );
-}
-
-function Doc({ text }: { text: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false })), [text]);
-  return <div className="md pane-body" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /** 逐行着色：`+` 新增、`-` 删除，其余原样。不给行号——`write_ops` 的 diff 自带上下文行。 */

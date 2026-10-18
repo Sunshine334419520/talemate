@@ -43,6 +43,8 @@ export async function executeToolPart(
       ...base,
       state: "completed",
       output: res.output,
+      // 改动记录只给界面汇总，模型上下文不读它
+      change: res.change,
       // 只有成功才允许结束本回合：被拒/校验失败必须留给模型同轮自纠，
       // 否则循环会死在一个本可自愈的错误上（见 prompt 工具返回的"可用小节"这类自愈文案）
       halt: tool.halt === true,

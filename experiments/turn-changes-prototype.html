@@ -1,0 +1,1011 @@
+<meta charset="utf-8">
+<title>本轮改动</title>
+<style>
+/*
+ * 一次回合结束后，把所有落盘的文件汇总成一张清单，挂在搭档最后一句话下面。
+ * 点一项，右栏打开它的合并改动（或新建的文档）——不是一次落盘弹一次，而是整轮一次看全。
+ * 色值与字体沿用 desktop/src/renderer/styles.css：界面黑体、稿件宋体、朱砂只给"要你注意"。
+ */
+:root {
+  --ground: #f7f8fb;
+  --card: #ffffff;
+  --panel: #f3f4f9;
+  --panel-2: #eef0f5;
+  --hover: #e9ebf4;
+  --bubble: #eef1f9;
+  --line: #e5e7f0;
+  --line-soft: #eef0f6;
+  --ink: #1d1e24;
+  --muted: #62636e;
+  --faint: #9899a5;
+  --accent: #4d6bfe;
+  --accent-soft: #edf1ff;
+  --zhu: #a8402f;
+  --zhu-soft: #f7ebe8;
+  --pine: #3f6b56;
+  --indigo: #4a5b78;
+
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "Microsoft YaHei", "SimSun", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #14151a;
+    --card: #1e1f27;
+    --panel: #23262e;
+    --panel-2: #23262e;
+    --hover: #262832;
+    --bubble: #23252f;
+    --line: #2c2e38;
+    --line-soft: #252730;
+    --ink: #e8e9ef;
+    --muted: #a4a5b0;
+    --faint: #767783;
+    --accent: #8096ff;
+    --accent-soft: #232a44;
+    --zhu: #d9705c;
+    --zhu-soft: #33231f;
+    --pine: #7fa98f;
+    --indigo: #93a7c8;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #14151a;
+  --card: #1e1f27;
+  --panel: #23262e;
+  --panel-2: #23262e;
+  --hover: #262832;
+  --bubble: #23252f;
+  --line: #2c2e38;
+  --line-soft: #252730;
+  --ink: #e8e9ef;
+  --muted: #a4a5b0;
+  --faint: #767783;
+  --accent: #8096ff;
+  --accent-soft: #232a44;
+  --zhu: #d9705c;
+  --zhu-soft: #33231f;
+  --pine: #7fa98f;
+  --indigo: #93a7c8;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden;
+  background: var(--ground); color: var(--ink);
+  font-family: var(--sans); font-size: 14px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+button, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { height: 100%; display: flex; flex-direction: column; }
+
+/* ── 顶栏 ── */
+.topbar {
+  flex: none; height: 48px; display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; background: var(--card); border-bottom: 1px solid var(--line);
+}
+.traffic { display: flex; gap: 6px; margin-right: 2px; }
+.traffic i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: block; }
+.brand { font-weight: 600; font-size: 13.5px; letter-spacing: .01em; }
+.proto {
+  font-size: 10.5px; letter-spacing: .08em; color: var(--faint);
+  border: 1px dashed var(--line); border-radius: 999px; padding: 0 7px; line-height: 17px;
+}
+.crumb { font-family: var(--serif); font-size: 14px; color: var(--muted); margin-left: 4px; }
+.book-exit { border: 0; background: none; color: var(--faint); font-size: 11.5px; padding: 2px 4px; border-radius: 6px; }
+.book-exit:hover { background: var(--hover); color: var(--ink); }
+.topbar .spacer { flex: 1; }
+.status { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pine); flex: none; }
+.badge-turn {
+  font-size: 11px; color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: 0 8px; line-height: 18px; white-space: nowrap;
+}
+.model { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+.cols { flex: 1; min-height: 0; display: flex; }
+
+/* ── 左栏 ── */
+.rail {
+  flex: none; width: 236px; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--ground); border-right: 1px solid var(--line);
+}
+.rail-top { padding: 14px 14px 10px; border-bottom: 1px solid var(--line-soft); }
+.rail-top b { display: block; font-family: var(--serif); font-size: 17px; font-weight: 600; line-height: 1.3; }
+.rail-top span { display: block; margin-top: 2px; color: var(--faint); font-size: 11px; }
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 16px; }
+.section-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 12px 6px 5px; color: var(--faint);
+  font-size: 10.5px; letter-spacing: .08em;
+}
+.section-head .count { margin-left: auto; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.sess, .tree-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 0; background: none; border-radius: 7px;
+  text-align: left; color: var(--muted); font-size: 12.5px;
+}
+.sess:hover, .tree-row:hover { background: var(--hover); }
+.sess[aria-current="true"] { background: var(--card); color: var(--ink); font-weight: 500; }
+.sess .when { margin-left: auto; color: var(--faint); font-size: 10.5px; font-weight: 400; white-space: nowrap; }
+.tree-row.open { color: var(--ink); }
+.tree-row.child { padding-left: 20px; }
+.tree-row[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
+.tree-row .caret { margin-left: auto; color: var(--faint); font-size: 9px; }
+.tree-tag {
+  margin-left: auto; flex: none; color: var(--accent); background: var(--accent-soft);
+  border-radius: 4px; padding: 0 5px; font-size: 9.5px; line-height: 15px;
+}
+
+/* ── 中栏：对话 ── */
+.chat {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--card); border-right: 1px solid var(--line);
+}
+.chat-head {
+  flex: none; height: 44px; display: flex; align-items: center; gap: 9px;
+  padding: 0 18px; border-bottom: 1px solid var(--line-soft);
+}
+.chat-head .title { font-size: 13px; font-weight: 600; }
+.chat-head .spacer { flex: 1; }
+.chat-head .sub { color: var(--faint); font-size: 11.5px; }
+/* 改动记录的常驻入口：放在会话标题栏，而不是左栏段头的小字链接 */
+.history-entry {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  border: 1px solid var(--line); border-radius: 999px; background: none;
+  padding: 3px 10px; font-size: 11.5px; color: var(--muted); white-space: nowrap;
+}
+.history-entry:hover { background: var(--hover); color: var(--ink); }
+.history-entry.active {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.history-entry svg { width: 12px; height: 12px; flex: none; }
+.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 22px 8px; }
+.thread { max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.steps-line { display: flex; align-items: baseline; gap: 6px; color: var(--faint); font-size: 12px; }
+.steps-line b { font-weight: 400; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.mate { font-family: var(--serif); font-size: 15px; line-height: 1.95; }
+.mate p { margin: 0 0 10px; }
+.mate p:last-child { margin-bottom: 0; }
+.me { display: flex; justify-content: flex-end; }
+.bubble {
+  max-width: 80%; padding: 8px 14px;
+  background: var(--bubble); border-radius: 14px;
+  font-size: 14px; line-height: 1.7; white-space: pre-wrap;
+}
+
+/* ── 本轮改动：对话末尾的一张清单 ── */
+.changes {
+  margin-top: 2px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); overflow: hidden;
+}
+.changes-head {
+  display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line-soft);
+}
+.changes-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.changes-count {
+  color: var(--muted); font-size: 11px; border: 1px solid var(--line);
+  border-radius: 999px; padding: 0 7px; line-height: 17px; background: var(--card);
+}
+.changes-hint { margin-left: auto; color: var(--faint); font-size: 10.5px; align-self: center; }
+.changes-list { display: flex; flex-direction: column; }
+.change-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 14px; border: 0; border-top: 1px solid var(--line-soft);
+  background: var(--card); text-align: left; color: var(--ink);
+}
+.change-row:first-child { border-top: 0; }
+.change-row:hover { background: var(--hover); }
+.change-row[aria-current="true"] { background: var(--accent-soft); }
+.change-ico {
+  flex: none; width: 26px; height: 26px; display: grid; place-items: center;
+  border-radius: 7px; background: var(--panel-2); color: var(--muted);
+}
+.change-row[aria-current="true"] .change-ico { background: var(--card); color: var(--accent); }
+.change-ico svg { width: 14px; height: 14px; }
+.change-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.change-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.change-path {
+  font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.change-chip {
+  flex: none; font-size: 10.5px; line-height: 17px; border-radius: 999px; padding: 0 7px;
+  color: var(--muted); background: var(--panel-2); white-space: nowrap;
+}
+.change-chip.new { color: var(--accent); background: var(--accent-soft); }
+.change-chip.del { color: var(--zhu); background: var(--zhu-soft); }
+.chev { flex: none; color: var(--faint); font-size: 15px; line-height: 1; }
+.change-row[aria-current="true"] .chev { color: var(--accent); }
+.changes-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 7px 14px 8px; border-top: 1px solid var(--line-soft);
+  color: var(--faint); font-size: 10.5px; background: var(--card);
+}
+.changes-more {
+  border: 0; background: none; padding: 0; color: var(--faint);
+  font: inherit; font-size: 10.5px; cursor: pointer; white-space: nowrap;
+}
+.changes-more:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── 改动记录：右栏里的时间线。按轮分组，一行一份文档 ── */
+.history-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.history-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.history-title { margin: 0; font-family: var(--serif); font-size: 20px; font-weight: 600; }
+.history-meta { color: var(--faint); font-size: 10.5px; margin: 0 0 18px; font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg-btn {
+  border: 0; background: none; border-radius: 6px; padding: 2px 9px;
+  font-size: 11.5px; color: var(--muted); cursor: pointer;
+}
+.seg-btn:hover { background: var(--hover); color: var(--ink); }
+.seg-btn.active { background: var(--accent-soft); color: var(--accent); }
+
+.history { position: relative; padding-left: 16px; }
+.history::before {
+  content: ""; position: absolute; left: 4px; top: 7px; bottom: 12px;
+  width: 1px; background: var(--line);
+}
+.history-group { position: relative; margin-bottom: 20px; }
+.history-group:last-child { margin-bottom: 0; }
+.history-group::before {
+  content: ""; position: absolute; left: -15px; top: 6px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--card); border: 1px solid var(--faint);
+}
+.history-group-head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 2px;
+}
+.history-time { color: var(--muted); font-size: 11.5px; }
+.history-count { margin-left: auto; color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.history-turn {
+  margin: 0 0 8px; color: var(--faint); font-family: var(--serif);
+  font-size: 12.5px; line-height: 1.7;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.history-rows { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); }
+.history-rows .change-row:first-child { border-top: 0; }
+.history-empty { color: var(--faint); font-size: 12.5px; }
+
+.composer { flex: none; padding: 8px 22px 14px; }
+.composer .box {
+  max-width: 44rem; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card); padding: 10px 12px 8px;
+  box-shadow: 0 6px 20px rgb(29 30 36 / 5%);
+}
+.composer .box:focus-within { border-color: var(--faint); }
+.composer textarea {
+  border: 0; background: none; outline: none; resize: none;
+  height: 38px; font: inherit; color: var(--ink);
+}
+.box-actions { display: flex; align-items: center; gap: 8px; }
+.box-hint { color: var(--faint); font-size: 11px; }
+.box-actions .spacer { flex: 1; }
+.send {
+  width: 27px; height: 27px; display: grid; place-items: center;
+  border: 0; border-radius: 50%; background: var(--accent); color: var(--card);
+}
+
+/* ── 右栏：细节 ── */
+.docpane {
+  flex: none; width: clamp(460px, 46vw, 680px); min-height: 0;
+  position: relative; display: flex; flex-direction: column;
+  background: var(--card);
+}
+.doc-tabs {
+  flex: none; height: 44px; display: flex; align-items: center; gap: 6px;
+  padding: 0 10px; border-bottom: 1px solid var(--line);
+}
+.tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  max-width: 64%; padding: 4px 9px; border-radius: 7px;
+  font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden;
+}
+.tab.active { background: var(--accent-soft); color: var(--accent); }
+.tab svg { width: 13px; height: 13px; flex: none; }
+.tab span { overflow: hidden; text-overflow: ellipsis; }
+.doc-tabs .end { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.btn.tiny { padding: 3px 9px; font-size: 11.5px; }
+.iconbtn {
+  width: 25px; height: 25px; display: grid; place-items: center;
+  border: 0; border-radius: 7px; background: none; color: var(--faint); font-size: 15px; line-height: 1;
+}
+.iconbtn:hover { background: var(--hover); color: var(--ink); }
+.pathbar {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid var(--line-soft);
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  white-space: nowrap; overflow: hidden;
+}
+.pathbar .path { overflow: hidden; text-overflow: ellipsis; }
+.chip {
+  flex: none; font-family: var(--sans); font-size: 10.5px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; line-height: 17px;
+}
+.chip.accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
+.path-hint { margin-left: auto; flex: none; font-family: var(--sans); font-size: 10.5px; color: var(--faint); }
+.pane-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 22px 40px; }
+
+/* diff：逐行着色。等宽是刻意的：+/- 要对齐，加粗斜体会把它们淹掉 */
+.diff-summary { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.diff-summary-title { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+.diff-summary-num { color: var(--muted); font-size: 12px; }
+.diff-summary-meta { margin-left: auto; color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.hunk { margin-bottom: 16px; }
+.hunk-head {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 0 2px 5px; color: var(--faint); font-size: 10.5px;
+}
+.hunk-no { font-family: var(--mono); color: var(--muted); }
+.hunk-label { color: var(--faint); }
+.diff-block {
+  border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden;
+  font-family: var(--mono); font-size: 12px; line-height: 1.8;
+}
+.dline { display: flex; gap: 8px; padding: 1px 10px; white-space: pre-wrap; word-break: break-word; }
+.dline .dmark { flex: none; width: 10px; color: var(--faint); user-select: none; }
+.dline.add { background: color-mix(in srgb, var(--pine) 14%, transparent); }
+.dline.add .dmark { color: var(--pine); }
+.dline.del { background: color-mix(in srgb, var(--zhu) 12%, transparent); color: var(--muted); }
+.dline.del .dmark { color: var(--zhu); }
+.dline.ctx { color: var(--muted); }
+.diff-empty { color: var(--faint); font-size: 12.5px; }
+
+/* 全文 / 角色卡：正文宋体，稿件与工具的分野在字上 */
+.doc-read { max-width: 36rem; margin: 0 auto; }
+.doc-read h1 {
+  margin: 0 0 4px; font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: .01em;
+}
+.doc-read .doc-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 16px;
+  color: var(--faint); font-size: 11.5px; font-variant-numeric: tabular-nums;
+}
+.doc-read .rule { border: 0; border-top: 1px solid var(--line-soft); margin: 0 0 18px; }
+.doc-read p {
+  margin: 0 0 .9em; font-family: var(--serif); font-size: 15px; line-height: 1.95;
+}
+.doc-read h3 {
+  margin: 18px 0 6px; font-family: var(--serif); font-size: 15.5px; font-weight: 600;
+}
+.doc-read blockquote {
+  margin: 10px 0 0; padding-left: 12px; border-left: 2px solid var(--line);
+  color: var(--muted);
+}
+.new-banner {
+  display: inline-flex; align-items: center; gap: 5px; margin-bottom: 10px;
+  color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: 0 8px; font-size: 10.5px; line-height: 18px;
+}
+.new-banner::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+.rail-scroll, .chat-scroll, .pane-body { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}
+
+@media (max-width: 1120px) {
+  .path-hint, .changes-hint { display: none; }
+}
+@media (max-width: 980px) {
+  .rail { display: none; }
+}
+@media (max-width: 760px) {
+  .topbar { gap: 8px; padding: 0 12px; }
+  .traffic, .proto, .crumb, .book-exit, .status, .model { display: none; }
+  .badge-turn { margin-left: auto; }
+  .cols { flex-direction: column; }
+  .chat { flex: none; height: 46%; border-right: 0; border-bottom: 1px solid var(--line); }
+  .chat-scroll { padding: 16px 14px 6px; }
+  .composer { padding: 6px 14px 10px; }
+  .docpane { flex: 1; width: auto; min-height: 0; }
+  .pane-body { padding: 16px 14px 32px; }
+  .changes-hint { display: none; }
+}
+@media (max-width: 560px) {
+  .chat-head .sub { display: none; }
+}
+@media (max-width: 460px) {
+  .chat { height: 48%; }
+  .change-row { padding: 8px 10px; }
+  .change-path { display: none; }
+  .diff-summary-meta { margin-left: 0; }
+  .dline { font-size: 11px; }
+}
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="brand">talemate</span>
+    <span class="proto">交互原型</span>
+    <span class="crumb">漕运</span>
+    <button class="book-exit" type="button">← 所有作品</button>
+    <span class="spacer"></span>
+    <span class="status"><i class="dot"></i>搭档 · 已就绪</span>
+    <span class="badge-turn">本轮已落盘 3 项</span>
+    <span class="model">sonnet-5</span>
+  </header>
+
+  <div class="cols">
+    <aside class="rail">
+      <div class="rail-top">
+        <b>漕运</b>
+        <span>历史 · 连载中 · 写到第 6 章</span>
+      </div>
+      <div class="rail-scroll">
+        <div class="section-head">会话 <span class="count">2</span></div>
+        <button class="sess" type="button" aria-current="true"><span>搭档</span><span class="when">今天 14:20</span></button>
+        <button class="sess" type="button"><span>考据</span><span class="when">9月28日</span></button>
+
+        <div class="section-head">目录</div>
+        <button class="tree-row" type="button">核心设定</button>
+        <button class="tree-row" type="button">世界观</button>
+        <button class="tree-row open" type="button">角色</button>
+        <button class="tree-row child" type="button">沈越</button>
+        <button class="tree-row child" type="button">陈六 <span class="tree-tag">新</span></button>
+        <button class="tree-row child" type="button">艄公 <span class="tree-tag">新</span></button>
+        <button class="tree-row" type="button">大纲</button>
+        <button class="tree-row open" type="button">正文 <span class="caret">▾</span></button>
+        <button class="tree-row child" type="button">第 1 章</button>
+        <button class="tree-row child" type="button">第 3 章（第 2 稿）</button>
+        <button class="tree-row child" type="button" aria-current="true">第 6 章 · 夜渡</button>
+        <button class="tree-row" type="button">现状</button>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <div class="chat-head">
+        <span class="title">对话 · 搭档</span>
+        <span class="spacer"></span>
+        <span class="sub">第 6 章 · 夜渡</span>
+        <button class="history-entry" id="historyLink" type="button" title="本次会话的改动记录">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.2 1.4"/></svg>
+          改动记录
+        </button>
+      </div>
+      <div class="chat-scroll" id="chatScroll">
+        <div class="thread">
+          <div class="me">
+            <div class="bubble">第 6 章里我标了 3 处，帮我改一下。
+文档：chapters/chapter_ch6_v2.md</div>
+          </div>
+          <div class="steps-line">▸ 做了 5 步 · <b>改写 3 次、写入 2 次</b></div>
+          <div class="mate">
+            <p>三处都按你的标注改了。陈六和艄公是这一章新立的人，角色卡也一起建了。</p>
+            <p>右栏是本轮的全部改动。</p>
+          </div>
+
+          <section class="changes" aria-label="本轮改动">
+            <div class="changes-head">
+              <span class="changes-title">本轮改动</span>
+              <span class="changes-count">3 份文档</span>
+              <span class="changes-hint">5 次写入，已合并 · 点开在右栏看</span>
+            </div>
+            <div class="changes-list">
+              <button class="change-row" type="button" data-view="chenliu" aria-current="false">
+                <span class="change-ico" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg>
+                </span>
+                <span class="change-main">
+                  <span class="change-name">角色 · 陈六</span>
+                  <span class="change-path">characters/陈六.md</span>
+                </span>
+                <span class="change-chip new">新建</span>
+                <span class="chev" aria-hidden="true">›</span>
+              </button>
+
+              <button class="change-row" type="button" data-view="shaogong" aria-current="false">
+                <span class="change-ico" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg>
+                </span>
+                <span class="change-main">
+                  <span class="change-name">角色 · 艄公</span>
+                  <span class="change-path">characters/艄公.md</span>
+                </span>
+                <span class="change-chip new">新建</span>
+                <span class="chev" aria-hidden="true">›</span>
+              </button>
+
+              <button class="change-row" type="button" data-view="chapter" aria-current="true">
+                <span class="change-ico" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg>
+                </span>
+                <span class="change-main">
+                  <span class="change-name">第 6 章 · 夜渡</span>
+                  <span class="change-path">chapters/chapter_ch6_v2.md</span>
+                </span>
+                <span class="change-chip">修改 3 处</span>
+                <span class="chev" aria-hidden="true">›</span>
+              </button>
+            </div>
+            <div class="changes-foot">
+              <span>只列作品文档；内部状态文件不列出。</span>
+              <button class="changes-more" id="sessionHistoryLink" type="button">查看全部改动 →</button>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="box">
+          <textarea placeholder="说点什么…" rows="1"></textarea>
+          <div class="box-actions">
+            <span class="box-hint">@ 引用文档 · / 命令</span>
+            <span class="spacer"></span>
+            <button class="send" type="button" aria-label="发送">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <section class="docpane">
+      <div class="doc-tabs">
+        <div class="tab active">
+          <svg id="tabFileIcon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg>
+          <svg id="tabClockIcon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true" hidden><circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.2 1.4"/></svg>
+          <span id="docTabText">第 6 章 · 本轮改动</span>
+        </div>
+        <span class="end">
+          <button class="btn tiny" id="backHistory" type="button" hidden>← 改动记录</button>
+          <button class="btn tiny" id="toggleView" type="button">看全文</button>
+          <button class="iconbtn" type="button" aria-label="关闭文档">×</button>
+        </span>
+      </div>
+      <div class="pathbar">
+        <span class="path" id="docPath">chapters/chapter_ch6_v2.md</span>
+        <span class="chip" id="docBadge">本轮 3 处</span>
+        <span class="path-hint" id="docHint">合并显示本轮的全部改动</span>
+      </div>
+
+      <div class="pane-body" id="paneBody">
+        <section id="viewDiff">
+          <div class="diff-summary">
+            <span class="diff-summary-title">本轮改动</span>
+            <span class="diff-summary-num">3 处</span>
+            <span class="diff-summary-meta">+3 −3 行 · 5 次写入合并</span>
+          </div>
+
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 1</span><span class="hunk-label">第 2 段</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>“只在北岸卸货，不许靠南边的码头。”陈六昨夜说这话时，眼睛没看他，手指在桌上敲了三下。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>“只在北岸卸货，不许靠南边的码头。”陈六昨夜说这话时，眼睛没看他，左手食指在桌面上敲了三下：先轻，后重，再轻。</span></div>
+              <div class="dline ctx"><span class="dmark"> </span><span>沈越记住了，却没想明白那三下是什么意思。</span></div>
+            </div>
+          </section>
+
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 2</span><span class="hunk-label">第 4 段</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>河面像一块冷铁，桨划下去，声音闷在雾里。沈越蹲在船头，数着岸上退过去的灯笼。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>河面像一块浸了墨的粗布，桨划下去，声音闷在雾里。沈越蹲在船头，数着岸上退过去的灯笼。</span></div>
+            </div>
+          </section>
+
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 3</span><span class="hunk-label">第 5 段</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>数到第十三盏时，灯忽然灭了。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>数到第十三盏时，灯忽然灭了。沈越的手停在桨柄上，没敢回头。</span></div>
+              <div class="dline ctx"><span class="dmark"> </span><span>后来他总记得那个瞬间：不是灯灭，是灯灭之前，有人在灯下抬了一下头。</span></div>
+            </div>
+          </section>
+        </section>
+
+        <section id="viewDoc" hidden>
+          <div class="doc-read">
+            <h1>第 6 章 · 夜渡</h1>
+            <div class="doc-meta"><span>草稿 · 第 3 稿</span><span>4,180 字</span><span>今天 14:42</span></div>
+            <hr class="rule">
+            <p>天还没亮透，沈越就到了河埠头。雾从水面上浮起来，一层一层，把对岸的桅杆藏得只剩尖。他手里攥着陈六给的船牌，木牌边角磨得发亮，上面刻的号码却像是新描过的。</p>
+            <p>“只在北岸卸货，不许靠南边的码头。”陈六昨夜说这话时，眼睛没看他，左手食指在桌面上敲了三下：先轻，后重，再轻。沈越记住了，却没想明白那三下是什么意思。</p>
+            <p>船是条旧漕船，船帮补过两回，吃水很浅。艄公是个哑巴，见了他只伸手，掌心朝上。沈越把船牌递过去，对方翻来覆去看了半晌，才把牌子还回来，往船尾一指。</p>
+            <p>河面像一块浸了墨的粗布，桨划下去，声音闷在雾里。沈越蹲在船头，数着岸上退过去的灯笼。</p>
+            <p>数到第十三盏时，灯忽然灭了。沈越的手停在桨柄上，没敢回头。</p>
+            <p>后来他总记得那个瞬间：不是灯灭，是灯灭之前，有人在灯下抬了一下头。</p>
+          </div>
+        </section>
+
+        <section id="viewChenliu" hidden>
+          <div class="doc-read">
+            <div class="new-banner">本轮新建 · 角色卡</div>
+            <h1>陈六</h1>
+            <div class="doc-meta"><span>角色卡</span><span>牙人</span><span>漕帮外柜</span></div>
+            <hr class="rule">
+            <h3>基本档案</h3>
+            <p>姓名：陈六 / 性别：男</p>
+            <p>职业：牙人</p>
+            <p>身份 · 所属：漕帮外柜，替北岸码头拉纤</p>
+            <h3>性格与矛盾</h3>
+            <p>嘴上热络，账上分毫不让；怕水，却一辈子在河上讨生活。</p>
+            <h3>说话方式</h3>
+            <p>先笑，后报价；一句话里总要留半句。</p>
+            <blockquote>“沈兄弟，船牌是死的，人是活的。”</blockquote>
+          </div>
+        </section>
+
+        <section id="viewShaogong" hidden>
+          <div class="doc-read">
+            <div class="new-banner">本轮新建 · 角色卡</div>
+            <h1>艄公</h1>
+            <div class="doc-meta"><span>角色卡</span><span>渡船艄公</span><span>北岸旧漕船</span></div>
+            <hr class="rule">
+            <h3>基本档案</h3>
+            <p>姓名：本名不详 / 性别：男</p>
+            <p>职业：渡船艄公</p>
+            <p>身份 · 所属：北岸旧漕船，替陈六跑私活</p>
+            <h3>性格与矛盾</h3>
+            <p>不说话，但听得懂；收钱利落，遇到盘查就把船靠回北岸。</p>
+            <h3>说话方式</h3>
+            <p>不出声。用掌心、船桨和下巴指方向。</p>
+          </div>
+        </section>
+
+        <section id="viewHistory" hidden>
+          <div class="history-head">
+            <div class="history-title-row">
+              <h1 class="history-title">改动记录</h1>
+              <div class="seg" role="tablist" aria-label="改动范围">
+                <button class="seg-btn active" id="segSession" type="button">本次会话</button>
+                <button class="seg-btn" id="segBook" type="button">本书</button>
+              </div>
+            </div>
+          </div>
+          <p class="history-meta" id="historyMeta">2 轮 · 5 份文档</p>
+
+          <div class="history" id="historySession">
+            <section class="history-group">
+              <div class="history-group-head">
+                <span class="history-time">今天 14:42 · 搭档</span>
+                <span class="history-count">3 份文档 · 5 次写入</span>
+              </div>
+              <p class="history-turn">“第 6 章里我标了 3 处，帮我改一下。”</p>
+              <div class="history-rows">
+                <button class="change-row" type="button" data-view="chenliu">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg></span>
+                  <span class="change-main"><span class="change-name">角色 · 陈六</span><span class="change-path">characters/陈六.md</span></span>
+                  <span class="change-chip new">新建</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+                <button class="change-row" type="button" data-view="shaogong">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg></span>
+                  <span class="change-main"><span class="change-name">角色 · 艄公</span><span class="change-path">characters/艄公.md</span></span>
+                  <span class="change-chip new">新建</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+                <button class="change-row" type="button" data-view="chapter">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg></span>
+                  <span class="change-main"><span class="change-name">第 6 章 · 夜渡</span><span class="change-path">chapters/chapter_ch6_v2.md</span></span>
+                  <span class="change-chip">修改 3 处</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="history-group">
+              <div class="history-group-head">
+                <span class="history-time">今天 11:05 · 搭档</span>
+                <span class="history-count">2 份文档 · 3 次写入</span>
+              </div>
+              <p class="history-turn">“第 5 章里有两处想让你再看看。”</p>
+              <div class="history-rows">
+                <button class="change-row" type="button" data-view="chapter5">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg></span>
+                  <span class="change-main"><span class="change-name">第 5 章 · 雨泊</span><span class="change-path">chapters/chapter_ch5_v2.md</span></span>
+                  <span class="change-chip">修改 2 处</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+                <button class="change-row" type="button" data-view="shenYue">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg></span>
+                  <span class="change-main"><span class="change-name">角色 · 沈越</span><span class="change-path">characters/沈越.md</span></span>
+                  <span class="change-chip">修改 1 处</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div class="history" id="historyBook" hidden>
+            <section class="history-group">
+              <div class="history-group-head">
+                <span class="history-time">今天 14:42 · 搭档</span>
+                <span class="history-count">3 份文档 · 5 次写入</span>
+              </div>
+              <p class="history-turn">“第 6 章里我标了 3 处，帮我改一下。”</p>
+              <div class="history-rows">
+                <button class="change-row" type="button" data-view="chenliu">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg></span>
+                  <span class="change-main"><span class="change-name">角色 · 陈六</span><span class="change-path">characters/陈六.md</span></span>
+                  <span class="change-chip new">新建</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+                <button class="change-row" type="button" data-view="shaogong">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg></span>
+                  <span class="change-main"><span class="change-name">角色 · 艄公</span><span class="change-path">characters/艄公.md</span></span>
+                  <span class="change-chip new">新建</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+                <button class="change-row" type="button" data-view="chapter">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg></span>
+                  <span class="change-main"><span class="change-name">第 6 章 · 夜渡</span><span class="change-path">chapters/chapter_ch6_v2.md</span></span>
+                  <span class="change-chip">修改 3 处</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="history-group">
+              <div class="history-group-head">
+                <span class="history-time">今天 11:05 · 搭档</span>
+                <span class="history-count">2 份文档 · 3 次写入</span>
+              </div>
+              <p class="history-turn">“第 5 章里有两处想让你再看看。”</p>
+              <div class="history-rows">
+                <button class="change-row" type="button" data-view="chapter5">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg></span>
+                  <span class="change-main"><span class="change-name">第 5 章 · 雨泊</span><span class="change-path">chapters/chapter_ch5_v2.md</span></span>
+                  <span class="change-chip">修改 2 处</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+                <button class="change-row" type="button" data-view="shenYue">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="5.2" r="2.1"/><path d="M3.8 13c.5-2.1 2.1-3.2 4.2-3.2s3.7 1.1 4.2 3.2"/></svg></span>
+                  <span class="change-main"><span class="change-name">角色 · 沈越</span><span class="change-path">characters/沈越.md</span></span>
+                  <span class="change-chip">修改 1 处</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="history-group">
+              <div class="history-group-head">
+                <span class="history-time">9月28日 · 考据</span>
+                <span class="history-count">1 份文档 · 2 次写入</span>
+              </div>
+              <p class="history-turn">“把漕运的几条规矩核一下。”</p>
+              <div class="history-rows">
+                <button class="change-row" type="button" data-view="world">
+                  <span class="change-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg></span>
+                  <span class="change-main"><span class="change-name">世界观 · 漕运</span><span class="change-path">design/wiki/漕运.md</span></span>
+                  <span class="change-chip">修改 2 处</span><span class="chev" aria-hidden="true">›</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="viewChapter5" hidden>
+          <div class="diff-summary">
+            <span class="diff-summary-title">该轮改动</span>
+            <span class="diff-summary-num">2 处</span>
+            <span class="diff-summary-meta">+2 −2 行 · 今天 11:05</span>
+          </div>
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 1</span><span class="hunk-label">第 2 段</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>雨点砸在船篷上，像有人在外头撒豆子。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>雨点砸在船篷上，密一阵疏一阵，像有人在外头撒豆子，又忽然住了手。</span></div>
+            </div>
+          </section>
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 2</span><span class="hunk-label">第 5 段</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>沈越把船缆在桩上绕了两圈。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>沈越把船缆在桩上绕了两圈，留出一个活扣。</span></div>
+            </div>
+          </section>
+        </section>
+
+        <section id="viewShenYue" hidden>
+          <div class="diff-summary">
+            <span class="diff-summary-title">该轮改动</span>
+            <span class="diff-summary-num">1 处</span>
+            <span class="diff-summary-meta">+1 −1 行 · 今天 11:05</span>
+          </div>
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 1</span><span class="hunk-label">性格与矛盾</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>既认命，又咽不下这口气。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>既认命，又咽不下这口气；真被逼到墙角时，会先低头，再找补回来的路。</span></div>
+            </div>
+          </section>
+        </section>
+
+        <section id="viewWorld" hidden>
+          <div class="diff-summary">
+            <span class="diff-summary-title">该轮改动</span>
+            <span class="diff-summary-num">2 处</span>
+            <span class="diff-summary-meta">+2 −2 行 · 9月28日</span>
+          </div>
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 1</span><span class="hunk-label">北岸码头</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>北岸码头只许官船靠泊。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>北岸码头名义上只许官船靠泊，私船要在下游半里的苇荡里等牙人接应。</span></div>
+            </div>
+          </section>
+          <section class="hunk">
+            <div class="hunk-head"><span class="hunk-no">改动 2</span><span class="hunk-label">船牌</span></div>
+            <div class="diff-block">
+              <div class="dline del"><span class="dmark">-</span><span>漕帮外柜替官府核验船牌。</span></div>
+              <div class="dline add"><span class="dmark">+</span><span>漕帮外柜替官府核验船牌，也替私船改船牌——这两件事从来是同一双手。</span></div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  const views = {
+    diff: document.getElementById("viewDiff"),
+    doc: document.getElementById("viewDoc"),
+    chenliu: document.getElementById("viewChenliu"),
+    shaogong: document.getElementById("viewShaogong"),
+    history: document.getElementById("viewHistory"),
+    chapter5: document.getElementById("viewChapter5"),
+    shenYue: document.getElementById("viewShenYue"),
+    world: document.getElementById("viewWorld"),
+  };
+  // 卡片里的行只负责"看这一轮"；历史里的行多一个返回入口
+  const cardRows = Array.from(document.querySelectorAll(".changes .change-row"));
+  const historyRows = Array.from(document.querySelectorAll(".history .change-row"));
+  const docTabText = document.getElementById("docTabText");
+  const docPath = document.getElementById("docPath");
+  const docBadge = document.getElementById("docBadge");
+  const docHint = document.getElementById("docHint");
+  const toggleView = document.getElementById("toggleView");
+  const backHistory = document.getElementById("backHistory");
+  const tabFileIcon = document.getElementById("tabFileIcon");
+  const tabClockIcon = document.getElementById("tabClockIcon");
+  const paneBody = document.getElementById("paneBody");
+  const segSession = document.getElementById("segSession");
+  const segBook = document.getElementById("segBook");
+  const historySession = document.getElementById("historySession");
+  const historyBook = document.getElementById("historyBook");
+  const historyMeta = document.getElementById("historyMeta");
+  const historyEntry = document.getElementById("historyLink");
+
+  let chapterMode = "diff";
+  let historySegment = "session";
+  let historyScroll = 0;
+
+  function setActive(view) {
+    for (const row of cardRows) {
+      row.setAttribute("aria-current", row.dataset.view === view ? "true" : "false");
+    }
+  }
+
+  function showOnly(name) {
+    for (const [key, el] of Object.entries(views)) {
+      if (el !== null) el.hidden = key !== name;
+    }
+  }
+
+  function showFileIcon() {
+    tabFileIcon.hidden = false;
+    tabClockIcon.hidden = true;
+  }
+
+  function showChapter(mode) {
+    chapterMode = mode;
+    showFileIcon();
+    showOnly(mode === "diff" ? "diff" : "doc");
+    docTabText.textContent = mode === "diff" ? "第 6 章 · 本轮改动" : "第 6 章 · 夜渡";
+    docPath.textContent = "chapters/chapter_ch6_v2.md";
+    docBadge.textContent = "本轮 3 处";
+    docBadge.className = "chip";
+    docHint.textContent = mode === "diff" ? "合并显示本轮的全部改动" : "本轮改动已落在正文里";
+    toggleView.hidden = false;
+    toggleView.textContent = mode === "diff" ? "看全文" : "看改动";
+    paneBody.scrollTop = 0;
+  }
+
+  function showCharacter(view) {
+    showFileIcon();
+    showOnly(view);
+    const isChen = view === "chenliu";
+    docTabText.textContent = isChen ? "角色 · 陈六" : "角色 · 艄公";
+    docPath.textContent = isChen ? "characters/陈六.md" : "characters/艄公.md";
+    docBadge.textContent = "新建";
+    docBadge.className = "chip accent";
+    docHint.textContent = "本轮新建的角色卡";
+    toggleView.hidden = true;
+    paneBody.scrollTop = 0;
+  }
+
+  const earlier = {
+    chapter5: { tab: "第 5 章 · 雨泊", path: "chapters/chapter_ch5_v2.md", badge: "该轮 2 处", hint: "今天 11:05 的改动" },
+    shenYue: { tab: "角色 · 沈越", path: "characters/沈越.md", badge: "该轮 1 处", hint: "今天 11:05 的改动" },
+    world: { tab: "世界观 · 漕运", path: "design/wiki/漕运.md", badge: "该轮 2 处", hint: "9月28日 · 考据" },
+  };
+
+  function showDetail(view, fromHistory) {
+    historyEntry.classList.remove("active");
+    if (fromHistory) historyScroll = paneBody.scrollTop;
+    backHistory.hidden = !fromHistory;
+    if (view === "chapter") {
+      showChapter("diff");
+      setActive("chapter");
+      return;
+    }
+    if (view === "chenliu" || view === "shaogong") {
+      showCharacter(view);
+      setActive(view);
+      return;
+    }
+    const d = earlier[view];
+    if (d === undefined) return;
+    showFileIcon();
+    showOnly(view);
+    docTabText.textContent = d.tab;
+    docPath.textContent = d.path;
+    docBadge.textContent = d.badge;
+    docBadge.className = "chip";
+    docHint.textContent = d.hint;
+    toggleView.hidden = true;
+    setActive("");
+    paneBody.scrollTop = 0;
+  }
+
+  function showHistory(segment) {
+    historySegment = segment;
+    historyEntry.classList.add("active");
+    showOnly("history");
+    tabFileIcon.hidden = true;
+    tabClockIcon.hidden = false;
+    docTabText.textContent = "改动记录";
+    docPath.textContent = segment === "session" ? "本次会话 · 搭档" : "本书 · 漕运";
+    docBadge.textContent = segment === "session" ? "2 轮" : "3 轮";
+    docBadge.className = "chip";
+    docHint.textContent = "点一项看该轮的合并改动";
+    toggleView.hidden = true;
+    backHistory.hidden = true;
+    segSession.classList.toggle("active", segment === "session");
+    segBook.classList.toggle("active", segment === "book");
+    historySession.hidden = segment !== "session";
+    historyBook.hidden = segment !== "book";
+    historyMeta.textContent = segment === "session" ? "2 轮 · 5 份文档" : "3 轮 · 6 份文档";
+    setActive("");
+    paneBody.scrollTop = 0;
+  }
+
+  for (const row of cardRows) {
+    row.addEventListener("click", () => showDetail(row.dataset.view, false));
+  }
+  for (const row of historyRows) {
+    row.addEventListener("click", () => showDetail(row.dataset.view, true));
+  }
+
+  toggleView.addEventListener("click", () => {
+    showChapter(chapterMode === "diff" ? "doc" : "diff");
+    setActive("chapter");
+  });
+
+  backHistory.addEventListener("click", () => {
+    showHistory(historySegment);
+    requestAnimationFrame(() => {
+      paneBody.scrollTop = historyScroll;
+    });
+  });
+
+  historyEntry.addEventListener("click", () => showHistory("session"));
+  document.getElementById("sessionHistoryLink").addEventListener("click", () => showHistory("session"));
+  segSession.addEventListener("click", () => showHistory("session"));
+  segBook.addEventListener("click", () => showHistory("book"));
+
+  // 初始就停在整轮的合并改动上；滚到底让"本轮改动"这张卡进入第一眼
+  showDetail("chapter", false);
+  requestAnimationFrame(() => {
+    const scroller = document.getElementById("chatScroll");
+    scroller.scrollTop = scroller.scrollHeight;
+  });
+</script>

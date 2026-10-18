@@ -160,7 +160,7 @@ export const applyDesignTool: RegisteredTool<{ path: string }> = defineTool<{
     if (!r.ok) return { output: r.output };
     ctx.clearProposal(path);
     const diff = r.isNew ? "(新建)" : `(+${r.additions} / -${r.deletions} 行)`;
-    return { output: `已按提案写入 ${path} ${diff}`, metadata: { path } };
+    return { output: `已按提案写入 ${path} ${diff}`, metadata: { path }, change: r.change };
   },
 });
 

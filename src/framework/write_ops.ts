@@ -21,7 +21,7 @@
  * 边界：不认识"层""角色卡""小节"。领域语义在工具层（派生成 op），内容不变量在 invariants.ts。
  */
 import { join } from "node:path";
-import type { FileOp, PermissionVerdict, ToolContext } from "../core/types";
+import type { FileOp, PermissionVerdict, ToolContext, WriteChange } from "../core/types";
 import { DOC_ROOTS, rootAbs } from "../core/config";
 import { readText, removeIfUnchanged, StaleContentError, writeIfUnchanged } from "../storage/atomic";
 import { joinBom, splitBom } from "../storage/bom";
@@ -77,6 +77,8 @@ export type WriteOutcome =
       deletions: number;
       match?: MatchLevel;
       count?: number;
+      /** 界面按轮汇总用；模型看不到。没有实际改动（内容相同）时为空 */
+      change?: WriteChange;
     }
   | { ok: false; reason: WriteFailure; output: string };
 
@@ -233,6 +235,11 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
     throw e;
   }
 
+  const kind: WriteChange["kind"] =
+    next.action === "remove" ? "deleted" : next.isNew ? "created" : "modified";
+  // 内容一模一样地写回去不产生记录；新建/删除即使内容为空也算一次实际变动
+  const changed = kind !== "modified" || d.additions > 0 || d.deletions > 0;
+
   return {
     ok: true,
     path: target.pattern,
@@ -242,5 +249,9 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
     deletions: d.deletions,
     match: next.action === "remove" ? undefined : next.match,
     count: next.action === "remove" ? undefined : next.count,
+    // 新建文件的正文就在盘上，界面点开读全文；不把整份内容再抄进记录。
+    change: changed
+      ? { path: target.pattern, kind, diff: kind === "created" ? "" : diff, additions: d.additions, deletions: d.deletions }
+      : undefined,
   };
 }

@@ -48,7 +48,7 @@ export const writeTool: RegisteredTool<{ path: string; content: string }> = defi
     });
     if (!r.ok) return { output: r.output };
     const what = r.isNew ? "新建" : `改写（+${r.additions} / -${r.deletions} 行）`;
-    return { output: `已${what} ${r.path}`, metadata: { file: r.path } };
+    return { output: `已${what} ${r.path}`, metadata: { file: r.path }, change: r.change };
   },
 });
 
@@ -97,6 +97,7 @@ export const editTool: RegisteredTool<{ path: string; find: string; replace: str
         .filter(Boolean)
         .join("\n"),
       metadata: { file: r.path, match: r.match, count: r.count },
+      change: r.change,
     };
   },
 });
@@ -151,7 +152,7 @@ export const deleteTool: RegisteredTool<{ path: string; term?: string }> = defin
       note: refs,
     });
     if (!r.ok) return { output: r.output };
-    return { output: `已删除 ${path}（连同它的全部内容）`, metadata: { file: path } };
+    return { output: `已删除 ${path}（连同它的全部内容）`, metadata: { file: path }, change: r.change };
   },
 });
 

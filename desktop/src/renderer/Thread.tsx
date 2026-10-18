@@ -9,8 +9,10 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useEffect, useMemo, useState } from "react";
-import type { AskRequest, ConfirmRequest, StoredMessage } from "../shared/api";
+import { messageTurns } from "../../../src/session/turn_changes";
+import type { AskRequest, ConfirmRequest, StoredMessage, WriteChange } from "../shared/api";
 import { VERDICT_TEXT } from "../shared/verdict";
+import { TurnChangesCard } from "./TurnChanges";
 
 /**
  * mate 说的话是 markdown（加粗、列表、行内代码），所以得渲染，不能当纯文本贴出来——
@@ -28,10 +30,12 @@ export type LiveItem =
   | { kind: "me"; text: string }
   | { kind: "text"; text: string }
   | { kind: "think"; text: string }
-  | { kind: "tool"; name: string; subject?: string; output?: string }
+  | { kind: "tool"; name: string; subject?: string; output?: string; change?: WriteChange }
   | { kind: "chapter"; path: string; words: number }
   | { kind: "proposal"; text: string }
-  | { kind: "note"; text: string };
+  | { kind: "note"; text: string }
+  /** 一轮跑完之后，界面按落盘记录补上的一张汇总卡 */
+  | { kind: "changes"; changes: WriteChange[] };
 
 /** 一格过程：连续的几个工具调用加稿子进度，合成一段可展开的过程。 */
 export type Step =
@@ -189,6 +193,9 @@ export function Thread({
   onVerdict,
   onOpenDoc,
   onOpenDiff,
+  labelOf,
+  rankOf,
+  onOpenHistory,
 }: {
   history: StoredMessage[];
   live: LiveItem[];
@@ -200,11 +207,30 @@ export function Thread({
   onVerdict: (text: string) => void;
   /** 点"稿子"卡 → 右栏读全文 */
   onOpenDoc: (path: string) => void;
-  /** 点"看改动" → 右栏显示 diff */
-  onOpenDiff: (name: string, text: string) => void;
+  /** 点"看改动" → 右栏显示 diff；改动清单还会带上路径 */
+  onOpenDiff: (name: string, text: string, path?: string) => void;
+  /** 作品目录里的显示名与先后——改动清单不另写一份文档清单 */
+  labelOf: (path: string) => string;
+  rankOf: (path: string) => number;
+  onOpenHistory: () => void;
 }) {
   const rows: React.ReactNode[] = [];
-  history.forEach((m, i) => rows.push(<Stored key={m.seq ?? i} m={m} onOpenDoc={onOpenDoc} />));
+  messageTurns(history).forEach((turn, ti) => {
+    turn.messages.forEach((m, i) => rows.push(<Stored key={`${ti}-${i}`} m={m} onOpenDoc={onOpenDoc} />));
+    if (turn.changes.length > 0) {
+      rows.push(
+        <TurnChangesCard
+          key={`tc${ti}`}
+          changes={turn.changes}
+          labelOf={labelOf}
+          rankOf={rankOf}
+          onOpenDoc={onOpenDoc}
+          onOpenDiff={onOpenDiff}
+          onOpenHistory={onOpenHistory}
+        />,
+      );
+    }
+  });
 
   // 实时那一段：把连续的过程合成一组，"说出来的话"才另起一块
   let steps: Step[] = [];
@@ -224,6 +250,19 @@ export function Thread({
       if (it.kind === "think") rows.push(<Thought key={`l${i}`} text={it.text} live={busy && i === live.length - 1} />);
       if (it.kind === "proposal") rows.push(<Proposal key={`l${i}`} text={it.text} onVerdict={onVerdict} />);
       if (it.kind === "note") rows.push(<p key={`l${i}`} className="note">{it.text}</p>);
+      if (it.kind === "changes") {
+        rows.push(
+          <TurnChangesCard
+            key={`lc${i}`}
+            changes={it.changes}
+            labelOf={labelOf}
+            rankOf={rankOf}
+            onOpenDoc={onOpenDoc}
+            onOpenDiff={onOpenDiff}
+            onOpenHistory={onOpenHistory}
+          />,
+        );
+      }
     }
   });
   flush();

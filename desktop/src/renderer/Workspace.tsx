@@ -6,24 +6,61 @@
  * （谁在哪儿、什么时候取数），画法全在 `Thread` 里。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog } from "../shared/api";
+import type { AskRequest, ConfirmRequest, DocNode, LLMEvent, OpenInfo, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
+import { composeAnnotationMessage, type Annotation } from "./annotations";
 import { COMMANDS } from "./commands";
 import { DocTree } from "./DocTree";
-import { ChevronIcon, PanelIcon, PlusIcon, SlidersIcon } from "./icons";
+import { ChevronIcon, HistoryIcon, PanelIcon, PlusIcon, SlidersIcon } from "./icons";
 import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
+import type { ChangeScope } from "./TurnChanges";
 import { tokens } from "../shared/tokens";
 import { contextWindow } from "../../../src/core/windows";
 
-/** 目录树里所有能打开的节点，拉平成一列——`@` 的候选就是它。 */
-function flatDocs(nodes: DocNode[]): { name: string; path: string }[] {
-  const out: { name: string; path: string }[] = [];
+/**
+ * 目录树里所有能打开的节点，拉平成一列——`@` 的候选、改动清单的显示名与先后都走它。
+ *
+ * `section` 是它所在的顶栏分段（角色 / 正文 / 现状…）。改动清单在扁平的行里还需要这层
+ * 信息，否则"沈越"和"第 6 章"看不出是哪一段的。
+ */
+function flatDocs(nodes: DocNode[], section = ""): { name: string; path: string; section: string }[] {
+  const out: { name: string; path: string; section: string }[] = [];
   for (const n of nodes) {
-    if (n.path !== undefined) out.push({ name: n.name, path: n.path });
-    if (n.children !== undefined) out.push(...flatDocs(n.children));
+    const sec = section === "" ? n.name : section;
+    if (n.path !== undefined) out.push({ name: n.name, path: n.path, section: sec });
+    if (n.children !== undefined) out.push(...flatDocs(n.children, sec));
   }
   return out;
 }
+
+/** 扁平后的一行怎么叫：角色/世界观这类分组带上段名，正文与顶层文档不重复写。 */
+function changeLabel(d: { name: string; section: string }): string {
+  return d.section === d.name || d.section === "正文" ? d.name : `${d.section} · ${d.name}`;
+}
+
+/**
+ * 一轮结束时，把这一轮 tool part 上带回来的改动合成一张卡，挂到对话末尾。
+ * 已经挂过（或这一轮没有可见改动）就原样返回，重跑这个 effect 不会叠两张。
+ */
+function withTurnChanges(items: LiveItem[]): LiveItem[] {
+  let start = -1;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i]?.kind === "me") {
+      start = i;
+      break;
+    }
+  }
+  const after = items.slice(start + 1);
+  if (after.some((it) => it.kind === "changes")) return items;
+  const changes: WriteChange[] = [];
+  for (const it of after) {
+    if (it.kind === "tool" && it.change !== undefined) changes.push(it.change);
+  }
+  return changes.length === 0 ? items : [...items, { kind: "changes", changes }];
+}
+
+/** 共用一份空数组：右栏没有备注时传它，免得每次渲染都换一个新数组让记号 effect 重跑。 */
+const NO_ANNOTATIONS: Annotation[] = [];
 
 /** 右栏默认宽度，以及它的上下限——两边都不许把对方挤没。 */
 const DEFAULT_PANE = 460;
@@ -69,9 +106,33 @@ export function Workspace({
   const [draft, setDraft] = useState("");
   const [tree, setTree] = useState<DocNode[]>([]);
   const [pane, setPane] = useState<Pane | null>(null);
+  /** 从改动记录点进某一份文档时，记着回去的那一屏 */
+  const [backPane, setBackPane] = useState<Pane | null>(null);
+  const [historyScope, setHistoryScope] = useState<ChangeScope>("session");
+  /** 未提交的批注按文档路径存：切走再回来还在，关掉应用就没了（不落盘） */
+  const [annotations, setAnnotations] = useState<Record<string, Annotation[]>>({});
   const [stale, setStale] = useState(false);
   const [state, setState] = useState<SessionState>({});
   const [paneWidth, setPaneWidth] = useState(460);
+  /** 正常的打开动作会把"返回改动记录"清掉；从记录里点开的详情单独走 setBackPane */
+  const openPane = useCallback((next: Pane | null): void => {
+    setBackPane(null);
+    setPane(next);
+  }, []);
+  /** 目录树的显示名与先后：改动清单按它排序、取名，不另写一份文档清单 */
+  const docIndex = useMemo(() => {
+    const map = new Map<string, { label: string; rank: number }>();
+    flatDocs(tree).forEach((d, rank) => map.set(d.path, { label: changeLabel(d), rank }));
+    return map;
+  }, [tree]);
+  const labelOf = useCallback(
+    (path: string): string => docIndex.get(path)?.label ?? path.split("/").pop() ?? path,
+    [docIndex],
+  );
+  const rankOf = useCallback(
+    (path: string): number => docIndex.get(path)?.rank ?? Number.MAX_SAFE_INTEGER,
+    [docIndex],
+  );
   /** 输入框里正在打的 `@…` 或 `/…`：`at` 是那个符号在文本里的位置 */
   const [menu, setMenu] = useState<{ kind: "at" | "slash"; token: string; at: number } | null>(null);
   /** 高亮在第几项——键盘和鼠标共用这一个，否则两边会各选各的 */
@@ -190,7 +251,7 @@ export function Workspace({
             for (let i = next.length - 1; i >= 0; i--) {
               const it = next[i];
               if (it.kind === "tool" && it.name === e.name && it.output === undefined) {
-                next[i] = { ...it, output: e.output.slice(0, 120) };
+                next[i] = { ...it, output: e.output.slice(0, 120), change: e.change };
                 break;
               }
             }
@@ -224,7 +285,11 @@ export function Workspace({
 
   const wasBusy = useRef(false);
   useEffect(() => {
-    if (wasBusy.current && !busy) void refreshTree();
+    if (wasBusy.current && !busy) {
+      void refreshTree();
+      // 这一轮的落盘记录已经在 live 的 tool part 上；跑完时合成一张卡挂到末尾
+      setLive((prev) => withTurnChanges(prev));
+    }
     wasBusy.current = busy;
   }, [busy, refreshTree]);
 
@@ -233,9 +298,9 @@ export function Workspace({
     async (node: DocNode): Promise<void> => {
       if (node.path === undefined) return; // 纯分组节点（如"角色"）：点它不开文档
       const text = await window.tm.docText(project.id, node.path);
-      setPane(text === undefined ? null : { kind: "doc", name: node.name, path: node.path, text });
+      openPane(text === undefined ? null : { kind: "doc", name: node.name, path: node.path, text });
     },
-    [project.id],
+    [project.id, openPane],
   );
 
   /** 右栏正在编辑时，别处改了盘上的文件只插标记——不抢用户的光标（见 SidePane 的 stale）。 */
@@ -282,14 +347,55 @@ export function Workspace({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [live, history, confirm, ask]);
 
-  /** 对话里那张"稿子"卡：按路径去取全文，在右栏打开。 */
+  /** 对话里那张"稿子"卡：按路径去取全文，在右栏打开。显示名优先用目录里的那一个。 */
   const openChapter = useCallback(
     async (path: string): Promise<void> => {
       const text = await window.tm.docText(project.id, path);
-      setPane(text === undefined ? null : { kind: "doc", name: path.split("/").pop() ?? path, path, text });
+      const name = flatDocs(tree).find((d) => d.path === path)?.name ?? path.split("/").pop() ?? path;
+      openPane(text === undefined ? null : { kind: "doc", name, path, text });
     },
-    [project.id],
+    [project.id, tree],
   );
+
+  /** 打开改动记录：主进程按会话聚合，右栏只负责把路径换成显示名并分组。 */
+  const openHistory = useCallback(
+    async (scope: ChangeScope): Promise<void> => {
+      try {
+        const groups = await window.tm.changes(project.id);
+        setHistoryScope(scope);
+        setBackPane(null);
+        setPane({ kind: "changes", name: "改动记录", groups, currentSessionId: current ?? "" });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [project.id, current],
+  );
+
+  /** 从改动记录点进一份文档：记住那一屏，左上角的「← 改动记录」才能回去。 */
+  const openHistoryDoc = useCallback(
+    async (path: string): Promise<void> => {
+      const text = await window.tm.docText(project.id, path);
+      if (text === undefined) return;
+      setBackPane(pane);
+      setPane({ kind: "doc", name: labelOf(path), path, text });
+    },
+    [project.id, pane, labelOf],
+  );
+
+  const openHistoryDiff = useCallback(
+    (name: string, text: string, path: string): void => {
+      setBackPane(pane);
+      setPane({ kind: "diff", name, text, path });
+    },
+    [pane],
+  );
+
+  const goBack = useCallback((): void => {
+    if (backPane === null) return;
+    setPane(backPane);
+    setBackPane(null);
+  }, [backPane]);
 
   /**
    * 发一句话。`shown` 是气泡里显示的，`sent` 是真正发给 harness 的——两者可以不同：`@世界观`
@@ -300,6 +406,20 @@ export function Workspace({
     setLive((prev) => [...prev, { kind: "me", text }]);
     window.tm.prompt(sent ?? text);
   }, []);
+
+  /**
+   * 提交翻到右栏里的备注：拼成一条普通用户消息，和手打走同一个 `say`；发出去就清空。
+   * 发送失败会走 `tm:error` 在对话里说话——这条消息已经在对话里，不把备注放回来。
+   */
+  const submitAnnotations = useCallback(
+    (path: string, label: string, notes: readonly Annotation[]): void => {
+      const message = composeAnnotationMessage(label, path, notes);
+      if (message === "") return;
+      say(message);
+      setAnnotations((prev) => ({ ...prev, [path]: NO_ANNOTATIONS }));
+    },
+    [say],
+  );
 
   // 窗口大小按当前模型查表（认不出给保守默认值）——显示时永远带"约"，不把估算说成事实
   const win = contextWindow(info?.model ?? "");
@@ -364,9 +484,9 @@ export function Workspace({
     async (name: string): Promise<void> => {
       try {
         if (name === "status") {
-          setPane({ kind: "text", name: "现状", text: await window.tm.projectStatus(project.id) });
+          openPane({ kind: "text", name: "现状", text: await window.tm.projectStatus(project.id) });
         } else if (name === "permissions") {
-          setPane({ kind: "text", name: "规则表", text: await window.tm.permissions() });
+          openPane({ kind: "text", name: "规则表", text: await window.tm.permissions() });
         }
       } catch (err) {
         // 命令失败要说出来：静默什么都不发生，人就以为是自己打错了
@@ -494,6 +614,16 @@ export function Workspace({
           {state.mode !== undefined && <span className="mode"><i />{state.mode}</span>}
           {state.pending !== undefined && <span className="badge zhu">待你拍板：{state.pending}</span>}
           <span className="sub">{info ? `${info.agent}${busy ? " · ● 正在写" : ""}` : ""}</span>
+          <button
+            type="button"
+            className="history-entry"
+            title="本次会话的改动记录"
+            aria-current={pane?.kind === "changes" ? "true" : undefined}
+            onClick={() => void openHistory("session")}
+          >
+            <HistoryIcon />
+            改动记录
+          </button>
         </header>
 
         <div className="scroll" ref={scrollRef}>
@@ -510,7 +640,10 @@ export function Workspace({
             }}
             onVerdict={say}
             onOpenDoc={(path) => void openChapter(path)}
-            onOpenDiff={(name, text) => setPane({ kind: "diff", name, text })}
+            onOpenDiff={(name, text, path) => openPane({ kind: "diff", name, text, path })}
+            labelOf={labelOf}
+            rankOf={rankOf}
+            onOpenHistory={() => void openHistory("session")}
           />
           {warn !== null && <p className="note zhu">［提醒］{warn}</p>}
           {error !== null && <p className="note">［错误］{error}</p>}
@@ -646,11 +779,29 @@ export function Workspace({
           width={paneWidth}
           pane={pane}
           stale={stale}
+          busy={busy}
+          onBack={backPane !== null ? goBack : undefined}
+          historyScope={historyScope}
+          onHistoryScope={setHistoryScope}
+          labelOf={labelOf}
+          rankOf={rankOf}
+          onOpenDoc={(path) => void openHistoryDoc(path)}
+          onOpenDiff={openHistoryDiff}
+          annotations={pane.kind === "doc" ? (annotations[pane.path] ?? NO_ANNOTATIONS) : NO_ANNOTATIONS}
+          onAnnotationsChange={(notes) => {
+            if (pane.kind !== "doc") return;
+            setAnnotations((prev) => ({ ...prev, [pane.path]: notes }));
+          }}
+          onSubmitAnnotations={(notes) => {
+            if (pane.kind !== "doc") return;
+            const label = flatDocs(tree).find((d) => d.path === pane.path)?.name ?? pane.name;
+            submitAnnotations(pane.path, label, notes);
+          }}
           onEditingChange={(v) => {
             editingRef.current = v;
           }}
           onClose={() => {
-            setPane(null);
+            openPane(null);
             setStale(false);
           }}
           onSave={async (text) => {

@@ -450,7 +450,13 @@ export class Session {
           if (isTask) this.io.onEvent({ type: "scope.close", label: "task" });
           this.markPlanDone(call, part);
           const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
-          this.io.onEvent({ type: "tool.result", id: call.id, name: call.name, output: out });
+          this.io.onEvent({
+            type: "tool.result",
+            id: call.id,
+            name: call.name,
+            output: out,
+            change: part.type === "tool" ? part.change : undefined,
+          });
           return part;
         },
         commitAssistant: (msg) => this.persistAssistant(msg.agent, msg.parts, msg.finish),

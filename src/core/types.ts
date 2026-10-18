@@ -162,10 +162,25 @@ export interface ToolContext {
   signal: AbortSignal;
 }
 
+/**
+ * 一次成功落盘的改动记录。界面按轮汇总"这次改了什么"，模型上下文不读它。
+ *
+ * `diff` 只对修改/删除有值；新建文件的正文就在盘上，界面点开读全文，不另存一份。
+ */
+export interface WriteChange {
+  path: string;
+  kind: "created" | "modified" | "deleted";
+  diff: string;
+  additions: number;
+  deletions: number;
+}
+
 export interface ToolResult {
   output: string; // 回灌模型的文本
   title?: string; // UI 即时标题
   metadata?: Record<string, unknown>; // 结构化信息
+  /** 写文件成功时带上的改动记录；只给界面汇总，不进模型上下文 */
+  change?: WriteChange;
 }
 
 /** 用户对一次确认的答复。`always` = 这一类以后都别问（记进会话级 approved 表，重启即清）。 */
@@ -230,6 +245,8 @@ export type AssistantPart =
       error?: string;
       /** 该工具要求结束本回合（见 ToolDef.halt）；loop 据此在提交本条后 break */
       halt?: boolean;
+      /** 写文件成功后的结构化记录；界面按轮汇总，模型上下文不读它 */
+      change?: WriteChange;
       time?: { ran?: number; completed?: number };
     };
 
@@ -310,7 +327,7 @@ export type LLMEvent =
   | { type: "text.delta"; text: string }
   | { type: "reasoning.delta"; text: string }
   | { type: "tool-call"; id: string; name: string; input: string }
-  | { type: "tool.result"; id: string; name: string; output: string }
+  | { type: "tool.result"; id: string; name: string; output: string; change?: WriteChange }
   | { type: "scope.open"; label: string }
   | { type: "scope.close"; label: string }
   /** 只读展示给用户的块（提案逐格清单等）——无返回值，与 confirm/askUser 的交互式提示区分 */

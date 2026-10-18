@@ -1,0 +1,978 @@
+<title>右栏批注</title>
+<style>
+/*
+ * 三栏写作台：左栏目录、中栏对话、右栏稿件。
+ * 批注这条链路只在右栏和中栏之间：划词 → 段落旁的朱砂记号 → 右下角一次提交成一条用户消息。
+ * 色值与字体沿用 desktop/src/renderer/styles.css：界面黑体、稿件宋体、朱砂只给"要你注意"。
+ */
+:root {
+  --ground: #f7f8fb;
+  --card: #ffffff;
+  --panel: #f3f4f9;
+  --panel-2: #eef0f5;
+  --hover: #e9ebf4;
+  --bubble: #eef1f9;
+  --line: #e5e7f0;
+  --line-soft: #eef0f6;
+  --ink: #1d1e24;
+  --muted: #62636e;
+  --faint: #9899a5;
+  --accent: #4d6bfe;
+  --accent-soft: #edf1ff;
+  --zhu: #a8402f;
+  --zhu-soft: #f7ebe8;
+  --pine: #3f6b56;
+  --indigo: #4a5b78;
+
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --serif: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", "Microsoft YaHei", "SimSun", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #14151a;
+    --card: #1e1f27;
+    --panel: #23262e;
+    --panel-2: #23262e;
+    --hover: #262832;
+    --bubble: #23252f;
+    --line: #2c2e38;
+    --line-soft: #252730;
+    --ink: #e8e9ef;
+    --muted: #a4a5b0;
+    --faint: #767783;
+    --accent: #8096ff;
+    --accent-soft: #232a44;
+    --zhu: #d9705c;
+    --zhu-soft: #33231f;
+    --pine: #7fa98f;
+    --indigo: #93a7c8;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #14151a;
+  --card: #1e1f27;
+  --panel: #23262e;
+  --panel-2: #23262e;
+  --hover: #262832;
+  --bubble: #23252f;
+  --line: #2c2e38;
+  --line-soft: #252730;
+  --ink: #e8e9ef;
+  --muted: #a4a5b0;
+  --faint: #767783;
+  --accent: #8096ff;
+  --accent-soft: #232a44;
+  --zhu: #d9705c;
+  --zhu-soft: #33231f;
+  --pine: #7fa98f;
+  --indigo: #93a7c8;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden;
+  background: var(--ground); color: var(--ink);
+  font-family: var(--sans); font-size: 14px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+button, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { height: 100%; display: flex; flex-direction: column; }
+
+/* ── 顶栏 ── */
+.topbar {
+  flex: none; height: 48px; display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; background: var(--card); border-bottom: 1px solid var(--line);
+}
+.traffic { display: flex; gap: 6px; margin-right: 2px; }
+.traffic i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: block; }
+.brand { font-weight: 600; font-size: 13.5px; letter-spacing: .01em; }
+.proto {
+  font-size: 10.5px; letter-spacing: .08em; color: var(--faint);
+  border: 1px dashed var(--line); border-radius: 999px; padding: 0 7px; line-height: 17px;
+}
+.crumb { font-family: var(--serif); font-size: 14px; color: var(--muted); margin-left: 4px; }
+.book-exit { border: 0; background: none; color: var(--faint); font-size: 11.5px; padding: 2px 4px; border-radius: 6px; }
+.book-exit:hover { background: var(--hover); color: var(--ink); }
+.topbar .spacer { flex: 1; }
+.status { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pine); flex: none; }
+.badge-zhu {
+  font-size: 11px; color: var(--zhu); border: 1px solid color-mix(in srgb, var(--zhu) 55%, transparent);
+  border-radius: 999px; padding: 0 8px; line-height: 18px; white-space: nowrap;
+}
+.model { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+.cols { flex: 1; min-height: 0; display: flex; }
+
+/* ── 左栏 ── */
+.rail {
+  flex: none; width: 236px; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--ground); border-right: 1px solid var(--line);
+}
+.rail-top { padding: 14px 14px 10px; border-bottom: 1px solid var(--line-soft); }
+.rail-top b { display: block; font-family: var(--serif); font-size: 17px; font-weight: 600; line-height: 1.3; }
+.rail-top span { display: block; margin-top: 2px; color: var(--faint); font-size: 11px; }
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 16px; }
+.section-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 12px 6px 5px; color: var(--faint);
+  font-size: 10.5px; letter-spacing: .08em;
+}
+.section-head .count { margin-left: auto; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.sess, .tree-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 0; background: none; border-radius: 7px;
+  text-align: left; color: var(--muted); font-size: 12.5px;
+}
+.sess:hover, .tree-row:hover { background: var(--hover); }
+.sess[aria-current="true"] { background: var(--card); color: var(--ink); font-weight: 500; }
+.sess .when { margin-left: auto; color: var(--faint); font-size: 10.5px; font-weight: 400; white-space: nowrap; }
+.tree-row.open { color: var(--ink); }
+.tree-row.child { padding-left: 20px; }
+.tree-row[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
+.tree-row .caret { margin-left: auto; color: var(--faint); font-size: 9px; }
+
+/* ── 中栏：对话 ── */
+.chat {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--card); border-right: 1px solid var(--line);
+}
+.chat-head {
+  flex: none; height: 44px; display: flex; align-items: center; gap: 9px;
+  padding: 0 18px; border-bottom: 1px solid var(--line-soft);
+}
+.chat-head .title { font-size: 13px; font-weight: 600; }
+.chat-head .sub { margin-left: auto; color: var(--faint); font-size: 11.5px; }
+.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 22px 8px; }
+.thread { max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.steps-line { display: flex; align-items: baseline; gap: 6px; color: var(--faint); font-size: 12px; }
+.steps-line b { font-weight: 400; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.mate { font-family: var(--serif); font-size: 15px; line-height: 1.95; }
+.mate p { margin: 0 0 10px; }
+.mate p:last-child { margin-bottom: 0; }
+.mate code {
+  font-family: var(--mono); font-size: .85em; color: var(--indigo);
+  background: var(--panel-2); border-radius: 4px; padding: 1px 5px;
+}
+.mate.typing { display: flex; align-items: center; gap: 8px; font-family: var(--sans); font-size: 12.5px; color: var(--faint); }
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--zhu); animation: pulse 1.3s ease-in-out infinite; flex: none; }
+@keyframes pulse { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+
+.me { display: flex; justify-content: flex-end; }
+.bubble {
+  max-width: 80%; padding: 8px 14px;
+  background: var(--bubble); border-radius: 14px;
+  font-size: 14px; line-height: 1.7;
+}
+.bubble.anno { max-width: 88%; padding: 10px 14px; }
+.anno-lead { margin-bottom: 7px; }
+.anno-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; counter-reset: anno; }
+.anno-list li { counter-increment: anno; position: relative; padding-left: 16px; }
+.anno-list li::before {
+  content: counter(anno) "."; position: absolute; left: 0; top: 0;
+  color: var(--faint); font-size: 11px; line-height: 1.9; font-variant-numeric: tabular-nums;
+}
+.anno-quote {
+  margin-bottom: 3px; padding-left: 8px;
+  border-left: 2px solid color-mix(in srgb, var(--zhu) 55%, transparent);
+  font-family: var(--serif); font-size: 12.5px; line-height: 1.65; color: var(--muted);
+}
+.anno-text { font-size: 13.5px; line-height: 1.7; }
+
+.composer { flex: none; padding: 8px 22px 14px; }
+.composer .box {
+  max-width: 44rem; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card); padding: 10px 12px 8px;
+  box-shadow: 0 6px 20px rgb(29 30 36 / 5%);
+}
+.composer .box:focus-within { border-color: var(--faint); }
+.composer textarea {
+  border: 0; background: none; outline: none; resize: none;
+  height: 38px; font: inherit; color: var(--ink);
+}
+.box-actions { display: flex; align-items: center; gap: 8px; }
+.box-hint { color: var(--faint); font-size: 11px; }
+.box-actions .spacer { flex: 1; }
+.send {
+  width: 27px; height: 27px; display: grid; place-items: center;
+  border: 0; border-radius: 50%; background: var(--accent); color: var(--card);
+}
+.send:hover { opacity: .9; }
+.send svg { width: 14px; height: 14px; }
+
+/* ── 右栏：稿件与批注 ── */
+.docpane {
+  flex: none; width: clamp(440px, 44vw, 660px); min-height: 0;
+  position: relative; display: flex; flex-direction: column;
+  background: var(--card);
+}
+.doc-tabs {
+  flex: none; height: 44px; display: flex; align-items: center; gap: 6px;
+  padding: 0 10px; border-bottom: 1px solid var(--line);
+}
+.tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  max-width: 72%; padding: 4px 9px; border-radius: 7px;
+  font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden;
+}
+.tab.active { background: var(--accent-soft); color: var(--accent); }
+.tab svg { width: 13px; height: 13px; flex: none; }
+.tab span { overflow: hidden; text-overflow: ellipsis; }
+.doc-tabs .end { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.edit-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--line); border-radius: 7px; background: var(--card);
+  color: var(--muted); font-size: 11.5px; padding: 2px 8px;
+}
+.edit-btn:hover { background: var(--hover); color: var(--ink); }
+.edit-btn svg { width: 12px; height: 12px; }
+.iconbtn {
+  width: 25px; height: 25px; display: grid; place-items: center;
+  border: 0; border-radius: 7px; background: none; color: var(--faint); font-size: 15px; line-height: 1;
+}
+.iconbtn:hover { background: var(--hover); color: var(--ink); }
+.pathbar {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid var(--line-soft);
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  white-space: nowrap; overflow: hidden;
+}
+.pathbar .path { overflow: hidden; text-overflow: ellipsis; }
+.readonly {
+  flex: none; font-family: var(--sans); font-size: 10.5px; color: var(--faint);
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; line-height: 17px;
+}
+.path-hint { margin-left: auto; flex: none; font-family: var(--sans); font-size: 11px; color: var(--faint); }
+.reset {
+  flex: none; border: 0; background: none; padding: 0 2px;
+  font-family: var(--sans); font-size: 11px; color: var(--faint);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.reset:hover { color: var(--zhu); }
+
+.pane-body { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 22px 96px; }
+.prose { max-width: 34rem; margin: 0 auto; padding-left: 30px; }
+.doc-title { margin: 0 0 4px; font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: .01em; }
+.doc-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 14px;
+  color: var(--faint); font-size: 11.5px; font-variant-numeric: tabular-nums;
+}
+.doc-rule { border: 0; border-top: 1px solid var(--line-soft); margin: 0 0 18px; }
+.prose p {
+  position: relative; margin: 0 0 .95em;
+  font-family: var(--serif); font-size: 15.5px; line-height: 2;
+}
+.prose p:last-child { margin-bottom: 0; }
+.prose ::selection { background: color-mix(in srgb, var(--zhu) 20%, transparent); }
+
+/* 段落旁的朱砂记号：一个数字，表示这一段攒了几条备注 */
+.marker {
+  position: absolute; left: -30px; top: 8px;
+  width: 20px; height: 20px; display: grid; place-items: center;
+  border: 1px solid color-mix(in srgb, var(--zhu) 45%, transparent);
+  border-radius: 5px; background: var(--zhu-soft); color: var(--zhu);
+  font-family: var(--sans); font-size: 11px; font-weight: 600; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  user-select: none; -webkit-user-select: none;
+  transition: background .15s, color .15s, transform .15s;
+}
+.marker:hover { background: var(--zhu); color: var(--card); transform: translateY(-1px); }
+.marker:focus-visible { outline-color: var(--zhu); }
+
+/* 划词后的小工具条：贴着选区，只放一个动作 */
+.sel-toolbar { position: absolute; z-index: 40; }
+.sel-toolbar[data-place="above"] { transform: translate(-50%, -100%); }
+.sel-toolbar[data-place="below"] { transform: translate(-50%, 0); }
+.sel-toolbar button {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; border-radius: 8px; padding: 6px 10px;
+  background: var(--ink); color: var(--ground);
+  font-size: 12px; white-space: nowrap;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+}
+.sel-toolbar button:hover { opacity: .92; }
+.sel-toolbar svg { width: 13px; height: 13px; }
+
+/* 备注编辑与查看：贴着批注长出来的浮层 */
+.note-composer, .note-pop {
+  position: absolute; z-index: 45;
+  width: min(322px, calc(100% - 24px));
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 16px 44px rgb(20 22 30 / 16%);
+}
+.note-composer { padding: 10px 12px; }
+.nc-head, .np-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.nc-head span, .np-head span { color: var(--faint); font-size: 11.5px; letter-spacing: .03em; }
+.x { border: 0; background: none; padding: 0 2px; color: var(--faint); font-size: 15px; line-height: 1; }
+.x:hover { color: var(--ink); }
+.nc-quote, .np-quote {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  margin-bottom: 8px; padding-left: 9px;
+  border-left: 2px solid var(--zhu);
+  font-family: var(--serif); font-size: 12.5px; line-height: 1.65; color: var(--muted);
+}
+#noteInput {
+  width: 100%; min-height: 78px; max-height: 180px; resize: vertical;
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  background: var(--ground); color: var(--ink);
+  font-family: var(--sans); font-size: 13px; line-height: 1.65;
+}
+#noteInput:focus { outline: none; border-color: var(--zhu); box-shadow: 0 0 0 3px var(--zhu-soft); }
+.nc-foot { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.nc-kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+.nc-foot .spacer { flex: 1; }
+.btn {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+  padding: 4px 11px; font-size: 12.5px;
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { border-color: var(--ink); background: var(--ink); color: var(--ground); }
+.btn.primary:hover { opacity: .92; }
+
+.note-pop { max-height: 62%; overflow-y: auto; padding: 10px 12px 4px; }
+.np-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 6px; }
+.np-item { border-top: 1px solid var(--line-soft); padding-top: 8px; }
+.np-item:first-child { border-top: 0; padding-top: 0; }
+.np-quote { margin-bottom: 4px; }
+.np-text { color: var(--ink); font-size: 13px; line-height: 1.65; }
+.np-actions { display: flex; margin-top: 4px; }
+.np-del { border: 0; background: none; padding: 0; color: var(--faint); font-size: 11px; }
+.np-del:hover { color: var(--zhu); }
+
+/* 右下角的提交钮：备注攒够之后唯一的主操作 */
+.fab {
+  position: absolute; right: 18px; bottom: 18px; z-index: 30;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 0; border-radius: 999px; padding: 9px 15px 9px 12px;
+  background: var(--ink); color: var(--ground); font-size: 12.5px;
+  box-shadow: 0 8px 24px rgb(20 22 30 / 18%);
+  transition: transform .15s, opacity .15s;
+}
+.fab:hover { transform: translateY(-1px); }
+.fab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--zhu); flex: none; }
+.fab b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.fab svg { width: 13px; height: 13px; opacity: .8; }
+
+.toast {
+  position: absolute; left: 50%; bottom: 66px; z-index: 50;
+  max-width: calc(100% - 48px); padding: 7px 12px;
+  background: var(--ink); color: var(--ground); border-radius: 9px;
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; pointer-events: none;
+  transform: translate(-50%, 6px);
+  transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.rail-scroll, .chat-scroll, .pane-body, .note-pop { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse { animation: none; opacity: .75; }
+  .marker, .fab, .toast { transition: none; }
+}
+
+@media (max-width: 1120px) { .path-hint { display: none; } }
+@media (max-width: 980px) { .rail { display: none; } }
+
+@media (max-width: 760px) {
+  .topbar { gap: 8px; padding: 0 12px; }
+  .traffic, .proto, .crumb, .book-exit, .status, .badge-zhu { display: none; }
+  .model { margin-left: auto; }
+  .cols { flex-direction: column; }
+  .chat { flex: none; height: 40%; border-right: 0; border-bottom: 1px solid var(--line); }
+  .chat-scroll { padding: 16px 14px 6px; }
+  .composer { padding: 6px 14px 10px; }
+  .docpane { flex: 1; width: auto; min-height: 0; }
+  .pane-body { padding: 16px 14px 84px 14px; }
+  .prose { padding-left: 26px; }
+  .doc-title { font-size: 19px; }
+  .prose p { font-size: 15px; }
+  .bubble { max-width: 92%; }
+  .fab { right: 12px; bottom: 12px; }
+  .toast { bottom: 58px; }
+}
+@media (max-width: 460px) {
+  .chat { height: 42%; }
+  .pathbar .readonly, .reset { display: none; }
+  .doc-tabs .tab { max-width: 64%; }
+}
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="brand">talemate</span>
+    <span class="proto">交互原型</span>
+    <span class="crumb">漕运</span>
+    <button class="book-exit" type="button">← 所有作品</button>
+    <span class="spacer"></span>
+    <span class="status"><i class="dot"></i>搭档 · 已就绪</span>
+    <span class="badge-zhu">第 6 章 · 待你查看</span>
+    <span class="model">sonnet-5</span>
+  </header>
+
+  <div class="cols">
+    <aside class="rail">
+      <div class="rail-top">
+        <b>漕运</b>
+        <span>历史 · 连载中 · 写到第 6 章</span>
+      </div>
+      <div class="rail-scroll">
+        <div class="section-head">会话 <span class="count">2</span></div>
+        <button class="sess" type="button" aria-current="true"><span>搭档</span><span class="when">今天 14:20</span></button>
+        <button class="sess" type="button"><span>考据</span><span class="when">9月28日</span></button>
+
+        <div class="section-head">目录</div>
+        <button class="tree-row" type="button">核心设定</button>
+        <button class="tree-row" type="button">世界观</button>
+        <button class="tree-row" type="button">角色</button>
+        <button class="tree-row" type="button">大纲</button>
+        <button class="tree-row open" type="button">正文 <span class="caret">▾</span></button>
+        <button class="tree-row child" type="button">第 1 章</button>
+        <button class="tree-row child" type="button">第 3 章（第 2 稿）</button>
+        <button class="tree-row child" type="button" aria-current="true">第 6 章 · 夜渡</button>
+        <button class="tree-row" type="button">现状</button>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <div class="chat-head">
+        <span class="title">对话 · 搭档</span>
+        <span class="sub">第 6 章 · 夜渡</span>
+      </div>
+      <div class="chat-scroll" id="chatScroll">
+        <div class="thread" id="thread">
+          <div class="steps-line">▸ 做了 2 步 · <b>read chapters/chapter_ch6_v2.md</b></div>
+          <div class="me">
+            <div class="bubble">第 6 章我读完了。先别动，我把要改的地方标在右栏正文里。</div>
+          </div>
+          <div class="mate">
+            <p>行，右栏开着 <code>chapters/chapter_ch6_v2.md</code>。你标完一次发我，我按顺序改。</p>
+            <p>陈六那条线我也留意到了——敲桌子的三下，现在写得太含糊。</p>
+          </div>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="box">
+          <textarea id="chatInput" placeholder="说点什么…" rows="1"></textarea>
+          <div class="box-actions">
+            <span class="box-hint">@ 引用文档 · / 命令</span>
+            <span class="spacer"></span>
+            <button class="send" id="sendBtn" type="button" aria-label="发送">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <section class="docpane" id="docPane">
+      <div class="doc-tabs">
+        <div class="tab active">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg>
+          <span>第 6 章 · 夜渡</span>
+        </div>
+        <button class="iconbtn" id="closeTab" type="button" aria-label="关闭文档">×</button>
+        <span class="end">
+          <button class="edit-btn" id="editBtn" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z"/></svg>
+            编辑
+          </button>
+        </span>
+      </div>
+
+      <div class="pathbar">
+        <span class="path">chapters/chapter_ch6_v2.md</span>
+        <span class="readonly">只读</span>
+        <span class="path-hint">选中正文 → 加备注</span>
+        <button class="reset" id="resetBtn" type="button">重置演示</button>
+      </div>
+
+      <div class="pane-body" id="paneBody">
+        <article class="prose" id="prose">
+          <h2 class="doc-title">第 6 章 · 夜渡</h2>
+          <div class="doc-meta"><span>草稿 · 第 2 稿</span><span>4,120 字</span><span>今天 14:02</span></div>
+          <hr class="doc-rule">
+
+          <p data-para="0">天还没亮透，沈越就到了河埠头。雾从水面上浮起来，一层一层，把对岸的桅杆藏得只剩尖。他手里攥着陈六给的船牌，木牌边角磨得发亮，上面刻的号码却像是新描过的。</p>
+
+          <p data-para="1">“只在北岸卸货，不许靠南边的码头。”陈六昨夜说这话时，眼睛没看他，手指在桌上敲了三下。沈越记住了，却没想明白那三下是什么意思。</p>
+
+          <p data-para="2">船是条旧漕船，船帮补过两回，吃水很浅。艄公是个哑巴，见了他只伸手，掌心朝上。沈越把船牌递过去，对方翻来覆去看了半晌，才把牌子还回来，往船尾一指。</p>
+
+          <p data-para="3">河面像一块冷铁，桨划下去，声音闷在雾里。沈越蹲在船头，数着岸上退过去的灯笼。</p>
+
+          <p data-para="4">数到第十三盏时，灯忽然灭了。</p>
+
+          <p data-para="5">后来他总记得那个瞬间：不是灯灭，是灯灭之前，有人在灯下抬了一下头。</p>
+        </article>
+      </div>
+
+      <div class="sel-toolbar" id="selToolbar" hidden>
+        <button type="button" id="addNoteBtn">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 13l1-4 7-7 3 3-7 7-4 1z"/></svg>
+          加备注
+        </button>
+      </div>
+
+      <div class="note-composer" id="noteComposer" hidden>
+        <div class="nc-head">
+          <span>给这段加备注</span>
+          <button class="x" id="closeComposer" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="nc-quote" id="composerQuote"></div>
+        <textarea id="noteInput" placeholder="想让搭档怎么改？比如：这里的节奏太快，补一段他和牙人的拉扯。"></textarea>
+        <div class="nc-foot">
+          <span class="nc-kbd">⌘ ↵ 保存</span>
+          <span class="spacer"></span>
+          <button class="btn" id="cancelNote" type="button">取消</button>
+          <button class="btn primary" id="saveNote" type="button">保存备注</button>
+        </div>
+      </div>
+
+      <div class="note-pop" id="notePop" hidden></div>
+
+      <button class="fab" id="submitFab" type="button" hidden>
+        <span class="dot" aria-hidden="true"></span>
+        <span>提交 <b id="fabCount">0</b> 条备注</span>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>
+      </button>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+  const prose = document.getElementById("prose");
+  const docPane = document.getElementById("docPane");
+  const paneBody = document.getElementById("paneBody");
+  const toolbar = document.getElementById("selToolbar");
+  const addNoteBtn = document.getElementById("addNoteBtn");
+  const composer = document.getElementById("noteComposer");
+  const composerQuote = document.getElementById("composerQuote");
+  const noteInput = document.getElementById("noteInput");
+  const notePop = document.getElementById("notePop");
+  const fab = document.getElementById("submitFab");
+  const fabCount = document.getElementById("fabCount");
+  const toast = document.getElementById("toast");
+  const thread = document.getElementById("thread");
+  const chatScroll = document.getElementById("chatScroll");
+  const chatInput = document.getElementById("chatInput");
+
+  const SEED = [
+    {
+      para: 1,
+      quote: "“只在北岸卸货，不许靠南边的码头。”陈六昨夜说这话时，眼睛没看他，手指在桌上敲了三下。",
+      text: "这里节奏太快：陈六为什么敲三下，要落到一件具体的事上，别只写“沈越没想明白”。"
+    },
+    {
+      para: 3,
+      quote: "河面像一块冷铁，桨划下去，声音闷在雾里。",
+      text: "“冷铁”这个比喻在第 4 章用过一次，换一个更贴合雾夜的意象。"
+    }
+  ];
+
+  let notes = [];
+  let nextId = 1;
+  let pendingSel = null;
+  let composerTarget = null;
+  let replyTimers = [];
+  let toastTimer = null;
+
+  const clean = (s) => s.replace(/\s+/g, " ").trim();
+
+  function seedNotes() {
+    notes = SEED.map((n, i) => ({ ...n, id: i + 1 }));
+    nextId = SEED.length + 1;
+  }
+
+  function notesFor(para) {
+    return notes.filter((n) => n.para === para);
+  }
+
+  function renderMarkers() {
+    prose.querySelectorAll(".marker").forEach((m) => m.remove());
+    const byPara = new Map();
+    for (const n of notes) {
+      if (!byPara.has(n.para)) byPara.set(n.para, []);
+      byPara.get(n.para).push(n);
+    }
+    for (const [para, list] of byPara) {
+      const p = prose.querySelector('p[data-para="' + para + '"]');
+      if (!p) continue;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "marker";
+      b.dataset.para = String(para);
+      b.textContent = String(list.length);
+      b.title = list.length + " 条备注";
+      b.setAttribute("aria-label", "第 " + (para + 1) + " 段，" + list.length + " 条备注");
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openNotePopover(para, b);
+      });
+      p.appendChild(b);
+    }
+    fabCount.textContent = String(notes.length);
+    fab.hidden = notes.length === 0;
+    fab.title = notes.length ? "把这 " + notes.length + " 条备注作为一条消息发给搭档" : "";
+  }
+
+  function hideToolbar() {
+    toolbar.hidden = true;
+    pendingSel = null;
+  }
+
+  function onSelect() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+      hideToolbar();
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    if (!prose.contains(range.commonAncestorContainer)) {
+      hideToolbar();
+      return;
+    }
+    const node = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+    const p = node ? node.closest("p[data-para]") : null;
+    if (!p) {
+      hideToolbar();
+      return;
+    }
+    const text = clean(sel.toString());
+    if (text.length < 2) {
+      hideToolbar();
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    if (!rect.width) {
+      hideToolbar();
+      return;
+    }
+    pendingSel = { para: Number(p.dataset.para), quote: text, rect };
+    showToolbar(rect);
+  }
+
+  function showToolbar(rect) {
+    toolbar.hidden = false;
+    const paneRect = docPane.getBoundingClientRect();
+    const w = toolbar.offsetWidth || 96;
+    let left = rect.left - paneRect.left + rect.width / 2;
+    left = Math.min(Math.max(left, w / 2 + 12), paneRect.width - w / 2 - 12);
+    toolbar.style.left = left + "px";
+    if (rect.top - paneRect.top > 54) {
+      toolbar.dataset.place = "above";
+      toolbar.style.top = rect.top - paneRect.top - 9 + "px";
+    } else {
+      toolbar.dataset.place = "below";
+      toolbar.style.top = rect.bottom - paneRect.top + 9 + "px";
+    }
+  }
+
+  function openComposer(sel) {
+    closeNotePop();
+    toolbar.hidden = true;
+    pendingSel = null;
+    composerTarget = sel;
+    composerQuote.textContent = sel.quote;
+    noteInput.value = "";
+    composer.hidden = false;
+    requestAnimationFrame(() => {
+      positionComposer(sel.rect);
+      noteInput.focus();
+    });
+  }
+
+  function positionComposer(rect) {
+    const paneRect = docPane.getBoundingClientRect();
+    const w = composer.offsetWidth;
+    const h = composer.offsetHeight;
+    let left = rect.left - paneRect.left;
+    left = Math.min(Math.max(left, 12), paneRect.width - w - 12);
+    let top = rect.bottom - paneRect.top + 10;
+    if (top + h > paneRect.height - 12) top = rect.top - paneRect.top - h - 10;
+    top = Math.max(12, Math.min(top, paneRect.height - h - 12));
+    composer.style.left = left + "px";
+    composer.style.top = top + "px";
+  }
+
+  function closeComposer() {
+    composer.hidden = true;
+    composerTarget = null;
+  }
+
+  function saveNote() {
+    if (!composerTarget) return;
+    const text = noteInput.value.trim();
+    if (!text) {
+      noteInput.focus();
+      return;
+    }
+    notes.push({ id: nextId++, para: composerTarget.para, quote: composerTarget.quote, text });
+    closeComposer();
+    renderMarkers();
+    toastMsg("已加 1 条备注 · 右下角可以一起提交");
+  }
+
+  function closeNotePop() {
+    notePop.hidden = true;
+    notePop.replaceChildren();
+  }
+
+  function openNotePopover(para, marker) {
+    const list = notesFor(para);
+    if (!list.length) return;
+    hideToolbar();
+    closeComposer();
+    notePop.replaceChildren();
+
+    const head = document.createElement("div");
+    head.className = "np-head";
+    const title = document.createElement("span");
+    title.textContent = "第 " + (para + 1) + " 段 · " + list.length + " 条备注";
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "x";
+    x.setAttribute("aria-label", "关闭");
+    x.textContent = "×";
+    x.addEventListener("click", closeNotePop);
+    head.append(title, x);
+
+    const body = document.createElement("div");
+    body.className = "np-list";
+    for (const n of list) {
+      const item = document.createElement("div");
+      item.className = "np-item";
+      const q = document.createElement("div");
+      q.className = "np-quote";
+      q.textContent = n.quote;
+      const t = document.createElement("div");
+      t.className = "np-text";
+      t.textContent = n.text;
+      const actions = document.createElement("div");
+      actions.className = "np-actions";
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "np-del";
+      del.textContent = "删除这条";
+      del.addEventListener("click", () => {
+        notes = notes.filter((item) => item.id !== n.id);
+        renderMarkers();
+        closeNotePop();
+        toastMsg("已删除 1 条备注");
+      });
+      actions.append(del);
+      item.append(q, t, actions);
+      body.append(item);
+    }
+
+    notePop.append(head, body);
+    notePop.hidden = false;
+    requestAnimationFrame(() => {
+      const paneRect = docPane.getBoundingClientRect();
+      const mRect = marker.getBoundingClientRect();
+      const w = notePop.offsetWidth;
+      const h = notePop.offsetHeight;
+      let left = mRect.right - paneRect.left + 10;
+      if (left + w > paneRect.width - 12) left = mRect.left - paneRect.left - w - 10;
+      left = Math.max(12, left);
+      let top = mRect.top - paneRect.top - 6;
+      top = Math.min(Math.max(12, top), paneRect.height - h - 12);
+      notePop.style.left = left + "px";
+      notePop.style.top = top + "px";
+    });
+  }
+
+  function toastMsg(msg) {
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
+  }
+
+  function scrollChat() {
+    requestAnimationFrame(() => {
+      chatScroll.scrollTop = chatScroll.scrollHeight;
+    });
+  }
+
+  function clearReplyTimers() {
+    for (const t of replyTimers) clearTimeout(t);
+    replyTimers = [];
+  }
+
+  function appendMateReply(count) {
+    const typing = document.createElement("div");
+    typing.className = "mate typing";
+    typing.dataset.live = "1";
+    const pulse = document.createElement("span");
+    pulse.className = "pulse";
+    const label = document.createElement("span");
+    label.textContent = "搭档正在读这 " + count + " 处…";
+    typing.append(pulse, label);
+    thread.append(typing);
+    scrollChat();
+
+    const t = setTimeout(() => {
+      typing.remove();
+      const reply = document.createElement("div");
+      reply.className = "mate";
+      reply.dataset.live = "1";
+      const p1 = document.createElement("p");
+      p1.textContent = "看到了。我按从前往后的顺序改这 " + count + " 处。";
+      const p2 = document.createElement("p");
+      p2.textContent = "改完出第 3 稿，落在右栏。你先看，不满意再标。";
+      reply.append(p1, p2);
+      thread.append(reply);
+      scrollChat();
+    }, 1500);
+    replyTimers.push(t);
+  }
+
+  function submitNotes() {
+    if (!notes.length) return;
+    const count = notes.length;
+    const ordered = [...notes].sort((a, b) => a.para - b.para);
+
+    closeComposer();
+    closeNotePop();
+    hideToolbar();
+
+    const wrap = document.createElement("div");
+    wrap.className = "me";
+    wrap.dataset.live = "1";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble anno";
+    const lead = document.createElement("div");
+    lead.className = "anno-lead";
+    lead.textContent = "第 6 章这几处帮我改一下：";
+    const list = document.createElement("ol");
+    list.className = "anno-list";
+    for (const n of ordered) {
+      const li = document.createElement("li");
+      const q = document.createElement("div");
+      q.className = "anno-quote";
+      q.textContent = n.quote;
+      const t = document.createElement("div");
+      t.className = "anno-text";
+      t.textContent = n.text;
+      li.append(q, t);
+      list.append(li);
+    }
+    bubble.append(lead, list);
+    wrap.append(bubble);
+    thread.append(wrap);
+    scrollChat();
+
+    notes = [];
+    renderMarkers();
+    toastMsg(count + " 条备注已作为一条消息发给搭档");
+    appendMateReply(count);
+  }
+
+  function sendPlain() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    const wrap = document.createElement("div");
+    wrap.className = "me";
+    wrap.dataset.live = "1";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    wrap.append(bubble);
+    thread.append(wrap);
+    chatInput.value = "";
+    scrollChat();
+  }
+
+  function resetDemo() {
+    clearReplyTimers();
+    closeComposer();
+    closeNotePop();
+    hideToolbar();
+    thread.querySelectorAll('[data-live="1"]').forEach((el) => el.remove());
+    seedNotes();
+    renderMarkers();
+    toastMsg("已重置为演示初始状态");
+  }
+
+  addNoteBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  addNoteBtn.addEventListener("click", () => {
+    if (pendingSel) openComposer(pendingSel);
+  });
+
+  document.getElementById("closeComposer").addEventListener("click", closeComposer);
+  document.getElementById("cancelNote").addEventListener("click", closeComposer);
+  document.getElementById("saveNote").addEventListener("click", saveNote);
+  document.getElementById("resetBtn").addEventListener("click", resetDemo);
+  document.getElementById("editBtn").addEventListener("click", () => toastMsg("手动编辑已有；这个原型只演示批注。"));
+  document.getElementById("closeTab").addEventListener("click", () => toastMsg("原型里只开着这一份文档。"));
+  document.getElementById("sendBtn").addEventListener("click", sendPlain);
+
+  noteInput.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      saveNote();
+    }
+  });
+
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendPlain();
+    }
+  });
+
+  document.addEventListener("mouseup", (e) => {
+    if (e.target.closest && e.target.closest(".marker")) return;
+    if (paneBody.contains(e.target)) setTimeout(onSelect, 0);
+  });
+
+  paneBody.addEventListener("touchend", () => setTimeout(onSelect, 260));
+
+  document.addEventListener("mousedown", (e) => {
+    if (!toolbar.hidden && !toolbar.contains(e.target)) {
+      if (!(e.target.closest && e.target.closest("#paneBody"))) hideToolbar();
+    }
+    if (!notePop.hidden && !notePop.contains(e.target) && !(e.target.closest && e.target.closest(".marker"))) {
+      closeNotePop();
+    }
+  });
+
+  paneBody.addEventListener("scroll", () => {
+    hideToolbar();
+    closeNotePop();
+  });
+
+  window.addEventListener("resize", () => {
+    hideToolbar();
+    closeNotePop();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeComposer();
+      closeNotePop();
+      hideToolbar();
+    }
+  });
+
+  seedNotes();
+  renderMarkers();
+</script>

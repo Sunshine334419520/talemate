@@ -24,6 +24,7 @@ import { CORE_DOC, styleCatalog, withShelf, withStyle } from "../../../src/frame
 import { readDoc } from "../../../src/storage/corpus";
 import { writeProjectMeta } from "../../../src/storage/project";
 import { docTree } from "../../../src/framework/anchor";
+import { listTurnChanges } from "./changes";
 import { chapterNumberOf } from "../../../src/framework/plan";
 import { openSession, renderPermissionView, type Session, type UserIO } from "../../../src/session/session";
 import { buildProjectStatus } from "../../../src/framework/report";
@@ -449,6 +450,9 @@ function registerHandlers(): void {
   ipcMain.handle("sessions:history", (_e, p: { projectId: string; sessionId: string }) =>
     loadMessages(p.projectId, p.sessionId),
   );
+
+  /** 改动记录：所有会话按时序聚合；历史视图按会话/全书筛。 */
+  ipcMain.handle("sessions:changes", (_e, projectId: string) => listTurnChanges(projectId));
 
   ipcMain.handle(
     "session:open",
