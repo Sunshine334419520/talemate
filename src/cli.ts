@@ -260,6 +260,12 @@ function makeIO(): UserIO {
         }
         break;
       }
+      case "tool-call.start":
+        // 大工具（写正文/设计稿）的参数要流很久；先报一声，别让终端看起来死了
+        if (verbose && !PROPOSAL_TOOLS.has(e.name)) {
+          console.log(`\n${CYAN}⚙ 准备工具${RESET} ${e.name} …`);
+        }
+        break;
       case "tool-call":
         if (verbose && !PROPOSAL_TOOLS.has(e.name)) {
           console.log(`\n${CYAN}⚙ 工具调用${RESET} ${e.name} ${DIM}input=${truncate(e.input, 300)}${RESET}`);
@@ -272,8 +278,10 @@ function makeIO(): UserIO {
         }
         break;
       case "proposal":
-        // 提案正文是给用户读的：整块打印（不缩进、不截断），前后留空行与流式正文分开
+        // 提案正文是给用户读的：整块打印（不缩进、不截断），前后留空行与流式正文分开。
+        // 操作提示不写进提案正文（界面用按钮）；终端里单独给一行，判定仍走 draftVerdict。
         console.log(`\n${e.text}\n`);
+        console.log(`${DIM}   [y] 接受 · [n] 拒绝 · 直接说要改哪里${RESET}`);
         break;
       case "scope.open":
         inChildScope = true;

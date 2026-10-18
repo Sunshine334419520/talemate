@@ -6,7 +6,7 @@
  *
  * 逐格清单与收尾契约由这里出；模型的前言在调用之前说，离散的创作抉择走 ask-user。
  */
-import { PLAN_KEY, type FileOp, type PendingProposal } from "../core/types";
+import { PLAN_KEY, type FileOp, type PendingProposal, type ProposalDisplay } from "../core/types";
 import { specFor } from "./design_spec";
 import { getSection, listHeadings } from "./markdown";
 import { isFiller } from "./report";
@@ -166,11 +166,13 @@ export interface ProposalView {
 }
 
 /**
- * 渲染一份提案（纯函数，无 IO）。输出即用户看到的全部：头部一行定位、逐格编号、待定格点出来
- * 问一句、收尾一行写清怎么回话。
+ * 渲染一份提案的**终端视图**（纯函数，无 IO）：头部一行定位、逐格编号、待定格点出来问一句。
  *
- * 提案只有整篇一种（见 proposalOp）：局部修改走二向的 `edit`（用户看 diff 不看提案），所以没有
- * "只改一格"的分支；想审阅的改动哪怕只涉及一格也整篇提出来，改动哪几格由 `★本版改动` 指出。
+ * 收尾操作不写进正文——界面用三个按钮，CLI 在提案之后单独打一行提示。正文里的“回复没问题”
+ * 只会让用户以为必须手打那句话，而判定本来就在 harness 的词表里。
+ *
+ * 结构化卡片视图见 `proposalDisplay`。提案只有整篇一种（见 proposalOp）：局部修改走二向的
+ * `edit`（用户看 diff 不看提案），所以没有“只改一格”的分支；改动哪几格由 `★本版改动` 指出。
  */
 export function renderProposal(v: ProposalView): string {
   const label = labelOf(v.name, v.content);
@@ -187,7 +189,7 @@ export function renderProposal(v: ProposalView): string {
   const head = [
     `整篇草稿 · ${items.length} 格`,
     blanks.length ? `${blanks.length} 格待定` : undefined,
-    review.loose ? "另有不在小节里的部分" : undefined,
+    review.loose ? "另有开头" : undefined,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -196,7 +198,7 @@ export function renderProposal(v: ProposalView): string {
   out.push("");
   // 不在格里的字节先放：它们在文档里的位置也在格之前
   if (review.loose) {
-    out.push(`不在任何小节里${looseChanged ? "　★本版改动" : ""}（没有格子，但同样会原样写入）：`);
+    out.push(`开头${looseChanged ? "　★本版改动" : ""}（不在小节里的内容，也会原样写入）：`);
     out.push(...indentLines(review.loose));
     out.push("");
   }
@@ -215,7 +217,57 @@ export function renderProposal(v: ProposalView): string {
     out.push("");
     out.push(`第 ${blanks.join("、")} 格还没定 —— 先留白，还是现在给我一句？`);
   }
-  out.push("");
-  out.push(`回复「没问题」就写入${label}；要改直接说第几格。`);
   return out.join("\n");
+}
+
+/**
+ * 去掉与卡片标题相同的 H1。角色卡的首行 `# 角色：陆敬斋` 就是标题本身，
+ * 再在“开头”里重复一遍既多余，也正好是用户说的“标题不该显示在内部”。
+ */
+function looseForDisplay(loose: string, title: string): string | undefined {
+  const kept = loose.split("\n").filter((line) => {
+    const m = /^#{1,6}\s+(.*)$/.exec(line.trim());
+    return !(m !== null && m[1].trim() === title);
+  });
+  const body = kept.join("\n").trim();
+  return body === "" ? undefined : body;
+}
+
+/**
+ * 提案的**结构化卡片视图**：标题、副标题、逐格 markdown、开头、待定/改动标记。
+ *
+ * 与 `renderProposal` 共用 review/items，所以两份视图说的格数与待定数不会分家。
+ * `loose` 在这里去掉了与标题相同的 H1；`renderProposal` 的终端视图仍保留全部字节的清单。
+ */
+export function proposalDisplay(v: ProposalView): ProposalDisplay {
+  const title = labelOf(v.name, v.content);
+  const review = reviewOf(v.name, v.content);
+  const prevReview = v.previous !== undefined ? reviewOf(v.name, v.previous) : undefined;
+  const prevBody = (heading: string): string | undefined =>
+    prevReview?.items.find((p) => p.heading === heading)?.body;
+  const blanks = review.items.map((it, i) => (isBlankBody(it.body) ? i + 1 : 0)).filter(Boolean);
+  const loose = looseForDisplay(review.loose, title);
+  const looseChanged = prevReview !== undefined && prevReview.loose !== review.loose;
+
+  return {
+    kind: "design",
+    title,
+    subtitle: ["整篇草稿", `${review.items.length} 格`, blanks.length ? `${blanks.length} 格待定` : undefined]
+      .filter(Boolean)
+      .join(" · "),
+    ...(v.previous !== undefined
+      ? { previousNote: "已替换上一版提案；带「本版改动」的是这次改过的格。" }
+      : {}),
+    ...(loose === undefined ? {} : { loose }),
+    ...(loose !== undefined && looseChanged ? { looseChanged: true } : {}),
+    sections: review.items.map((it) => ({
+      heading: it.heading,
+      body: it.body,
+      blank: isBlankBody(it.body),
+      changed: prevBody(it.heading) !== undefined && prevBody(it.heading) !== it.body,
+    })),
+    ...(blanks.length
+      ? { blankNote: `第 ${blanks.join("、")} 格还没定——可以先留白，或者提意见补上。` }
+      : {}),
+  };
 }

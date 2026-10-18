@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-10-12 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> **对齐代码**：2026-10-18 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -132,8 +132,8 @@ flowchart TD
 | `framework/file_ops.ts` | `FileOp` → 新内容（纯函数）：整篇 / 锚点替换 / 删除**三种**。行尾适配在这一层 |
 | `framework/match.ts` | 锚点匹配的回退阶梯（唯一性、跨度失控兜底） |
 | `framework/invariants.ts` | **对算出来的结果做后验**（角色卡三条 + 重名小节一条）。提案时也跑同一份，所以判据不会两处说两套 |
-| `framework/proposal.ts` | 提案渲染（`ownItems` / `itemsOf` / `reviewable` / `renderProposal`）＋ `proposalOp`（提案 → 写盘 op）。规范查询转发给 `design_spec.specFor` |
-| `framework/plan.ts` | **章节规划工件**：命名（`.talemate/plans/ch_<N>.md`）、落盘、渲染。**不走 `write_ops`**——它不是作品文档，见本文件「章节生产」 |
+| `framework/proposal.ts` | 提案视图（`ownItems` / `itemsOf` / `reviewable` / `renderProposal` 终端视图 + `proposalDisplay` 结构化卡片）＋ `proposalOp`（提案 → 写盘 op）。规范查询转发给 `design_spec.specFor` |
+| `framework/plan.ts` | **章节规划工件**：命名（`.talemate/plans/ch_<N>.md`）、落盘、终端渲染（`renderPlan`）与卡片视图（`planDisplay`）。**不走 `write_ops`**——它不是作品文档，见本文件「章节生产」 |
 | `framework/markdown.ts` | 区块**读**手术（`getSection` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
 | `framework/anchor.ts` | 常驻注入（`RESIDENT_DOCS` 两条路径）+ `buildIndex`（`list` 的索引） |
 | `tool/read_tools.ts` | `read` / `list` / `search` 三个薄壳（**项目级**，与 design 无关） |

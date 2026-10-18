@@ -9,7 +9,7 @@
 import { DRAFT_MODE } from "../agent/modes";
 import { PLAN_KEY } from "../core/types";
 import type { AskOutcome, AskRecord } from "../core/types";
-import { renderPlan, savePlan } from "../framework/plan";
+import { planDisplay, renderPlan, savePlan } from "../framework/plan";
 import { readPrompt } from "../prompts";
 import {
   parseAskArgs,
@@ -264,7 +264,7 @@ export const proposePlanTool: RegisteredTool<{ chapter: number; content: string 
       approved: false,
       at: Date.now(),
     });
-    ctx.showProposal(renderPlan(chapter, content));
+    ctx.showProposal(renderPlan(chapter, content), planDisplay(chapter, content));
     return {
       output:
         `规划已交给用户（落在 ${path}，尚未写任何正文）。本回合已结束，等用户回话：` +

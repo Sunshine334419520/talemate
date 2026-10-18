@@ -11,6 +11,7 @@ import type {
   AskQuestion,
   AskRecord,
   LLMEvent,
+  ProposalDisplay,
   StoredMessage,
   WriteChange,
 } from "../../../src/core/types";
@@ -21,6 +22,7 @@ export type {
   AskRecord,
   DocNode,
   LLMEvent,
+  ProposalDisplay,
   StoredMessage,
   StyleCatalog,
   WriteChange,

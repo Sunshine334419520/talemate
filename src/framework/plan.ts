@@ -11,6 +11,7 @@
  * 一章一个文件、文件名由章号决定，所以同名即覆盖，规划数量由章数封顶；执行完不删——它是"这一次执行"的记录。
  */
 import { join } from "node:path";
+import type { ProposalDisplay } from "../core/types";
 import { projectPaths, talemateHome } from "../core/config";
 import { writeAtomic } from "../storage/atomic";
 import { indentLines } from "./proposal";
@@ -68,18 +69,23 @@ export async function savePlan(projectId: string, chapter: number, content: stri
 }
 
 /**
- * 渲染一份规划给用户看（纯函数，无 IO）。
+ * 渲染一份规划的**终端视图**（纯函数，无 IO）。
  *
  * 与 `proposal.renderProposal` 的区别：规划不是文档提案——没有逐格编号、没有待定格、没有 apply
- * 那一半，它批准的是执行（照着它去写正文）而不是一次落盘，所以只有一条收尾契约：接受就开写，
- * 不接受就说要改哪儿。
+ * 那一半，它批准的是执行（照着它去写正文）而不是一次落盘。收尾操作不写进正文：界面用三个按钮，
+ * CLI 在提案之后单独打一行提示。
  */
 export function renderPlan(chapter: number, content: string): string {
-  return [
-    `──── 第 ${chapter} 章 · 规划 ────`,
-    "",
-    ...indentLines(content),
-    "",
-    "回复「没问题」就照这个写正文；要改直接说。",
-  ].join("\n");
+  return [`──── 第 ${chapter} 章 · 规划 ────`, "", ...indentLines(content)].join("\n");
+}
+
+/** 规划的结构化卡片视图：标题由章号生成，正文是模型交上来的 markdown。 */
+export function planDisplay(chapter: number, content: string): ProposalDisplay {
+  return {
+    kind: "plan",
+    title: `第 ${chapter} 章 · 规划`,
+    subtitle: "照这份规划写正文",
+    sections: [],
+    body: content.trim(),
+  };
 }

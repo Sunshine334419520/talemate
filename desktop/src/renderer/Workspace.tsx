@@ -6,11 +6,12 @@
  * （谁在哪儿、什么时候取数），画法全在 `Thread` 里。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
+import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, ProposalDisplay, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
 import { composeAnnotationMessage, type Annotation } from "./annotations";
 import { AskDock } from "./AskCard";
 import { COMMANDS } from "./commands";
 import { ConfirmDock } from "./ConfirmDock";
+import { ProposalCard, type ProposalVerdict } from "./ProposalCard";
 import { DocTree } from "./DocTree";
 import { ChevronIcon, DropdownIcon, HistoryIcon, PanelIcon, PlusIcon, ShieldIcon, SlidersIcon } from "./icons";
 import { applyReadingSize, DEFAULT_READING_SIZE } from "./reading";
@@ -39,27 +40,6 @@ function flatDocs(nodes: DocNode[], section = ""): { name: string; path: string;
 /** 扁平后的一行怎么叫：角色/世界观这类分组带上段名，正文与顶层文档不重复写。 */
 function changeLabel(d: { name: string; section: string }): string {
   return d.section === d.name || d.section === "正文" ? d.name : `${d.section} · ${d.name}`;
-}
-
-/**
- * 一轮结束时，把这一轮 tool part 上带回来的改动合成一张卡，挂到对话末尾。
- * 已经挂过（或这一轮没有可见改动）就原样返回，重跑这个 effect 不会叠两张。
- */
-function withTurnChanges(items: LiveItem[]): LiveItem[] {
-  let start = -1;
-  for (let i = items.length - 1; i >= 0; i--) {
-    if (items[i]?.kind === "me") {
-      start = i;
-      break;
-    }
-  }
-  const after = items.slice(start + 1);
-  if (after.some((it) => it.kind === "changes")) return items;
-  const changes: WriteChange[] = [];
-  for (const it of after) {
-    if (it.kind === "tool" && it.change !== undefined) changes.push(it.change);
-  }
-  return changes.length === 0 ? items : [...items, { kind: "changes", changes }];
 }
 
 /** 共用一份空数组：右栏没有备注时传它，免得每次渲染都换一个新数组让记号 effect 重跑。 */
@@ -109,6 +89,21 @@ export function Workspace({
   const queuedAsk = useRef<AskRecord | null>(null);
   /** 本屏已经答过的提问：让历史里那条 pending 过程行立刻停止“等待回答” */
   const [answeredAskIds, setAnsweredAskIds] = useState<Set<string>>(() => new Set());
+  /**
+   * 等待拍板的提案。和 ask / confirm 一样是道门：它在，输入框就让位，
+   * 用户只能在卡里接受 / 拒绝 / 提意见；没有超时，没有收起。
+   */
+  const [proposal, setProposal] = useState<{ id: number; text: string; view?: ProposalDisplay } | null>(
+    null,
+  );
+  const proposalSeq = useRef(0);
+  /** 防止双击/回车+点击同时触发两次裁决：第一下之后就锁住，直到下一份提案进来。 */
+  const resolvingProposal = useRef(false);
+  /**
+   * 这次请求累计产生的落盘改动。提案/提问会让回合提前结束，但用户要的是一整件事做完之后
+   * 一张汇总卡——所以跨 halt 累计，直到“真的没有待拍板/待回答的东西”时再挂出去。
+   */
+  const taskChanges = useRef<WriteChange[]>([]);
   const [error, setError] = useState<string | null>(null);
   /** 提醒（不是错误）：如"这套配置还没密钥"。与 `error` 分开，因为"会失败"和"已经失败"该分开说 */
   const [warn, setWarn] = useState<string | null>(null);
@@ -215,6 +210,9 @@ export function Workspace({
       setAskHidden(false);
       queuedAsk.current = null;
       setAnsweredAskIds(new Set());
+      setProposal(null);
+      resolvingProposal.current = false;
+      taskChanges.current = [];
       // 切会话落在底部：上一个会话里往上翻过的位置不该带过来（历史整个换掉了）
       pinnedRef.current = true;
       // 用量由 harness 记在会话元信息里：切会话切回来在、重启也还在
@@ -255,13 +253,25 @@ export function Workspace({
             else next.push({ kind: "think", text: e.text });
             break;
           }
+          case "tool-call.start":
+            // 参数还在流：先占一个“准备中”的过程项，等 tool-call 到了再换成真步骤
+            next.push({ kind: "tool", id: e.id, name: e.name, preparing: true });
+            break;
           case "tool-call": {
             // 写正文只报进度、不铺字——那一块由 Thread 画成稿子卡
             const step = classifyStep(e.name, e.input);
             // 入参里就有"它动的是什么"——收在这一刻，别等结果回来才想起没记住
-            next.push(step.kind === "chapter" ? step : { ...step, subject: subjectOf(e.input) });
+            const real = step.kind === "chapter" ? step : { ...step, id: e.id, subject: subjectOf(e.input) };
+            const pending = next.findIndex(
+              (it) => it.kind === "tool" && it.preparing === true && (it.id === e.id || it.name === e.name),
+            );
+            if (pending >= 0) next[pending] = real;
+            else next.push(real);
             break;
           }
+          case "step.end":
+            // 被 halt 挡掉的剩余调用不会再有 tool-call；别让“准备中”永远挂在界面上
+            return next.filter((it) => !(it.kind === "tool" && it.preparing === true));
           case "tool.result": {
             for (let i = next.length - 1; i >= 0; i--) {
               const it = next[i];
@@ -281,14 +291,21 @@ export function Workspace({
             }
             break;
           }
-          case "proposal":
-            next.push({ kind: "proposal", text: e.text });
-            break;
           default:
             break;
         }
         return next;
       });
+      if (e.type === "tool.result" && e.change !== undefined) taskChanges.current.push(e.change);
+      if (e.type === "proposal") {
+        proposalSeq.current += 1;
+        resolvingProposal.current = false;
+        setProposal({
+          id: proposalSeq.current,
+          text: e.text,
+          ...(e.view === undefined ? {} : { view: e.view }),
+        });
+      }
       if (e.type === "usage") setUses((prev) => [...prev, { input: e.input, output: e.output, parts: e.parts }]);
       if (e.type === "session.status") setBusy(e.status === "busy");
     });
@@ -334,13 +351,30 @@ export function Workspace({
 
   const wasBusy = useRef(false);
   useEffect(() => {
-    if (wasBusy.current && !busy) {
-      void refreshTree();
-      // 这一轮的落盘记录已经在 live 的 tool part 上；跑完时合成一张卡挂到末尾
-      setLive((prev) => withTurnChanges(prev));
-    }
+    if (wasBusy.current && !busy) void refreshTree();
     wasBusy.current = busy;
   }, [busy, refreshTree]);
+
+  /**
+   * 「本轮改动」是**一次请求**的汇总，不是每个 halt、也不是每次落盘的汇总。
+   *
+   * `busy` 是 runLoop 的整体状态：最后一次工具调用、收尾的思考、以及最终那段总结都跑完，
+   * 才会收到 session.status=idle。所以卡是在最终总结之后才挂到 live 末尾的——不是产物一落盘就出。
+   *
+   * 一次“新建两个角色和一份大纲”会因为提案/提问分成好几个回合；改动先在 taskChanges 里攒着，
+   * 直到 busy=false 且真的没有待拍板提案（state.pending）、待回答问题、待确认审批时，才挂一张卡。
+   * 用 state.pending 而不是界面里提案卡的数量：用户可能直接在输入框里回“没问题”，卡片没点过，
+   * 但 harness 已经知道提案结了。
+   */
+  useEffect(() => {
+    if (busy) return;
+    // 提案弹窗本身也要算“还没完”：state.pending 与 proposal 事件是两条通道，任一条在等都先不挂卡
+    if (proposal !== null || state.pending !== undefined || ask !== null || confirm !== null) return;
+    const changes = taskChanges.current;
+    if (changes.length === 0) return;
+    taskChanges.current = [];
+    setLive((prev) => [...prev, { kind: "changes", changes }]);
+  }, [busy, proposal, state.pending, ask, confirm]);
 
   /** 点一份文档：取全文，右栏开着。现取——刚写完的那一版才是要看的 */
   const openDoc = useCallback(
@@ -455,6 +489,31 @@ export function Workspace({
     setLive((prev) => [...prev, { kind: "me", text }]);
     window.tm.prompt(sent ?? text);
   }, []);
+
+  /**
+   * 提案拍板：发固定短语/意见 → 关掉弹窗 → 在对话里留一条只读记录。
+   * 记录带着 view，点开能回看完整提案；「本轮改动」仍然等这一轮真正结束。
+   */
+  const resolveProposal = useCallback(
+    (text: string, kind: ProposalVerdict): void => {
+      const current = proposal;
+      if (current === null || resolvingProposal.current) return;
+      resolvingProposal.current = true;
+      window.tm.prompt(text);
+      setProposal(null);
+      setLive((prev) => [
+        ...prev,
+        {
+          kind: "proposal-done",
+          title: current.view?.title ?? "提案",
+          text: current.text,
+          verdict: kind,
+          ...(current.view === undefined ? {} : { view: current.view }),
+        },
+      ]);
+    },
+    [proposal],
+  );
 
   /**
    * 回答底部提问卡。main 决定走哪条路：工具调用还开着 → 同一回合；已 pending → 新回合；
@@ -745,9 +804,9 @@ export function Workspace({
             live={live}
             busy={busy}
             confirmOpen={confirm !== null}
+            proposalOpen={proposal !== null}
             askOpen={ask !== null}
             answeredAskIds={answeredAskIds}
-            onVerdict={say}
             onOpenDoc={(path) => void openChapter(path)}
             onOpenDiff={(name, text, path) => openPane({ kind: "diff", name, text, path })}
             onOpenAsk={reopenAsk}
@@ -771,6 +830,15 @@ export function Workspace({
               onOpenDiff={(name, text) => openPane({ kind: "diff", name, text })}
             />
           </div>
+        ) : proposal !== null ? (
+          <div className="askdock">
+            <ProposalCard
+              key={proposal.id}
+              text={proposal.text}
+              view={proposal.view}
+              onVerdict={resolveProposal}
+            />
+          </div>
         ) : ask !== null ? (
           <div className="askdock">
             <AskDock
@@ -785,7 +853,7 @@ export function Workspace({
           </div>
         ) : null}
 
-        {confirm === null && (ask === null || askHidden) && (
+        {confirm === null && proposal === null && (ask === null || askHidden) && (
         <div className="composer">
           <div className="box">
             {menu !== null && (
@@ -813,7 +881,7 @@ export function Workspace({
             <textarea
               ref={textareaRef}
               value={draft}
-              placeholder="说点什么…"
+              placeholder={busy ? "搭档正在处理…（可以按 ■ 停止）" : "说点什么…"}
               onChange={(e) => {
               setDraft(e.target.value);
               scanMenu(e.target.value, e.target.selectionStart ?? e.target.value.length);

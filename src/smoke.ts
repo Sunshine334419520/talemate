@@ -12,7 +12,7 @@ import { loadMessages, listSessionIds, loadSessionMeta } from "./storage/session
 import { loadModelConfig } from "./core/config";
 import { discoverSkills } from "./skill/discovery";
 import { evaluateWithSource } from "./permission";
-import { PLAN_KEY } from "./core/types";
+import { PLAN_KEY, type ProposalDisplay } from "./core/types";
 
 const HOME = await mkdtemp(join(tmpdir(), "talemate-smoke-"));
 process.env.TALEMATE_HOME = HOME;
@@ -22,10 +22,14 @@ process.env.TALEMATE_MOCK_TOOL = "task";
 
 const seen: string[] = [];
 const proposals: string[] = [];
+const proposalViews: ProposalDisplay[] = [];
 const io: UserIO = {
   onEvent: (e) => {
     if (e.type === "text.delta") seen.push(e.text);
-    if (e.type === "proposal") proposals.push(e.text);
+    if (e.type === "proposal") {
+      proposals.push(e.text);
+      if (e.view !== undefined) proposalViews.push(e.view);
+    }
   },
   confirm: async () => "once",
   // 无人值守时没有回答方：fail closed，不能编一个答案继续
@@ -174,9 +178,15 @@ try {
   if (!notWritten) throw new Error("提案不该落盘");
 
   const prop = proposals.at(-1) ?? "";
+  const view = proposalViews.at(-1);
   const rendered =
-    prop.includes("提案 · 核心层") && prop.includes("1. 题材 · 频道") && prop.includes("回复「没问题」就写入");
-  console.log(`[9b] 提案已渲染给用户（逐格 + 收尾契约）：${rendered ? "✓" : "✗"}`);
+    prop.includes("提案 · 核心层") &&
+    prop.includes("1. 题材 · 频道") &&
+    !prop.includes("回复「没问题」") &&
+    view?.kind === "design" &&
+    view.title === "核心层" &&
+    view.sections.some((s) => s.heading === "题材 · 频道");
+  console.log(`[9b] 提案已渲染给用户（终端逐格 + 结构化卡片）：${rendered ? "✓" : "✗"}`);
   if (!rendered) throw new Error(`提案未按预期渲染：${truncate(prop, 200)}`);
 
   const halted = r2.includes("等用户回话");

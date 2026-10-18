@@ -15,7 +15,13 @@ export interface LoopDeps {
   /** 跑一次 LLM 流式交互（delta 经回调吐出） */
   generate(
     req: { system: string; messages: NeutralMsg[]; tools?: ToolSchema[] },
-    opts: { signal: AbortSignal; onText(d: string): void; onReasoning(d: string): void },
+    opts: {
+      signal: AbortSignal;
+      onText(d: string): void;
+      onReasoning(d: string): void;
+      /** 工具调用刚开始、参数还在流时发一次 */
+      onToolCallStart?(call: { id: string; name: string }): void;
+    },
   ): Promise<AssistantTurn>;
   /** 执行一次工具调用 → 返回其 assistant part（completed/error） */
   executeTool(agent: AgentDef, call: ToolCall): Promise<AssistantPart>;
@@ -77,6 +83,7 @@ async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<
             deps.onEvent({ type: "text.delta", text: d });
           },
           onReasoning: (d) => deps.onEvent({ type: "reasoning.delta", text: d }),
+          onToolCallStart: (call) => deps.onEvent({ type: "tool-call.start", id: call.id, name: call.name }),
         },
       );
     } catch (err) {

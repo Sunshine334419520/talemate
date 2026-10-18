@@ -8,7 +8,7 @@ import { DRAFT_MODE } from "../agent/modes";
 import { checkInvariants } from "../framework/invariants";
 import { SPECS } from "../framework/design_spec";
 import { listHeadings } from "../framework/markdown";
-import { renderProposal, reviewable } from "../framework/proposal";
+import { proposalDisplay, renderProposal, reviewable } from "../framework/proposal";
 import { writeFile } from "../framework/write_ops";
 import { readPrompt } from "../prompts";
 import { notInDraft } from "./core_tools";
@@ -115,9 +115,14 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
 
     const prev = ctx.getProposal(path);
     ctx.setProposal({ name: path, content, base: current, approved: false, at: Date.now() });
+    const view = proposalDisplay({ name: path, content, previous: prev?.content });
     const rendered = renderProposal({ name: path, content, previous: prev?.content });
     const warn = cardRewriteWarn(current);
-    ctx.showProposal(warn ? `${warn}\n\n${rendered}` : rendered);
+    // 终端拿 text；界面拿 view——标题、分格、markdown 都在 view 里，不再让界面解析散文
+    ctx.showProposal(
+      warn ? `${warn}\n\n${rendered}` : rendered,
+      warn ? { ...view, warning: warn } : view,
+    );
 
     return {
       output:

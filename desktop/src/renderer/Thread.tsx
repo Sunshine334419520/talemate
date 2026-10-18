@@ -9,19 +9,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { settledCallIds } from "../../../src/session/asks";
 import { messageTurns } from "../../../src/session/turn_changes";
-import type { AskRecord, StoredMessage, WriteChange } from "../shared/api";
-import { VERDICT_TEXT } from "../shared/verdict";
+import type { AskRecord, ProposalDisplay, StoredMessage, WriteChange } from "../shared/api";
 import { AskHistory } from "./AskCard";
 import { Markdown } from "./Markdown";
+import { ProposalRecord, type ProposalVerdict } from "./ProposalCard";
 import { TurnChangesCard } from "./TurnChanges";
 
 export type LiveItem =
   | { kind: "me"; text: string }
   | { kind: "text"; text: string }
   | { kind: "think"; text: string }
-  | { kind: "tool"; name: string; subject?: string; output?: string; change?: WriteChange; ask?: AskRecord }
+  | { kind: "tool"; id?: string; name: string; subject?: string; output?: string; change?: WriteChange; ask?: AskRecord; preparing?: boolean }
   | { kind: "chapter"; path: string; words: number }
-  | { kind: "proposal"; text: string }
+  /** 提案拍板后的只读记录：完整内容还在 view 里，点开可回看 */
+  | { kind: "proposal-done"; title: string; text: string; verdict: ProposalVerdict; view?: ProposalDisplay }
   /** 一次已经答完/取消的提问：在对话里留一张只读回看卡 */
   | { kind: "ask"; record: AskRecord }
   | { kind: "note"; text: string }
@@ -30,7 +31,7 @@ export type LiveItem =
 
 /** 一格过程：连续的几个工具调用加稿子进度，合成一段可展开的过程。 */
 export type Step =
-  | { kind: "tool"; name: string; subject?: string; output?: string; ask?: AskRecord }
+  | { kind: "tool"; id?: string; name: string; subject?: string; output?: string; ask?: AskRecord; preparing?: boolean }
   | { kind: "chapter"; path: string; words: number };
 
 /**
@@ -98,7 +99,7 @@ function Activity() {
   return (
     <div className="activity">
       <span className="pulse" />
-      思考中…
+      处理中…
       {secs >= 2 && <span className="secs">{secs}s</span>}
     </div>
   );
@@ -162,7 +163,14 @@ export function subjectOf(input?: string): string | undefined {
 function stepWords(steps: Step[]): string {
   const counts = new Map<string, number>();
   for (const s of steps) {
-    const word = s.kind === "chapter" ? "撰写正文" : s.ask !== undefined ? "提问" : toolWord(s.name);
+    const word =
+      s.kind === "chapter"
+        ? "撰写正文"
+        : s.preparing === true
+          ? `正在准备${toolWord(s.name)}`
+          : s.ask !== undefined
+            ? "提问"
+            : toolWord(s.name);
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
   return [...counts].map(([word, n]) => (n > 1 ? `${word} ${n} 次` : word)).join(" · ");
@@ -179,9 +187,9 @@ export function Thread({
   live,
   busy,
   confirmOpen,
+  proposalOpen,
   askOpen,
   answeredAskIds,
-  onVerdict,
   onOpenDoc,
   onOpenDiff,
   onOpenAsk,
@@ -195,11 +203,12 @@ export function Thread({
   busy: boolean;
   /** 底部审批卡开着：不要同时在对话里显示“思考中” */
   confirmOpen: boolean;
+  /** 底部提案卡开着：它也是门，不要让“思考中”在背后转 */
+  proposalOpen: boolean;
   /** 底部有提问在等（无论卡片是否收起）：不要同时在对话里显示“思考中” */
   askOpen: boolean;
   /** 本屏刚答掉的提问（历史里的 pending 行要立刻停止“等待回答”） */
   answeredAskIds: Set<string>;
-  onVerdict: (text: string) => void;
   /** 点"稿子"卡 → 右栏读全文 */
   onOpenDoc: (path: string) => void;
   /** 点"看改动" → 右栏显示 diff；改动清单还会带上路径 */
@@ -265,7 +274,15 @@ export function Thread({
     if (it.kind === "tool") {
       // 已经答完的提问由 `ask` 项单独画回看卡；只有仍 pending 的才留一个过程入口
       if (it.ask === undefined || (it.ask.outcome === "pending" && !answered.has(it.ask.callId))) {
-        steps.push({ kind: "tool", name: it.name, subject: it.subject, output: it.output, ask: it.ask });
+        steps.push({
+          kind: "tool",
+          id: it.id,
+          name: it.name,
+          subject: it.subject,
+          output: it.output,
+          ask: it.ask,
+          preparing: it.preparing,
+        });
       }
     } else if (it.kind === "chapter") steps.push({ kind: "chapter", path: it.path, words: it.words });
     else {
@@ -273,7 +290,17 @@ export function Thread({
       if (it.kind === "me") rows.push(<Me key={`l${i}`} text={it.text} />);
       if (it.kind === "text") rows.push(<Said key={`l${i}`} text={it.text} />);
       if (it.kind === "think") rows.push(<Thought key={`l${i}`} text={it.text} live={busy && i === live.length - 1} />);
-      if (it.kind === "proposal") rows.push(<Proposal key={`l${i}`} text={it.text} onVerdict={onVerdict} />);
+      if (it.kind === "proposal-done") {
+        rows.push(
+          <ProposalRecord
+            key={`l${i}`}
+            title={it.title}
+            text={it.text}
+            view={it.view}
+            verdict={it.verdict}
+          />,
+        );
+      }
       if (it.kind === "ask") rows.push(<AskHistory key={`l${i}`} record={it.record} />);
       if (it.kind === "note") rows.push(<p key={`l${i}`} className="note">{it.text}</p>);
       if (it.kind === "changes") {
@@ -293,13 +320,11 @@ export function Thread({
   });
   flush();
 
-  // 末尾那条"它在干活"：屏幕上已经有在动的东西（正在想的推理 / 正在做的步骤 / 正在涌出的正文）时
-  // 不再叠一句——同一件事说两遍比不说更乱。
-  const lastLive = live[live.length - 1];
-  const showingActivity =
-    lastLive !== undefined &&
-    (lastLive.kind === "think" || lastLive.kind === "tool" || lastLive.kind === "chapter" || lastLive.kind === "text");
-  if (busy && !showingActivity && !confirmOpen && !askOpen) rows.push(<Activity key="act" />);
+  // 只要还在跑就留一条“处理中”。长工具的参数是一口气生成的，中间没有 text/tool-call 事件；
+  // 靠“上一条是不是文字/工具”来判断，会在这段最长的等待里把指示器藏掉——正是用户看到“界面死了”的时候。
+  if (busy && !confirmOpen && !proposalOpen && !askOpen) {
+    rows.push(<Activity key="act" />);
+  }
 
   return <div className="thread">{rows}</div>;
 }
@@ -405,6 +430,12 @@ function Steps({
                 <span className="words">{s.words.toLocaleString()} 字</span>
                 <span className="caret">›</span>
               </button>
+            ) : s.preparing === true ? (
+              <div className="step" key={i}>
+                <span className="pulse" />
+                <span className="tool-name">{toolWord(s.name)}</span>
+                <span className="tool-out">准备中…</span>
+              </div>
             ) : s.ask !== undefined ? (
               <button type="button" className="ask-step" key={i} onClick={() => onOpenAsk(s.ask as AskRecord)}>
                 <span className="ask-step-icon" aria-hidden="true">
@@ -427,71 +458,5 @@ function Steps({
   );
 }
 
-/**
- * 摆出来的提案（设计稿 / 章节规划）。动作长在卡片上——三向裁决就是三个按钮，不另起一行问。
- * 按钮说的是 `VERDICT_TEXT` 里那两句固定的话（判定在 harness，见 `shared/verdict.ts`）。
- */
-function Proposal({ text, onVerdict }: { text: string; onVerdict: (text: string) => void }) {
-  const [done, setDone] = useState<string | null>(null);
-  const [refining, setRefining] = useState(false);
-  const [note, setNote] = useState("");
-
-  return (
-    <div className="card-box">
-      <div className="card-title">有一份要你拍板的东西</div>
-      <pre className="proposal">{text}</pre>
-      {done === null ? (
-        refining ? (
-          <div className="card-actions">
-            <input
-              autoFocus
-              placeholder="要改哪里？"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && note.trim()) {
-                  onVerdict(note.trim());
-                  setDone("已提意见");
-                }
-              }}
-            />
-            <button className="btn primary" onClick={() => note.trim() && (onVerdict(note.trim()), setDone("已提意见"))}>
-              提
-            </button>
-            <button className="btn" onClick={() => setRefining(false)}>
-              算了
-            </button>
-          </div>
-        ) : (
-          <div className="card-actions">
-            <button
-              className="btn primary"
-              onClick={() => {
-                onVerdict(VERDICT_TEXT.accept);
-                setDone("已接受");
-              }}
-            >
-              接受
-            </button>
-            <button
-              className="btn zhu"
-              onClick={() => {
-                onVerdict(VERDICT_TEXT.reject);
-                setDone("已拒绝");
-              }}
-            >
-              拒绝
-            </button>
-            <button className="btn" onClick={() => setRefining(true)}>
-              提意见…
-            </button>
-          </div>
-        )
-      ) : (
-        <div className="card-done">{done}（mate 接着往下做）</div>
-      )}
-    </div>
-  );
-}
 
 

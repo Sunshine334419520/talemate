@@ -6,7 +6,8 @@
  * 哪天有人为某一层加了 `if (layer === …)`，这些用例会先炸。
  */
 import { describe, test, expect } from "bun:test";
-import { itemsOf, labelOf, renderProposal, reviewable } from "../src/framework/proposal";
+import { planDisplay, renderPlan } from "../src/framework/plan";
+import { itemsOf, labelOf, proposalDisplay, renderProposal, reviewable } from "../src/framework/proposal";
 import { specFor } from "../src/framework/design_spec";
 
 /**
@@ -196,7 +197,7 @@ describe("reviewable · 防「渲染成空页却照样落盘」", () => {
 });
 
 describe("renderProposal", () => {
-  test("整篇：逐格编号 + 待定单独点出 + 收尾契约，且不出现路径", () => {
+  test("整篇：逐格编号 + 待定单独点出；操作话术不写进提案正文", () => {
     const text = renderProposal({ name: "design/core.md", content: core });
 
     expect(text).toContain("提案 · 核心层");
@@ -205,9 +206,41 @@ describe("renderProposal", () => {
     expect(text).toContain("2. 一句话简介");
     expect(text).toContain("第 3、4 格还没定"); // 没写的格被点出来问一句（第 3 格金手指、第 4 格文风）
     expect(text).toContain("先留白，还是现在给我一句？");
-    expect(text).toContain("回复「没问题」就写入核心层；要改直接说第几格。");
+    // 界面用按钮、CLI 单独打提示；“回复没问题”不再出现在提案正文里
+    expect(text).not.toContain("回复「没问题」");
     expect(text).not.toContain(".md");
     expect(text).not.toContain("design/");
+  });
+
+  test("结构化视图：标题归标题，角色卡的开头 H1 不重复", () => {
+    const view = proposalDisplay({ name: "design/characters/林晚.md", content: card });
+
+    expect(view.title).toBe("角色：林晚");
+    expect(view.subtitle).toContain("整篇草稿");
+    expect(view.subtitle).not.toContain("不在小节");
+    expect(view.sections[0].heading).toBe("基本档案");
+    expect(view.sections[0].blank).toBe(false);
+    expect(view.sections.some((s) => s.blank)).toBe(true);
+    expect(view.loose).toBeUndefined(); // `# 角色：林晚` 就是标题
+    expect(view.blankNote).toBeDefined();
+  });
+
+  test("核心层的 H1 不是卡片标题：它作为开头保留，但不再出现在副标题的元信息里", () => {
+    const view = proposalDisplay({ name: "design/core.md", content: core });
+
+    expect(view.title).toBe("核心层");
+    expect(view.loose).toContain("核心设定");
+    expect(view.subtitle).not.toContain("另有");
+    expect(view.subtitle).not.toContain("不在小节");
+  });
+
+  test("规划的结构化视图：标题由章号生成，正文是规划 markdown", () => {
+    const view = planDisplay(3, "# 节拍\n\n1. 上岛。\n2. 点人。\n");
+    expect(view.kind).toBe("plan");
+    expect(view.title).toBe("第 3 章 · 规划");
+    expect(view.sections).toEqual([]);
+    expect(view.body).toContain("上岛。");
+    expect(renderPlan(3, "# 节拍\n\n1. 上岛。\n")).not.toContain("回复「没问题」");
   });
 
   // 「只改一格」不再是一种提案：它走二向的 edit（用户看 diff，不看提案）。
@@ -254,8 +287,8 @@ describe("renderProposal", () => {
   test("有规范登记的层：`##` 之外的字节（文档标题、导语）也交出来——从前它们是隐形落盘", () => {
     const text = renderProposal({ name: "design/core.md", content: core });
 
-    expect(text).toContain("另有不在小节里的部分");
-    expect(text).toContain("不在任何小节里");
+    expect(text).toContain("另有开头");
+    expect(text).toContain("开头");
     expect(text).toContain("核心设定"); // core 的 H1，规范里没有这一格，却会原样写入
     expect(unseenLines(text, core)).toEqual([]);
   });
@@ -263,7 +296,7 @@ describe("renderProposal", () => {
   test("不在格里的部分改了也要标★（否则改稿会漏看一处）", () => {
     const v2 = core.replace("# 核心设定", "# 核心设定（改过）");
     const text = renderProposal({ name: "design/core.md", content: v2, previous: core });
-    expect(text).toMatch(/不在任何小节里\s*★本版改动/);
+    expect(text).toMatch(/开头\s*★本版改动/);
   });
 
   test("正文中间的 `#` 会截断 `##` 的区块——被漏掉的那段也不许隐形（uncoveredText 取补集的原因）", () => {

@@ -482,6 +482,7 @@ export class Session {
             signal: o.signal,
             onText: o.onText,
             onReasoning: o.onReasoning,
+            onToolCallStart: o.onToolCallStart,
           }),
         executeTool: async (ag, call) => {
           // 详细打印事件：工具调用、task 子代理边界（子会话事件发生在 scope.open/close 之间）、工具结果
@@ -760,7 +761,8 @@ export class Session {
           throw err;
         }
       },
-      showProposal: (text) => this.io.onEvent({ type: "proposal", text }),
+      showProposal: (text, view) =>
+        this.io.onEvent({ type: "proposal", text, ...(view === undefined ? {} : { view }) }),
       // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
       setMode: (m) => this.setMode(m),
       getMode: () => this.mode,

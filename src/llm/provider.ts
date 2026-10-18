@@ -16,6 +16,8 @@ export interface ChatOpts {
   signal?: AbortSignal;
   onText?: (delta: string) => void;
   onReasoning?: (delta: string) => void;
+  /** 工具调用刚开始、参数还在流的时候发一次——让界面能显示“正在准备…” */
+  onToolCallStart?: (call: { id: string; name: string }) => void;
 }
 
 export async function chat(opts: ChatOpts): Promise<AssistantTurn> {
@@ -49,6 +51,13 @@ async function chatAnthropic(opts: ChatOpts): Promise<AssistantTurn> {
   );
 
   stream.on("text", (delta) => opts.onText?.(delta));
+  // 工具调用的参数可能很长（整章正文/整份设计稿）；在 content_block_start 就报一声，
+  // 别等 finalMessage 才让界面知道它在干活
+  stream.on("streamEvent", (event) => {
+    if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
+      opts.onToolCallStart?.({ id: event.content_block.id, name: event.content_block.name });
+    }
+  });
 
   const msg = await stream.finalMessage();
   if (msg.stop_reason === "max_tokens") {
@@ -143,6 +152,8 @@ async function chatOpenAI(opts: ChatOpts): Promise<AssistantTurn> {
   let text = "";
   let reasoningText = "";
   const toolAcc: { id: string; name: string; args: string; index: number }[] = [];
+  /** 已经报过 start 的工具序号——name 可能分几个 delta 到达，只在第一次有名字时报 */
+  const startedTools = new Set<number>();
   let finish: "stop" | "tool_calls" | "length" | "error" = "stop";
   let usageIn = 0;
   let usageOut = 0;
@@ -165,6 +176,10 @@ async function chatOpenAI(opts: ChatOpts): Promise<AssistantTurn> {
         if (tc.id) acc.id = tc.id;
         if (tc.function?.name) acc.name += tc.function.name;
         if (tc.function?.arguments) acc.args += tc.function.arguments;
+        if (!startedTools.has(idx) && acc.name !== "") {
+          startedTools.add(idx);
+          opts.onToolCallStart?.({ id: acc.id || `tool-${idx}`, name: acc.name });
+        }
       }
     }
     const fr = chunk.choices?.[0]?.finish_reason as string | null | undefined;
@@ -340,6 +355,7 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
         : mockTool === "propose-design"
           ? { path: "design/core.md", content: MOCK_PROPOSAL }
           : sampleArgs(schema);
+    opts.onToolCallStart?.({ id: "mock-call-1", name: mockTool });
     return {
       text: "",
       toolCalls: [{ id: "mock-call-1", name: mockTool, input }],

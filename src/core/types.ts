@@ -98,6 +98,41 @@ export type AskOutcome =
   | { kind: "pending"; callId: string }
   | { kind: "cancelled"; reason: "no-answerer" | "aborted" };
 
+/** 提案卡的一格：标题 + 正文 + 两个展示标记。 */
+export interface ProposalDisplaySection {
+  heading: string;
+  body: string;
+  /** 这一格还没填（空 / 只有占位） */
+  blank: boolean;
+  /** 与上一版相比改过 */
+  changed: boolean;
+}
+
+/**
+ * 提案的结构化视图：界面按它画标题、分格与 markdown；CLI 仍可用同一份 `text`。
+ *
+ * 它只描述“怎么展示”，不改变“什么会落盘”——落盘内容仍是提案登记里的 `content`。
+ */
+export interface ProposalDisplay {
+  kind: "design" | "plan";
+  /** 卡片标题：角色：陆敬斋 / 核心层 / 第 4 章 · 规划 */
+  title: string;
+  /** 格数、待定数等一行小字 */
+  subtitle?: string;
+  /** 额外提醒（如核心设定被外部改写） */
+  warning?: string;
+  /** 替换了上一版时的说明 */
+  previousNote?: string;
+  /** 不在任何格里的开头/导语；与标题相同的 H1 已被去掉，空则不显示 */
+  loose?: string;
+  looseChanged?: boolean;
+  sections: ProposalDisplaySection[];
+  /** 整篇散文（规划 / 无格文档）的正文；有 sections 时为空 */
+  body?: string;
+  /** 还没定的格提示 */
+  blankNote?: string;
+}
+
 /** 一次提问的结构化记录：挂在 tool part 上落盘，界面据此回看。 */
 export interface AskRecord {
   callId: string;
@@ -197,8 +232,11 @@ export interface ToolContext {
   ask(req: PermissionRequest): Promise<PermissionVerdict>;
   /** 向用户提问要创作决策（非审批）。answered 才带答案；pending 必须 halt，且不是同意 */
   askUser(req: AskRequest): Promise<AskOutcome>;
-  /** 把一份待审阅的提案整块展示给用户（只读、无返回值）——走事件通道，CLI/TUI 各自渲染 */
-  showProposal(text: string): void;
+  /**
+   * 把一份待审阅的提案展示给用户（只读、无返回值）——走事件通道。
+   * `text` 是终端视图；`view` 是结构化的卡片视图（标题、分格、markdown）。
+   */
+  showProposal(text: string, view?: ProposalDisplay): void;
   getProposal(name: string): PendingProposal | undefined;
   /** 替换时 approved 一律重置为 false——用户没见过新版就不算同意 */
   setProposal(p: PendingProposal): void;
@@ -407,12 +445,19 @@ export interface ProjectMeta {
 export type LLMEvent =
   | { type: "text.delta"; text: string }
   | { type: "reasoning.delta"; text: string }
+  /**
+   * 模型刚开始生成一次工具调用（参数还没流完）。
+   *
+   * 写正文/写设计稿这类工具，参数本身就是几千字；`tool-call` 要等参数全部生成完才发，
+   * 中间那段界面会静默。这个事件让界面能先说“正在准备 写文件…”。
+   */
+  | { type: "tool-call.start"; id: string; name: string }
   | { type: "tool-call"; id: string; name: string; input: string }
   | { type: "tool.result"; id: string; name: string; output: string; change?: WriteChange; ask?: AskRecord }
   | { type: "scope.open"; label: string }
   | { type: "scope.close"; label: string }
   /** 只读展示给用户的块（提案逐格清单等）——无返回值，与 confirm/askUser 的交互式提示区分 */
-  | { type: "proposal"; text: string }
+  | { type: "proposal"; text: string; view?: ProposalDisplay }
   /**
    * 这一次请求的用量（provider 每次都拿到 `usage`）。界面靠它显示"这个会话用了多少上下文"
    * ——`input` 就是这一次发出去的全部 token（≈当前上下文大小）。

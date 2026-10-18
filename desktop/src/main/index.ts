@@ -52,14 +52,14 @@ import type {
 import { createAskBroker } from "./ask_broker";
 
 const SELFTEST = process.env.TALEMATE_DESKTOP_SELFTEST ?? "";
+/** 新会话的默认名；第一句话发出去时按“名字还是不是它”决定要不要命名 */
+const NEW_SESSION_TITLE = "新会话";
 
 let win: BrowserWindow | undefined;
 let session: Session | undefined;
 let watchers: FSWatcher[] = [];
 /** 这些 watcher 盯的是哪一本。删掉一本书时，只有它才知道该不该把手上的 watcher 与会话收掉。 */
 let watchedProjectId: string | undefined;
-/** 这一次开的是新会话——第一句话发出去时用它命名，只做一次 */
-let freshSession = false;
 
 /** 等渲染层点头的审批（确认）。提问的等待在 ask_broker.ts，那里可离线测。 */
 const waitingConfirms = new Map<string, (v: ConfirmReply) => void>();
@@ -352,7 +352,6 @@ function registerHandlers(): void {
       watchers = [];
       watchedProjectId = undefined;
       session = undefined;
-      freshSession = false;
     }
     await shell.trashItem(root);
     await clearCurrentIf(projectId);
@@ -548,10 +547,9 @@ function registerHandlers(): void {
           profile: chosen?.name,
           // 新会话先叫「新会话」，第一句话发出去之后按那句话命名（见 tm:prompt）——
           // 都叫"桌面端"的话列表里分不出哪条是哪条
-          title: p.sessionId === undefined ? "新会话" : undefined,
+          title: p.sessionId === undefined ? NEW_SESSION_TITLE : undefined,
           io: makeIO(),
         });
-        freshSession = p.sessionId === undefined;
         // 默认权限：设置里选了「工作区内修改」（默认）就带着 accept-edits 起步。
         // 模式不落盘，所以每次打开会话都按这里的默认值重新应用，而不是读回上一次的模式。
         const prefs = await readPrefs();
@@ -611,12 +609,17 @@ function registerHandlers(): void {
 
   ipcMain.on("tm:prompt", async (_e, text: string) => {
     try {
-      if (freshSession && session !== undefined) {
-        freshSession = false;
-        // 用第一句话当会话名：取第一行、截断；命名只做一次，否则列表里的名字会一直跳
+      if (session !== undefined) {
+        // 会话名只在还叫默认「新会话」时更新：取第一行、截断。
+        // 不靠一个内存 flag——重启或切走再回来时，那个 flag 早就没了，名字会永远停在「新会话」。
         const line = text.split("\n")[0]?.trim() ?? "";
-        if (line) await session.saveMeta(line.length > 24 ? `${line.slice(0, 24)}…` : line);
-        win?.webContents.send("tm:docs-changed");
+        if (line) {
+          const meta = await loadSessionMeta(session.projectId, session.sessionId).catch(() => undefined);
+          if (meta === undefined || meta.title === NEW_SESSION_TITLE) {
+            await session.saveMeta(line.length > 24 ? `${line.slice(0, 24)}…` : line);
+            win?.webContents.send("tm:docs-changed");
+          }
+        }
       }
       await session?.post(text);
     } catch (err) {

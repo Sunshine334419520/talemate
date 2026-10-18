@@ -807,7 +807,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     const shown = ctx.shown.join("\n");
     expect(shown).toContain("1. 空间与舞台");
     expect(shown).toContain("2. 规则与秩序");
-    expect(shown).toContain("回复「没问题」就写入");
+    expect(shown).not.toContain("回复「没问题」");
     expect(shown).not.toContain(".md"); // 对用户不出现路径
     expect(shown).not.toContain("design/");
   });
@@ -986,7 +986,7 @@ describe("propose-plan · 规划工件与拍板", () => {
     expect(ctx.shown[0]).toContain("──── 第 1 章 · 规划 ────");
     expect(ctx.shown[0]).toContain("上岛第一晚。");
     expect(ctx.shown[0]).toContain("意图：把岛上这七个人点一遍。");
-    expect(ctx.shown[0]).toContain("回复「没问题」就照这个写正文");
+    expect(ctx.shown[0]).not.toContain("回复「没问题」");
 
     // **真的落盘了**（旧断言是"节拍不落盘"），落的是引擎工作区：`read` 那个读口看不见它，
     // 语料也枚举不到它——规划不是作品的一份文档（见 framework/plan.ts 的文件头）。
