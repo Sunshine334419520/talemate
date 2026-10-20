@@ -8,6 +8,14 @@ exactly the bytes they were shown; calling it again for the same chapter replace
 Write the plan in Chinese, and make it a list of artifacts rather than free text — a step is done
 when what it names exists:
 - 意图 — what the user wants out of this chapter.
+- 对应序列与功能 — which sequence contract item this chapter advances: the unit's question, one of
+  its turns, or a promise it must pay or plant.
+- 本章的价值变化 — what changes from what to what: information, relationship, resource, position, or
+  cognition. A chapter that changes none of these is filler; merge or cut it.
+- 本章不能提前兑现 — what must stay unresolved, and which 禁揭 item this chapter must not touch.
+- 章末的读者问题 — the question the chapter leaves open (an interrupted action, a discovery, a
+  relationship shift, a new question). A breather or closing chapter may end on an aftertaste; do
+  not force a cliffhanger.
 - 产物（按序）— where the work lands, **in the order the work is done**. A person this chapter needs
   who has no card yet comes first (`design/characters/<名>.md`, landed the way design docs always
   land — propose-design, then the user's answer): the card is what fixes how they speak and what
@@ -43,6 +51,11 @@ when what it names exists:
   what must stay unresolved; and the step's 放大点 — the one moment it dwells on (a few hundred
   words on a single action, decision or turn) and what it skips in half a sentence. Name the
   moment, not the principle: steps at one even weight are how a competent chapter turns dull.
+The volume outline's 本卷在全局的位置, 本卷目标与阻力, 本卷的承诺 and 本卷的节奏与情绪 bound this
+chapter; the sequence contract covering it says what this unit must make true. Read both before
+writing the plan. If the material reveals a better path that changes the sequence's exit state or
+promises, stop and raise it as a design change — the prose must not silently override the contract.
+
 Plan text only: no notes to the user, no rationale, no questions — say those in your message before
 this call.
 

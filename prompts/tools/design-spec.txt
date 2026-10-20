@@ -1,7 +1,7 @@
 Return the structural spec for a design document kind: its exact section headings and what belongs in
-each — or, for kinds that are plain prose (character cards, sequence outlines), the writing method
-instead. Every other tool addresses sections by name (read, propose-design, the status card) —
-inventing your own headings breaks them.
+each — or, for kinds whose shape lives in the guide rather than in named sections (character cards,
+sequence outlines), the writing method instead. Every other tool addresses sections by name (read,
+propose-design, the status card) — inventing your own headings breaks them.
 
 Call this whenever the conversation is about **designing the novel** — the user telling you what
 they want to write, or asking to work on a layer. A story-idea discussion usually touches 核心设定

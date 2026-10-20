@@ -103,6 +103,28 @@ describe("规范注册表 · 管辖范围", () => {
   });
 });
 
+describe("规范注册表 · 情节层契约", () => {
+  test("卷纲六格与序列纲七字段都在规范里（不是只写在 docs/outline.md）", () => {
+    const vol = SPECS.find((s) => s.id === "outline-vol");
+    const seq = SPECS.find((s) => s.id === "outline-seq");
+    expect(vol).toBeDefined();
+    expect(seq).toBeDefined();
+
+    expect((vol as DocSpec).sections.map((s) => s.heading)).toEqual([
+      "本卷在全局的位置",
+      "本卷目标与阻力",
+      "本卷的承诺",
+      "本卷的节奏与情绪",
+      "卷末状态",
+      "本卷的序列",
+    ]);
+
+    const fields = ["功能：", "问题：", "入口 → 出口：", "不可逆转折：", "承诺：", "写法约束：", "体量："];
+    const missing = fields.filter((f) => !(seq as DocSpec).guide.includes(f));
+    expect(missing).toEqual([]);
+  });
+});
+
 describe("规范注册表 · 工作法", () => {
   test("工作法里提到 propose-design 的，必须同时写明它要先在草稿模式里", () => {
     // 工作法每层手抄一份，措辞各异——所以漏写半句在 diff 里看不出来。漏写的后果不是报错，而是

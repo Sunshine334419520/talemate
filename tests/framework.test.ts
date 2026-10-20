@@ -241,6 +241,8 @@ describe("design-spec（结构规范）", () => {
     const outline = at("outline/");
     // 一次调用取全这一层的两个尺度
     expect(outline).toContain("## 本卷在全局的位置");
+    expect(outline).toContain("## 本卷的承诺");
+    expect(outline).toContain("## 本卷的节奏与情绪");
     expect(outline).toContain("## 卷末状态");
     expect(outline).toContain("## 本卷的序列");
     expect(outline).toContain("path: design/outline/vol_<N>.md");

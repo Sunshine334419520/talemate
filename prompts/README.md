@@ -12,11 +12,11 @@ prompts/
 ├── researcher.system.txt     researcher subagent persona
 ├── summarizer.system.txt     内部 hidden summarizer（compaction）
 ├── prose.rules.txt           正文规范（跨文风恒定；**不是 persona**——由 harness 在写作窗口注入，见 src/framework/prose.ts）
-├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md「会话模式」）
+├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md“会话模式”）
 └── tools/<tool_id>.txt       每个工具的 description
 ```
 
-> 所有 persona（system）统一放 `.txt`（英文，`readPrompt` 加载）；agent 的 `description` 内联于 `src/agent/registry.ts`（短数据、路由契约），写法见下文「描述 · agent description 路由规范」。
+> 所有 persona（system）统一放 `.txt`（英文，`readPrompt` 加载）；agent 的 `description` 内联于 `src/agent/registry.ts`（短数据、路由契约），写法见下文“描述 · agent description 路由规范”。
 
 ---
 
@@ -37,7 +37,7 @@ prompts/
 
 ## 归属纪律（重要——决定哪些内容根本不进 prompt）
 
-凡能由以下载体承载的，一律归位，不进常驻 prompt（详见 `../docs/design-docs.md`「文档级的守卫」与 `../docs/agents.md`「工具框架」）：
+凡能由以下载体承载的，一律归位，不进常驻 prompt（详见 `../docs/design-docs.md`“文档级的守卫”与 `../docs/agents.md`“工具框架”）：
 
 - **数据**：项目是什么 / 文档结构 → 常驻设定注入（core/world 全文，`framework/anchor.ts` `buildResidentDocs`）+ 文档文件骨架（模型每轮看得到，别在 persona 重复）。
 - **工具**：能做什么 / 覆盖要 confirm / 删前查引用 → 工具实现 + 工具 description。

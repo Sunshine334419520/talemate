@@ -61,7 +61,7 @@ const prose = [
   "",
 ].join("\n");
 
-/** 一份卷纲：五格里填了两格，其余留空。 */
+/** 一份卷纲：六格里填了两格（位置、卷末状态），其余留空。 */
 const vol = [
   "# 卷 2 · 内城",
   "",
@@ -137,11 +137,12 @@ describe("itemsOf · 一个函数、两个数据源", () => {
     expect(specFor("design/outline/vol_.md")?.id).toBe("outline-vol");
   });
 
-  test("卷纲按它的五格取；序列纲不分格，一格都没有", () => {
+  test("卷纲按它的六格取；序列纲不分格，一格都没有", () => {
     expect(itemsOf("design/outline/vol_2.md", vol).map((i) => i.heading)).toEqual([
       "本卷在全局的位置",
       "本卷目标与阻力",
-      "本卷的情绪曲线",
+      "本卷的承诺",
+      "本卷的节奏与情绪",
       "卷末状态",
       "本卷的序列",
     ]);
@@ -273,14 +274,16 @@ describe("renderProposal", () => {
     expect(text).not.toContain(".md");
   });
 
-  test("卷纲走逐格：五格齐出，没填的点成（待定）", () => {
+  test("卷纲走逐格：六格齐出，没填的点成（待定）", () => {
     const text = renderProposal({ name: "design/outline/vol_2.md", content: vol });
 
     expect(text).toContain("提案 · 卷 2 · 内城");
     expect(text).toContain("1. 本卷在全局的位置");
     expect(text).toContain("主角从外围走到台面上。");
-    expect(text).toContain("4. 卷末状态");
-    expect(text).toContain("第 2、3、5 格还没定"); // 只填了位置与卷末状态
+    expect(text).toContain("3. 本卷的承诺");
+    expect(text).toContain("4. 本卷的节奏与情绪");
+    expect(text).toContain("5. 卷末状态");
+    expect(text).toContain("第 2、3、4、6 格还没定"); // 只填了位置与卷末状态
     expect(unseenLines(text, vol)).toEqual([]);
   });
 

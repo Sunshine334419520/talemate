@@ -29,11 +29,11 @@ import { chapterFileOf } from "./plan";
 /** 没指定文风时用的那张卡——内置库里随产品发布的那一份。 */
 export const DEFAULT_STYLE = "prose";
 
-/** 核心设定的「文风」格标题。**读（`styleChoiceFrom`）与写（`upsertSection`）必须是同一份**——
+/** 核心设定的“文风”格标题。**读（`styleChoiceFrom`）与写（`upsertSection`）必须是同一份**——
  *  两处各写一个字面量，改了格名就会变成"写得进去、读不出来"。 */
 export const STYLE_HEADING = "文风";
 
-/** 核心设定的「题材 · 频道」格标题。同 `STYLE_HEADING`：写在这里，读在 `design_spec` 的规范里，
+/** 核心设定的“题材 · 频道”格标题。同 `STYLE_HEADING`：写在这里，读在 `design_spec` 的规范里，
  *  两处必须一致，由 `tests/framework.test.ts` 钉住。 */
 export const SHELF_HEADING = "题材 · 频道";
 
@@ -52,12 +52,12 @@ const NAME_LIKE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 export interface StyleChoice {
   /** 要加载的卡名。 */
   name: string;
-  /** 核心设定的「文风」格存在、却没能当卡名读出来时的说明——要说给用户听，不能静默吞掉。 */
+  /** 核心设定的“文风”格存在、却没能当卡名读出来时的说明——要说给用户听，不能静默吞掉。 */
   note?: string;
 }
 
 /**
- * 这本书选了哪张文风卡。读 `design/core.md` 的「文风」格，三种情况处置不同：
+ * 这本书选了哪张文风卡。读 `design/core.md` 的“文风”格，三种情况处置不同：
  * - 格不存在 / 是空的 → 默认那张（这是常态）；
  * - 格里有字但不像卡名（用户写了一句大白话）→ 用默认，但带一句说明；
  * - 读出一个卡名 → 交给 `buildProseBrief` 去库里取，取不到时由它报错。
@@ -79,7 +79,7 @@ export function styleChoiceFrom(core: string | undefined): StyleChoice {
   if (!NAME_LIKE.test(token)) {
     return {
       name: DEFAULT_STYLE,
-      note: `核心设定的「文风」格里没读出文风卡的名字（读到「${line}」），这一章用了默认声口 ${DEFAULT_STYLE}。`,
+      note: `核心设定的“文风”格里没读出文风卡的名字（读到“${line}”），这一章用了默认声口 ${DEFAULT_STYLE}。`,
     };
   }
   return { name: token };
@@ -158,7 +158,7 @@ export async function buildProseBrief(projectId: string, chapter: number): Promi
     `<prose-window chapter="${chapter}">`,
     `现在在写第 ${chapter} 章的正文。以下每一条都成立。`,
     "",
-    "【正文规范】（跨文风恒定。判据是能不能指着句子说「这里错了」）",
+    "【正文规范】（跨文风恒定。判据是能不能指着句子说“这里错了”）",
     readPrompt("prose.rules"),
   ];
 
@@ -168,7 +168,7 @@ export async function buildProseBrief(projectId: string, chapter: number): Promi
     // 不能静默退回默认：用户会以为在用那张卡，实际在用另一张，而且看不出来
     out.push(
       "",
-      `【这本书的文风】核心设定指定的是「${choice.name}」，但文风库里没有这个名字（可用：见 <available_skills>）。`,
+      `【这本书的文风】核心设定指定的是“${choice.name}”，但文风库里没有这个名字（可用：见 <available_skills>）。`,
       `先别写正文——把这件事告诉用户，问他：换回默认（${DEFAULT_STYLE}），还是把那张卡补进库里。`,
     );
   }

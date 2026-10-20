@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-10-18 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> **对齐代码**：2026-10-19 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -30,7 +30,7 @@
 
 `createProject` 只建目录、不种文件——`design/` 初始为空。用户要完善某处时，mate 调 `design-spec` 拿那**份文档**（或那个**目录**）的结构规范（该有哪些小节、每格装什么、成稿做法），据此成稿。
 
-**一处例外**：桌面端建书时会把用户在书架上选的频道与题材种进 `core.md` 的「题材 · 频道」那一格（`withShelf`）——值是用户从封闭集合里挑的，没有可生成的东西，与文风选择器同一类。它**只种这一次**：此后那一格归企划管，在书架上改题材不会回头改它。CLI 建的书仍是空的。
+**一处例外**：桌面端建书时会把用户在书架上选的频道与题材种进 `core.md` 的“题材 · 频道”那一格（`withShelf`）——值是用户从封闭集合里挑的，没有可生成的东西，与文风选择器同一类。它**只种这一次**：此后那一格归企划管，在书架上改题材不会回头改它。CLI 建的书仍是空的。
 
 **结构与内容分离**：`design_spec.ts` 只定义"长什么样"；文件一旦建立即内容与真相。所以 `design-spec` 是**参考**，不是校验器——文档不按规范组织也能存在，只是模型没拿到引导。规范描述的是**还不存在的文档**，所以它按"将来那个路径"取，不必等文件出现。
 
@@ -80,7 +80,7 @@ read           { path: "chapters/chapter_ch2_v1.md" }
 
 ## 文档级的守卫
 
-- **可审阅性**：判据是"**字节能不能到用户眼前**"，不是"分不分格"。有规范登记的文档，没按该规范的小节组织 → 拒绝提案（否则几格全显示「待定」，整段散文却照样落盘）；**无规范登记的文档放行**——整篇散文会被兜底成"整篇一格"交出来。
+- **可审阅性**：判据是"**字节能不能到用户眼前**"，不是"分不分格"。有规范登记的文档，没按该规范的小节组织 → 拒绝提案（否则几格全显示“待定”，整段散文却照样落盘）；**无规范登记的文档放行**——整篇散文会被兜底成"整篇一格"交出来。
 - **不在任何格里的字节也单独放一段**（`proposal.uncoveredText`）：文档标题行、`##` 之前的导语。渲染只认 `items[].body` 的话，这些字节会被整个跳过，而它们照样落盘——"用户看过的字节 == 落盘的字节"就成了假的。
 - **重名小节**：寻址按标题，两个同名 `##` 之后"读第 2 节"永远命中前一个——此后工具读不懂这份文档。`framework/invariants.ts` 的 `design.no-duplicate-heading` 拦"**新造出来**的重名"。
 - **角色卡的 `##` 陷阱**：`proposal.ownItems` 取**最浅**标题层。角色卡上冒出任意一个 `##`，卡里**所有** `###` 都从逐格审阅里消失。`characters.no-shallow-heading` 拦它——**判结果**，所以 `write` / `edit` / `propose-design` 哪条路都绕不过。详见 `characters.md`。
@@ -91,7 +91,7 @@ read           { path: "chapters/chapter_ch2_v1.md" }
 ```mermaid
 flowchart TD
     W[用户: 根据序列 X 写第 N 章] --> W1[task planner 带意图与手上的材料]
-    W1 --> W2[规划者读全套设定与序列纲，回一份可执行规划]
+    W1 --> W2[规划者读全套设定、卷纲与序列纲，回一份可执行规划]
     W2 --> W3[propose-plan: 落 .talemate/plans/ch_N.md + 摆给用户 —— halt，回合到此为止]
     W3 --> W4{用户拍板}
     W4 -- 要改 --> W3
@@ -102,11 +102,11 @@ flowchart TD
     W5 --> W6[用户看 diff 后点头 —— 用户看过的字节 == 落盘的字节]
 ```
 
-**一次只规划一章**，因为规划是**序列纲的投影**：序列纲说"这一节要兑现什么"，规划说"这一章怎么兑现"。
+**一次只规划一章**，因为规划是**卷契约 + 序列契约的投影**：序列契约说"这一小段必须让什么为真"，卷契约给出它的边界（独立问题、旧债/新债、禁揭、本卷上限），规划说"这一章怎么让它为真"。
 
-**新人物的卡排在正文之前**（图里的 `W4B`）。卡的用途是约束"他下一次怎么说话、什么绝不做"，事后从正文反推出来的卡只能是对已写正文的总结——那是墓志铭，不是合同。所以建卡走的是**设计文档那条两段式**（`propose-design` → 用户拍板 → `apply-design`）：建卡是设计动作，不是写作动作，它只是被章节生产**触发**的。判据见 `characters.md` 的「谁需要一张卡」。
+**新人物的卡排在正文之前**（图里的 `W4B`）。卡的用途是约束"他下一次怎么说话、什么绝不做"，事后从正文反推出来的卡只能是对已写正文的总结——那是墓志铭，不是合同。所以建卡走的是**设计文档那条两段式**（`propose-design` → 用户拍板 → `apply-design`）：建卡是设计动作，不是写作动作，它只是被章节生产**触发**的。判据见 `characters.md` 的“谁需要一张卡”。
 
-**同一条测试也管世界事实**：一条规则、一个术语的含义、一条能力边界，同样"约束正文能做什么"，所以同样排在正文之前、同样走两阶段；事后补就只能是对已写正文的总结。**纯起名不算**——一个地方只需要有个称呼，在规划里定下就行。章末另有一次**世界层回看**：正文与「规则与秩序」「术语表」冲突的报给用户裁决（绝不静默改设定），把原本（待定）的钉死或揭开了某条硬事实的则提议改那一格。见 `chapter-planning.md` 的「七」。
+**同一条测试也管世界事实**：一条规则、一个术语的含义、一条能力边界，同样"约束正文能做什么"，所以同样排在正文之前、同样走两阶段；事后补就只能是对已写正文的总结。**纯起名不算**——一个地方只需要有个称呼，在规划里定下就行。章末另有一次**世界层回看**：正文与“规则与秩序”“术语表”冲突的报给用户裁决（绝不静默改设定），把原本（待定）的钉死或揭开了某条硬事实的则提议改那一格。见 `chapter-planning.md` 的“七”。
 
 **门只剩一道，挂在 `propose-plan` 上：交出去就停**（`halt`，不靠模型自觉）。它同时把规划登记进会话内存，用户回话后由 harness 置 `approved`——**和 `apply-design` 是同一套**：propose 登记 → harness 判同意 → 模型据它执行。
 
@@ -118,7 +118,7 @@ flowchart TD
 
 ## 写作依赖当前版本
 
-每次写正文（以及每次 `task` 委派），都**现读**"当前 core 切片 + 相关 world/characters 切片 + 序列纲/规划"——**绝不缓存旧设定**。
+每次写正文（以及每次 `task` 委派），都**现读**"当前 core 切片 + 相关 world/characters 切片 + 卷纲相关格 + 序列纲/规划"——**绝不缓存旧设定**。
 
 ## 相关源码
 
@@ -133,7 +133,7 @@ flowchart TD
 | `framework/match.ts` | 锚点匹配的回退阶梯（唯一性、跨度失控兜底） |
 | `framework/invariants.ts` | **对算出来的结果做后验**（角色卡三条 + 重名小节一条）。提案时也跑同一份，所以判据不会两处说两套 |
 | `framework/proposal.ts` | 提案视图（`ownItems` / `itemsOf` / `reviewable` / `renderProposal` 终端视图 + `proposalDisplay` 结构化卡片）＋ `proposalOp`（提案 → 写盘 op）。规范查询转发给 `design_spec.specFor` |
-| `framework/plan.ts` | **章节规划工件**：命名（`.talemate/plans/ch_<N>.md`）、落盘、终端渲染（`renderPlan`）与卡片视图（`planDisplay`）。**不走 `write_ops`**——它不是作品文档，见本文件「章节生产」 |
+| `framework/plan.ts` | **章节规划工件**：命名（`.talemate/plans/ch_<N>.md`）、落盘、终端渲染（`renderPlan`）与卡片视图（`planDisplay`）。**不走 `write_ops`**——它不是作品文档，见本文件“章节生产” |
 | `framework/markdown.ts` | 区块**读**手术（`getSection` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
 | `framework/anchor.ts` | 常驻注入（`RESIDENT_DOCS` 两条路径）+ `buildIndex`（`list` 的索引） |
 | `tool/read_tools.ts` | `read` / `list` / `search` 三个薄壳（**项目级**，与 design 无关） |
