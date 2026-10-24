@@ -642,6 +642,11 @@ function registerHandlers(): void {
         if ((prefs.permissionMode ?? DEFAULT_PERMISSION_MODE) === "accept-edits") session.setMode("accept-edits");
         watchDocs(p.projectId);
         pushSessionState();
+      } else if (session !== undefined && session.currentMode === undefined) {
+        // 同一个会话重新进入：没有模式时才按设置补默认值。draft 等模式不覆盖——
+        // 否则会把正在审阅的提案踢出草稿；而模式丢了（如旧代码退出草稿）则在这里自愈。
+        const prefs = await readPrefs();
+        if ((prefs.permissionMode ?? DEFAULT_PERMISSION_MODE) === "accept-edits") session.setMode("accept-edits");
       }
       const active = session;
       if (active === undefined) throw new Error("会话没有打开");

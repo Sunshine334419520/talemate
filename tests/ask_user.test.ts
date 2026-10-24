@@ -90,6 +90,7 @@ function makeCtx(
     setProposal: () => {},
     clearProposal: () => {},
     setMode: () => {},
+    exitDraft: () => {},
     getMode: () => undefined,
     readDoc: async () => undefined,
     listIndex: async () => "",

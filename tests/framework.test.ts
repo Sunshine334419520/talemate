@@ -497,6 +497,10 @@ function makeCtx(
       mode = m;
       modeLog.push(m);
     },
+    exitDraft: () => {
+      if (mode === "draft") mode = undefined;
+      modeLog.push(undefined);
+    },
     getMode: () => mode,
     pending,
     shown,

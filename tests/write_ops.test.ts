@@ -67,6 +67,7 @@ function makeCtx(): TestCtx {
       pending.delete(k);
     },
     setMode: () => {},
+    exitDraft: () => {},
     getMode: () => undefined,
     readDoc: () => Promise.resolve(undefined),
     listIndex: () => Promise.resolve(""),

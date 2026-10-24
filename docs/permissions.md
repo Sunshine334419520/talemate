@@ -126,6 +126,8 @@ type PermissionConfig = Record<string, Action | Record<string, Action>>;
 
 模式不落盘；重开会话按这里的默认值重新起步，而不是读回上一次的模式。这个选择存在壳偏好 `<talemateHome>/desktop.json`，不会写进作品的 `talemate.json`。
 
+进入草稿模式时会暂存当前模式，接受 / 拒绝或 `exit-draft` 退出后恢复它——审阅一张角色卡不会把「工作区内修改」掉回「每次询问」。
+
 **CLI 的默认相同**：`openInSpace` 每次打开会话都以 `accept-edits` 起步；要退回每次询问就设 `TALEMATE_PERMISSION_MODE=ask`。CLI 没有桌面端那枚输入区开关，模式只在会话内存里。
 
 对话框输入区左侧也有同一枚「工作区内修改 / 每次询问」入口，和设置里的这一格是同一个偏好；改完立即作用于当前会话。

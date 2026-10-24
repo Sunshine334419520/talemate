@@ -33,22 +33,24 @@ afterAll(async () => {
 });
 
 function propose(path = "design/core.md"): void {
+  session.setMode("accept-edits");
   session.pending.set(path, { name: path, content: "# 新版本\n", approved: false, at: Date.now() });
   session.setMode("draft");
 }
 
 describe("结构化拍板", () => {
-  test("接受：approved=true，留在 pending 等 apply-design，退出草稿", () => {
+  test("接受：approved=true，留在 pending 等 apply-design，退出草稿并恢复 accept-edits", () => {
     propose();
     session.decideProposal("accept");
     expect(session.pending.get("design/core.md")?.approved).toBe(true);
-    expect(session.currentMode).toBeUndefined();
+    expect(session.currentMode?.id).toBe("accept-edits");
   });
 
   test("接受文档提案：harness 直接落盘，不依赖模型", async () => {
     session.pending.clear();
     const path = "design/wiki/accept-test.md";
     const content = "# 世界\n\n## 空间与舞台\n一座岛。\n\n## 规则与秩序\n离开就死。\n";
+    session.setMode("accept-edits");
     session.pending.set(path, { name: path, content, approved: false, at: Date.now() });
     session.setMode("draft");
 
@@ -56,14 +58,14 @@ describe("结构化拍板", () => {
     expect(result.kind).toBe("design");
     expect((await readDoc(projectId, path))?.trimEnd()).toBe(content.trimEnd());
     expect(session.pending.has(path)).toBe(false);
-    expect(session.currentMode).toBeUndefined();
+    expect(session.currentMode?.id).toBe("accept-edits");
   });
 
-  test("拒绝：删除提案，退出草稿", () => {
+  test("拒绝：删除提案，退出草稿并恢复 accept-edits", () => {
     propose();
     session.decideProposal("reject");
     expect(session.pending.has("design/core.md")).toBe(false);
-    expect(session.currentMode).toBeUndefined();
+    expect(session.currentMode?.id).toBe("accept-edits");
   });
 
   test("没有待拍板时明确报错，不静默成功", () => {

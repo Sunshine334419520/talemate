@@ -343,6 +343,8 @@ export class Session {
    * 硬保证不靠它：三向审阅的前置是模式，但那条链的"停"靠 `propose-design` 自己的 `halt`，丢了也不漏。
    */
   private mode?: string;
+  /** 进草稿模式前的那一层（通常是 accept-edits）；退出草稿时回到它，不能无条件清空。 */
+  private baseMode?: string;
 
   /** 用户说过「以后都允许」的规则（`ctx.ask` 答复为 `always` 时追加）。同样是会话内存。 */
   private readonly approved: Rule[] = [];
@@ -469,8 +471,8 @@ export class Session {
     latest.approved = effect.approved;
     if (!effect.leaveDraft) return;
 
-    // 只出草稿模式：别的模式（accept-edits）底下不该有待审阅的提案。
-    if (this.mode === DRAFT_MODE) this.mode = undefined;
+    // 退出草稿要回到进入前的那一层；别的模式（accept-edits）底下不该有待审阅的提案。
+    this.exitDraftMode();
     if (effect.dropProposal) this.pending.delete(latest.name);
   }
 
@@ -497,7 +499,7 @@ export class Session {
 
     if (verdict === "accept") latest.approved = true;
     else this.pending.delete(latest.name);
-    if (this.mode === DRAFT_MODE) this.mode = undefined;
+    this.exitDraftMode();
   }
 
   /**
@@ -792,7 +794,20 @@ export class Session {
 
   /** 壳给新会话定默认权限模式（见设置里的「权限」）；运行中切模式仍走 ctx.setMode。 */
   setMode(mode: string | undefined): void {
+    if (mode === DRAFT_MODE) {
+      if (this.mode !== DRAFT_MODE) this.baseMode = this.mode;
+      this.mode = mode;
+      return;
+    }
     this.mode = mode;
+    this.baseMode = undefined;
+  }
+
+  /** 退出草稿并恢复进入前的模式（accept-edits / undefined）。 */
+  private exitDraftMode(): void {
+    if (this.mode !== DRAFT_MODE) return;
+    this.mode = this.baseMode;
+    this.baseMode = undefined;
   }
 
   /** 见 `PermissionView`：`rulesetFor` 只给结论，这里要的是每一层各自的来源。 */
@@ -918,6 +933,7 @@ export class Session {
         this.io.onEvent({ type: "proposal", text, ...(view === undefined ? {} : { view }) }),
       // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
       setMode: (m) => this.setMode(m),
+      exitDraft: () => this.exitDraftMode(),
       getMode: () => this.mode,
       getProposal: (name) => this.pending.get(name),
       setProposal: (p) => {

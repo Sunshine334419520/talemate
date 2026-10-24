@@ -324,7 +324,7 @@ export const exitDraftTool: RegisteredTool<Record<string, never>> = defineTool<R
   description: P("exit-draft"),
   input: { type: "object", properties: {} },
   async execute(_args, ctx) {
-    ctx.setMode(undefined);
+    ctx.exitDraft();
     return { output: "已离开草稿模式。" };
   },
 });

@@ -265,6 +265,8 @@ export interface ToolContext {
   clearProposal(name: string): void;
   /** 切换会话模式（见 agent/modes.ts）；undefined = 回到普通模式 */
   setMode(mode: string | undefined): void;
+  /** 退出草稿模式，恢复进入草稿前的那一层（如 accept-edits） */
+  exitDraft(): void;
   /**
    * 当前模式 id，没进模式 → undefined。
    *
