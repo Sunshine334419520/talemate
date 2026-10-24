@@ -13,8 +13,9 @@ import type { AskAnswer, AskOutcome, AskRequest, LLMEvent, StoredMessage } from 
 import { buildProjectStatus } from "./framework/report";
 import { createProject, loadProjectMeta } from "./storage/project";
 import { enumerateDocs, readDoc } from "./storage/corpus";
-import { listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
+import { isSubagentSession, listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
 import { openSession, renderPermissionView, type Session, type UserIO } from "./session/session";
+import { buildSessionDebug, renderSessionDebug } from "./session/debug";
 import type { Action } from "./permission";
 
 // ─────────────────────────── 受管根 / current 指针 ───────────────────────────
@@ -23,6 +24,13 @@ import type { Action } from "./permission";
 async function chaptersOf(projectId: string): Promise<string[]> {
   const all = await enumerateDocs(projectId, "chapters/");
   return all.map((p) => p.slice("chapters/".length));
+}
+
+/** 用户会话 id（`/sessions` 与 `/open` 共用的编号口径）：`task` 派生的子会话不列出。 */
+async function visibleSessionIds(projectId: string): Promise<string[]> {
+  const ids = await listSessionIds(projectId);
+  const metas = await Promise.all(ids.map((id) => loadSessionMeta(projectId, id).catch(() => undefined)));
+  return ids.filter((_, i) => !isSubagentSession(metas[i]));
 }
 
 function currentFile(): string {
@@ -324,6 +332,9 @@ async function openInSpace(projectId: string, sessionId?: string): Promise<void>
     sessionId,
   });
   curSession = session;
+  // 与桌面端同一个默认：工作区内修改（落盘免确认；委派与联网仍问）。
+  // 要每次询问就 TALEMATE_PERMISSION_MODE=ask。模式只在内存里，重开会话按这里重新起。
+  session.setMode(process.env.TALEMATE_PERMISSION_MODE === "ask" ? undefined : "accept-edits");
   lastSeq = 0;
   const meta = await loadProjectMeta(projectId);
   curTitle = meta.title;
@@ -359,6 +370,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /sessions      列出当前空间的历史会话",
           "  /open <n>      恢复当前空间第 n 个历史会话",
           "  /permissions   当前生效的规则表：每类动作是什么、是哪一层定的、各层都贡献了什么",
+          "  /debug         当前会话的调试信息：模型、模式、待批，以及会话目录与 messages.jsonl 路径",
           "  /design <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
@@ -380,6 +392,14 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
     case "/permissions": {
       if (!curSession) return "continue";
       printPermissions(curSession);
+      return "continue";
+    }
+    case "/debug": {
+      if (!curSession) {
+        console.log("还没有打开会话。先进入一个项目空间。");
+        return "continue";
+      }
+      console.log(renderSessionDebug(await buildSessionDebug(curSession)));
       return "continue";
     }
     case "/projects": {
@@ -430,7 +450,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
     }
     case "/sessions": {
       if (!curSpaceId) return "continue";
-      const ids = await listSessionIds(curSpaceId);
+      const ids = await visibleSessionIds(curSpaceId);
       if (!ids.length) {
         console.log("（本空间还没有历史会话）");
         return "continue";
@@ -443,7 +463,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
     }
     case "/open": {
       if (!curSpaceId) return "continue";
-      const ids = await listSessionIds(curSpaceId);
+      const ids = await visibleSessionIds(curSpaceId);
       const n = Number(arg);
       if (!ids[n - 1]) {
         console.log(`没有第 ${arg} 个会话。可用：/sessions`);

@@ -54,11 +54,29 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
     // `propose-plan` 的 `halt` 上——规划交出去，本回合就停。
     const result = await ctx.runSubagent(args.agent, args.prompt);
     return {
-      output: `<task agent="${args.agent}" state="completed">\n<task_result>\n${result}\n</task_result>\n</task>`,
-      metadata: { agent: args.agent },
+      output: renderTaskResult(args.agent, result.text, result.sessionId),
+      metadata: { agent: args.agent, sessionId: result.sessionId, empty: result.text.trim() === "" },
     };
   },
 });
+
+/**
+ * task 结果的回填文本。
+ *
+ * 空结果必须显式写成 `state="empty"`：把空串塞进 `<task_result>` 会让 mate 以为"它答了，只是没内容"，
+ * 于是接着往下走。真实的成因通常是子代理跑满步数、最后一步还停在工具调用上（无正文可返回）。
+ * 子会话 id 一并带上，轨迹与调试命令靠它找回那一次委派的完整过程。
+ */
+export function renderTaskResult(agent: string, result: string, sessionId?: string): string {
+  const text = result.trim();
+  const state = text === "" ? "empty" : "completed";
+  const body =
+    text === ""
+      ? "（子代理没有返回任何结论——通常是用完了步数，或停在工具调用上没有收尾。缩小问题范围后重派，或自己查。）"
+      : result;
+  const session = sessionId === undefined ? "" : ` session="${sessionId}"`;
+  return `<task agent="${agent}" state="${state}"${session}>\n<task_result>\n${body}\n</task_result>\n</task>`;
+}
 
 export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: string }>({
   id: "skill",

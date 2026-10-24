@@ -3,7 +3,17 @@
  * 只测纯函数；真联网行为不打测试。
  */
 import { describe, test, expect } from "bun:test";
-import { htmlToText, htmlToMarkdown, parseDuckDuckGo } from "../src/tool/web_tools";
+import {
+  deepSeekFetchBody,
+  deepSeekSearchBody,
+  htmlToText,
+  htmlToMarkdown,
+  parseDeepSeekSearch,
+  parseDuckDuckGo,
+  renderDeepSeekPage,
+  selectWebSearchProvider,
+} from "../src/tool/web_tools";
+import { deepSeekWebTarget } from "../src/core/web";
 
 const HTML = `<!doctype html><html><head><title>T</title>
 <style>body{color:red}</style><script>alert(1)</script></head>
@@ -46,5 +56,60 @@ describe("websearch DuckDuckGo 解析", () => {
     expect(r.title).toBe("Example & A");
     expect(r.url).toBe("https://example.com/a");
     expect(r.snippet).toContain("bold");
+  });
+});
+
+describe("DeepSeek Search / Fetch", () => {
+  test("有 key 就用 DeepSeek；没 key 不当成配置好了", () => {
+    expect(deepSeekWebTarget({ deepseek: { apiKey: "sk-test" } }, {})).toMatchObject({
+      apiKey: "sk-test",
+      baseURL: "https://api.deepseek.com/v1/tools",
+      count: 10,
+    });
+    expect(deepSeekWebTarget({}, {})).toBeUndefined();
+    expect(deepSeekWebTarget({}, { DEEPSEEK_API_KEY: "env-key" })?.apiKey).toBe("env-key");
+  });
+
+  test("base 归一到 tools 前缀：旧 origin 补 /v1/tools，完整前缀原样保留", () => {
+    const t = (baseURL: string) => deepSeekWebTarget({ deepseek: { apiKey: "k", baseURL } }, {})?.baseURL;
+    expect(t("https://api.deepseek.com")).toBe("https://api.deepseek.com/v1/tools");
+    expect(t("https://api.deepseek.com/v1/tools")).toBe("https://api.deepseek.com/v1/tools");
+    expect(t("https://api.deepseek.com/v1/tools/")).toBe("https://api.deepseek.com/v1/tools");
+    // 直接粘完整端点也认：去掉最后一段，程序自己追加 /search
+    expect(t("https://api.deepseek.com/v1/tools/search")).toBe("https://api.deepseek.com/v1/tools");
+  });
+
+  test("结果数：默认 10，1–50 有效，越界回默认", () => {
+    const count = (n?: number) => deepSeekWebTarget({ deepseek: { apiKey: "k", ...(n === undefined ? {} : { count: n }) } }, {})?.count;
+    expect(count()).toBe(10);
+    expect(count(25)).toBe(25);
+    expect(count(100)).toBe(10);
+    expect(count(0)).toBe(10);
+  });
+
+  test("设置里的 DeepSeek 优先于 .env 的默认后端（否则设置会被静默作废）", () => {
+    const settings = { deepseek: { apiKey: "sk-test" } };
+    expect(selectWebSearchProvider(settings, {})).toBe("deepseek");
+    // 用户在界面上刚配的，不该被一行 TALEMATE_WEBSEARCH_PROVIDER=tavily 压掉
+    expect(selectWebSearchProvider(settings, { TALEMATE_WEBSEARCH_PROVIDER: "bocha", BOCHA_API_KEY: "b" })).toBe("deepseek");
+    // 没有 DeepSeek 时，显式 provider 照旧生效
+    expect(selectWebSearchProvider({}, { TALEMATE_WEBSEARCH_PROVIDER: "bocha", BOCHA_API_KEY: "b" })).toBe("bocha");
+  });
+
+  test("Search 请求只要摘要，不拉整页正文", () => {
+    expect(deepSeekSearchBody("栾氏 灭族", 6)).toEqual({ query: "栾氏 灭族", count: 6, need_content: false });
+    expect(deepSeekFetchBody("https://example.com/a")).toEqual({ url: "https://example.com/a" });
+  });
+
+  test("Search 响应优先用 summary（给模型读的长摘要）", () => {
+    const results = parseDeepSeekSearch({
+      results: [{ title: "T", url: "https://a", snippet: "短", summary: "长摘要" }],
+    });
+    expect(results).toEqual([{ title: "T", url: "https://a", snippet: "长摘要" }]);
+  });
+
+  test("Fetch 响应补标题，且不重复已有的 H1", () => {
+    expect(renderDeepSeekPage({ title: "标题", content: "正文" })).toBe("# 标题\n\n正文");
+    expect(renderDeepSeekPage({ title: "标题", content: "# 标题\n\n正文" })).toBe("# 标题\n\n正文");
   });
 });

@@ -2,7 +2,7 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：2026-10-18 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）
+> **对齐代码**：2026-10-24 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `ask-user.md`（提问与 pending）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
@@ -145,16 +145,33 @@
 
 - **内容列居中、有最大宽度**（44rem）：一行拉满整屏是最难读也最像草稿的排版。
 - **输入区是一个大圆角容器**，发送圆钮与停止钮收在里面；不摊成"textarea + 两个按钮"。左侧是 `@` 与权限入口（工作区内修改 / 每次询问），右侧是模型、文风与发送。
-- **三向审阅就是三个按钮**（接受 / 拒绝 / 提意见）。按钮不判断，它只是替用户说那句话
-  （`desktop/src/shared/verdict.ts` 的固定短语），**判定仍在 harness 那句整句词表**（fail-closed）——
-  "问法归交付层、判定归 harness"这条分工不动。`tests/verdict.test.ts` 钉着两处别走散。
+- **三向审阅就是三个按钮**（接受 / 拒绝 / 提意见）。接受 / 拒绝走**结构化 IPC**（`resolveProposal`），
+  不再把“没问题 / 不行”合成一句用户消息塞进对话；提意见才是用户真写的文本，照常落成用户消息。
+  **文档提案接受后由 harness 直接调 `apply-design` 落盘**（不再多一轮模型，用户点完文件就到位）；
+  规划提案才回到模型执行。判定仍在 harness（`decideProposal` / `refineProposal`；CLI 与手打回复仍走
+  `draftVerdict` 那句整句词表，fail-closed）——“问法归交付层、判定归 harness”这条分工不动。
 - **提问卡是输入框的临时替代**：打开时输入框整块让位，卡片贴在中栏底部；一题一页，推荐项预选但不提交，
   跳过是显式空答案；收起只折成一条“搭档在等你回答”的提示，不发送任何内容。超时是 `pending`：
   这一轮先停，问题仍可回答；已答/已跳过以只读卡回看。**回答只出现在只读卡里**，不另造一条
   用户气泡——那会像“我没输入过的东西出现在对话框里”。契约见 `ask-user.md`。
 - **审批卡用同一个外壳，但没有收起**：它占住输入框直到你给答复；三档是「允许一次 / 这一类都允许 / 拒绝」，
   没有回答方时按拒绝处理。两者共享视觉，不共享契约（见 `ask-user.md` 的「为什么不合 `confirm`」）。
-- 顶部一条：当前作品 / 会话、角色与模型、正在写。
+- 顶部两行：第一行是当前作品 / 会话、模式、待拍板、角色与模型；第二行是**左对齐的「对话 / 轨迹」标签栏**，
+  当前页用下划线标出（同 DSH 的视图切换）。标签独占一行，不和标题挤在同一排。
+- **轨迹是诊断视图，不折叠过程**：思考全文、工具入参/输出、耗时、错误、halt、`task` 派到的子会话
+  都摊开；可筛「全部 / 工具 / 思考 / 错误」，并能复制 `messages.jsonl` 的路径。对话视图继续折叠过程——
+  两者看的是同一份消息，只是画法不同（`Trace.tsx` + `desktop/src/shared/trace.ts`）。
+- **委派子代理是对话里的一张嵌套卡**（谁、交代了什么、返回了什么），**不是左栏的另一次会话**。
+  子会话照样落盘（`depth` / `parentSessionId`），但会话列表只列用户会话；轨迹里能看到它的 id。
+- **滚动跟随**：只在你已经贴底时跟着新内容走。滚轮向上、触摸、或离开底部会**当场**解除跟随
+  （不能等 `scroll` 事件——下一个 delta 可能已经把它拽回去了），对话区底边（留 12px 边距）浮出
+  「回到底部」按钮，不压输入框。
+- **每条消息都能复制**：用户气泡与助手正文的操作行里是复制图标（悬停显示 tooltip），复制完短暂变成对勾。
+- **用户消息能就地回退**：点回退图标 → 确认框给出两种模式：
+  - **仅回退对话**：目标消息及其之后从当前会话移除，目标原文回填输入框，文件改动保留；
+  - **回退对话并还原文件**：同时按 `write_ops` 的写前快照，把这一段写过的文件还原（写前不存在的文件删除）。
+    文件还原失败会先回滚已还原的文件，对话不撤回——不出现"文件回了一半、对话已经没了"。
+  两种模式都先把 `messages.jsonl` 整份备份到 `rewind-backups/`；忙碌、有待批、有待答时按钮禁用。
 
 ### 什么折叠、什么直显——三条判据
 
@@ -172,6 +189,7 @@
 | mate 说的话 | 直显，**渲染 markdown** | 要读的 |
 | 用户说的话 | 直显（右侧气泡） | 要读的 |
 | 工具调用 | 折成一行："做了 3 步 · read、task、write"，点开逐条看 | 只要确认发生过 |
+| 委派子代理（`task`） | **一张嵌套卡**：子代理名 / 委派说明 / 返回；不折进"用了 N 步" | 它是这一轮里的另一段上下文，出了问题要一眼看见 |
 | 工具结果很长 | 折叠里再截断（前 160 字 + "还有 N 字"） | 是证据，不是内容 |
 | 写正文 | 稿子卡（第几章 · 多少字），**点它 → 右栏读全文** | 几千字，不能进对话 |
 | 本轮改动 | **这次请求全部结束（含收尾思考和最终总结）后**一张卡：按文件合并的清单，点开去右栏 | 你要的是一整件事的结果，不是每次落盘都报一次 |
@@ -337,7 +355,7 @@ rm -rf node_modules/electron && bun install && ./node_modules/.bin/electron --ve
    模块**（`desktop/src/main/prelude.ts`，它**先读 `.env` 再钉资源根**），并且必须是主进程的**第一条 import**。这条有探针钉着。
 
 1. ~~**恢复会话的历史。**~~ **不用动**（2026-10-01 核对）：`storage/session-store.ts` 的 `loadMessages(projectId, sessionId)` 已经是"按 `seq` 排序的消息数组"，主进程直接调它就能拿到历史投影。原先记的"只有内部读"说的是 `Session` 私有那份，是我看窄了——**盘上那一层本来就是公开的**。
-2. **三向裁决的结构化入口。** 今天三向是从用户**下一句话的文本**里解析出来的（`draftVerdict` 那套整句词表，fail-closed）。界面上是三个按钮，**不能让按钮去合成一句话再让核心猜**。加一个结构化的入口，**判定仍然走同一个 `verdictEffect`**——问法归交付层、判定归 harness，这条分工不动。
+2. ~~**三向裁决的结构化入口。**~~ **已做**：接受 / 拒绝走 `resolveProposal` / `decideProposal`，不再合成固定短语；提意见走 `refineProposal`，显式标 refine，不经过文本词表。CLI 与手打回复仍保留 `draftVerdict`，判定仍归 harness。
 3. **`current.json` 从 `cli.ts` 挪到 `storage/`。** 它是"上次打开哪本书"，今天写在 CLI 里；桌面端与 CLI 共用同一个 `~/.talemate/`，各记一份就会打架。
 
 其余的接口已经就位，不用动：`openSession`（含 `sessionId` 续聊）、`session.post`、`abortCurrent`（停止按钮）、`pendingLabel`（待落盘提案的提示）、`permissionView`（权限面板）、以及 `UserIO` 的三个口。
@@ -412,17 +430,18 @@ desktop/
 | **4** ◐ | 右栏编辑与保存 ✅ + 文件变更自动刷新 ✅ + 「产物按序」进程表 **（卡在一个设计问题上，见下）** | 手改与进度可视化 |
 | **5** | 打包分发（macOS / Windows） | 最后再做（用户已说：不急），前面每一步都能在本机跑 |
 
-**阶段之外、用户后来提的三件**（都还没做，或只做了一半）：
+**阶段之外、用户后来提的若干件**（状态逐条记）：
 
 | | 做什么 | 状态 |
 |---|---|---|
 | **甲** | **设置界面 + 多套模型**：一份具名配置清单（provider / 模型 / baseURL / key / effort / maxTokens），可增删改、可设默认；状态栏那一格变成**可切换**，切的是**这个会话**，不动全局默认 | **做了**：配置存 **全局** `~/.talemate/models.json`；key 先明文存那个文件。通用设置见「己」 |
 | **乙** | **@ 与 /**：`@` 弹目录里的**中文名**，选中成 chip。**我们看到的和模型拿到的不是一回事**——正文里是「@核心设定」，发送时消息末尾附「提到的文档：核心设定 → `design/core.md`」，mate 拿确切地址自己去读（不塞全文：一章几千字）。目录里**右键 →「添加到对话」**走同一条路 | **`@` 已做** |
-| **乙′** | **`/` 命令**：**只放与 CLI 同名同义的命令**，命令名英文、说明中文，输出落右栏（对话里不留痕）。这一版两条：`/status`（四层现状）、`/permissions`（规则表）。CLI 那 15 条里其余的在这个界面上都有更好的入口——导航类的在书架/会话列表/目录树点一下就到，`/design` 该走 `@`，`/quit` `/verbose` `/reasoning` 是终端才有的概念；`/help` 就是面板本身 | **已做**（新增一条命令 = `desktop/src/renderer/commands.ts` 一行 + `Workspace` 一个 case） |
+| **乙′** | **`/` 命令**：**只放与 CLI 同名同义的命令**，命令名英文、说明中文，输出落右栏（对话里不留痕）。这一版三条：`/status`（四层现状）、`/permissions`（规则表）、`/debug`（会话目录与 `messages.jsonl` 路径）。CLI 那 15 条里其余的在这个界面上都有更好的入口——导航类的在书架/会话列表/目录树点一下就到，`/design` 该走 `@`，`/quit` `/verbose` `/reasoning` 是终端才有的概念；`/help` 就是面板本身 | **已做**（新增一条命令 = `desktop/src/renderer/commands.ts` 一行 + `Workspace` 一个 case） |
 | **丙** | **上下文占比** | **做了**：状态栏一格 + 点开的走势图（**不给构成**：provider 只报总数，拆就得估，而把估的当事实画成饼是骗人） |
 | **丁** | **文风选择器** | **做了**：状态栏一格，显示当前文风卡的**中文名**（`title`）；点开列库里所有 `kind: style` 的卡（中文名 + 一句话简介），选中即写进 `design/core.md` 的「文风」格——**不经模型、不走两阶段**。理由是这里没有可生成的东西：值是封闭集合里的一个卡名，用户自己就是点头的人（同右栏手改保存 `docs:save`，只保留原子写 + CAS）。换文风只影响**下一次写正文**，已写章节不回改 |
 | **戊** | **本轮改动与改动记录** | **做了**：每次成功落盘在 tool part 上留一条 `change`（路径、新建/修改/删除、diff、增删行数）；每轮结束在对话末尾按文件合并成「本轮改动」，同一个文件多写几次只占一行。会话标题栏的「改动记录」打开右栏时间线，可切「本次会话 / 本书」；点一行看该轮合并 diff，新建文件打开全文。数据随 `messages.jsonl` 落盘，重启后仍在；不另存改动索引，也不是应用层版本历史 |
 | **己** | **设置与阅读体验** | **做了**：设置弹窗重做（左段右内容）；通用设置含权限默认、语言、外观（浅色 / 深色 / 跟随系统）、字号（12–20，默认 14）；模型是清单 + 编辑。外观走 `nativeTheme`，字号走 `--reading-size`；对话与文件内容统一为系统无衬线，默认 14px |
+| **庚** | **轨迹 / 调试 / 联网 / 回退** | **做了**：标题栏「对话 / 轨迹」；轨迹不折叠过程（工具耗时、错误、halt、子会话 id），可筛选、可复制 `messages.jsonl` 路径；`/debug` 两个外壳同名同义；设置 →「联网」配 DeepSeek Search / Fetch（base 填到 `/v1/tools`，可配每次搜索结果数；key 只进不出，存 `<talemateHome>/web.json`）；每条消息可复制，用户消息可就地回退（仅对话 / 连文件） |
 
 ### 阶段 0 的结论（2026-10-01）
 

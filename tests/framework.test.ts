@@ -509,8 +509,9 @@ function makeCtx(
     readDoc: (path) => readDoc(projectId, path),
     listIndex: (prefix) => buildIndex(projectId, prefix),
     searchDocs: async (q, prefix) => renderHits(await scanDocs(projectId, q, prefix), q),
-    runSubagent: async () => "（无）",
+    runSubagent: async () => ({ text: "（无）", sessionId: "sub-test" }),
     loadSkill: async () => undefined,
+    webSettings: async () => ({}),
   };
 }
 
@@ -1042,7 +1043,8 @@ describe("propose-plan · 规划工件与拍板", () => {
     // 一个可以挂门的工具（那是普通 write，用户照样在 diff 上点头），硬门随之取消。
     const ctx = makeCtx(pid);
     const r = await taskTool.execute({ agent: "planner", prompt: "把第 1 章的规划做出来。" }, ctx as never);
-    expect(r.output).toContain('<task agent="planner" state="completed">');
+    expect(r.output).toContain('agent="planner" state="completed"');
+    expect(r.output).toContain('session="sub-test"');
   });
 
   test("待办注记说清是哪一章、工件在哪、拍完板该干什么（压缩之后靠它，不靠消息历史）", async () => {
@@ -1056,7 +1058,7 @@ describe("propose-plan · 规划工件与拍板", () => {
 
     ctx.pending.get(PLAN_KEY)!.approved = true;
     const approved = renderPendingNote(ctx.pending)!;
-    expect(approved).toContain("照它执行");
+    expect(approved).toContain("立刻开始写这一章的正文");
     // 文风不再靠 mate 自己记得去取——规范与卡由 harness 随 system 一起交出去（framework/prose.ts）
     expect(approved).not.toContain("skill(prose)");
   });
@@ -1082,7 +1084,7 @@ describe("propose-plan · 规划工件与拍板", () => {
     plan.done = true;
     const note = renderPendingNote(ctx.pending)!;
     expect(note).toContain("<settled-plan>");
-    expect(note).not.toContain("照它执行"); // 执行过了，不该再喊一次
+    expect(note).not.toContain("立刻开始写这一章的正文"); // 执行过了，不该再喊一次
     expect(ctx.pending.has(PLAN_KEY)).toBe(true); // **不是删除**：规划正文只活在 pending 里
     expect(note).toContain(".talemate/plans/ch_1.md");
   });

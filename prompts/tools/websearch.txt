@@ -1,8 +1,10 @@
 Search the web and return a numbered list of results (title / url / snippet).
 
 query: the search query
-numResults (optional): how many results to return — default 6, max 10
+numResults (optional): how many results; max 10. Defaults to the deployment setting
+(10 with DeepSeek, otherwise 6).
 
 Use to find sources on a topic, then webfetch the promising URLs for full content. Backend:
-defaults to tavily when a TAVILY_API_KEY is set, else bocha/exa, else duckduckgo (no key,
-best effort). Explicitly switch with TALEMATE_WEBSEARCH_PROVIDER=tavily|bocha|exa|duckduckgo.
+DeepSeek Search when configured, otherwise tavily when a TAVILY_API_KEY is set, else bocha/exa,
+else duckduckgo (no key, best effort). When DeepSeek is not configured, explicitly switch with
+TALEMATE_WEBSEARCH_PROVIDER=tavily|bocha|exa|duckduckgo.

@@ -3,6 +3,8 @@ your prompt, and returns a final text or finished piece.
 
 - Make the prompt self-contained: include the material / doc slices it needs.
 - Say exactly what it must return.
+- Keep it to one coherent job. A prompt packing several unrelated questions makes the subagent burn
+  its step budget switching topics; split those into separate delegations.
 
 Delegate when the work would flood you with material you will not reference again — reading around,
 trial and error, dead ends — and you need back only the conclusion. Do it yourself when it is a step

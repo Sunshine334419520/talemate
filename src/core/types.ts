@@ -18,6 +18,23 @@ export interface ModelConfig {
   temperature?: number;
 }
 
+/**
+ * 联网设置：用户级、跨作品，存在 `<talemateHome>/web.json`。
+ *
+ * 配了 DeepSeek key，`webfetch` / `websearch` 就优先走 DeepSeek 的 Search / Fetch API
+ * （与模型调用同一把 key，按次计费）；不配则维持原来的直连抓取与 Tavily/Bocha/Exa/DDG 搜索。
+ * 它不跟书走：同一台机器上的联网能力是作者的，不是某一部小说的设定。
+ */
+export interface WebSettings {
+  deepseek?: {
+    apiKey?: string;
+    /** 含 `/v1/tools` 前缀；程序追加 `/search` 或 `/fetch`。默认 https://api.deepseek.com/v1/tools */
+    baseURL?: string;
+    /** 每次搜索请求的结果数（1–50）；缺省 10 */
+    count?: number;
+  };
+}
+
 /** 角色模式：primary 是日常对话面，subagent 只能被 task 委派 */
 export type AgentMode = "primary" | "subagent";
 
@@ -222,6 +239,11 @@ export interface ToolContext {
   /** 当前这次工具调用的 id——ask-user 用它把 pending 的回答关联回这次调用。 */
   callId: string;
   /**
+   * 发起这一轮的用户消息 seq。文件回退快照按它归组——回退到某条消息时，要还原的就是
+   * 那条消息之后（含这一轮）所有写过的文件。没有（首轮之前）就不记快照。
+   */
+  turnSeq?: number;
+  /**
    * 原始确认口，不走权限：只有 `ask`（拿它当弹窗）和 `confirm` 工具该调它，其余工具一律走 `ask`
    * ——那才是带权限判定的那道口。
    */
@@ -263,9 +285,21 @@ export interface ToolContext {
   listIndex(prefix: string): Promise<string>;
   /** 跨一段语料扫词（渲染好的命中表）：改/删前查引用、看影响面。`prefix` 同上 */
   searchDocs(query: string, prefix: string): Promise<string>;
-  /** 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文 */
-  runSubagent(agentId: string, prompt: string): Promise<string>;
+  /**
+   * 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文与子会话 id。
+   *
+   * 子会话 id 不是给人看的：轨迹视图与调试命令靠它找回那一次委派的完整过程
+   * （子会话不在左栏会话列表里，见 `storage/session-store.ts` 的 `isSubagentSession`）。
+   */
+  runSubagent(agentId: string, prompt: string): Promise<{ text: string; sessionId: string }>;
   loadSkill(name: string): Promise<string | undefined>;
+  /**
+   * 联网设置（DeepSeek Search / Fetch）。
+   *
+   * 从 ctx 来而不是让 `web_tools` 自己读盘：工具层只有一个取数口（`docs/architecture.md`），
+   * 而"设置文件长什么样"是存储层的事。没有配置时返回空对象。
+   */
+  webSettings(): Promise<WebSettings>;
   signal: AbortSignal;
 }
 
@@ -406,6 +440,15 @@ export interface SessionMeta {
    * 落在这里而不是壳那侧：会话元信息本来就归 harness，另存一份就是第二个真相源。
    */
   usage?: { input: number; output: number }[];
+  /**
+   * 子会话深度：0 / 缺省 = 用户会话，>0 = `task` 派生的子会话。
+   *
+   * 子会话照样落盘（调试、轨迹要能回看整条过程），但它**不是一次用户会话**——左栏列表与
+   * `/sessions` 只列 depth 0 的那些。判据是结构字段，不是标题前缀，见 `isSubagentSession`。
+   */
+  depth?: number;
+  /** 子会话的父会话 id；用户会话没有 */
+  parentSessionId?: string;
   time: { created: number; updated: number };
 }
 
@@ -477,4 +520,11 @@ export type LLMEvent =
     }
   | { type: "step.start" }
   | { type: "step.end"; finish: "stop" | "tool_calls" | "error" }
+  /**
+   * 用户消息已落盘，带上 seq。
+   *
+   * 界面靠它给**实时气泡**挂上"回退到这里"：没进文件的消息不能当回退目标，
+   * 因为无法从上下文里撤回一条不存在的消息。
+   */
+  | { type: "user.message"; seq: number; text: string; sessionId: string; agent: string }
   | { type: "session.status"; status: "busy" | "idle" };

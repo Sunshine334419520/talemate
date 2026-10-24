@@ -16,6 +16,7 @@ import { DOC_ROOTS, readDoc } from "../src/storage/corpus";
 import { projectPaths } from "../src/core/config";
 import { WRITE_ROOTS, writeFile, type WriteRequest } from "../src/framework/write_ops";
 import { PLAN_KEY, type PendingProposal, type PermissionRequest, type ToolContext } from "../src/core/types";
+import { dropFileCheckpointsFrom, loadFileCheckpoints } from "../src/storage/file-history";
 
 let HOME: string;
 let pid: string;
@@ -70,8 +71,9 @@ function makeCtx(): TestCtx {
     readDoc: () => Promise.resolve(undefined),
     listIndex: () => Promise.resolve(""),
     searchDocs: () => Promise.resolve(""),
-    runSubagent: () => Promise.resolve(""),
+    runSubagent: () => Promise.resolve({ text: "", sessionId: "sub-test" }),
     loadSkill: () => Promise.resolve(undefined),
+    webSettings: () => Promise.resolve({}),
     setAsk: (v) => {
       answer = v;
     },
@@ -489,5 +491,23 @@ describe("write_ops · 改动记录", () => {
     if (!r.ok) return;
     expect(r.change).toMatchObject({ kind: "deleted", path: "design/tmp-del.md" });
     expect(r.change?.diff).toContain("-要删的");
+  });
+});
+
+describe("write_ops · 文件回退快照", () => {
+  test("成功落盘后记一条写前内容，按 turnSeq 归组", async () => {
+    const path = "design/checkpoint.md";
+    await writeDoc(pid, path, "旧内容\n");
+    const ctx = makeCtx();
+    ctx.turnSeq = 9;
+
+    const r = await writeFile(ctx, confirm({ kind: "write", path, content: "新内容\n" }));
+    expect(r.ok).toBe(true);
+
+    const points = await loadFileCheckpoints(pid, "t");
+    expect(points).toEqual([
+      { seq: 9, path, before: "旧内容\n", at: expect.any(Number) },
+    ]);
+    await dropFileCheckpointsFrom(pid, "t", 10);
   });
 });

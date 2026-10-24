@@ -309,7 +309,47 @@ describe("renderPendingNote · 协议状态独立于消息历史", () => {
     )!;
     expect(note).toContain("<pending-proposal>");
     expect(note).toContain("core.md：用户还没同意");
-    expect(note).toContain("wiki/world.md：用户已表示同意 → 可以 apply-design");
+    expect(note).toContain("wiki/world.md：用户已表示同意 → 立刻调用 apply-design");
     expect(note).toContain("</pending-proposal>");
+  });
+});
+
+describe("runLoop · 子代理步数预算", () => {
+  const SUB: AgentDef = { ...AGENT, id: "researcher", mode: "subagent" };
+  const TOOLS = [{ name: "websearch", description: "", inputSchema: { type: "object" as const } }];
+
+  async function runWith(agent: AgentDef): Promise<{ system: string; tools?: unknown }[]> {
+    const seen: { system: string; tools?: unknown }[] = [];
+    let i = 0;
+    const deps: LoopDeps = {
+      signal: new AbortController().signal,
+      steps: 4,
+      onEvent: () => {},
+      commitUser: async () => {},
+      buildRequest: async () => ({ system: "base", messages: [] as NeutralMsg[], tools: TOOLS }),
+      generate: async (req) => {
+        seen.push(req);
+        return { text: "", toolCalls: [call(`c${i++}`, "websearch")], finish: "tool_calls" };
+      },
+      executeTool: async (_a, c) => ({ type: "tool", id: c.id, name: c.name, state: "completed", output: "ok" }),
+      commitAssistant: async () => {},
+    };
+    await runLoop(agent, "查一下", deps);
+    return seen;
+  }
+
+  test("子代理最后三步收到收尾提示，最后一步撤掉工具", async () => {
+    const seen = await runWith(SUB);
+    expect(seen).toHaveLength(4);
+    expect(seen[0].system).not.toContain("step-budget");
+    expect(seen[1].system).toContain("3 steps remain");
+    expect(seen[3].system).toContain("final step");
+    expect(seen[3].tools).toBeUndefined();
+  });
+
+  test("主代理不套预算提示、也不撤工具——它可能正在写一整章", async () => {
+    const seen = await runWith(AGENT);
+    expect(seen.every((r) => !r.system.includes("step-budget"))).toBe(true);
+    expect(seen.at(-1)?.tools).toBeDefined();
   });
 });

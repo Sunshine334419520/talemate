@@ -18,12 +18,16 @@ import type {
   ProfileView,
   Prefs,
   ProjectCard,
+  RewindFilePreview,
+  RewindResult,
   SessionRow,
   SessionState,
   SessionTurnChanges,
   StoredMessage,
   StyleCatalog,
   TmApi,
+  WebSettingsPatch,
+  WebSettingsView,
   WindowMaterial,
 } from "../shared/api";
 
@@ -47,6 +51,7 @@ const api: TmApi = {
   deleteProject: (id) => ipcRenderer.invoke("projects:delete", id) as Promise<"ok" | "missing">,
   projectStatus: (projectId) => ipcRenderer.invoke("projects:status", projectId) as Promise<string>,
   permissions: () => ipcRenderer.invoke("session:permissions") as Promise<string>,
+  sessionDebug: () => ipcRenderer.invoke("session:debug") as Promise<string>,
   listSessions: (projectId) => ipcRenderer.invoke("sessions:list", projectId) as Promise<SessionRow[]>,
   docsTree: (projectId) => ipcRenderer.invoke("docs:tree", projectId) as Promise<DocNode[]>,
   docText: (projectId, path) =>
@@ -70,10 +75,17 @@ const api: TmApi = {
   useProfile: (name, model) => ipcRenderer.invoke("session:use-model", { name, model }) as Promise<void>,
   prefs: () => ipcRenderer.invoke("prefs:get") as Promise<Prefs>,
   savePrefs: (patch) => ipcRenderer.invoke("prefs:save", patch) as Promise<void>,
+  webSettings: () => ipcRenderer.invoke("web:settings") as Promise<WebSettingsView>,
+  saveWebSettings: (patch: WebSettingsPatch) =>
+    ipcRenderer.invoke("web:save", patch) as Promise<WebSettingsView>,
   onDocsChanged: (cb) => ipcRenderer.on("tm:docs-changed", () => cb()),
   onSessionState: (cb) => ipcRenderer.on("tm:session-state", (_e, s: SessionState) => cb(s)),
   history: (projectId, sessionId) =>
     ipcRenderer.invoke("sessions:history", { projectId, sessionId }) as Promise<StoredMessage[]>,
+  rewind: (seq, opts) =>
+    ipcRenderer.invoke("session:rewind", { seq, ...opts }) as Promise<RewindResult>,
+  rewindPreview: (seq) => ipcRenderer.invoke("session:rewind-preview", seq) as Promise<RewindFilePreview>,
+  resolveProposal: (req) => ipcRenderer.invoke("session:proposal", req) as Promise<void>,
   changes: (projectId) =>
     ipcRenderer.invoke("sessions:changes", projectId) as Promise<SessionTurnChanges[]>,
   openSession: (projectId, sessionId) =>

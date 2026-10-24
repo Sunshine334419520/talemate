@@ -28,15 +28,19 @@ import { listTurnChanges } from "./changes";
 import { resolveWindowMaterial } from "./material";
 import { chapterNumberOf } from "../../../src/framework/plan";
 import { openSession, renderPermissionView, type Session, type UserIO } from "../../../src/session/session";
+import { buildSessionDebug, renderSessionDebug } from "../../../src/session/debug";
 import { buildProjectStatus } from "../../../src/framework/report";
 import { enumerateDocs } from "../../../src/storage/corpus";
-import { listSessionIds, loadMessages, loadSessionMeta } from "../../../src/storage/session-store";
+import { isSubagentSession, listSessionIds, loadMessages, loadSessionMeta } from "../../../src/storage/session-store";
 import { createProject, listProjects, loadProjectMeta } from "../../../src/storage/project";
 import { writeIfUnchanged } from "../../../src/storage/atomic";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { DOC_ROOTS, docAbs } from "../../../src/storage/corpus";
-import { projectPaths, rootAbs, talemateHome } from "../../../src/core/config";
+import { projectPaths, rootAbs, sessionPaths, talemateHome } from "../../../src/core/config";
 import { readFile, rm, writeFile } from "node:fs/promises";
+import { webSettingsView } from "../../../src/core/web";
+import { loadWebSettings, saveWebSettings } from "../../../src/storage/web_config";
+import { DEFAULT_PERMISSION_MODE } from "../shared/api";
 import type {
   AskReply,
   AskView,
@@ -46,8 +50,13 @@ import type {
   OpenInfo,
   Prefs,
   ProjectCard,
+  ProposalVerdict,
+  RewindFilePreview,
+  RewindResult,
   SessionRow,
   SessionState,
+  WebSettingsPatch,
+  WebSettingsView,
 } from "../shared/api";
 import { createAskBroker } from "./ask_broker";
 
@@ -141,12 +150,14 @@ async function latestChapter(projectId: string): Promise<number | null> {
 async function sessionsOf(projectId: string): Promise<SessionRow[]> {
   const ids = await listSessionIds(projectId);
   const rows = await Promise.all(
-    ids.map(async (id): Promise<SessionRow> => {
+    ids.map(async (id): Promise<SessionRow | undefined> => {
       const meta = await loadSessionMeta(projectId, id).catch(() => undefined);
+      // 子会话不是一次用户会话：它属于某条 `task` 调用，显示在对话/轨迹里，不进左栏。
+      if (isSubagentSession(meta)) return undefined;
       return { id, title: meta?.title ?? id, updatedAt: meta?.time.updated ?? 0 };
     }),
   );
-  return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  return rows.filter((r): r is SessionRow => r !== undefined).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 /** 顶栏那两个标记的当下值，现取——模式会在回合中间变（进/出草稿模式都是工具调用）。 */
@@ -213,9 +224,11 @@ function prefsFile(): string {
 /** 读壳的偏好；读失败一律当没有——偏好丢了只是回到默认值，不值得为它报错。 */
 async function readPrefs(): Promise<Prefs> {
   try {
-    return JSON.parse(await readFile(prefsFile(), "utf-8")) as Prefs;
+    const stored = JSON.parse(await readFile(prefsFile(), "utf-8")) as Prefs;
+    // 文件里没写 ≠ 没偏好：没写过这一格的人要拿到产品默认（工作区内修改），而不是"问不问看运气"。
+    return { ...stored, permissionMode: stored.permissionMode ?? DEFAULT_PERMISSION_MODE };
   } catch {
-    return {};
+    return { permissionMode: DEFAULT_PERMISSION_MODE };
   }
 }
 
@@ -369,6 +382,11 @@ function registerHandlers(): void {
     session === undefined ? "（还没有打开会话）" : renderPermissionView(session.permissionView()),
   );
 
+  ipcMain.handle("session:debug", async (): Promise<string> => {
+    if (session === undefined) return "（还没有打开会话）";
+    return renderSessionDebug(await buildSessionDebug(session));
+  });
+
   /** 改书名 / 题材。书名不是作品文档（在 talemate.json 里），所以不经模型、不问权限。 */
   ipcMain.handle(
     "projects:update",
@@ -515,6 +533,74 @@ function registerHandlers(): void {
     loadMessages(p.projectId, p.sessionId),
   );
 
+  /**
+   * 就地回退到某条用户消息之前。界面在忙碌/有待批/有待答时不会给按钮，主进程再守一道空闲检查。
+   */
+  ipcMain.handle(
+    "session:rewind",
+    async (_e, p: { seq: number; restoreFiles?: boolean }): Promise<RewindResult> => {
+      if (session === undefined) throw new Error("会话没有打开。");
+      const result = await session.rewindTo(p.seq, { restoreFiles: p.restoreFiles === true });
+      pushSessionState();
+      return result;
+    },
+  );
+
+  ipcMain.handle("session:rewind-preview", async (_e, seq: number): Promise<RewindFilePreview> => {
+    if (session === undefined) throw new Error("会话没有打开。");
+    return session.rewindPreview(seq);
+  });
+
+  /**
+   * 结构化拍板：按钮不再把“没问题 / 不行”写进对话。
+   * 接受后先标 approved 并推一次界面状态，再跑执行回合；拒绝到此为止。
+   */
+  ipcMain.handle(
+    "session:proposal",
+    async (_e, p: { verdict: ProposalVerdict; text?: string }): Promise<void> => {
+      if (session === undefined) throw new Error("会话没有打开。");
+      if (p.verdict === "refine") {
+        await session.refineProposal(p.text ?? "");
+        return;
+      }
+      if (p.verdict === "reject") {
+        session.decideProposal("reject");
+        pushSessionState();
+        return;
+      }
+      // 文档提案由 harness 直接落盘（不再多一轮模型）；规划提案回到模型执行。
+      const result = await session.acceptProposal();
+      pushSessionState();
+      if (result.kind === "plan") await session.resumeAfterAnswer();
+    },
+  );
+
+  ipcMain.handle("web:settings", async (): Promise<WebSettingsView> => webSettingsView(await loadWebSettings()));
+
+  /**
+   * 存联网设置。密钥沿用"留空不改"：表单里没重填就保留已存的那一把（同模型配置），
+   * `clearKey` 才是显式清除。空 baseURL 同样表示"回到官方地址"，不是写一个空串。
+   */
+  ipcMain.handle("web:save", async (_e, patch: WebSettingsPatch): Promise<WebSettingsView> => {
+    const current = await loadWebSettings();
+    const deepseek = { ...current.deepseek };
+    if (patch.clearKey === true) delete deepseek.apiKey;
+    if (patch.apiKey !== undefined && patch.apiKey.trim() !== "") deepseek.apiKey = patch.apiKey.trim();
+    if (patch.baseURL !== undefined) {
+      const base = patch.baseURL.trim();
+      if (base === "") delete deepseek.baseURL;
+      else deepseek.baseURL = base;
+    }
+    if (patch.count !== undefined) {
+      // 越界或非整数就丢掉这一格（回到默认 10），不把坏值写进设置文件
+      if (Number.isInteger(patch.count) && patch.count >= 1 && patch.count <= 50) deepseek.count = patch.count;
+      else delete deepseek.count;
+    }
+    const next = { ...current, deepseek };
+    await saveWebSettings(next);
+    return webSettingsView(next);
+  });
+
   /** 改动记录：所有会话按时序聚合；历史视图按会话/全书筛。 */
   ipcMain.handle("sessions:changes", (_e, projectId: string) => listTurnChanges(projectId));
 
@@ -553,7 +639,7 @@ function registerHandlers(): void {
         // 默认权限：设置里选了「工作区内修改」（默认）就带着 accept-edits 起步。
         // 模式不落盘，所以每次打开会话都按这里的默认值重新应用，而不是读回上一次的模式。
         const prefs = await readPrefs();
-        if ((prefs.permissionMode ?? "accept-edits") === "accept-edits") session.setMode("accept-edits");
+        if ((prefs.permissionMode ?? DEFAULT_PERMISSION_MODE) === "accept-edits") session.setMode("accept-edits");
         watchDocs(p.projectId);
         pushSessionState();
       }
@@ -587,6 +673,8 @@ function registerHandlers(): void {
         ...(contextParts === undefined ? {} : { contextParts }),
         ...(warn === undefined ? {} : { modelWarning: warn }),
         ...(ask === undefined ? {} : { ask }),
+        sessionDir: sessionPaths(talemateHome(), active.projectId, active.sessionId).dir,
+        messagesPath: sessionPaths(talemateHome(), active.projectId, active.sessionId).messages,
       };
     },
   );

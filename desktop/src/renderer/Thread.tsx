@@ -11,15 +11,17 @@ import { settledCallIds } from "../../../src/session/asks";
 import { messageTurns } from "../../../src/session/turn_changes";
 import type { AskRecord, ProposalDisplay, StoredMessage, WriteChange } from "../shared/api";
 import { AskHistory } from "./AskCard";
+import { CheckIcon, CopyIcon, UndoIcon } from "./icons";
 import { Markdown } from "./Markdown";
 import { ProposalRecord, type ProposalVerdict } from "./ProposalCard";
 import { TurnChangesCard } from "./TurnChanges";
 
 export type LiveItem =
-  | { kind: "me"; text: string }
+  /** `seq` 在用户消息落盘后由 `user.message` 事件补上；没有它就不能当回退目标 */
+  | { kind: "me"; text: string; seq?: number }
   | { kind: "text"; text: string }
   | { kind: "think"; text: string }
-  | { kind: "tool"; id?: string; name: string; subject?: string; output?: string; change?: WriteChange; ask?: AskRecord; preparing?: boolean }
+  | { kind: "tool"; id?: string; name: string; subject?: string; input?: string; output?: string; change?: WriteChange; ask?: AskRecord; preparing?: boolean }
   | { kind: "chapter"; path: string; words: number }
   /** 提案拍板后的只读记录：完整内容还在 view 里，点开可回看 */
   | { kind: "proposal-done"; title: string; text: string; verdict: ProposalVerdict; view?: ProposalDisplay }
@@ -196,6 +198,8 @@ export function Thread({
   labelOf,
   rankOf,
   onOpenHistory,
+  onRewind,
+  canRewind,
 }: {
   history: StoredMessage[];
   live: LiveItem[];
@@ -219,6 +223,10 @@ export function Thread({
   labelOf: (path: string) => string;
   rankOf: (path: string) => number;
   onOpenHistory: () => void;
+  /** 回退到一条已落盘的用户消息之前；文本由外层回填输入框 */
+  onRewind: (seq: number, text: string) => void;
+  /** 忙碌/有待批/有待答时不给回退入口——撤回它们读过的消息没有安全落点 */
+  canRewind: boolean;
 }) {
   // 已经答掉的 callId：pending 的 tool part 由后面的用户回答消息代替，不在过程里再开一个入口
   const answered = useMemo(() => {
@@ -236,6 +244,8 @@ export function Thread({
           onOpenDoc={onOpenDoc}
           onOpenAsk={onOpenAsk}
           answeredCallIds={answered}
+          onRewind={onRewind}
+          canRewind={canRewind}
         />,
       ),
     );
@@ -272,6 +282,20 @@ export function Thread({
   };
   live.forEach((it, i) => {
     if (it.kind === "tool") {
+      // 委派子代理是这一轮里的另一段上下文，画成一张嵌套卡；不要折进"用了 N 步"
+      if (it.name === "task") {
+        flush();
+        rows.push(
+          <TaskCard
+            key={`lt${i}`}
+            input={it.input}
+            output={it.output}
+            state={it.output === undefined ? "running" : "completed"}
+            preparing={it.preparing}
+          />,
+        );
+        return;
+      }
       // 已经答完的提问由 `ask` 项单独画回看卡；只有仍 pending 的才留一个过程入口
       if (it.ask === undefined || (it.ask.outcome === "pending" && !answered.has(it.ask.callId))) {
         steps.push({
@@ -287,7 +311,16 @@ export function Thread({
     } else if (it.kind === "chapter") steps.push({ kind: "chapter", path: it.path, words: it.words });
     else {
       flush();
-      if (it.kind === "me") rows.push(<Me key={`l${i}`} text={it.text} />);
+      if (it.kind === "me")
+        rows.push(
+          <Me
+            key={`l${i}`}
+            text={it.text}
+            {...(it.seq === undefined ? {} : { seq: it.seq })}
+            onRewind={onRewind}
+            canRewind={canRewind}
+          />,
+        );
       if (it.kind === "text") rows.push(<Said key={`l${i}`} text={it.text} />);
       if (it.kind === "think") rows.push(<Thought key={`l${i}`} text={it.text} live={busy && i === live.length - 1} />);
       if (it.kind === "proposal-done") {
@@ -335,11 +368,15 @@ function Stored({
   onOpenDoc,
   onOpenAsk,
   answeredCallIds,
+  onRewind,
+  canRewind,
 }: {
   m: StoredMessage;
   onOpenDoc: (path: string) => void;
   onOpenAsk: (record: AskRecord) => void;
   answeredCallIds: Set<string>;
+  onRewind: (seq: number, text: string) => void;
+  canRewind: boolean;
 }) {
   if (m.role === "user") {
     // 迟到回答：只画只读卡。`m.text` 是给模型看的带标记正文，不是用户手打的一句话，
@@ -347,7 +384,7 @@ function Stored({
     if (m.answersTo !== undefined) {
       return <AskHistory questions={m.answersTo.questions} answers={m.answersTo.answers} />;
     }
-    return <Me text={m.text ?? ""} />;
+    return <Me text={m.text ?? ""} seq={m.seq} onRewind={onRewind} canRewind={canRewind} />;
   }
   if (m.role === "compaction") return <p className="note">（前情摘要：{m.summary?.slice(0, 50) ?? ""}…）</p>;
   if (m.role !== "assistant") return null;
@@ -365,6 +402,19 @@ function Stored({
   (m.parts ?? []).forEach((p, i) => {
     // `output` 必须带上：只取 input 的话，展开那一行就只剩一个名字
     if (p.type === "tool") {
+      if (p.name === "task") {
+        flush();
+        out.push(
+          <TaskCard
+            key={`task${i}`}
+            input={p.input}
+            output={p.output}
+            state={p.state}
+            {...(p.error === undefined ? {} : { error: p.error })}
+          />,
+        );
+        return;
+      }
       if (p.ask !== undefined) {
         if (p.ask.outcome !== "pending") {
           flush();
@@ -387,16 +437,157 @@ function Stored({
   return <>{out}</>;
 }
 
-function Me({ text }: { text: string }) {
+function Me({
+  text,
+  seq,
+  onRewind,
+  canRewind,
+}: {
+  text: string;
+  seq?: number;
+  onRewind: (seq: number, text: string) => void;
+  canRewind: boolean;
+}) {
   return (
     <div className="me">
-      <div className="bubble">{text}</div>
+      <div className="me-col">
+        <div className="bubble">{text}</div>
+        <MessageActions
+          text={text}
+          {...(seq === undefined ? {} : { seq })}
+          onRewind={onRewind}
+          canRewind={canRewind}
+        />
+      </div>
     </div>
   );
 }
 
 function Said({ text }: { text: string }) {
-  return <Markdown text={text} />;
+  return (
+    <div className="said">
+      <Markdown text={text} />
+      <MessageActions text={text} />
+    </div>
+  );
+}
+
+/**
+ * 每条消息的操作行：复制永远有；回退只给已落盘的用户消息。
+ *
+ * 回退的目标是**用户消息**——助手消息是它的结果，撤到助手消息中间没有可编辑的原话。
+ * 忙碌/待批/待答时按钮禁用：撤回正在进行或正被裁决的那一段没有安全落点。
+ */
+function MessageActions({
+  text,
+  seq,
+  onRewind,
+  canRewind = true,
+}: {
+  text: string;
+  seq?: number;
+  onRewind?: (seq: number, text: string) => void;
+  canRewind?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // 剪贴板不可用就算了：不弹第二个错误盖住原内容
+    }
+  }
+  return (
+    <div className="msg-actions">
+      <button
+        type="button"
+        className="msg-action"
+        aria-label={copied ? "已复制" : "复制"}
+        title={copied ? "已复制" : "复制"}
+        onClick={() => void copy()}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+      {seq !== undefined && onRewind !== undefined && (
+        <button
+          type="button"
+          className="msg-action"
+          aria-label="回退到这里"
+          title={canRewind ? "回退到这里" : "等这一轮结束 / 先处理完手头的裁决"}
+          disabled={!canRewind}
+          onClick={() => onRewind(seq, text)}
+        >
+          <UndoIcon />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 委派子代理：一张嵌套卡，不折进"用了 N 步"。
+ *
+ * 子代理是这一轮里另开的一段上下文，用户要看的是"派给了谁、交代了什么、它回了什么"；
+ * 折进过程行里只剩四个字，出了问题（最典型的是空结果）就完全看不见。
+ */
+function TaskCard({
+  input,
+  output,
+  state,
+  preparing,
+  error,
+}: {
+  input?: string;
+  output?: string;
+  state?: string;
+  preparing?: boolean;
+  error?: string;
+}) {
+  let agent = "";
+  let prompt = "";
+  if (input !== undefined) {
+    try {
+      const args = JSON.parse(input) as { agent?: unknown; prompt?: unknown };
+      if (typeof args.agent === "string") agent = args.agent;
+      if (typeof args.prompt === "string") prompt = args.prompt;
+    } catch {
+      // 入参还没流完/不是合法 JSON：卡片照样显示，只是没有说明
+    }
+  }
+  const label = preparing === true ? "准备中" : state === "error" ? "失败" : output === undefined ? "执行中" : "完成";
+  return (
+    <details className={`subtask${state === "error" ? " bad" : ""}`}>
+      <summary className="subtask-head">
+        <span className="subtask-tag">子代理</span>
+        <b className="subtask-agent">{agent === "" ? "task" : agent}</b>
+        <span className="subtask-state">{label}</span>
+        <span className="caret">▸</span>
+      </summary>
+      <div className="subtask-body">
+        {prompt !== "" && (
+          <>
+            <div className="subtask-label">委派说明</div>
+            <pre className="subtask-pre">{prompt}</pre>
+          </>
+        )}
+        {error !== undefined && (
+          <>
+            <div className="subtask-label bad">错误</div>
+            <pre className="subtask-pre">{error}</pre>
+          </>
+        )}
+        {output !== undefined && output !== "" && (
+          <>
+            <div className="subtask-label">返回</div>
+            <pre className="subtask-pre">{output}</pre>
+          </>
+        )}
+        {preparing === true && prompt === "" && <p className="subtask-label">正在生成委派参数…</p>}
+      </div>
+    </details>
+  );
 }
 
 /** 过程折叠：一行摘要加展开。工具是过程，一眼扫过就行，别占着对话的地方。 */

@@ -27,6 +27,9 @@
   --indigo: #4a5b78;
 
   --reading-size: 14px;
+  /* 左栏一套字号：段标题、会话行、目录文件都用 --side-text；时间/数量降一档 */
+  --side-text: 13px;
+  --side-meta: 11.5px;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
@@ -278,17 +281,18 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 .section-head {
   display: flex; align-items: center; gap: 5px; width: 100%;
   margin: 0 0 2px; padding: 12px 6px 6px;
-  border: 0; background: none; color: var(--faint);
-  font: inherit; font-size: 11px; letter-spacing: .08em; cursor: pointer; text-align: left;
+  border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: var(--side-text); font-weight: 600; letter-spacing: 0;
+  cursor: pointer; text-align: left;
 }
-.section-head:hover { color: var(--muted); }
+.section-head:hover { color: var(--ink); }
 .section-head svg { width: 12px; height: 12px; flex: none; }
 .section-title {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--muted); letter-spacing: .02em;
+  color: inherit; letter-spacing: 0;
 }
 .section-head .count {
-  margin-left: auto; color: var(--faint); font-size: 10.5px; letter-spacing: 0;
+  margin-left: auto; color: var(--faint); font-size: var(--side-meta); font-weight: 400; letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 .rail-scroll .list { overflow: visible; padding-bottom: 4px; }
@@ -304,9 +308,12 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
   color: var(--ink); background: var(--sb-hover); font-weight: 500;
 }
 .side .sess .title {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px;
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--side-text);
 }
-.side .sess .when { flex: none; font-size: 10.5px; color: var(--faint); white-space: nowrap; font-weight: 400; }
+.side .sess .when {
+  flex: none; font-size: var(--side-meta); color: var(--faint); white-space: nowrap; font-weight: 400;
+}
 .side .newbtn {
   display: flex; align-items: center; justify-content: center; gap: 7px;
   margin: 0 12px 6px; height: 40px; border: 1px solid var(--sb-border); border-radius: 10px;
@@ -325,11 +332,15 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
   background: var(--card); overflow: hidden;
   display: flex; flex-direction: column; min-width: 0;
 }
-.main { flex: 1; }
+.main { flex: 1; position: relative; }
 .main .head {
-  flex: none; display: flex; align-items: center; gap: 9px;
-  height: 44px; padding: 0 18px; border-bottom: 1px solid var(--line-soft);
+  flex: none; display: flex; flex-direction: column;
+  border-bottom: 1px solid var(--line-soft);
   -webkit-app-region: drag;
+}
+.main .head .head-row {
+  display: flex; align-items: center; gap: 9px;
+  height: 44px; padding: 0 18px; min-width: 0;
 }
 .main .head .book-name { font-weight: 600; font-size: 13.5px; }
 .main .head .mode {
@@ -354,17 +365,127 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 }
 .main .head .history-entry svg { width: 12px; height: 12px; flex: none; }
 
-.scroll { flex: 1; overflow-y: auto; padding: 30px 28px 12px; }
-.thread { max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+/* 对话 / 轨迹：独占一行、左对齐的标签栏（同 DSH 的视图切换）。
+   下划线贴在标题栏底线上；整行不是拖拽区，否则标签点不动。 */
+.main .head .viewtabs {
+  display: flex; align-items: stretch; gap: 26px; flex: none;
+  height: 37px; padding: 0 18px;
+  -webkit-app-region: no-drag;
+}
+.main .head .viewtab {
+  position: relative; border: 0; background: none; color: var(--muted);
+  font-size: 13px; line-height: 37px; padding: 0; cursor: pointer;
+}
+.main .head .viewtab:hover { color: var(--ink); }
+.main .head .viewtab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.main .head .viewtab[aria-selected="true"]::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: var(--accent); border-radius: 2px 2px 0 0;
+}
+
+/* 对话区：自己持有滚动与"回到底部"，按钮贴在它的底边，不压输入框 */
+.conversation {
+  flex: 1; min-height: 0; position: relative;
+  display: flex; flex-direction: column;
+}
+
+/* 不是贴底时露出来：落在对话区底部，留一点边距 */
+.jump-bottom {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
+  z-index: 30; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); color: var(--muted); font-size: 12px; padding: 5px 12px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.12); cursor: pointer; white-space: nowrap;
+}
+.jump-bottom:hover { color: var(--ink); border-color: var(--faint); }
+
+/* 轨迹：不折叠过程，所以行更密、字更小；长文本一律进可滚的 pre。 */
+.trace { max-width: 52rem; margin: 0 auto; display: flex; flex-direction: column; gap: 9px; }
+.trace-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 2px; }
+.trace-filters { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.trace-chip {
+  border: 0; border-radius: 6px; background: none; color: var(--muted);
+  font-size: 11.5px; line-height: 1; padding: 5px 10px; cursor: pointer;
+}
+.trace-chip:hover { color: var(--ink); }
+.trace-chip[aria-current="true"] { background: var(--card); color: var(--ink); }
+.trace-count { color: var(--faint); font-size: 11.5px; }
+.trace-path {
+  margin-left: auto; border: 1px solid var(--line); border-radius: 999px; background: none;
+  color: var(--muted); font-size: 11px; padding: 3px 9px; cursor: pointer; max-width: 20rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.trace-path:hover { color: var(--ink); background: var(--hover); }
+
+.trace-row {
+  border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel);
+  padding: 7px 10px; font-size: 12.5px;
+}
+.trace-tool.trace-error { border-color: color-mix(in srgb, var(--zhu) 45%, transparent); }
+.trace-summary {
+  display: flex; align-items: baseline; gap: 7px; min-width: 0; cursor: pointer;
+  list-style: none;
+}
+.trace-summary::-webkit-details-marker { display: none; }
+.trace-tag {
+  flex: none; font-size: 10.5px; line-height: 1; padding: 3px 6px; border-radius: 5px;
+  background: var(--panel-2); color: var(--muted);
+}
+.trace-tag.user { color: var(--accent); }
+.trace-tag.reasoning { color: var(--faint); }
+.trace-name { font-family: var(--mono); font-size: 11.5px; font-weight: 500; }
+.trace-state { flex: none; font-size: 10.5px; color: var(--faint); }
+.trace-state.bad { color: var(--zhu); }
+.trace-state.halt { color: var(--zhu); }
+.trace-sub { flex: none; font-size: 11px; color: var(--muted); max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-meta { flex: none; margin-left: auto; color: var(--faint); font-size: 10.5px; font-family: var(--mono); }
+.trace-preview { flex: 1; min-width: 0; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-pre {
+  white-space: pre-wrap; word-break: break-word; margin: 7px 0 0;
+  background: var(--panel-2); border-radius: 6px; padding: 8px 9px;
+  max-height: 340px; overflow: auto;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--ink);
+}
+.trace-block { margin-top: 7px; }
+.trace-label { font-size: 10.5px; color: var(--faint); margin-bottom: 2px; }
+.trace-label.bad { color: var(--zhu); }
+.trace-line { margin-top: 7px; font-size: 11.5px; color: var(--muted); }
+.trace-line code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.trace-live { border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 4px; display: flex; flex-direction: column; gap: 9px; }
+.trace-live-head { display: flex; align-items: center; gap: 7px; color: var(--faint); font-size: 11.5px; }
+.trace-live-row { border-style: dashed; }
+
+/* 轨迹是诊断视图：宽一点、紧一点，别用对话的阅读宽度 */
+.scroll.trace-scroll { padding-top: 18px; }
+
+.scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 30px 28px 12px; }
+.thread { max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
 .hint { max-width: 44rem; margin: 0 auto; color: var(--faint); font-size: 13px; }
 
 /* 用户说的话：只有它是气泡（一次打断，不是正文），靠右 */
 .me { display: flex; justify-content: flex-end; }
+.me-col { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; max-width: 76%; min-width: 0; }
 /* 批注提交与 Shift+Enter 都带换行；不 pre-wrap 会被 HTML 压成一行 */
 .me .bubble {
   background: var(--bubble); border-radius: 14px; padding: 9px 15px;
-  max-width: 76%; font-size: var(--reading-size); line-height: 1.75; white-space: pre-wrap;
+  max-width: 100%; font-size: var(--reading-size); line-height: 1.75; white-space: pre-wrap;
 }
+
+/* 每条消息的复制 / 回退：平时收起来，鼠标进来或键盘聚焦时出现。
+   touch 设备没有 hover，就给一个常驻的低透明度。 */
+.said { display: flex; flex-direction: column; gap: 5px; }
+.msg-actions { display: flex; gap: 10px; justify-content: flex-end; opacity: 0.55; transition: opacity 0.12s; }
+.said .msg-actions { justify-content: flex-start; }
+.me:hover .msg-actions, .me:focus-within .msg-actions,
+.said:hover .msg-actions, .said:focus-within .msg-actions { opacity: 1; }
+.msg-action {
+  display: inline-grid; place-items: center; width: 20px; height: 20px;
+  border: 0; border-radius: 5px; background: none; padding: 0;
+  color: var(--faint); cursor: pointer;
+}
+.msg-action svg { width: 13px; height: 13px; }
+.msg-action:hover { color: var(--ink); background: var(--hover); }
+.msg-action:disabled { opacity: 0.45; cursor: default; background: none; }
+@media (hover: none) { .msg-actions { opacity: 0.8; } }
 
 /* markdown 渲染出来的正文。对话与右栏预览共用这一份——
    同一套元素样式写两遍，迟早一处改了另一处没改。 */
@@ -404,6 +525,35 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 .steps-body {
   margin: 6px 0 0 4px; padding: 4px 0 4px 12px; border-left: 2px solid var(--line);
   display: flex; flex-direction: column; gap: 5px; color: var(--muted);
+}
+
+/* 委派子代理：一张嵌套卡。它属于这一轮，不是左栏里另一次会话。 */
+.subtask {
+  border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel);
+  padding: 7px 11px; font-size: 12.5px;
+}
+.subtask.bad { border-color: color-mix(in srgb, var(--zhu) 45%, transparent); }
+.subtask-head {
+  display: flex; align-items: baseline; gap: 7px; cursor: pointer; list-style: none;
+  color: var(--muted);
+}
+.subtask-head::-webkit-details-marker { display: none; }
+.subtask-head .caret { margin-left: auto; color: var(--faint); font-size: 10px; }
+.subtask[open] .subtask-head .caret { transform: rotate(90deg); }
+.subtask-tag {
+  flex: none; font-size: 10.5px; line-height: 1; padding: 3px 6px; border-radius: 5px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.subtask-agent { font-family: var(--mono); font-size: 11.5px; color: var(--ink); font-weight: 500; }
+.subtask-state { color: var(--faint); font-size: 10.5px; }
+.subtask-body { margin-top: 7px; display: flex; flex-direction: column; gap: 4px; }
+.subtask-label { color: var(--faint); font-size: 10.5px; margin: 2px 0 0; }
+.subtask-label.bad { color: var(--zhu); }
+.subtask-pre {
+  white-space: pre-wrap; word-break: break-word; margin: 0;
+  background: var(--panel-2); border-radius: 6px; padding: 7px 9px;
+  max-height: 300px; overflow: auto;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--ink);
 }
 .step { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .tool-name { font-family: var(--mono); color: var(--indigo); white-space: nowrap; }
@@ -812,7 +962,8 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 }
 .send:disabled { opacity: 0.28; cursor: default; }
 
-/* ── 左栏下半：文档树。名字原样（路径就是它的地址），等宽字——一眼看出这是"文件"，不是标题 ── */
+/* ── 左栏下半：文档树。名字原样（路径就是它的地址）；字号、字族与段标题/会话行同一套，
+      不再混用等宽字——左栏出现第三种字体，层级就只剩"乱"这一种读法 ── */
 .tree { padding: 2px 0 18px; }
 .tree .doc-row { display: flex; align-items: baseline; gap: 2px; border-radius: 5px; padding: 1px 6px 1px 0; }
 .tree .doc-row:hover { background: var(--sb-hover); }
@@ -820,17 +971,17 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 .tree .doc-row.here .doc { color: var(--ink); font-weight: 600; }
 .tree .twist {
   flex: none; width: 16px; background: none; border: 0; padding: 0; cursor: pointer;
-  color: var(--faint); font-size: 10px; line-height: 1.6;
+  color: var(--faint); font-size: 11px; line-height: 1.6;
 }
 .tree .twist:disabled { cursor: default; color: var(--line); }
 .tree .doc {
-  flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 2px 0;
-  color: var(--muted); font-size: 12.5px; cursor: pointer;
+  flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 3px 0;
+  color: var(--muted); font-size: var(--side-text); cursor: pointer;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tree .doc:hover { color: var(--ink); }
-.tree .doc.group { color: var(--faint); cursor: default; }
-.tree-empty { color: var(--faint); font-size: 12px; padding: 6px 14px; }
+.tree .doc.group { color: var(--muted); font-weight: 600; cursor: default; }
+.tree-empty { color: var(--faint); font-size: var(--side-text); padding: 6px 14px; }
 /*
  * 目录树的右键菜单。三条都不能少：
  * - `fixed`：坐标是 `clientX/clientY`（视口），而且能躲开 `.side` 的 `overflow: hidden`
@@ -1277,3 +1428,44 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 .modal .models input { flex: 1; min-width: 140px; }
 .pop-group { display: flex; flex-direction: column; gap: 1px; }
 .pop-group .pop-title { padding: 6px 6px 2px; }
+
+/* 回退确认：不是系统 confirm——它要展示被撤回的原话，并说清只回退对话、不动文件 */
+.rewind-mask {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  background: rgb(0 0 0 / 0.3);
+}
+.rewind-dialog {
+  width: min(31rem, calc(100vw - 48px));
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 18px 18px 14px; box-shadow: 0 18px 50px rgb(0 0 0 / 0.22);
+}
+.rewind-dialog h3 { margin: 0 0 7px; font-size: 15px; font-weight: 600; }
+.rewind-dialog p { margin: 0 0 9px; color: var(--muted); font-size: 12.5px; line-height: 1.65; }
+.rewind-quote {
+  margin: 0 0 9px; max-height: 170px; overflow: auto;
+  background: var(--panel-2); border-radius: 8px; padding: 9px 10px;
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--sans); font-size: 12.5px; line-height: 1.7; color: var(--ink);
+}
+.rewind-warn { color: var(--faint) !important; }
+.rewind-warn b { color: var(--zhu); font-weight: 500; }
+.rewind-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+/* 回退确认里的文件清单：只列路径与动作，内容不送进渲染层 */
+.rewind-files { margin: -1px 0 9px; }
+.rewind-files p { margin: 0 0 6px; }
+.rewind-files ul {
+  margin: 0; padding: 0; list-style: none; max-height: 130px; overflow: auto;
+  border: 1px solid var(--line-soft); border-radius: 7px; background: var(--panel);
+}
+.rewind-files li {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 5px 8px; border-bottom: 1px solid var(--line-soft);
+}
+.rewind-files li:last-child { border-bottom: 0; }
+.rewind-files code {
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rewind-files li span { flex: none; color: var(--faint); font-size: 11px; }

@@ -1,8 +1,11 @@
 /**
- * 会话级存储：session.json（元信息）+ messages.jsonl（append-only，每条带 seq）。
+ * 会话级存储：session.json（元信息）+ messages.jsonl（每条带 seq）。
+ * 正常只追加；回退会先把整份日志备份到 `rewind-backups/`，再重写到目标消息之前。
  * compaction 也是一条消息。供模型上下文时用 loadModelWindow 取"最新 compaction 之后的 seq"。
  */
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { talemateHome, paths, projectPaths, sessionPaths } from "../core/config";
 import type { PendingAskRecord, SessionMeta, StoredMessage } from "../core/types";
 import { readText, writeAtomic } from "./atomic";
@@ -34,6 +37,56 @@ export async function listSessionIds(projectId: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * 这份会话是不是 `task` 派生的子会话。
+ *
+ * 子会话也落盘（轨迹与调试要能回看），但它不是一次用户会话：左栏与 `/sessions` 只列用户会话。
+ * 判据是 `depth` / `parentSessionId` 这两个结构字段；`task:` 标题前缀只兜底旧数据——那时还没有这两个字段。
+ */
+export function isSubagentSession(
+  meta: Pick<SessionMeta, "depth" | "parentSessionId" | "title"> | undefined,
+): boolean {
+  if (meta === undefined) return false;
+  return (meta.depth ?? 0) > 0 || meta.parentSessionId !== undefined || meta.title.startsWith("task:");
+}
+
+/**
+ * 回退前把**整份** messages.jsonl 备份到会话目录的 `rewind-backups/`，返回备份路径。
+ *
+ * 回退会重写 messages.jsonl（不是 append-only）——这是为了简单、可靠地做"就地回退"：
+ * 不引入 surface/隐藏区间的模型。代价是日志不再是只追加的，所以先把原字节完整留一份。
+ */
+export async function backupMessages(projectId: string, sessionId: string): Promise<string | undefined> {
+  const sp = sessionPaths(talemateHome(), projectId, sessionId);
+  const raw = await readText(sp.messages);
+  if (raw === undefined) return undefined;
+  const dir = join(sp.dir, "rewind-backups");
+  await mkdir(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const file = join(dir, `messages-${stamp}-${randomUUID().slice(0, 8)}.jsonl`);
+  await writeAtomic(file, raw);
+  return file;
+}
+
+/**
+ * 就地回退：只保留 `seq < targetSeq` 的消息，返回留下的条数。
+ *
+ * 调用方必须先用 {@link backupMessages} 留底。目标消息本身也删——它的文本由外壳回填输入框，
+ * 用户改完重发；留在上下文里会让模型把"已经撤回的那句话"再答一遍。
+ */
+export async function truncateMessagesBefore(
+  projectId: string,
+  sessionId: string,
+  targetSeq: number,
+): Promise<number> {
+  const sp = sessionPaths(talemateHome(), projectId, sessionId);
+  const all = await loadMessages(projectId, sessionId);
+  const keep = all.filter((m) => m.seq < targetSeq);
+  const text = keep.length === 0 ? "" : `${keep.map((m) => JSON.stringify(m)).join("\n")}\n`;
+  await writeAtomic(sp.messages, text);
+  return keep.length;
 }
 
 /** 追加一条消息，返回带 seq 的完整消息。seq 单调：读当前尾 seq +1。 */

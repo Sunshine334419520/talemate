@@ -100,3 +100,19 @@ describe("agent 注册表 · 考据本", () => {
     expect(wrong).toEqual([]);
   });
 });
+
+/**
+ * 步数预算：子代理跑满步数时，循环会停在最后一次工具调用上，没有正文可回填——`task` 结果就是空的。
+ * 这条守的是"预算够它收尾"，不是某个具体数字。
+ */
+describe("agent 注册表 · 步数预算", () => {
+  const needRoom = ["planner", "researcher"];
+
+  test("要查证的子代理步数必须高于默认 10，留出写结论的余量", () => {
+    const tooLow = subs
+      .filter((a) => needRoom.includes(a.id))
+      .filter((a) => (a.steps ?? 10) <= 10)
+      .map((a) => `${a.id}: ${a.steps ?? 10}`);
+    expect(tooLow).toEqual([]);
+  });
+});

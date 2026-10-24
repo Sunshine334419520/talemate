@@ -1,8 +1,9 @@
 /**
  * 壳的两侧（主进程 ↔ 渲染层）共用的取数形状。
  *
- * 放这里而不是两边各写一份：同一个东西的两端，两份定义迟早说两套话。只放纯类型——渲染层也会
- * 编译它，所以这里不许 import electron 或 node。
+ * 放这里而不是两边各写一份：同一个东西的两端，两份定义迟早说两套话。只放类型与两侧共用的
+ * 常量（默认权限这种"两边必须同一个值"的东西）——渲染层也会编译它，所以这里不许 import
+ * electron 或 node。
  */
 import type { DocNode } from "../../../src/framework/anchor";
 import type { StyleCatalog } from "../../../src/framework/prose";
@@ -65,6 +66,14 @@ export type WindowMaterial = "vibrancy" | "acrylic" | "mica" | "none";
 /** 新会话默认权限：每次都问 / 工作区内免确认落盘（对应 `agent/modes.ts` 的 accept-edits） */
 export type PermissionDefault = "ask" | "accept-edits";
 
+/**
+ * 新会话的默认权限：工作区内修改。
+ *
+ * 两侧共用这一个值：设置页拿它显示、主进程拿它决定开新会话时套不套 accept-edits。写两处的话，
+ * 界面上写着"默认工作区内修改"、实际开出来却是每次询问，且没有任何地方会报错。
+ */
+export const DEFAULT_PERMISSION_MODE: PermissionDefault = "accept-edits";
+
 export interface Prefs {
   /** 右栏宽度（px）；没拖过就用默认 */
   paneWidth?: number;
@@ -76,6 +85,31 @@ export interface Prefs {
   language?: "zh";
   /** 新会话的默认权限模式 */
   permissionMode?: PermissionDefault;
+}
+
+/**
+ * 联网设置的可回传部分：DeepSeek key 只报"有没有"，永不回传。
+ *
+ * 形状与 harness 的 `storage/web_config.ts` 一致；这边是渲染层的一份副本（渲染层不能 import Node）。
+ */
+export interface WebSettingsView {
+  deepseek: {
+    configured: boolean;
+    /** 含 `/v1/tools` 前缀；程序追加 `/search` / `/fetch` */
+    baseURL: string;
+    /** 每次搜索请求的结果数（1–50，默认 10） */
+    count: number;
+  };
+}
+
+export interface WebSettingsPatch {
+  /** 留空 = 沿用已存的那把 key（表单里没重填就别动它） */
+  apiKey?: string;
+  baseURL?: string;
+  /** 每次搜索请求的结果数（1–50）；越界会被主进程丢掉、回默认 10 */
+  count?: number;
+  /** 显式清掉已存的 key */
+  clearKey?: boolean;
 }
 
 /**
@@ -141,6 +175,36 @@ export interface OpenInfo {
   modelWarning?: string;
   /** 重开/刷新后仍然开着的提问；没有就不带 */
   ask?: AskView;
+  /** 会话目录与 messages.jsonl 的绝对路径——轨迹视图与 `/debug` 都要拿它看完整过程 */
+  sessionDir?: string;
+  messagesPath?: string;
+}
+
+/** 三向裁决：接受 / 拒绝 / 提意见。界面按钮直接发它，不再合成一句用户消息。 */
+export type ProposalVerdict = "accept" | "reject" | "refine";
+
+/** 一次就地回退的结果：目标消息的原文（回填输入框）与备份文件路径。 */
+/** 回退会怎样处理一个文件：写回旧内容，或删除回退后才新建的文件。 */
+export interface RewindFilePreviewItem {
+  path: string;
+  action: "restore" | "delete";
+}
+
+export interface RewindFilePreview {
+  items: RewindFilePreviewItem[];
+}
+
+export interface RewindFileOutcome {
+  restored: string[];
+  deleted: string[];
+}
+
+export interface RewindResult {
+  text: string;
+  /** 回退前的 messages.jsonl 备份；文件不存在时没有 */
+  backup?: string;
+  /** 仅"回退对话和文件"模式：实际还原/删除了哪些文件 */
+  files?: RewindFileOutcome;
 }
 
 export interface ConfirmRequest {
@@ -210,6 +274,13 @@ export interface TmApi {
    * 渲染同样在 harness（`renderPermissionView`），与 CLI 共用一份。
    */
   permissions(): Promise<string>;
+  /**
+   * `/debug` 的文本：会话 id、模型、模式、待批/未答，以及会话目录与 `messages.jsonl` 的绝对路径。
+   *
+   * 它不是给模型看的，是给排查的人（或 agent）拿到路径去读完整过程的——所以渲染在 harness
+   * （`session/debug.ts`），与 CLI 共用一份。
+   */
+  sessionDebug(): Promise<string>;
   listSessions(projectId: string): Promise<SessionRow[]>;
   docsTree(projectId: string): Promise<DocNode[]>;
   /**
@@ -245,12 +316,28 @@ export interface TmApi {
   useProfile(name: string, model: string): Promise<void>;
   prefs(): Promise<Prefs>;
   savePrefs(patch: Prefs): Promise<void>;
+  /** 联网设置（DeepSeek Search / Fetch）；密钥只进不出 */
+  webSettings(): Promise<WebSettingsView>;
+  saveWebSettings(patch: WebSettingsPatch): Promise<WebSettingsView>;
   /** 盘上有人动了作品文档（mate 落了稿，或你在别处改了）——开着的右栏与目录树据此更新 */
   onDocsChanged(cb: () => void): void;
   onSessionState(cb: (s: SessionState) => void): void;
   /** 读一份文档的全文；读不到（路径不合法或文件不在）回 `undefined` */
   docText(projectId: string, path: string): Promise<string | undefined>;
   history(projectId: string, sessionId: string): Promise<StoredMessage[]>;
+  /**
+   * 就地回退到某条用户消息之前：目标及之后从会话移除，目标文本回填输入框。
+   *
+   * 原 `messages.jsonl` 会先备份到会话目录的 `rewind-backups/`——回退重写了日志，不是只追加。
+   */
+  rewind(seq: number, opts?: { restoreFiles?: boolean }): Promise<RewindResult>;
+  /** 回退前预览会被还原/删除的文件；只读，不改任何东西 */
+  rewindPreview(seq: number): Promise<RewindFilePreview>;
+  /**
+   * 结构化拍板。`accept` 会由主进程接着跑一轮执行（不落一条用户消息"没问题"）；
+   * `reject` 只关掉提案；`refine` 的 `text` 是用户真正写的意见，照常落成用户消息。
+   */
+  resolveProposal(req: { verdict: ProposalVerdict; text?: string }): Promise<void>;
   /** 每个会话每一轮的文件改动，最新在前——历史视图按会话/全书筛选 */
   changes(projectId: string): Promise<SessionTurnChanges[]>;
   openSession(projectId: string, sessionId?: string): Promise<OpenInfo>;

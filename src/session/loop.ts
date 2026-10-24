@@ -58,6 +58,41 @@ export async function runLoop(agent: AgentDef, input: string, deps: LoopDeps): P
  */
 const INTERRUPTED = "（这一轮被用户中断，上面这段没有写完。）";
 
+/** 离步数上限还剩几步时开始催子代理收尾。留三步够它从"还在查"转到"写结论"。 */
+const SUBAGENT_BUDGET_WARN = 3;
+
+/**
+ * 子代理的步数预算提示。
+ *
+ * 子代理跑满步数时，循环会停在最后一次工具调用上、没有正文可回填——父会话收到的是一份空
+ * `<task_result>`（实测 researcher 10 步跑满、34 次工具调用、零字返回）。所以最后几步必须
+ * 让它知道预算，最后一步直接撤掉工具：**逼它把已有材料写成结论，而不是再查一次**。
+ *
+ * 只对 subagent 生效。主代理不能套——mate 可能正在写一整章，最后一步撤工具等于把稿子截断。
+ */
+function withSubagentBudget(
+  agent: AgentDef,
+  step: number,
+  steps: number,
+  req: Awaited<ReturnType<LoopDeps["buildRequest"]>>,
+): Awaited<ReturnType<LoopDeps["buildRequest"]>> {
+  if (agent.mode !== "subagent") return req;
+  const left = steps - step;
+  if (left > SUBAGENT_BUDGET_WARN) return req;
+
+  const last = left === 1;
+  const note = last
+    ? "This is your final step. Do NOT call tools. Write your final answer now using the material you already have. " +
+      "State plainly what you could not confirm instead of searching for more."
+    : `${left} steps remain in this delegation. Stop opening new lines of research and start converging: ` +
+      "write your findings with the sources you already have, and name the gaps explicitly.";
+  return {
+    ...req,
+    system: `${req.system}\n\n<step-budget>\n${note}\n</step-budget>`,
+    ...(last ? { tools: undefined } : {}),
+  };
+}
+
 /** 循环本体。单独一层是为了让上面那对 busy / idle 一眼看出是 `try` / `finally` 的关系。 */
 async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<string> {
   await deps.commitUser(input, agent.id);
@@ -67,7 +102,7 @@ async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<
   const steps = deps.steps ?? 10;
   for (let step = 0; step < steps; step++) {
     deps.onEvent({ type: "step.start" });
-    const { system, messages, tools } = await deps.buildRequest(agent);
+    const { system, messages, tools } = withSubagentBudget(agent, step, steps, await deps.buildRequest(agent));
     // 本步已经流出去的正文。**中止时要用它**：正文落盘在整轮之后（`commitAssistant`），
     // 而中止正好落在它之前——不接住的话，屏幕上流出来的那半截在历史里一个字都不存在，
     // 下一轮模型不知道你指的"上面那句"是什么。

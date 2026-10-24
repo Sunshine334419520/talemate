@@ -13,11 +13,11 @@
     "style-bench:gemini": "bash experiments/style-bench/run-gemini.sh",
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p desktop/tsconfig.renderer.json",
-    "desktop": "bun run desktop:build && electron desktop",
+    "desktop": "bun run desktop:build && bun desktop/scripts/launch-electron.mjs",
     "desktop:dev": "cd desktop && electron-vite dev",
     "desktop:build": "cd desktop && electron-vite build",
-    "desktop:selftest": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_PROVIDER=mock TALEMATE_MOCK_TOOL=task TALEMATE_DESKTOP_SELFTEST=1 electron desktop",
-    "desktop:selftest:window": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_DESKTOP_SELFTEST=window electron desktop",
+    "desktop:selftest": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_PROVIDER=mock TALEMATE_MOCK_TOOL=task TALEMATE_DESKTOP_SELFTEST=1 bun desktop/scripts/launch-electron.mjs",
+    "desktop:selftest:window": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_DESKTOP_SELFTEST=window bun desktop/scripts/launch-electron.mjs",
     "desktop:probe": "bun run desktop/probe/run-under-node.ts"
   },
   "dependencies": {

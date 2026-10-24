@@ -3,14 +3,13 @@
  *
  * 打开时输入框让位，用户只能在卡里接受 / 拒绝 / 提意见（提意见的输入框就在卡内）。
  * 拍板后卡片关闭、输入框回来，对话里留一条只读记录，点开还能回看当时的完整提案。
- * 判定仍然在 harness：按钮只替用户说固定短语，提意见就是用户自己写的那段话。
+ * 接受/拒绝是**结构化裁决**，不再合成一句“没问题 / 不行”塞进对话；提意见才是用户真正写的文本。
  */
 import { useState } from "react";
-import type { ProposalDisplay } from "../shared/api";
-import { VERDICT_TEXT } from "../shared/verdict";
+import type { ProposalDisplay, ProposalVerdict } from "../shared/api";
 import { Markdown } from "./Markdown";
 
-export type ProposalVerdict = "accept" | "reject" | "refine";
+export type { ProposalVerdict } from "../shared/api";
 
 /** 提案正文的只读渲染：卡片和回看记录共用，避免两处 markdown/标记各写一套。 */
 function ProposalContent({ view }: { view: ProposalDisplay }) {
@@ -62,23 +61,23 @@ export function ProposalCard({
 }: {
   text: string;
   view?: ProposalDisplay;
-  onVerdict: (text: string, kind: ProposalVerdict) => void;
+  onVerdict: (kind: ProposalVerdict, text?: string) => void;
 }) {
   const [refining, setRefining] = useState(false);
   const [note, setNote] = useState("");
 
   function accept(): void {
-    onVerdict(VERDICT_TEXT.accept, "accept");
+    onVerdict("accept");
   }
 
   function reject(): void {
-    onVerdict(VERDICT_TEXT.reject, "reject");
+    onVerdict("reject");
   }
 
   function refine(): void {
     const value = note.trim();
     if (value === "") return;
-    onVerdict(value, "refine");
+    onVerdict("refine", value);
   }
 
   const actions = refining ? (

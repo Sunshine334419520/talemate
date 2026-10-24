@@ -72,6 +72,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
       // `ask` = 一次 `io.confirm`，而用户不在场；这一条也让 `remember` 从它的 schema 里消失。
       notes: "deny",
     },
+    // 规划要读全套设定、卷纲与序列纲，必要时自己查证几处：默认 10 步会在收尾前用光。
+    steps: 20,
     system: PLANNER_SYSTEM,
   },
   {
@@ -94,6 +96,9 @@ const DEFAULT_AGENTS: AgentDef[] = [
       // 那件事。`notes` 也不能并进 `edit`——`edit` 上的 deny 会压住它，见 `permission.ts`。
       notes: "allow",
     },
+    // 查证是「搜 → 读几页 → 换措辞再搜」的循环，实测 10 步会在收尾前用光：最后一条停在
+    // tool_calls、没有正文，父会话收到的 <task_result> 就是空的。给足步数让它写完结论。
+    steps: 30,
     system: RESEARCHER_SYSTEM,
   },
   {

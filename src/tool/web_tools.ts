@@ -4,11 +4,14 @@
  *
  * - webfetch：http(s) 抓取 + UA + 大小上限 + 超时；HTML 按 format 转 markdown / text（turndown）。
  * - websearch：可插拔 provider，用 TALEMATE_WEBSEARCH_PROVIDER 切，无对应 key 时回退 duckduckgo：
+ *     deepseek（设置里配了 key 就优先；Search / Fetch 都走它）
  *     duckduckgo（默认，无 key，尽力而为——部分网络被反爬拦截）
  *     bocha 博查（国内直连，推荐）→ BOCHA_API_KEY
  *     tavily / exa（国外主流）→ TAVILY_API_KEY / EXA_API_KEY
  */
 import TurndownService from "turndown";
+import type { WebSettings } from "../core/types";
+import { deepSeekWebTarget, type DeepSeekWebTarget } from "../core/web";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
 
@@ -26,8 +29,23 @@ const MAX_TIMEOUT_MS = 120_000;
 type FetchFormat = "text" | "markdown" | "html";
 
 /** 抓一个 URL 并按 format 返回内容；出错抛异常——runner 会包成 error part 让模型自纠。 */
-async function fetchUrl(url: string, format: FetchFormat, timeoutSec?: number): Promise<string> {
+async function fetchUrl(
+  url: string,
+  format: FetchFormat,
+  timeoutSec?: number,
+  deepseek?: DeepSeekWebTarget,
+): Promise<string> {
   if (!/^https?:\/\//i.test(url)) throw new Error("URL 必须以 http:// 或 https:// 开头");
+  // DeepSeek 的 Fetch 只回 Markdown，所以 html 这一档仍走直连；text / markdown 都交给它。
+  if (deepseek !== undefined && format !== "html") {
+    try {
+      return truncate(await deepseekFetch(url, deepseek));
+    } catch (e) {
+      // 403/404 = DeepSeek 抓不到这个页面（站点策略 / 没有可提取正文），退回直连；
+      // 401/402/429/5xx 是 key、余额或限流问题，直接抛——别让用户以为自己在用 DeepSeek。
+      if (!isDeepSeekFallback(e)) throw e;
+    }
+  }
   const timeoutMs = Math.min((timeoutSec ?? DEFAULT_TIMEOUT_MS / 1000) * 1000, MAX_TIMEOUT_MS);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -115,6 +133,87 @@ function truncate(text: string): string {
   return `${text.slice(0, MAX_OUTPUT_CHARS)}\n\n…（内容过长，已截断到前 ${MAX_OUTPUT_CHARS} 字符）`;
 }
 
+// ─── DeepSeek Search / Fetch ───
+
+interface DeepSeekPage {
+  title?: string;
+  content?: string;
+}
+
+interface DeepSeekSearchHit {
+  title?: string;
+  url?: string;
+  snippet?: string;
+  summary?: string;
+  content?: string;
+}
+
+interface DeepSeekSearchReply {
+  results?: DeepSeekSearchHit[];
+}
+
+export function deepSeekFetchBody(url: string): { url: string } {
+  return { url };
+}
+
+export function deepSeekSearchBody(query: string, count: number): { query: string; count: number; need_content: boolean } {
+  // 只要摘要：content 是整页正文，几十条一起回会很贵，模型需要正文时自己 webfetch。
+  return { query, count, need_content: false };
+}
+
+/** Fetch 的响应 → 给模型的文本；标题不在正文开头时补一行，别丢。 */
+export function renderDeepSeekPage(page: DeepSeekPage): string {
+  const content = (page.content ?? "").trim();
+  const title = (page.title ?? "").trim();
+  if (title === "" || content.startsWith("# ")) return content;
+  return `# ${title}\n\n${content}`;
+}
+
+export function parseDeepSeekSearch(reply: DeepSeekSearchReply): SearchResult[] {
+  return (reply.results ?? []).map((r) => ({
+    title: r.title ?? "",
+    url: r.url ?? "",
+    // summary 是给模型读的长摘要（600–800 字），比 snippet（100–200 字）更适合做检索结果
+    snippet: r.summary ?? r.snippet ?? "",
+  }));
+}
+
+async function deepseekRequest<T>(target: DeepSeekWebTarget, endpoint: string, body: unknown): Promise<T> {
+  const res = await fetch(`${target.baseURL}${endpoint}`, {
+    method: "POST",
+    signal: AbortSignal.timeout(60_000),
+    headers: {
+      Authorization: `Bearer ${target.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const data = (await res.json()) as { error?: { message?: string } };
+      detail = data.error?.message ?? "";
+    } catch {
+      // 非 JSON 错误体：只保留状态码
+    }
+    throw new Error(`DeepSeek ${endpoint} HTTP ${res.status}${detail === "" ? "" : `：${detail}`}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function deepseekFetch(url: string, target: DeepSeekWebTarget): Promise<string> {
+  const page = await deepseekRequest<DeepSeekPage>(target, "/fetch", deepSeekFetchBody(url));
+  const text = renderDeepSeekPage(page);
+  if (text === "") throw new Error("DeepSeek 没有返回可用的网页正文（HTTP 200，但 content 为空）");
+  return text;
+}
+
+/** 这些情况说明"DeepSeek 抓不到这个页面"，可以退回直连；其余是 key / 余额 / 限流，直接抛。 */
+function isDeepSeekFallback(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /HTTP (403|404)\b/.test(msg) || msg.includes("content 为空");
+}
+
 export const webFetchTool: RegisteredTool<{ url: string; format?: FetchFormat; timeout?: number }> = defineTool<{
   url: string;
   format?: FetchFormat;
@@ -142,14 +241,24 @@ export const webFetchTool: RegisteredTool<{ url: string; format?: FetchFormat; t
     });
     if (verdict === "deny") return { output: "当前模式不允许联网（extern 被禁）。" };
     if (verdict === "reject") return { output: `用户已拒绝抓取 ${args.url}` };
-    const content = await fetchUrl(args.url, args.format ?? "markdown", args.timeout);
-    return { output: content, metadata: { url: args.url, format: args.format ?? "markdown" } };
+    const deepseek = deepSeekWebTarget(await ctx.webSettings());
+    const format = args.format ?? "markdown";
+    const content = await fetchUrl(args.url, format, args.timeout, deepseek);
+    return {
+      output: content,
+      metadata: {
+        url: args.url,
+        format,
+        // html 那一档不走 DeepSeek（它只回 Markdown）
+        provider: deepseek === undefined || format === "html" ? "direct" : "deepseek",
+      },
+    };
   },
 });
 
 // ─── 工具：websearch ───
 
-type SearchProvider = "duckduckgo" | "bocha" | "tavily" | "exa";
+type SearchProvider = "deepseek" | "duckduckgo" | "bocha" | "tavily" | "exa";
 
 export interface SearchResult {
   title: string;
@@ -158,40 +267,63 @@ export interface SearchResult {
 }
 
 /**
- * provider 选择：
- * - 显式 TALEMATE_WEBSEARCH_PROVIDER 指定 → 用它；该 provider 没配 key → duckduckgo。
- * - 未显式指定 → 默认 tavily（有 TAVILY_API_KEY 时），否则 bocha/exa，最后 duckduckgo。
+ * provider 选择（顺序即优先级）：
+ * - 设置里配了 DeepSeek → 用它。这是用户在界面上刚打开的开关，压过 `.env` 里的默认后端；
+ *   否则那格设置会被一行 `TALEMATE_WEBSEARCH_PROVIDER=tavily` 静默作废。
+ * - 否则显式 TALEMATE_WEBSEARCH_PROVIDER → 用它；该 provider 没配 key → duckduckgo。
+ * - 否则 tavily、bocha、exa，最后 duckduckgo。
  */
-export function selectWebSearchProvider(): SearchProvider {
-  const keyOf: Record<SearchProvider, () => string | undefined> = {
-    tavily: () => process.env.TAVILY_API_KEY,
-    bocha: () => process.env.BOCHA_API_KEY,
-    exa: () => process.env.EXA_API_KEY,
+export function selectWebSearchProvider(settings: WebSettings = {}, env = process.env): SearchProvider {
+  const keyOf: Record<string, (() => string | undefined) | undefined> = {
+    tavily: () => env.TAVILY_API_KEY,
+    bocha: () => env.BOCHA_API_KEY,
+    exa: () => env.EXA_API_KEY,
     duckduckgo: () => undefined,
   };
-  const want = (process.env.TALEMATE_WEBSEARCH_PROVIDER ?? "").trim().toLowerCase();
+  if (deepSeekWebTarget(settings, env) !== undefined) return "deepseek";
+  const want = (env.TALEMATE_WEBSEARCH_PROVIDER ?? "").trim().toLowerCase();
+  if (want === "deepseek") return "duckduckgo";
   if (want === "tavily" || want === "bocha" || want === "exa" || want === "duckduckgo") {
-    if (want === "duckduckgo" || keyOf[want]()) return want as SearchProvider;
-    return "duckduckgo";
+    if (want === "duckduckgo") return "duckduckgo";
+    return keyOf[want]?.() ? (want as SearchProvider) : "duckduckgo";
   }
-  if (keyOf.tavily()) return "tavily";
-  if (keyOf.bocha()) return "bocha";
-  if (keyOf.exa()) return "exa";
+  if (keyOf.tavily?.()) return "tavily";
+  if (keyOf.bocha?.()) return "bocha";
+  if (keyOf.exa?.()) return "exa";
   return "duckduckgo";
 }
 
-async function searchWeb(query: string, numResults: number): Promise<{ provider: SearchProvider; results: SearchResult[] }> {
-  const provider = selectWebSearchProvider();
-  const n = Math.max(1, Math.min(10, numResults));
+async function searchWeb(
+  query: string,
+  numResults: number | undefined,
+  settings: WebSettings = {},
+): Promise<{ provider: SearchProvider; results: SearchResult[] }> {
+  const provider = selectWebSearchProvider(settings);
+  // DeepSeek 没传 numResults 时用设置里的「每次搜索结果数」（默认 10）；其它后端仍默认 6。
+  const fallback = provider === "deepseek" ? (deepSeekWebTarget(settings)?.count ?? 6) : 6;
+  const n = Math.max(1, Math.min(10, numResults ?? fallback));
   const results =
-    provider === "bocha"
-      ? await bochaSearch(query, n)
-      : provider === "tavily"
-        ? await tavilySearch(query, n)
-        : provider === "exa"
-          ? await exaSearch(query, n)
-          : await ddgSearch(query, n);
+    provider === "deepseek"
+      ? await deepseekSearch(query, n, settings)
+      : provider === "bocha"
+        ? await bochaSearch(query, n)
+        : provider === "tavily"
+          ? await tavilySearch(query, n)
+          : provider === "exa"
+            ? await exaSearch(query, n)
+            : await ddgSearch(query, n);
   return { provider, results };
+}
+
+async function deepseekSearch(query: string, n: number, settings: WebSettings): Promise<SearchResult[]> {
+  const target = deepSeekWebTarget(settings);
+  if (target === undefined) throw new Error("DeepSeek 联网没有配置 key（设置 → 联网）");
+  const reply = await deepseekRequest<DeepSeekSearchReply>(
+    target,
+    "/search",
+    deepSeekSearchBody(query, n),
+  );
+  return parseDeepSeekSearch(reply);
 }
 
 /** 博查（国内直连，LLM 应用常用）——POST /v1/web-search，Bearer key。 */
@@ -251,7 +383,9 @@ async function ddgSearch(query: string, n: number): Promise<SearchResult[]> {
   if (!res.ok) throw new Error(`DuckDuckGo HTTP ${res.status}`);
   const results = parseDuckDuckGo(await res.text()).slice(0, n);
   if (!results.length) {
-    throw new Error("DuckDuckGo 未返回结果（可能被反爬拦截）。可设 TALEMATE_WEBSEARCH_PROVIDER=bocha(国内)+BOCHA_API_KEY，或 tavily/exa + 对应 key。");
+    throw new Error(
+      "DuckDuckGo 未返回结果（可能被反爬拦截）。可在设置 → 联网里配 DeepSeek，或设 TALEMATE_WEBSEARCH_PROVIDER=bocha(国内)+BOCHA_API_KEY / tavily / exa + 对应 key。",
+    );
   }
   return results;
 }
@@ -307,7 +441,11 @@ export const webSearchTool: RegisteredTool<{ query: string; numResults?: number 
     type: "object",
     properties: {
       query: { type: "string", description: "Search query" },
-      numResults: { type: "number", description: "Number of results; default 6, max 10" },
+      numResults: {
+        type: "number",
+        description:
+          "Number of results; default 10 when DeepSeek is configured (settings), otherwise 6; max 10",
+      },
     },
     required: ["query"],
   },
@@ -320,7 +458,7 @@ export const webSearchTool: RegisteredTool<{ query: string; numResults?: number 
     });
     if (verdict === "deny") return { output: "当前模式不允许联网（extern 被禁）。" };
     if (verdict === "reject") return { output: `用户已拒绝搜索「${args.query}」` };
-    const { provider, results } = await searchWeb(args.query, args.numResults ?? 6);
+    const { provider, results } = await searchWeb(args.query, args.numResults, await ctx.webSettings());
     const body = results.length ? renderResults(results) : "没有搜到结果，换个搜索词试试。";
     return { output: `（搜索后端：${provider}）\n${body}`, metadata: { provider, count: results.length } };
   },

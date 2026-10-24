@@ -6,7 +6,8 @@
  * 在输入框那一格上切。通用设置改完立即生效，没有"保存"按钮。
  */
 import { useEffect, useState, type ReactNode } from "react";
-import type { Appearance, ModelProfile, PermissionDefault, Prefs, ProfileView } from "../shared/api";
+import type { Appearance, ModelProfile, PermissionDefault, Prefs, ProfileView, WebSettingsView } from "../shared/api";
+import { DEFAULT_PERMISSION_MODE } from "../shared/api";
 import { applyReadingSize, DEFAULT_READING_SIZE, MAX_READING_SIZE, MIN_READING_SIZE } from "./reading";
 
 /** 表单里的一份草稿。密钥单独一栏：它是"只进不出"的——显示时永远只有"已有/没有"。 */
@@ -95,7 +96,7 @@ function GeneralSettings({ prefs, onChange }: { prefs: Prefs; onChange: (patch: 
       <SettingRow label="权限" desc="默认权限模式；新会话与重开会话都从这里起步">
         <select
           className="setting-select"
-          value={prefs.permissionMode ?? "accept-edits"}
+          value={prefs.permissionMode ?? DEFAULT_PERMISSION_MODE}
           onChange={(e) => onChange({ permissionMode: e.target.value as PermissionDefault })}
         >
           <option value="accept-edits">工作区内修改</option>
@@ -151,8 +152,124 @@ function GeneralSettings({ prefs, onChange }: { prefs: Prefs; onChange: (patch: 
   );
 }
 
+/**
+ * 联网：DeepSeek 的 Search / Fetch。
+ *
+ * 它放在设置里而不是每本书的配置里——同一台机器上的联网能力是作者的，不跟小说走（同模型清单）。
+ * key 只进不出：已配置时输入框留空 = 沿用原来那把；清除要单独点。
+ */
+function WebSettingsSection() {
+  const [view, setView] = useState<WebSettingsView | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [baseURL, setBaseURL] = useState("https://api.deepseek.com/v1/tools");
+  const [count, setCount] = useState(10);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void window.tm.webSettings().then((v) => {
+      setView(v);
+      setBaseURL(v.deepseek.baseURL);
+      setCount(v.deepseek.count);
+    });
+  }, []);
+
+  async function save(): Promise<void> {
+    setBusy(true);
+    try {
+      const next = await window.tm.saveWebSettings({
+        ...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
+        baseURL,
+        count,
+      });
+      setView(next);
+      setCount(next.deepseek.count);
+      setApiKey("");
+      setNote(next.deepseek.configured ? "已保存。下一次联网调用就走 DeepSeek。" : "已保存，但还没有密钥。");
+    } catch (e) {
+      setNote(`保存失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear(): Promise<void> {
+    setBusy(true);
+    try {
+      const next = await window.tm.saveWebSettings({ clearKey: true });
+      setView(next);
+      setApiKey("");
+      setNote("已清除密钥，联网回到直连 / 其他搜索后端。");
+    } catch (e) {
+      setNote(`清除失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-title">联网</h2>
+      <p className="settings-desc">
+        配了 DeepSeek 的 API Key 之后，webfetch 与 websearch 优先走 DeepSeek 的 Search / Fetch API
+        （与模型同一把 key，按成功请求计费）；不配则维持直连与原来的搜索后端。
+      </p>
+      <div className="settings-fields">
+        <label>
+          状态
+          <span className="hint">
+            {view === null ? "读取中…" : view.deepseek.configured ? "已配置 DeepSeek" : "未配置"}
+          </span>
+        </label>
+        <label>
+          API 密钥
+          <span className="hint">{view?.deepseek.configured === true ? "已存，留空不改" : ""}</span>
+          <input
+            type="password"
+            value={apiKey}
+            placeholder={view?.deepseek.configured === true ? "已有密钥" : "sk-…"}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+        </label>
+        <label>
+          API 地址
+          <span className="hint">含 /v1/tools 前缀</span>
+          <input
+            value={baseURL}
+            placeholder="https://api.deepseek.com/v1/tools"
+            onChange={(e) => setBaseURL(e.target.value)}
+          />
+        </label>
+        <label>
+          每次搜索结果数
+          <span className="hint">1–50，默认 10；websearch 单次最多返回 10 条</span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={count}
+            onChange={(e) => setCount(Number(e.target.value) || 10)}
+          />
+        </label>
+      </div>
+      {note !== null && <p className="settings-desc">{note}</p>}
+      <div className="settings-actions">
+        <span className="spacer" />
+        {view?.deepseek.configured === true && (
+          <button className="btn zhu" onClick={() => void clear()} disabled={busy}>
+            清除密钥
+          </button>
+        )}
+        <button className="btn primary" onClick={() => void save()} disabled={busy}>
+          保存
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function Settings({ onClose }: { onClose: () => void }) {
-  const [section, setSection] = useState<"general" | "models">("models");
+  const [section, setSection] = useState<"general" | "models" | "web">("general");
   const [prefs, setPrefs] = useState<Prefs>({});
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
   const [defaultName, setDefaultName] = useState<string | undefined>();
@@ -234,11 +351,21 @@ export function Settings({ onClose }: { onClose: () => void }) {
               <ModelsIcon />
               模型
             </button>
+            <button
+              type="button"
+              className={`settings-nav-item${section === "web" ? " active" : ""}`}
+              onClick={() => setSection("web")}
+            >
+              <GlobeIcon />
+              联网
+            </button>
           </nav>
 
           <div className="settings-content">
             {section === "general" ? (
               <GeneralSettings prefs={prefs} onChange={savePrefs} />
+            ) : section === "web" ? (
+              <WebSettingsSection />
             ) : editing === null ? (
               <div className="settings-section">
                 <h2 className="settings-title">模型</h2>
@@ -392,6 +519,15 @@ export function Settings({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M2.7 8h10.6M8 2.5c1.6 1.5 2.4 3.4 2.4 5.5S9.6 12 8 13.5C6.4 12 5.6 10.1 5.6 8S6.4 4 8 2.5z" />
+    </svg>
   );
 }
 

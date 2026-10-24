@@ -6,7 +6,7 @@
  * （谁在哪儿、什么时候取数），画法全在 `Thread` 里。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, ProposalDisplay, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
+import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, ProposalDisplay, RewindFilePreviewItem, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
 import { composeAnnotationMessage, type Annotation } from "./annotations";
 import { AskDock } from "./AskCard";
 import { COMMANDS } from "./commands";
@@ -17,6 +17,7 @@ import { ChevronIcon, DropdownIcon, HistoryIcon, PanelIcon, PlusIcon, ShieldIcon
 import { applyReadingSize, DEFAULT_READING_SIZE } from "./reading";
 import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
+import { Trace } from "./Trace";
 import type { ChangeScope } from "./TurnChanges";
 import { tokens } from "../shared/tokens";
 import { contextWindow } from "../../../src/core/windows";
@@ -27,6 +28,13 @@ import { contextWindow } from "../../../src/core/windows";
  * `section` 是它所在的顶栏分段（角色 / 正文 / 现状…）。改动清单在扁平的行里还需要这层
  * 信息，否则"沈越"和"第 6 章"看不出是哪一段的。
  */
+/** 离底部多少像素以内还算"贴着底"。40 是容差，不是"必须一像素不差"——手势滚动很难停得那么准。 */
+const FOLLOW_SLACK = 40;
+
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_SLACK;
+}
+
 function flatDocs(nodes: DocNode[], section = ""): { name: string; path: string; section: string }[] {
   const out: { name: string; path: string; section: string }[] = [];
   for (const n of nodes) {
@@ -154,14 +162,31 @@ export function Workspace({
   const [showTree, setShowTree] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /** 事件订阅只挂一次，所以用 ref 读"当前会话"——闭包里的 current 会是首帧的 null */
+  const currentRef = useRef<string | null>(null);
   /**
    * 贴着底部才跟着新内容走。
    *
    * 不加这条的话流式输出期间**滑不上去**：`live` 每来一个 `text.delta` 就变一次，
    * 每次都把 scrollTop 拉到 scrollHeight——用户往上翻一像素就被拽回来。
    * 只在"他本来就在底部附近"时才跟，他主动往上翻了就由他。
+   *
+   * 光听 `scroll` 还不够：滚轮/触摸的那一下与下一个 delta 可能落在同一帧里，自动跟随会先把它
+   * 拽回去。所以滚轮向上、触摸、翻页键都**当场**解除跟随（同 DSH 的 reading intent）。
    */
   const pinnedRef = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
+  /** 程序自己 scrollTo 触发的那次 scroll 事件不算"用户在看别处" */
+  const programmaticScroll = useRef(false);
+  /** 对话 / 轨迹：同一份消息，两种看法的切换 */
+  const [view, setView] = useState<"chat" | "trace">("chat");
+  /** 待确认的回退目标；files=null 表示还在检查文件改动 */
+  const [rewindAsk, setRewindAsk] = useState<{
+    seq: number;
+    text: string;
+    files: RewindFilePreviewItem[] | null;
+    filesError?: string;
+  } | null>(null);
   const dragRef = useRef(false);
 
   const loadSessions = useCallback(async (): Promise<SessionRow[]> => {
@@ -215,6 +240,7 @@ export function Workspace({
       taskChanges.current = [];
       // 切会话落在底部：上一个会话里往上翻过的位置不该带过来（历史整个换掉了）
       pinnedRef.current = true;
+      setAtBottom(true);
       // 用量由 harness 记在会话元信息里：切会话切回来在、重启也还在
       setUses(await window.tm.sessionUsage(project.id, opened.sessionId));
       setState(await window.tm.sessionState(project.id));
@@ -222,6 +248,10 @@ export function Workspace({
     },
     [loadSessions, project.id],
   );
+
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
 
   useEffect(() => {
     void (async () => {
@@ -261,7 +291,7 @@ export function Workspace({
             // 写正文只报进度、不铺字——那一块由 Thread 画成稿子卡
             const step = classifyStep(e.name, e.input);
             // 入参里就有"它动的是什么"——收在这一刻，别等结果回来才想起没记住
-            const real = step.kind === "chapter" ? step : { ...step, id: e.id, subject: subjectOf(e.input) };
+            const real = step.kind === "chapter" ? step : { ...step, id: e.id, subject: subjectOf(e.input), input: e.input };
             const pending = next.findIndex(
               (it) => it.kind === "tool" && it.preparing === true && (it.id === e.id || it.name === e.name),
             );
@@ -272,6 +302,19 @@ export function Workspace({
           case "step.end":
             // 被 halt 挡掉的剩余调用不会再有 tool-call；别让“准备中”永远挂在界面上
             return next.filter((it) => !(it.kind === "tool" && it.preparing === true));
+          case "user.message": {
+            // 子代理共用同一个 io：只认当前会话自己的用户消息，别把子会话的 seq 贴到父气泡上
+            if (e.sessionId !== currentRef.current) break;
+            // 用户消息刚落盘：把 seq 补到最近那个还没编号的气泡上，回退按钮才有目标
+            for (let i = next.length - 1; i >= 0; i--) {
+              const it = next[i];
+              if (it.kind === "me" && it.seq === undefined) {
+                next[i] = { ...it, seq: e.seq };
+                break;
+              }
+            }
+            break;
+          }
           case "tool.result": {
             for (let i = next.length - 1; i >= 0; i--) {
               const it = next[i];
@@ -415,20 +458,56 @@ export function Workspace({
 
   // 位置由用户的滚动决定，不由每次渲染算——内容变高但 scrollTop 没动时不会触发 scroll 事件，
   // 所以"他没动过"这一点能一直保持，不会被新内容自己推翻
-  useEffect(() => {
+  const releaseFollow = useCallback((): void => {
+    pinnedRef.current = false;
+    setAtBottom(false);
+  }, []);
+
+  const onScroll = useCallback((): void => {
+    if (programmaticScroll.current) return;
     const el = scrollRef.current;
     if (el === null) return;
-    const onScroll = (): void => {
-      pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    const near = isNearBottom(el);
+    pinnedRef.current = near;
+    setAtBottom(near);
+  }, []);
+
+  const jumpToBottom = useCallback((): void => {
+    const el = scrollRef.current;
+    if (el === null) return;
+    pinnedRef.current = true;
+    setAtBottom(true);
+    programmaticScroll.current = true;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      programmaticScroll.current = false;
+    });
   }, []);
 
   useEffect(() => {
     if (!pinnedRef.current) return;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (el === null) return;
+    programmaticScroll.current = true;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      programmaticScroll.current = false;
+    });
   }, [live, history, confirm, ask]);
+
+  // 切视图不继承上一个视图的位置：对话贴底，轨迹从最早一条看起。
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el === null) return;
+    if (view === "trace") {
+      releaseFollow();
+      el.scrollTop = 0;
+    } else {
+      pinnedRef.current = true;
+      setAtBottom(true);
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [view, releaseFollow]);
 
   /** 对话里那张"稿子"卡：按路径去取全文，在右栏打开。显示名优先用目录里的那一个。 */
   const openChapter = useCallback(
@@ -483,7 +562,7 @@ export function Workspace({
   /**
    * 发一句话。`shown` 是气泡里显示的，`sent` 是真正发给 harness 的——两者可以不同：`@世界观`
    * 拼出来的 `<mentioned>` 段是给模型看的材料，不该糊在用户自己的气泡里（存进历史也一样丑）。
-   * 三向裁决也走这里——按钮说的是固定短语，判定仍然在 harness（见 `shared/verdict.ts`）。
+   * 三向裁决不走这里——按钮直接发结构化裁决，不再合成一句用户消息。
    */
   const say = useCallback((text: string, sent?: string): void => {
     setLive((prev) => [...prev, { kind: "me", text }]);
@@ -491,26 +570,100 @@ export function Workspace({
   }, []);
 
   /**
-   * 提案拍板：发固定短语/意见 → 关掉弹窗 → 在对话里留一条只读记录。
+   * 就地回退到某条用户消息之前。目标文本回填输入框，原日志先备份。
+   *
+   * 两种模式：仅回退对话，或连同 write_ops 写过的文件一起还原。文件还原失败时主进程会
+   * 先回滚已改文件再抛错，对话不撤回——不会出现"文件回了一半、对话已经没了"。
+   * 忙碌/待批/待答时按钮是禁用的，主进程还会再守一道。
+   */
+  const applyRewind = useCallback(
+    async (seq: number, restoreFiles: boolean): Promise<void> => {
+      if (current === null) return;
+      try {
+        const result = await window.tm.rewind(seq, { restoreFiles });
+        setHistory(await window.tm.history(project.id, current));
+        const fileNote = result.files === undefined
+          ? ""
+          : `已还原 ${result.files.restored.length} 个文件、删除 ${result.files.deleted.length} 个新建文件。`;
+        setLive([
+          {
+            kind: "note",
+            text:
+              `已回退到 seq ${seq}。${fileNote}` +
+              `${result.backup === undefined ? "" : `原对话已备份到 ${result.backup}。`}`,
+          },
+        ]);
+        setDraft(result.text);
+        setAsk(null);
+        setAskHidden(false);
+        setProposal(null);
+        setConfirm(null);
+        setAnsweredAskIds(new Set());
+        taskChanges.current = [];
+        setError(null);
+        setState(await window.tm.sessionState(project.id));
+        pinnedRef.current = true;
+        setAtBottom(true);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [current, project.id],
+  );
+
+  /** 打开确认框，同时在后台查"这次会动哪些文件"；查失败不挡"仅回退对话"。 */
+  const requestRewind = useCallback((seq: number, text: string): void => {
+    setRewindAsk({ seq, text, files: null });
+    void window.tm.rewindPreview(seq).then(
+      (preview) =>
+        setRewindAsk((prev) =>
+          prev !== null && prev.seq === seq ? { ...prev, files: preview.items } : prev,
+        ),
+      () =>
+        setRewindAsk((prev) =>
+          prev !== null && prev.seq === seq
+            ? { ...prev, files: [], filesError: "检查文件改动失败" }
+            : prev,
+        ),
+    );
+  }, []);
+
+  /**
+   * 提案拍板：结构化裁决 → 关掉弹窗 → 在对话里留一条只读记录。
+   *
+   * 接受/拒绝不再把“没问题 / 不行”写进对话；接受由主进程接着跑执行回合。
+   * 提意见是用户真写的一段话，照常作为用户消息发出去（也显示在对话里）。
    * 记录带着 view，点开能回看完整提案；「本轮改动」仍然等这一轮真正结束。
    */
   const resolveProposal = useCallback(
-    (text: string, kind: ProposalVerdict): void => {
+    (kind: ProposalVerdict, note?: string): void => {
       const current = proposal;
       if (current === null || resolvingProposal.current) return;
+      if (kind === "refine" && (note === undefined || note.trim() === "")) return;
       resolvingProposal.current = true;
-      window.tm.prompt(text);
       setProposal(null);
-      setLive((prev) => [
-        ...prev,
-        {
+      setLive((prev) => {
+        const items: LiveItem[] = [];
+        if (kind === "refine" && note !== undefined) items.push({ kind: "me", text: note });
+        items.push({
           kind: "proposal-done",
           title: current.view?.title ?? "提案",
           text: current.text,
           verdict: kind,
           ...(current.view === undefined ? {} : { view: current.view }),
-        },
-      ]);
+        });
+        return [...prev, ...items];
+      });
+      void window.tm
+        .resolveProposal({
+          verdict: kind,
+          ...(kind === "refine" && note !== undefined ? { text: note } : {}),
+        })
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+        .finally(() => {
+          resolvingProposal.current = false;
+        });
     },
     [proposal],
   );
@@ -660,6 +813,8 @@ export function Workspace({
           openPane({ kind: "text", name: "现状", text: await window.tm.projectStatus(project.id) });
         } else if (name === "permissions") {
           openPane({ kind: "text", name: "规则表", text: await window.tm.permissions() });
+        } else if (name === "debug") {
+          openPane({ kind: "text", name: "调试信息", text: await window.tm.sessionDebug() });
         }
       } catch (err) {
         // 命令失败要说出来：静默什么都不发生，人就以为是自己打错了
@@ -710,6 +865,8 @@ export function Workspace({
   const collapseLabel = collapsed ? "展开侧边栏" : "收起侧边栏";
   /** 中栏顶部显示的是**会话名**（书名在左栏品牌行里）——与参考界面一致。 */
   const sessionTitle = sessions.find((s) => s.id === current)?.title ?? info?.book ?? "正在开会话…";
+  /** 忙碌/有待批/有待答/有待审批时，回退没有安全落点 */
+  const canRewind = !busy && confirm === null && proposal === null && ask === null && state.pending === undefined;
 
   return (
     <div className={`app platform-${platform}`} data-collapsed={collapsed}>
@@ -781,41 +938,89 @@ export function Workspace({
 
       <main className="main">
         <header className="head">
-          <div className="book-name">{sessionTitle}</div>
-          {/* 模式徽章从中栏顶部起（原来在状态栏左侧） */}
-          {state.mode !== undefined && <span className="mode"><i />{state.mode}</span>}
-          {state.pending !== undefined && <span className="badge zhu">待你拍板：{state.pending}</span>}
-          <span className="sub">{info ? `${info.agent}${busy ? " · ● 正在写" : ""}` : ""}</span>
-          <button
-            type="button"
-            className="history-entry"
-            title="本次会话的改动记录"
-            aria-current={pane?.kind === "changes" ? "true" : undefined}
-            onClick={() => void openHistory("session")}
-          >
-            <HistoryIcon />
-            改动记录
-          </button>
+          <div className="head-row">
+            <div className="book-name">{sessionTitle}</div>
+            {/* 模式徽章从中栏顶部起（原来在状态栏左侧） */}
+            {state.mode !== undefined && <span className="mode"><i />{state.mode}</span>}
+            {state.pending !== undefined && <span className="badge zhu">待你拍板：{state.pending}</span>}
+            <span className="sub">{info ? `${info.agent}${busy ? " · ● 正在写" : ""}` : ""}</span>
+            <button
+              type="button"
+              className="history-entry"
+              title="本次会话的改动记录"
+              aria-current={pane?.kind === "changes" ? "true" : undefined}
+              onClick={() => void openHistory("session")}
+            >
+              <HistoryIcon />
+              改动记录
+            </button>
+          </div>
+
+          {/* 独占一行、左对齐、下划线指示当前页——与 DSH 的视图切换同一种布局 */}
+          <div className="viewtabs" role="tablist" aria-label="视图">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "chat"}
+              className="viewtab"
+              onClick={() => setView("chat")}
+            >
+              对话
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "trace"}
+              className="viewtab"
+              onClick={() => setView("trace")}
+            >
+              轨迹
+            </button>
+          </div>
         </header>
 
-        <div className="scroll" ref={scrollRef}>
-          <Thread
-            history={history}
-            live={live}
-            busy={busy}
-            confirmOpen={confirm !== null}
-            proposalOpen={proposal !== null}
-            askOpen={ask !== null}
-            answeredAskIds={answeredAskIds}
-            onOpenDoc={(path) => void openChapter(path)}
-            onOpenDiff={(name, text, path) => openPane({ kind: "diff", name, text, path })}
-            onOpenAsk={reopenAsk}
-            labelOf={labelOf}
-            rankOf={rankOf}
-            onOpenHistory={() => void openHistory("session")}
-          />
-          {warn !== null && <p className="note zhu">［提醒］{warn}</p>}
-          {error !== null && <p className="note">［错误］{error}</p>}
+        {/* 对话区自己持有"回到底部"：按钮贴在这个区域的底边，不压到下面的输入框上 */}
+        <div className="conversation">
+          <div
+            className={`scroll${view === "trace" ? " trace-scroll" : ""}`}
+            ref={scrollRef}
+            onScroll={onScroll}
+            // 向上滚的那一下先解除跟随：等 scroll 事件再判断，下一个 delta 可能已经把它拽回去了
+            onWheel={(e) => {
+              if (e.deltaY < 0) releaseFollow();
+            }}
+            onTouchStart={releaseFollow}
+          >
+          {view === "chat" ? (
+            <Thread
+              history={history}
+              live={live}
+              busy={busy}
+              confirmOpen={confirm !== null}
+              proposalOpen={proposal !== null}
+              askOpen={ask !== null}
+              answeredAskIds={answeredAskIds}
+              onOpenDoc={(path) => void openChapter(path)}
+              onOpenDiff={(name, text, path) => openPane({ kind: "diff", name, text, path })}
+              onOpenAsk={reopenAsk}
+              labelOf={labelOf}
+              rankOf={rankOf}
+              onOpenHistory={() => void openHistory("session")}
+              onRewind={requestRewind}
+              canRewind={canRewind}
+            />
+          ) : (
+            <Trace history={history} live={live} info={info} />
+          )}
+            {warn !== null && <p className="note zhu">［提醒］{warn}</p>}
+            {error !== null && <p className="note">［错误］{error}</p>}
+          </div>
+
+          {!atBottom && (
+            <button type="button" className="jump-bottom" onClick={jumpToBottom}>
+              回到底部 ↓
+            </button>
+          )}
         </div>
 
         {/* 审批是道门：占住输入框、不能收起；没有回答方时主进程直接按拒绝处理 */}
@@ -958,6 +1163,80 @@ export function Workspace({
           {/* 上下文与用量：居中的一条细信息（原来占着整条状态栏） */}
           <ContextStats uses={uses} win={win} baseline={info?.contextParts} />
         </div>
+        )}
+
+        {rewindAsk !== null && (
+          <div className="rewind-mask" onClick={() => setRewindAsk(null)}>
+            <div
+              className="rewind-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label="回退对话"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3>回退到这条消息之前</h3>
+              <p>将撤回这条消息及其之后的内容。原文会放回输入框，修改后可重新发送。</p>
+              <pre className="rewind-quote">{rewindAsk.text}</pre>
+
+              <div className="rewind-files">
+                {rewindAsk.files === null ? (
+                  <p>正在检查文件改动…</p>
+                ) : rewindAsk.filesError !== undefined ? (
+                  <p>{rewindAsk.filesError}；仍可仅回退对话。</p>
+                ) : rewindAsk.files.length === 0 ? (
+                  <p>这次回退没有检测到模型写过的文件。</p>
+                ) : (
+                  <>
+                    <p>会处理 {rewindAsk.files.length} 个文件：</p>
+                    <ul>
+                      {rewindAsk.files.map((f) => (
+                        <li key={f.path}>
+                          <code>{f.path}</code>
+                          <span>{f.action === "delete" ? "删除" : "还原"}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+
+              <p className="rewind-warn">
+                「仅回退对话」保留文件改动；「回退并还原」失败时会先回滚已还原的文件，对话不撤回。
+                原 messages.jsonl 会先整份备份。
+              </p>
+              <div className="rewind-actions">
+                <button className="btn" onClick={() => setRewindAsk(null)}>
+                  取消
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    const target = rewindAsk;
+                    setRewindAsk(null);
+                    void applyRewind(target.seq, false);
+                  }}
+                >
+                  仅回退对话
+                </button>
+                <button
+                  className="btn primary"
+                  disabled={
+                    rewindAsk.files === null ||
+                    rewindAsk.filesError !== undefined ||
+                    rewindAsk.files.length === 0
+                  }
+                  onClick={() => {
+                    const target = rewindAsk;
+                    setRewindAsk(null);
+                    void applyRewind(target.seq, true);
+                  }}
+                >
+                  回退并还原
+                  {rewindAsk.files === null ? "" : ` ${rewindAsk.files.length} 个文件`}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
       {pane !== null && (

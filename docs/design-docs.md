@@ -46,10 +46,11 @@
 
 落盘那条路上，两者汇进同一个 `writeFile`：解析目标 → 读 → 算结果 → 算 diff → 取批准 → CAS + 原子写。
 
-**三向**（`propose-design` → 用户回话 → `apply-design`）：
+**三向**（`propose-design` → 用户回话 → `apply-design`）。桌面端点「接受」时由 **harness 直接调用
+`apply-design`**（同一条 write_ops、同一套规则；省掉一轮模型往返）；CLI / 文本回复仍由模型调用。
 
 - **`propose-design` 的 `halt`**：结束本回合，把控制权交回用户。同回合剩下的 tool call 不再执行——但必须补 `error` part（见 `architecture.md` 的 halt 说明）。
-- **"同意"由 harness 判**：`Session.markPendingApproval` 按用户回话判**三种结局**（`draftVerdict`：接受 / 拒绝 / 提意见），**模型自述无效**。fail-closed：措辞不常见一律算"提意见"，多走一轮，绝不误判成接受。
+- **"同意"由 harness 判**：界面按钮走结构化 `decideProposal`（接受 / 拒绝）与 `refineProposal`（提意见），不再把“没问题 / 不行”写进对话；CLI 与用户手打回复仍走 `markPendingApproval` 的 `draftVerdict`（整句词表，fail-closed）。无论哪条路，**模型自述无效**；措辞不常见一律算“提意见”，多走一轮，绝不误判成接受。
 - **出口条件是"接受或拒绝"，不是"提案成功"**：提意见留在草稿模式里接着改，所以一次设计会话只进一次模式。
 - **并发保护**：提案登记 `base` 快照，落盘前若文件已变则拒绝（CAS）。
 - **`apply-design` 不弹窗**——用户已在提案里看过内容；但它**仍然过规则表**，"不许"不因为问过一次就失效。

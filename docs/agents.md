@@ -128,8 +128,16 @@
 
 | id | 用途 |
 |---|---|
-| `webfetch` | 抓一个 URL → text/markdown/html |
-| `websearch` | 搜索（默认 tavily；无 key 回退 bocha/exa/duckduckgo） |
+| `webfetch` | 抓一个 URL → text/markdown/html。设置里配了 DeepSeek 就优先走它的 Fetch（html 仍直连） |
+| `websearch` | 搜索。设置里配了 DeepSeek 就走它的 Search；否则 tavily / bocha / exa / duckduckgo |
+
+**DeepSeek Search / Fetch**（`storage/web_config.ts` 存 `<talemateHome>/web.json`，设置在桌面端「设置 → 联网」）：
+与模型调用同一把 key，`Bearer` 鉴权，按成功请求计费。Base 默认 `https://api.deepseek.com/v1/tools`
+（含 `/v1/tools` 前缀，程序追加 `/search` 或 `/fetch`——与 DSH 的 Search / Fetch API 同口径）。
+`websearch` 走 `POST …/search`（只要 `summary`，不拉整页正文；结果数由设置里的「每次搜索结果数」决定，
+默认 10，单次最多 10），`webfetch` 走 `POST …/fetch`（只回 Markdown）。
+Fetch 的 403/404 或空正文退回直连（站点策略/正文提取失败），401/402/429/5xx 直接报错——别让用户以为自己在用 DeepSeek。
+工具不自己读这个文件：设置经 `ToolContext.webSettings()` 注入（工具层只有一个取数口）。
 
 ### 会话模式（`agent/modes.ts`）
 
@@ -200,12 +208,19 @@ task { agent: "planner", prompt: string }
   → 校验 agent 存在且 mode=subagent；depth 检查（≤1 层）
   → 新建 child Session（model = sub.model ?? 父 model，同项目）
   → child.post(prompt) 跑完整子循环
-  → 父模型收到 <task agent="…" state="completed"><task_result>…</task_result></task>
+  → 父模型收到 <task agent="…" state="completed" session="…"><task_result>…</task_result></task>
 ```
 
 - **prompt 必须自包含**：子代理上下文全新，你给的 prompt 就是它的全部指令——把这一章的意图与手上已有的材料写全，别让它猜。
 - **必须说清要它返回什么**（一份可执行的章节规划）。
 - 子代理工具集由**它自己的** AgentDef 决定，不继承父全量；**默认不带给它 `task`**（防链式 spawn）。
+- **子会话落盘但不在左栏**：`session.json` 带 `depth` / `parentSessionId`，左栏与 `/sessions` 只列用户会话；
+  对话里 `task` 画成一张嵌套卡，轨迹里能看到子会话 id 与完整过程。步数预算不够时循环会停在最后一次
+  工具调用上、没有正文——所以 `task` 对空结果显式回 `state="empty"`，不让父模型以为"它答了，只是没内容"。
+- **子代理有硬步数预算**（planner 20 / researcher 30）。最后三步在 system 里注入收尾提示，最后一步
+  直接撤掉工具，逼它把已有材料写成结论；主代理不套这套——mate 可能正在写一整章，最后一步撤工具
+  等于把稿子截断。调研实测：10 步时 5 次委派里 3 次跑满且零字返回；放开到 30 步后同一条链路
+  跑到 21 步并正常收尾。
 
 ## Skill 系统
 

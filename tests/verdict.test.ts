@@ -1,26 +1,54 @@
 /**
- * 界面上的三个按钮与 harness 那张词表之间的**契约**。
+ * 三向裁决的两条路：
  *
- * 按钮不判断，它只是替用户说一句话："没问题" / "不行"，或者用户自己写的提意见。判定在 harness 里
- * （`session.draftVerdict`，整句只由词表里的词构成才算数——fail-closed）。这条测试盯的是**两份东西
- * 别走散**：词表那边删了一个词、这边没跟上，按钮就会静默失灵（发出去的话被当成"提意见"，提案不落盘
- * 也不作废，看起来像点了没反应）。
+ * 1. **文本**（CLI / 用户手打）：`draftVerdict` 的整句词表，fail-closed。
+ * 2. **结构化**（桌面按钮）：`accept` / `reject` / `refine` 直接发 IPC，**不再**合成
+ *    “没问题 / 不行”写进对话历史。
+ *
+ * 第二条是这次重设计的重点；第一条不能删——CLI 和“用户直接打字回话”仍然靠它。
  */
 import { describe, expect, test } from "bun:test";
-import { VERDICT_TEXT } from "../desktop/src/shared/verdict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { draftVerdict } from "../src/session/session";
 
-describe("交付层 · 三向按钮的短语", () => {
-  test("按钮说的话，在 harness 那张词表里就是那两个结局", () => {
-    const wrong = [
-      draftVerdict(VERDICT_TEXT.accept) === "accept" ? undefined : `「${VERDICT_TEXT.accept}」不再算接受`,
-      draftVerdict(VERDICT_TEXT.reject) === "reject" ? undefined : `「${VERDICT_TEXT.reject}」不再算拒绝`,
-    ].filter((x): x is string => x !== undefined);
-    expect(wrong).toEqual([]);
+const ROOT = join(import.meta.dir, "..");
+
+describe("文本裁决 · CLI / 手打回复", () => {
+  test("整句只有接受词才算接受", () => {
+    for (const s of ["没问题", "没问题。", "好", "好的", "可以", "同意", "确认", "ok"]) {
+      expect(draftVerdict(s)).toBe("accept");
+    }
+  });
+
+  test("整句只有拒绝词才算拒绝", () => {
+    for (const s of ["不行", "不要", "算了", "拒绝"]) {
+      expect(draftVerdict(s)).toBe("reject");
+    }
   });
 
   test("带改动要求的话不算同意——fail-closed 那条不变", () => {
     // 「没问题，但第 3 格改成 X」夹着改动要求：不能因为开头是"没问题"就落盘。
-    expect(draftVerdict(`${VERDICT_TEXT.accept}，但第 3 格改成别的`)).toBe("refine");
+    expect(draftVerdict("没问题，但第 3 格改成别的")).toBe("refine");
+  });
+});
+
+describe("界面按钮 · 结构化裁决", () => {
+  test("提案卡直接发 accept / reject / refine，不再引用固定短语", async () => {
+    const card = await readFile(join(ROOT, "desktop/src/renderer/ProposalCard.tsx"), "utf8");
+    expect(card).toContain('onVerdict("accept")');
+    expect(card).toContain('onVerdict("reject")');
+    expect(card).toContain('onVerdict("refine", value)');
+    expect(card).not.toContain("VERDICT_TEXT");
+  });
+
+  test("界面走 resolveProposal IPC，而不是把短语塞回输入框", async () => {
+    const ws = await readFile(join(ROOT, "desktop/src/renderer/Workspace.tsx"), "utf8");
+    const start = ws.indexOf("const resolveProposal = useCallback");
+    const end = ws.indexOf("/**", start + 1);
+    expect(start).toBeGreaterThan(-1);
+    const block = ws.slice(start, end);
+    expect(block).toContain(".resolveProposal(");
+    expect(block).not.toContain("window.tm.prompt");
   });
 });

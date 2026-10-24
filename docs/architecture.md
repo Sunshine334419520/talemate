@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-10-19 · 本文与代码冲突时**以代码为准**
+> **对齐代码**：2026-10-24 · 本文与代码冲突时**以代码为准**
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -121,7 +121,7 @@ sequenceDiagram
 - **每轮一条 assistant 消息**落盘（text / reasoning / tool 各一个 part）；工具内嵌 part，走 `pending→running→completed/error`。
 - **循环停 = 本轮无 tool-call / 有工具要求 `halt` / 达 steps**；有 tool-call → 下一轮把结果作为 `role:"tool"` 回放。
 - **`halt`**：工具在**成功**时可要求结束本回合（`ToolDef.halt`，目前 `propose-design` 与 `propose-plan` 用它），把控制权交回用户。同回合剩下的 tool call 不再执行，但**必须补一个带各自 id 的 `error` part**——`assemble` 只回放 `completed`/`error` 的 part，而 assistant 消息登记了全部 `toolCalls`，少一个就是静默的坏请求。**工具失败时不能 halt**，否则循环死在一个本可自愈的错误上。
-- **task 委派** = 独立 Session（depth+1），只传 prompt；结果 `<task_result>` 文本回传父会话；深度 ≤1。
+- **task 委派** = 独立 Session（depth+1），只传 prompt；结果 `<task_result>` 文本回传父会话；深度 ≤1。子会话落盘时带 `depth` / `parentSessionId`：左栏与 `/sessions` 只列用户会话，对话里画成一张 `task` 嵌套卡，轨迹与 `/debug` 能按 id 找回完整过程。步数预算不够时循环停在最后一次工具调用上、没有正文可回填——`task` 对空结果显式回 `state="empty"`，不假装它答了。子代理另有硬预算（planner 20 / researcher 30）：最后三步在 system 注入收尾提示，最后一步撤掉工具，逼它把已有材料写成结论。
 - **单队列**：busy 时新输入排队，不做 steer/queue 多级语义。
 
 ## 上下文组装
@@ -181,8 +181,9 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 
 落盘只写**稳定态**（delta 不持久化，只落结束值）：
 
-- **`session.json`**：会话元（id / projectID / title / agent / model / cost / tokens / time）。
-- **`messages.jsonl`**：每行一条消息，**必须含 `seq`**；类型 `user / assistant / system / synthetic / compaction`。
+- **`session.json`**：会话元（id / projectID / title / agent / model / profile / usage / time；子会话另有 `depth` / `parentSessionId`）。
+- **`messages.jsonl`**：每行一条消息，**必须含 `seq`**；类型 `user / assistant / system / synthetic / compaction`。正常只追加；**就地回退**会先把整份日志备份到 `<session>/rewind-backups/`，再重写到目标用户消息之前（目标文本回填输入框）。回退可选「仅对话」或「连文件」；文件快照见下一条。
+- **文件回退检查点**：`<session>/rewind-files.json`——`write_ops` 成功落盘后记的写前内容，按发起这一轮的用户 `seq` 归组。回退到 seq N 时，取每条路径在 `seq >= N` 里最早的那份 `before` 还原；写前不存在则删除。它只服务回退，不是作品文档。
   - assistant 的 content = `[{ text, reasoning, tool: [{id, name, state, input, output, time}] }]`。
 - **规则：delta 仅 live 不落盘，ended/complete 才是落盘的全值**——文件里只有稳定态。
 - **compaction 消息必落**，它是恢复上下文的关键。

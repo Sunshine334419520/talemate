@@ -94,8 +94,9 @@ function makeCtx(
     readDoc: async () => undefined,
     listIndex: async () => "",
     searchDocs: async () => "",
-    runSubagent: async () => "",
+    runSubagent: async () => ({ text: "", sessionId: "sub-test" }),
     loadSkill: async () => undefined,
+    webSettings: async () => ({}),
   };
   return { ctx, calls };
 }

@@ -48,9 +48,12 @@ import type { NeutralMsg, ToolSchema } from "../llm/types";
 import { discoverSkills, loadSkillByName, renderSkillCatalog } from "../skill/discovery";
 import { loadProjectMeta, readProjectRules } from "../storage/project";
 import { readDoc, scanDocs } from "../storage/corpus";
+import { loadWebSettings } from "../storage/web_config";
+import { dropFileCheckpointsFrom } from "../storage/file-history";
 import {
   appendMessage,
   appendUsage,
+  backupMessages,
   clearPendingAsk,
   createSession,
   loadMessages,
@@ -58,6 +61,7 @@ import {
   loadPendingAsk,
   loadSessionMeta,
   savePendingAsk,
+  truncateMessagesBefore,
 } from "../storage/session-store";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
@@ -73,6 +77,7 @@ import {
 } from "./asks";
 import { compact, isOverBudget } from "./compaction";
 import { runLoop } from "./loop";
+import { previewFileRewind, restoreFilesForRewind, type FileRewindOutcome, type FileRewindPreview } from "./rewind_files";
 
 /** 用户交互口：CLI/TUI 提供；冒烟可用自动答复实现 */
 export interface UserIO {
@@ -244,13 +249,13 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
         continue;
       }
       const state = p.approved
-        ? "用户已表示同意 → 照它执行：这一章的正文由你自己写（规范与文风已随本 system 交给你）"
+        ? "用户已表示同意 → 立刻开始写这一章的正文（规范与文风已随本 system 交给你）；不要重新提案，不要先解释"
         : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
       open.push(`- ${what}：${state}`);
       continue;
     }
     const state = p.approved
-      ? "用户已表示同意 → 可以 apply-design"
+      ? "用户已表示同意 → 立刻调用 apply-design；不要重新提案，不要先解释"
       : "用户还没同意 → 等他回话；他要改就重新 propose-design";
     open.push(`- ${p.name}：${state}`);
   }
@@ -291,6 +296,8 @@ export interface SessionDeps {
   title?: string;
   /** 子会话深度（task 委派限深用） */
   depth?: number;
+  /** 子会话专用：派生它的父会话 id（落进 session.json，列表据此把子会话排除在外） */
+  parentSessionId?: string;
   /** 子会话专用：父会话当前生效的规则集，用来派生自己的（父的 deny 继承、allow 不继承） */
   parentRuleset?: Ruleset;
 }
@@ -299,6 +306,8 @@ export class Session {
   readonly projectId: string;
   readonly sessionId: string;
   readonly depth: number;
+  /** 派生这次子会话的父会话 id；用户会话没有。 */
+  readonly parentSessionId?: string;
   readonly agentId: string;
   model: ModelConfig;
   /** 这套配置的名字；没有（环境变量那套）时为 undefined。 */
@@ -312,6 +321,8 @@ export class Session {
   private cache: StoredMessage[] | null = null;
   /** 上一次请求发出去多少 token（provider 报的真数）——压缩的触发判据 */
   private lastInput: number | undefined;
+  /** 这一轮由哪条用户消息发起；文件回退快照按它归组。 */
+  private lastUserSeq: number | undefined;
   /**
    * 待落盘的提案（design 写入 propose → apply 的中转态），按文档路径索引。
    * 只在内存里：重启即失效，apply 会要求重新提案。
@@ -349,6 +360,7 @@ export class Session {
     this.projectId = deps.projectId;
     this.sessionId = deps.sessionId ?? randomUUID();
     this.depth = deps.depth ?? 0;
+    this.parentSessionId = deps.parentSessionId;
     this.parentRuleset = deps.parentRuleset;
     this.agentId = deps.agentId ?? deps.agents.getDefaultPrimary().id;
     this.model = deps.model;
@@ -383,7 +395,60 @@ export class Session {
       agent: this.agentId,
       model: this.model,
       profile: this.profile,
+      ...(this.depth > 0 ? { depth: this.depth } : {}),
+      ...(this.parentSessionId !== undefined ? { parentSessionId: this.parentSessionId } : {}),
     });
+  }
+
+  /**
+   * 就地回退到某条用户消息**之前**。
+   *
+   * 目标消息及其之后的内容从当前会话移除，目标文本返回给外壳回填输入框。原 messages.jsonl
+   * 先整份备份到 `rewind-backups/` 再重写——talemate 的日志本来只追加，这里为了"就地回退"
+   * 付的代价是重写；备份是那次重写的审计底。
+   *
+   * 只允许空闲时调用：正在跑的回合里撤回它读过的消息，没有安全的落点。
+   *
+   * `restoreFiles` 为 true 时，先把 `seq >= target` 的写还原；还原失败会先回滚已改的文件再抛错，
+   * 对话**不**撤回——半还原比不还原更糟。成功后才备份并截断会话，最后清掉这些检查点。
+   */
+  async rewindTo(
+    seq: number,
+    opts: { restoreFiles?: boolean } = {},
+  ): Promise<{ text: string; backup?: string; files?: FileRewindOutcome }> {
+    if (this.running) throw new Error("这一轮还在跑，等它结束再回退。");
+    const all = await this.ensureLoaded();
+    const target = all.find((m) => m.seq === seq && m.role === "user");
+    if (target === undefined) throw new Error(`没有 seq=${seq} 的用户消息，不能回退。`);
+
+    const files = opts.restoreFiles === true
+      ? await restoreFilesForRewind(this.projectId, this.sessionId, seq)
+      : undefined;
+    const backup = await backupMessages(this.projectId, this.sessionId);
+    await truncateMessagesBefore(this.projectId, this.sessionId, seq);
+    // 两种模式都清：seq 会被新分支复用，旧账留着会还原错东西
+    await dropFileCheckpointsFrom(this.projectId, this.sessionId, seq);
+
+    this.cache = all.filter((m) => m.seq < seq);
+    // 目标之后的提案/提问都属于被撤回的那一段，不能留着让模型"执行一个已经不存在的提议"
+    this.pending.clear();
+    this.pendingAskRecord = undefined;
+    await clearPendingAsk(this.projectId, this.sessionId);
+    this.lastInput = undefined; // 上下文变小了；下一次按估算重新量
+    this.lastUserSeq = undefined;
+
+    return {
+      text: target.text ?? "",
+      ...(backup === undefined ? {} : { backup }),
+      ...(files === undefined ? {} : { files }),
+    };
+  }
+
+  /** 给回退确认框看的文件清单；目标不合法时返回空，不抛。 */
+  async rewindPreview(seq: number): Promise<FileRewindPreview> {
+    const all = await this.ensureLoaded();
+    if (!all.some((m) => m.seq === seq && m.role === "user")) return { items: [] };
+    return previewFileRewind(this.projectId, this.sessionId, seq);
   }
 
   abortCurrent(): void {
@@ -398,19 +463,106 @@ export class Session {
    * harness 知道这轮回话属于哪一种。只认最近提交的那一份：halt 保证一回合只提交一份。
    */
   private markPendingApproval(input: string): void {
-    if (!this.pending.size) return;
-    const verdict = draftVerdict(input);
-    let latest: PendingProposal | undefined;
-    for (const p of this.pending.values()) if (!latest || p.at > latest.at) latest = p;
+    const latest = this.latestOpenPending();
     if (!latest) return;
-
-    const effect = verdictEffect(verdict);
+    const effect = verdictEffect(draftVerdict(input));
     latest.approved = effect.approved;
     if (!effect.leaveDraft) return;
 
     // 只出草稿模式：别的模式（accept-edits）底下不该有待审阅的提案。
     if (this.mode === DRAFT_MODE) this.mode = undefined;
     if (effect.dropProposal) this.pending.delete(latest.name);
+  }
+
+  /** 最近一份还没执行的提案。`done` 的规划留在表里当工作单，不是待拍板。 */
+  private latestOpenPending(): PendingProposal | undefined {
+    let latest: PendingProposal | undefined;
+    for (const p of this.pending.values()) {
+      if (!p.done && (!latest || p.at > latest.at)) latest = p;
+    }
+    return latest;
+  }
+
+  /**
+   * 界面的结构化拍板：接受 / 拒绝。
+   *
+   * 不落成用户消息——用户点的是按钮，不是打了“没问题”；这句话不该出现在对话历史里。
+   * 接受之后由外壳再跑一轮（`resumeAfterAnswer`），system 里的 `<pending-proposal>` 会告诉
+   * 模型"用户已同意，可以 apply-design / 照它执行"。拒绝没有后续模型回合。
+   */
+  decideProposal(verdict: "accept" | "reject"): void {
+    if (this.running) throw new Error("这一轮还在跑，等它结束再拍板。");
+    const latest = this.latestOpenPending();
+    if (!latest) throw new Error("没有待拍板的提案。");
+
+    if (verdict === "accept") latest.approved = true;
+    else this.pending.delete(latest.name);
+    if (this.mode === DRAFT_MODE) this.mode = undefined;
+  }
+
+  /**
+   * 接受一份提案。
+   *
+   * **文档提案由 harness 直接落盘**——用户已经看过这一版字节，接受是确定的动作，不需要再让
+   * 模型猜“现在该调 apply-design 了”。走的是同一个 `apply-design` 工具、同一条 write_ops
+   * 路径，权限/不变量/CAS 一样不少；只是不再多一次模型往返。
+   * 规划提案没法由 harness 执行（正文要模型写），返回 plan 让外壳跑执行回合。
+   */
+  async acceptProposal(): Promise<{ kind: "design" | "plan" }> {
+    if (this.running) throw new Error("这一轮还在跑，等它结束再拍板。");
+    const latest = this.latestOpenPending();
+    if (!latest) throw new Error("没有待拍板的提案。");
+
+    this.decideProposal("accept");
+    if (latest.name === PLAN_KEY) return { kind: "plan" };
+
+    // 文档落盘虽然快，也要占住会话：否则用户在这几十毫秒里发话，会和写盘并发。
+    this.running = true;
+    this.io.onEvent({ type: "session.status", status: "busy" });
+    try {
+      await this.applyApprovedDesign(latest.name);
+    } finally {
+      this.running = false;
+      this.io.onEvent({ type: "session.status", status: "idle" });
+    }
+    return { kind: "design" };
+  }
+
+  /** 把已批准的文档提案交给 apply-design 工具落盘；失败时把工具错误原样抛出。 */
+  private async applyApprovedDesign(path: string): Promise<void> {
+    if (!this.tools.has("apply-design")) throw new Error("apply-design 工具没有注册。");
+    const callId = `apply-${randomUUID()}`;
+    const call: ToolCall = { id: callId, name: "apply-design", input: { path } };
+    this.io.onEvent({ type: "tool-call", id: callId, name: call.name, input: JSON.stringify(call.input) });
+    const part = await executeToolPart(this.agentId, call, this.tools, this.makeContext(this.agent, callId));
+    this.io.onEvent({
+      type: "tool.result",
+      id: callId,
+      name: call.name,
+      output: part.type === "tool" ? (part.output ?? part.error ?? "") : "",
+      change: part.type === "tool" ? part.change : undefined,
+    });
+    await this.persistAssistant(this.agentId, [part], "tool_calls");
+    // apply-design 失败时返回 completed + 错误文案（工具层约定），只有清掉提案才算成功
+    if (this.pending.has(path)) {
+      throw new Error(
+        part.type === "tool" ? (part.output || part.error || "apply-design 失败") : "apply-design 失败",
+      );
+    }
+  }
+
+  /**
+   * 提意见：用户确实写了一段话，照常落成 user 消息；但不再走 `draftVerdict`——
+   * 界面已经明确是 refine，一段恰好写成“没问题”的意见不该被误判成接受。
+   */
+  async refineProposal(note: string): Promise<string> {
+    if (this.running) throw new Error("这一轮还在跑，等它结束再提意见。");
+    const latest = this.latestOpenPending();
+    if (!latest) throw new Error("没有待拍板的提案。");
+    if (note.trim() === "") throw new Error("提意见不能为空。");
+
+    latest.approved = false;
+    return this.runTurn(this.agent, note, (text, id) => this.persistUser(text, id));
   }
 
   /** 提示符用：待落盘提案的展示名（如"核心层"）。没有未决的 → undefined。 */
@@ -718,6 +870,7 @@ export class Session {
       sessionId: this.sessionId,
       agent: agent.id,
       callId,
+      ...(this.lastUserSeq === undefined ? {} : { turnSeq: this.lastUserSeq }),
       signal: this.abort.signal,
       // 原始确认口：ask 拿它当弹窗，confirm 工具也用它。其余工具不该碰。
       confirm: (action, summary) => this.io.confirm(action, summary),
@@ -781,11 +934,21 @@ export class Session {
       // 把当前生效的规则集交给子会话去派生（父的 deny 继承、allow 不继承）
       runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt, this.rulesetFor(agent)),
       loadSkill: (name) => loadSkillByName(this.projectId, name).then((s) => s?.body),
+      // 联网设置也由会话注入：工具不自己读盘（分层守卫钉着）
+      webSettings: () => loadWebSettings(),
     };
   }
 
-  /** task 委派：子会话独立上下文，只传 prompt，返回最终正文 */
-  private async runSubagent(agentId: string, prompt: string, parentRuleset: Ruleset): Promise<string> {
+  /**
+   * task 委派：子会话独立上下文，只传 prompt，返回最终正文。
+   *
+   * 子会话 id 一并交出去：左栏列表会把子会话过滤掉，但轨迹和调试命令要靠它找回这一次委派。
+   */
+  private async runSubagent(
+    agentId: string,
+    prompt: string,
+    parentRuleset: Ruleset,
+  ): Promise<{ text: string; sessionId: string }> {
     const sub = this.agents.get(agentId);
     if (sub.mode !== "subagent") throw new Error(`agent ${agentId} 不是 subagent，不能 task 委派`);
     if (this.depth >= 1) throw new Error("子代理深度超限（task 最多嵌套 1 层）");
@@ -796,6 +959,7 @@ export class Session {
       model: sub.model ?? this.model,
       io: this.io,
       depth: this.depth + 1,
+      parentSessionId: this.sessionId,
       title: `task:${sub.name}`,
       meta: this.meta,
       agents: this.agents,
@@ -803,7 +967,7 @@ export class Session {
       parentRuleset,
     });
     await child.saveMeta(`task:${sub.name}`);
-    return child.post(prompt);
+    return { text: await child.post(prompt), sessionId: child.sessionId };
   }
 
   // ─── 消息缓存与持久化（唯一读写磁盘/内存的出口） ───
@@ -830,7 +994,10 @@ export class Session {
 
   private async persistUser(text: string, agentId: string): Promise<void> {
     const m = await appendMessage(this.projectId, this.sessionId, { role: "user", agent: agentId, text });
+    this.lastUserSeq = m.seq;
     await this.push(m);
+    // 界面用 seq 把实时气泡变成可回退目标。只报事件，不进模型上下文。
+    this.io.onEvent({ type: "user.message", seq: m.seq, text, sessionId: this.sessionId, agent: agentId });
   }
 
   private async persistAssistant(agent: string, parts: AssistantPart[], finish: "stop" | "tool_calls"): Promise<void> {

@@ -7,3 +7,5 @@ timeout (optional): seconds, default 30, max 120
 HTML pages are converted per format; plain files (txt/md/json…) are returned as-is; images/PDF
 are rejected. Large pages are truncated with a note. Use when the story needs a fact, setting,
 or reference material you should not rely on from memory — then reason from what came back.
+When DeepSeek Fetch is configured, text/markdown come from its Fetch API (Markdown); html still
+uses a direct fetch.

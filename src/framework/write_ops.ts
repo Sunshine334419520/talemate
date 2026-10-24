@@ -11,6 +11,7 @@
  *   6 CAS + 原子写
  *   7 返回        diff / 统计 / 命中了哪一级
  *
+ * 写成功后另记一条写前快照（`seq` + `before`），供"回退对话并还原文件"；记快照失败不影响落盘。
  * 每一笔都带 CAS；"唯一写路径"由 `ToolContext` 上只有一个写口保证，不是约定。
  *
  * 两个批准来源，一条路径：
@@ -24,6 +25,7 @@ import { join } from "node:path";
 import type { FileOp, PermissionVerdict, ToolContext, WriteChange } from "../core/types";
 import { DOC_ROOTS, rootAbs } from "../core/config";
 import { readText, removeIfUnchanged, StaleContentError, writeIfUnchanged } from "../storage/atomic";
+import { recordFileCheckpoint } from "../storage/file-history";
 import { joinBom, splitBom } from "../storage/bom";
 import { safeRelPath } from "../storage/util";
 import { diffLines, renderDiff } from "./diff";
@@ -244,6 +246,20 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
     next.action === "remove" ? "deleted" : next.isNew ? "created" : "modified";
   // 内容一模一样地写回去不产生记录；新建/删除即使内容为空也算一次实际变动
   const changed = kind !== "modified" || d.additions > 0 || d.deletions > 0;
+
+  // 写成功之后再记快照：写失败/被拒的文件不该进回退账。记失败不回滚已落盘的写——
+  // 那会让用户刚看到的 diff 与盘上不一致；代价只是这次回退还原不了这个文件。
+  if (changed && ctx.turnSeq !== undefined) {
+    try {
+      await recordFileCheckpoint(ctx.projectId, ctx.sessionId, {
+        seq: ctx.turnSeq,
+        path: target.pattern,
+        before: raw ?? null,
+      });
+    } catch {
+      // 见上：快照是回退的附加能力，不是落盘的前置条件
+    }
+  }
 
   return {
     ok: true,

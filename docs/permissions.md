@@ -2,7 +2,7 @@
 
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
-> **对齐代码**：2026-10-18 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`；桌面端默认模式在 `desktop/src/main/index.ts`
+> **对齐代码**：2026-10-24 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`；桌面端与 CLI 的默认模式分别在 `desktop/src/main/index.ts` 与 `src/cli.ts`（默认值 `DEFAULT_PERMISSION_MODE` 在 `desktop/src/shared/api.ts`）
 > 相邻：`agents.md`（角色与工具名册）· `ask-user.md`（提问的三态与回答路由）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
@@ -125,6 +125,8 @@ type PermissionConfig = Record<string, Action | Record<string, Action>>;
 - **每次询问**：不套模式，按规则表逐次 `ask`。
 
 模式不落盘；重开会话按这里的默认值重新起步，而不是读回上一次的模式。这个选择存在壳偏好 `<talemateHome>/desktop.json`，不会写进作品的 `talemate.json`。
+
+**CLI 的默认相同**：`openInSpace` 每次打开会话都以 `accept-edits` 起步；要退回每次询问就设 `TALEMATE_PERMISSION_MODE=ask`。CLI 没有桌面端那枚输入区开关，模式只在会话内存里。
 
 对话框输入区左侧也有同一枚「工作区内修改 / 每次询问」入口，和设置里的这一格是同一个偏好；改完立即作用于当前会话。
 

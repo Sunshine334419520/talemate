@@ -18,6 +18,12 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 
+// 从 Electron 系终端（VS Code / DeepSeek Harness）里启动时，父进程会把 `ELECTRON_RUN_AS_NODE=1`
+// 带进来，electron-vite 派生 Electron 时原样传下去，主进程就以纯 Node 运行、`app` 是 undefined。
+// 生产启动那条由 `scripts/launch-electron.mjs` 处理；dev 模式的 Electron 是 electron-vite 自己派的，
+// 只能在它读配置这一刻删掉。
+delete process.env.ELECTRON_RUN_AS_NODE;
+
 export default defineConfig({
   main: {},
   preload: {},
