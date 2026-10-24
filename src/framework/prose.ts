@@ -27,7 +27,7 @@ import { getSection, isFiller, upsertSection } from "./markdown";
 import { chapterFileOf } from "./plan";
 
 /** 没指定文风时用的那张卡——内置库里随产品发布的那一份。 */
-export const DEFAULT_STYLE = "prose";
+export const DEFAULT_STYLE = "storytelling";
 
 /** 核心设定的“文风”格标题。**读（`styleChoiceFrom`）与写（`upsertSection`）必须是同一份**——
  *  两处各写一个字面量，改了格名就会变成"写得进去、读不出来"。 */

@@ -2,7 +2,7 @@
 
 > **职责**：定下"写一章"这条流水线的架构——谁规划、谁批准、谁执行、工件放哪；并记下它推翻了哪些旧断言、为什么。
 > **读者**：要动手改这条流水线的人；以及想知道"为什么不是 writer 子代理了"的人。
-> **对齐代码**：**已落地**（2026-10-19）· 工件在 `framework/plan.ts`，门在 `tool/core_tools.ts` 的 `propose-plan`，角色在 `agent/registry.ts`；章规划是**卷契约 + 序列契约的投影**，四项新字段（对应序列功能 / 价值变化 / 不能提前兑现 / 章末读者问题）与卷契约的读取在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt`，判据在 `outline.md`、`characters.md` 与 `design-docs.md`。本文与代码冲突时以代码为准。
+> **对齐代码**：**已落地**（2026-10-24）· 工件在 `framework/plan.ts`，门在 `tool/core_tools.ts` 的 `propose-plan`，角色在 `agent/registry.ts`；章规划是**卷契约 + 序列契约的投影**，四项新字段（对应序列功能 / 价值变化 / 不能提前兑现 / 章末读者问题）与卷契约的读取在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt`，判据在 `outline.md`、`characters.md` 与 `design-docs.md`。本文与代码冲突时以代码为准。
 > 相邻：`product.md`（为什么这么做）· `design-docs.md`（设计文档体系与章节生产那条链）· `agents.md`（角色与工具）· `outline.md`（序列纲与章规划）· `roadmap.md`（状态层还没做）
 
 ## 一、为什么要改
@@ -137,7 +137,7 @@ mate 执行：规划里点到的新人先走 propose-design 落卡（先立人�
 
 1. **`.talemate/plans/`** —— 新目录 + 清理策略（`src/core/config.ts` 的 `projectPaths.plans` + `framework/plan.ts`；清理策略见“三”末尾）。
 2. **内置 skill 库** —— 仓库根 `skills/`，在 `src/skill/discovery.ts` 里作为**最低优先级**扫描根（用户全局库、项目库可同名覆盖）。`roadmap.md` 的 P2“文风卡迁移成 skill 库”说的就是它；P3 的 `style-extractor` 是它未来的生产者。
-3. **`skills/prose/` + `prompts/prose.rules.txt`** —— 文风纪律从 `writer.system.txt` 搬出来，**并拆成两层**：可判对错的跨文风规矩归**规范**（`prompts/`），"像不像这个声音"归**文风卡**（`skills/` 库，默认那张是 `prose`）。两层由 harness 在写作窗口拼起来注入，理由见 `agents.md` 的 Skill 系统那条例外与 `framework/prose.ts`。
+3. **`skills/storytelling/` + `prompts/prose.rules.txt`** —— 文风纪律从 `writer.system.txt` 搬出来，**并拆成两层**：可判对错的跨文风规矩归**规范**（`prompts/`），"像不像这个声音"归**文风卡**（`skills/` 库，默认那张是 `storytelling`）。两层由 harness 在写作窗口拼起来注入，理由见 `agents.md` 的 Skill 系统那条例外与 `framework/prose.ts`。
 4. **规划者 SubAgent** —— 带 `read` 与网络工具。**注意深度上限是 1**，它不能再派 researcher，要自己查。
 5. **提交规划的工具** —— 语义从"节拍"换成"规划"；去掉草稿模式前置；批准粒度从"一次写作"改成"一份规划"。
 6. **mate 侧** —— `mate.system.txt` 那条“绝不自己写正文”**删掉，不是改成它的反面**。writer 一没，它就挡不住任何东西了（剩下两个子代理都是类别拒的只读），而"什么时候派谁"的契约本来就在 `task` 的目录里——`planner` 的 description 写着 "Not for prose"。**留下一句同义反复的禁令，只会让下一个人以为还有个 writer 要防。** 规划摆出与裁决复用现成的 pending 机制。

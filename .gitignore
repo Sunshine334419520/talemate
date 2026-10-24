@@ -11,6 +11,7 @@ desktop/out/
 
 # 实验生成产物
 experiments/output/
+experiments/style-bench/outputs/
 
 # macOS
 .DS_Store

@@ -71,16 +71,18 @@ try {
   console.log(`[3] 用户接受 → 规划记为已同意且留着：${s2write.pending.get(PLAN_KEY)?.approved ? "✓" : "✗"}`);
   console.log(`[3b] mate post 返回（${reply.length} 字）：${truncate(reply, 120)}`);
 
-  // 3c) 内置 skill 库：随产品发布的 prose 在最低优先级那一层，用户同名可覆盖
+  // 3c) 内置 skill 库：随产品发布的 storytelling 在最低优先级那一层，用户同名可覆盖
   const skills = await discoverSkills(meta.id);
-  const hasProse = skills.some((s) => s.name === "prose");
-  console.log(`[3c] 内置 skill 库可发现 prose：${hasProse ? "✓" : "✗"}`);
-  if (!hasProse) throw new Error(`内置 skill 库没接上：${skills.map((s) => s.name).join(", ") || "（一个都没有）"}`);
+  const hasStorytelling = skills.some((s) => s.name === "storytelling");
+  console.log(`[3c] 内置 skill 库可发现 storytelling：${hasStorytelling ? "✓" : "✗"}`);
+  if (!hasStorytelling) {
+    throw new Error(`内置 skill 库没接上：${skills.map((s) => s.name).join(", ") || "（一个都没有）"}`);
+  }
 
-  const proj = join(HOME, "novels", meta.id, "skills", "prose");
+  const proj = join(HOME, "novels", meta.id, "skills", "storytelling");
   await mkdir(proj, { recursive: true });
-  await writeFile(join(proj, "SKILL.md"), "---\nname: prose\ndescription: 项目自带的\n---\n项目版正文。\n", "utf-8");
-  const overridden = (await discoverSkills(meta.id)).find((s) => s.name === "prose");
+  await writeFile(join(proj, "SKILL.md"), "---\nname: storytelling\ndescription: 项目自带的\n---\n项目版正文。\n", "utf-8");
+  const overridden = (await discoverSkills(meta.id)).find((s) => s.name === "storytelling");
   const won = overridden?.description === "项目自带的";
   console.log(`[3c2] 项目库同名覆盖内置库：${won ? "✓" : "✗"}`);
   if (!won) throw new Error("项目库没能覆盖内置库的同名 skill");

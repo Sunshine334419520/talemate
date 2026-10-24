@@ -109,7 +109,7 @@ export const SPECS: DocSpec[] = [
         // 用 `## ${STYLE_HEADING}` 钉住。
         heading: "文风",
         write:
-          "这本书用哪种声音写——写文风卡的名字（库里有哪几张见 system 的 <available_skills>；用户要换文风就是改这一格），如 prose。没有特别想要的就不写这一格，用默认那张。",
+          "这本书用哪种声音写——写文风卡的名字（库里有哪几张见 system 的 <available_skills>；用户要换文风就是改这一格），如 storytelling。没有特别想要的就不写这一格，用默认那张。",
         avoid: "文风卡的内容本身（它照这个名字被取出来交到写正文那一步，写在这里等于抄两份）。",
         form: "一行，只写卡名。要记为什么选它，另起一行写一句理由。",
       },

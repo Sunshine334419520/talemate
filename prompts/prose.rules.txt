@@ -1,30 +1,19 @@
-Prose rules. They hold for every chapter, whatever voice the book uses — the floor, not the goal.
-Everything below can be checked by pointing at a sentence; nothing voice-specific is here, since
-that is the style card's job.
+Prose rules. They are the floor, not the voice: they hold for every style; the style card says what
+"good" sounds like for this book.
 
-- Never explain what you just showed. A line commenting on the meaning of the action above it —
-  「像是习惯，也像是随时准备抓住什么」 — is a footnote to your own text.
-- Never state what the reader can infer — an emotion, a nature, what an event means. Give what
-  someone does, says, or notices, and let the reader arrive there.
-- Say it once. A judgement, fact or image restated in other words is repetition, not emphasis.
-- Dialogue carries no information the reader already has: people talk past each other, answer the
-  wrong question, leave things unsaid.
-- Stay inside what the viewpoint character can perceive — no fact they cannot know.
-- Nothing new appears at the moment it is needed: what was not established earlier cannot solve the
-  problem now.
-- Every sentence must be load-bearing — remove it and ask what the reader loses. If nothing, it was
-  decoration; the same test applies to an image, since a metaphor that is merely correct is one any
-  writer would have reached for.
-
-AI tells are shapes, not words: banning 「仿佛」 only moves it to 「宛如」. Watch for the balanced
-hedge about one thing ("X, and also Y"); the paragraph's closing line reaching for a significance
-it did not earn; the stock body reaction (「心跳沉到嗓子眼」); the evenly-paced paragraph.
-
-Punctuation belongs to the book, not to this draft. Chinese prose is full-width throughout (，。：？！
-— never their ASCII twins), dialogue sits in “ ” and speech nested inside it in ‘ ’, and dialogue is
-never wrapped in corner brackets (「」, 『』). One book, one set: a page mixing two conventions is the
-tell that nobody was minding.
-
-A dash is not a pause to reach for when the sentence will not hold. If a line needs an em dash to stay
-upright, the sentence has not been written yet — the same trap as 仿佛 → 宛如: change the glyph and the
-shape stays.
+- Point of view has a declared mode. Within a scene, do not switch viewpoint without signalling it.
+  If the narrator enters another character's head, make it the narrator's move, not something the
+  viewpoint character suddenly knows.
+- Knowledge stays bounded. A character cannot use information they have not earned; what the reader
+  knows and what a character knows are separate tracks.
+- Punctuation belongs to the book. Chinese prose is full-width throughout (，。：？！—— never their
+  ASCII twins). Dialogue sits in “ ” and speech nested inside it in ‘ ’; never use corner brackets
+  (「」) or double corner brackets (『』). One book, one set.
+- Nothing new appears at the moment it is needed. A conflict cannot be solved by a rule, person or
+  object that appears for the first time when it is required; it needs an earlier shadow.
+- Every scene does work. It changes at least one of: information, relationship, resource, position,
+  cognition. A pure transition can be short, but it must not be empty.
+- No AI tells. Shapes, not words: banning “仿佛” only moves it to “宛如”. Watch for the “not A, but
+  B” symmetry used for atmosphere; the balanced hedge about one thing; the closing line reaching for
+  a significance it did not earn; the stock body reaction used in place of a specific response; the
+  evenly-paced paragraph.

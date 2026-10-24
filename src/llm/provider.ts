@@ -130,8 +130,12 @@ async function chatOpenAI(opts: ChatOpts): Promise<AssistantTurn> {
   const client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseURL || undefined });
   const reasoning = cfg.reasoning;
 
-  const thinkingBody: object =
-    reasoning === "off"
+  // Gemini 的 OpenAI 兼容层只认 reasoning_effort，不认 DeepSeek 的 thinking 字段。
+  // 按 base URL 分流，避免给 Gemini 发一个它不认识的参数。
+  const isGemini = cfg.baseURL?.includes("generativelanguage.googleapis.com") ?? false;
+  const thinkingBody: object = isGemini
+    ? { reasoning_effort: geminiReasoning(reasoning) }
+    : reasoning === "off"
       ? { thinking: { type: "disabled" } }
       : { thinking: { type: "enabled" }, reasoning_effort: reasoning };
 
@@ -212,6 +216,13 @@ async function chatOpenAI(opts: ChatOpts): Promise<AssistantTurn> {
     finish: toolCalls.length ? "tool_calls" : "stop",
     usage: { input: usageIn, output: usageOut },
   };
+}
+
+/** Gemini 的 reasoning_effort 只有 minimal / low / medium / high；我们的 max 映射到 high。 */
+function geminiReasoning(reasoning: ModelConfig["reasoning"]): "minimal" | "low" | "medium" | "high" {
+  if (reasoning === "off") return "minimal";
+  if (reasoning === "max") return "high";
+  return reasoning;
 }
 
 function toOpenAIMessages(
@@ -334,7 +345,7 @@ const MOCK_PROPOSAL = [
   "（待定）",
   "",
   "## 文风",
-  "prose",
+  "storytelling",
   "",
 ].join("\n");
 

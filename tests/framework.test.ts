@@ -123,23 +123,23 @@ describe("markdown 区块手术", () => {
   });
 
   test("upsertSection 命中就换掉那一格，别的格一个字节不动", () => {
-    const core = ["# 核心设定", "", "## 题材 · 频道", "男频", "", "## 文风", "prose", ""].join("\n");
+    const core = ["# 核心设定", "", "## 题材 · 频道", "男频", "", "## 文风", "storytelling", ""].join("\n");
     const next = upsertSection(core, "文风", "网文爽感");
     expect(next).toContain("## 文风\n网文爽感");
-    expect(next).not.toContain("prose");
+    expect(next).not.toContain("storytelling");
     expect(next).toContain("## 题材 · 频道\n男频");
   });
 
   test("upsertSection 命不中就追加——格还不存在是**正常起点**，不是错误", () => {
     const core = "# 核心设定\n\n## 题材 · 频道\n男频\n";
-    const next = upsertSection(core, "文风", "prose");
-    expect(next).toContain("## 文风\nprose");
+    const next = upsertSection(core, "文风", "storytelling");
+    expect(next).toContain("## 文风\nstorytelling");
     expect(next.indexOf("## 题材 · 频道")).toBeLessThan(next.indexOf("## 文风")); // 追加在末尾
     expect(next.startsWith("# 核心设定")).toBe(true);
   });
 
   test("upsertSection 空内容起手也能用（新建项目没有 core.md）", () => {
-    expect(upsertSection("", "文风", "prose")).toBe("## 文风\nprose");
+    expect(upsertSection("", "文风", "storytelling")).toBe("## 文风\nstorytelling");
   });
 
   test("upsertSection 的区块语义与 removeSection 一致：`##` 连带它自己的 `###`", () => {
@@ -1141,7 +1141,7 @@ describe("文风目录 · 状态栏那个选择器取的两样", () => {
   });
 
   test("withStyle：已有核心设定时只换那一格", () => {
-    const core = "# 核心设定\n\n## 题材 · 频道\n男频\n\n## 文风\nprose\n";
+    const core = "# 核心设定\n\n## 题材 · 频道\n男频\n\n## 文风\nstorytelling\n";
     const text = withStyle(core, "style-01-wangwen");
     expect(text).toContain("## 题材 · 频道\n男频");
     expect(text).toContain("## 文风\nstyle-01-wangwen");
@@ -1184,12 +1184,12 @@ describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () 
 
   test("文风格读不出卡名时用默认，**但带一句说明**——不能静默换掉用户的声口", () => {
     const cases: [string, string, boolean][] = [
-      ["（待定）", "prose", false], // 没填 → 默认，没什么可说的
-      ["网文爽文那一张", "prose", true], // 不像卡名 → 默认 + 说明
-      ["prose", "prose", false],
+      ["（待定）", "storytelling", false], // 没填 → 默认，没什么可说的
+      ["网文爽文那一张", "storytelling", true], // 不像卡名 → 默认 + 说明
+      ["storytelling", "storytelling", false],
       ["style-01-wangwen", "style-01-wangwen", false],
-      ["文风：prose", "prose", false], // 格是给人写的，容忍几种写法
-      ["- **prose**", "prose", false],
+      ["文风：storytelling", "storytelling", false], // 格是给人写的，容忍几种写法
+      ["- **storytelling**", "storytelling", false],
     ];
     const wrong = cases
       .filter(([body, want, wantNote]) => {
@@ -1205,18 +1205,19 @@ describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () 
       styleChoiceFrom(undefined).name,
       styleChoiceFrom("# 核心\n\n## 一句话简介\n沈越想活着回去。\n").name,
     ];
-    expect(got).toEqual(["prose", "prose"]);
+    expect(got).toEqual(["storytelling", "storytelling"]);
   });
 
   test("窗口块：规范 + 卡 + 落盘路径，三样一起给", async () => {
-    await writeDoc(pid, "design/core.md", CORE("prose"));
+    await writeDoc(pid, "design/core.md", CORE("storytelling"));
     const brief = await buildProseBrief(pid, 3);
     const missing = [
       `<prose-window chapter="3">`,
       "【正文规范】",
-      "Never explain what you just showed", // 规范正文真的进来了
-      "【这本书的文风】prose",
-      "短句推进", // 卡的正文真的进来了
+      "Point of view has a declared mode", // 规范正文真的进来了
+      "【这本书的文风】storytelling",
+      "叙述者在场", // 卡的正文真的进来了
+      "段落是完整的一件事",
       // 落盘路径必须就是 `isChapterFile` 认的那一个：告诉它的名字和认它的名字是同一件事的两半
       "chapters/chapter_ch3_v1.md",
     ].filter((s) => !brief.includes(s));

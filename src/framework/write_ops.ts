@@ -28,6 +28,7 @@ import { joinBom, splitBom } from "../storage/bom";
 import { safeRelPath } from "../storage/util";
 import { diffLines, renderDiff } from "./diff";
 import { computeNext, normalizeLineEndings } from "./file_ops";
+import { formatProse } from "./format_prose";
 import { checkInvariants } from "./invariants";
 import type { MatchLevel } from "./match";
 import { proposalOp } from "./proposal";
@@ -170,7 +171,11 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
   const nextSplit = next.action === "remove" ? { bom: false, text: "" } : splitBom(next.content);
   // 沿用文件原有的 BOM；文件本来没有、而模型显式带了一个，才采用它（见 storage/bom.ts）
   const desiredBom = (source?.bom ?? false) || nextSplit.bom;
-  const after = nextSplit.text;
+  // 正文的“一句一段”在落盘前确定性地做，不靠模型数句号；设计/状态文档不碰。
+  const after =
+    next.action === "write" && target.pattern.startsWith("chapters/")
+      ? formatProse(nextSplit.text)
+      : nextSplit.text;
 
   // 对结果做后验（不是对提案）。放在算 diff 之前：违反不变量就不该问用户，
   // 也不该让他看见一份注定落不下去的 diff。

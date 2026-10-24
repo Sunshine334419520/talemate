@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { builtinSkillsDir } from "../src/core/config";
 import { parseSkillFile } from "../src/skill/parse";
 
-const LF = ["---", "name: prose", "description: 白话现代中文", "---", "", "# 正文文风纪律", "", "只写正文。", ""].join("\n");
+const LF = ["---", "name: storytelling", "description: 白话现代中文", "---", "", "# 正文文风纪律", "", "只写正文。", ""].join("\n");
 const CRLF = LF.replace(/\n/g, "\r\n");
 
 describe("skill · SKILL.md 解析", () => {
@@ -16,7 +16,7 @@ describe("skill · SKILL.md 解析", () => {
     const a = parseSkillFile(LF, "lf/SKILL.md");
     const b = parseSkillFile(CRLF, "crlf/SKILL.md");
     const same = [
-      a.name === "prose" && b.name === "prose",
+      a.name === "storytelling" && b.name === "storytelling",
       a.description === "白话现代中文" && b.description === "白话现代中文",
       a.body === b.body,
     ];

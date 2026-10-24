@@ -9,6 +9,8 @@
     "cli": "bun run src/cli.ts",
     "smoke": "bun run src/smoke.ts",
     "probe": "bun run src/probe/advance.ts",
+    "style-bench": "bun run experiments/style-bench/run.ts",
+    "style-bench:gemini": "bash experiments/style-bench/run-gemini.sh",
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p desktop/tsconfig.renderer.json",
     "desktop": "bun run desktop:build && electron desktop",
