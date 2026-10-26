@@ -23,7 +23,7 @@ import { listTool, readTool, searchTool } from "../src/tool/read_tools";
 import { recallTool, rememberTool } from "../src/tool/research_tools";
 import { listNoteNames, noteAbs, readNote } from "../src/storage/notes";
 import { projectPaths, talemateHome } from "../src/core/config";
-import { enterDraftTool, exitDraftTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
+import { enterDraftTool, exitDraftTool, enterProseTool, exitProseTool, proposePlanTool, taskTool } from "../src/tool/core_tools";
 import { MODES } from "../src/agent/modes";
 import {
   BASE_PERMISSIONS,
@@ -499,6 +499,10 @@ function makeCtx(
     },
     exitDraft: () => {
       if (mode === "draft") mode = undefined;
+      modeLog.push(undefined);
+    },
+    exitProse: () => {
+      if (mode === "prose") mode = undefined;
       modeLog.push(undefined);
     },
     getMode: () => mode,
@@ -1062,7 +1066,7 @@ describe("propose-plan · 规划工件与拍板", () => {
 
     ctx.pending.get(PLAN_KEY)!.approved = true;
     const approved = renderPendingNote(ctx.pending)!;
-    expect(approved).toContain("立刻开始写这一章的正文");
+    expect(approved).toContain("按「产物（按序）」执行");
     // 文风不再靠 mate 自己记得去取——规范与卡由 harness 随 system 一起交出去（framework/prose.ts）
     expect(approved).not.toContain("skill(prose)");
   });
@@ -1088,7 +1092,7 @@ describe("propose-plan · 规划工件与拍板", () => {
     plan.done = true;
     const note = renderPendingNote(ctx.pending)!;
     expect(note).toContain("<settled-plan>");
-    expect(note).not.toContain("立刻开始写这一章的正文"); // 执行过了，不该再喊一次
+    expect(note).not.toContain("按「产物（按序）」执行"); // 执行过了，不该再喊一次
     expect(ctx.pending.has(PLAN_KEY)).toBe(true); // **不是删除**：规划正文只活在 pending 里
     expect(note).toContain(".talemate/plans/ch_1.md");
   });
@@ -1260,6 +1264,24 @@ describe("会话模式 · draft", () => {
     expect(ctx.modeLog).toEqual(["draft"]);
     await exitDraftTool.execute({}, ctx as never);
     expect(ctx.modeLog).toEqual(["draft", undefined]);
+  });
+
+  test("enter-prose / exit-prose：只有规划已批准且未执行时能进", async () => {
+    const ctx = makeCtx(pid);
+    expect((await enterProseTool.execute({}, ctx as never)).output).toContain("还没有已批准");
+    ctx.pending.set(PLAN_KEY, {
+      name: PLAN_KEY,
+      content: "## 意图\n测试\n",
+      chapter: 1,
+      approved: true,
+      at: Date.now(),
+    });
+    await enterProseTool.execute({}, ctx as never);
+    expect(ctx.getMode()).toBe("prose");
+    expect(ctx.modeLog).toEqual(["prose"]);
+    await exitProseTool.execute({}, ctx as never);
+    expect(ctx.getMode()).toBeUndefined();
+    expect(ctx.modeLog).toEqual(["prose", undefined]);
   });
 
   test("propose-design **不**自己退模式——出口是用户接受或拒绝（harness 判）", async () => {

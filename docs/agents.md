@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-10-24 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
+> **对齐代码**：2026-10-25 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -38,7 +38,7 @@
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
 | **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；**自己写正文**；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **planner 规划者** | subagent | 把一个章节意图读成一份**可执行规划**：节拍、要立住的人、查证结论（带出处）、这次要落地的产物 | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit` / `notes` 是**类别拒**——落盘类工具整个不在 schema 里）+ `recall`（**只读**考据本，别重查） |
+| **planner 规划者** | subagent | 把一个章节意图读成一份**场景简报**：前情、这场戏（谁要什么、谁挡谁）、必须发生、不能提前兑现、章末问题，以及按序的产物清单 | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit` / `notes` 是**类别拒**——落盘类工具整个不在 schema 里）+ `recall`（**只读**考据本，别重查） |
 | **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（同上，类别拒）+ `recall` `remember`（它自己的考据本） |
 | **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
@@ -122,6 +122,8 @@
 | `propose-plan` | 把**一章**的规划交给用户拍板并结束本回合。规划**落** `<novel>/.talemate/plans/ch_<N>.md`（引擎工作区，见 `framework/plan.ts`），**不落 design/**；用户回话后由 harness 置 `approved`。**不需要先 enter-draft**——草稿模式只服务文档提案的三向审阅 |
 | `enter-draft` | 进入**草稿模式**（`edit`/`delegate` 一律 deny，那些工具从 schema 里消失）。**三向审阅的唯一通道** |
 | `exit-draft` | 用户改主意不做了 → 离开草稿模式（正常路径不需要它：接受/拒绝会自己退） |
+| `enter-prose` | 前置产物都落地后进入**正文模式**：role system 从 `mate.system` 换成 `prose.system`，权限不变；由模型显式调用，避免 plan 一接受就跳过建卡/考据 |
+| `exit-prose` | 离开正文模式，恢复进入前的 mode（正文落盘时 harness 也会自动退出） |
 | `confirm` | 模型主动要用户点头（受 `question` 权限管） |
 
 **`web_tools`** — 联网

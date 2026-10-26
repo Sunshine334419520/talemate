@@ -34,6 +34,17 @@ describe("消息操作 · 复制 / 回退", () => {
     expect(css).toContain(".rewind-mask");
   });
 
+  test("手动发消息无条件恢复跟随并回到底部", async () => {
+    const ws = await readFile(join(ROOT, "desktop/src/renderer/Workspace.tsx"), "utf8");
+    const start = ws.indexOf("const say = useCallback");
+    const end = ws.indexOf("}, []);", start);
+    expect(start).toBeGreaterThan(-1);
+    const block = ws.slice(start, end);
+    expect(block).toContain("pinnedRef.current = true");
+    expect(block).toContain("setAtBottom(true)");
+    expect(block).toContain("setLive");
+  });
+
   test("回到底部按钮在对话区底边，不压输入框", async () => {
     const ws = await readFile(join(ROOT, "desktop/src/renderer/Workspace.tsx"), "utf8");
     const css = await readFile(join(ROOT, "desktop/src/renderer/styles.css"), "utf8");

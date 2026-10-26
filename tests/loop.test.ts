@@ -7,6 +7,7 @@
 import { describe, test, expect } from "bun:test";
 import type { AgentDef, AssistantPart, PendingProposal, ToolCall } from "../src/core/types";
 import { toNeutralMessages } from "../src/context/assemble";
+import { toOpenAIMessages } from "../src/llm/provider";
 import type { AssistantTurn, NeutralMsg } from "../src/llm/types";
 import { runLoop, type LoopDeps } from "../src/session/loop";
 import { draftVerdict, isAgreement, renderPendingNote, verdictEffect, type DraftVerdict } from "../src/session/session";
@@ -211,6 +212,43 @@ describe("halt 之后的消息仍是合法请求形状", () => {
     const toolMsgs = msgs.filter((m) => m.role === "tool");
     expect(assistant?.role === "assistant" && assistant.toolCalls?.map((t) => t.id)).toEqual(["c1", "c2"]);
     expect(toolMsgs.map((m) => (m.role === "tool" ? m.toolCallId : ""))).toEqual(["c1", "c2"]);
+  });
+});
+
+describe("DeepSeek 思考模式 · reasoning_content 回传", () => {
+  test("assistant 的 reasoning 随历史回到 NeutralMsg，不能丢", () => {
+    const msgs = toNeutralMessages([
+      {
+        seq: 1,
+        role: "assistant",
+        ts: 0,
+        agent: "mate",
+        finish: "tool_calls",
+        parts: [
+          { type: "reasoning", text: "需要先写卡" },
+          { type: "text", text: "我先写卡。" },
+          { type: "tool", id: "c1", name: "write", state: "completed", output: "ok" },
+        ],
+      },
+    ]);
+    const assistant = msgs[0];
+    expect(assistant.role === "assistant" ? assistant.reasoning : undefined).toBe("需要先写卡");
+  });
+
+  test("DeepSeek 请求带 reasoning_content；老消息缺 reasoning 时也带字段", () => {
+    const call: ToolCall = { id: "c1", name: "write", input: { path: "x" } };
+    const withReason = toOpenAIMessages(
+      undefined,
+      [{ role: "assistant", reasoning: "想", toolCalls: [call] }],
+      true,
+    );
+    expect((withReason[0] as { reasoning_content?: string }).reasoning_content).toBe("想");
+
+    const legacy = toOpenAIMessages(undefined, [{ role: "assistant", toolCalls: [call] }], true);
+    expect((legacy[0] as { reasoning_content?: string }).reasoning_content).toContain("no model reasoning");
+
+    const other = toOpenAIMessages(undefined, [{ role: "assistant", reasoning: "想" }], false);
+    expect((other[0] as { reasoning_content?: string }).reasoning_content).toBeUndefined();
   });
 });
 

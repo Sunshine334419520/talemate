@@ -12,3 +12,6 @@ or two, or when the work needs going back and forth with the user. A chapter's p
 way: you write it yourself, never through a subagent. Every delegation asks the user first, and the
 subagent sees nothing but the prompt you write for it. The delegable agents and when to use each are
 listed below.
+- After a planner returns, your next tool call must be propose-plan. Do not start creating the plan's
+  cards, world pages, or prose before the user approves it, and do not spend the turn asking about its
+  open questions first — put the plan in front of the user and let them rule on it.

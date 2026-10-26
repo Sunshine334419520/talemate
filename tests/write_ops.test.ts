@@ -68,6 +68,7 @@ function makeCtx(): TestCtx {
     },
     setMode: () => {},
     exitDraft: () => {},
+    exitProse: () => {},
     getMode: () => undefined,
     readDoc: () => Promise.resolve(undefined),
     listIndex: () => Promise.resolve(""),
@@ -510,5 +511,22 @@ describe("write_ops · 文件回退快照", () => {
       { seq: 9, path, before: "旧内容\n", at: expect.any(Number) },
     ]);
     await dropFileCheckpointsFrom(pid, "t", 10);
+  });
+});
+
+
+describe("write_ops · 正文模式门", () => {
+  test("规划已批准但未进 prose 模式时，章节写入被拒", async () => {
+    const ctx = makeCtx();
+    ctx.pending.set(PLAN_KEY, {
+      name: PLAN_KEY,
+      content: "## 意图\n测试\n",
+      chapter: 1,
+      approved: true,
+      at: Date.now(),
+    });
+    const r = await writeFile(ctx, confirm({ kind: "write", path: "chapters/chapter_ch1_v1.md", content: "正文\n" }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.output).toContain("enter-prose");
   });
 });

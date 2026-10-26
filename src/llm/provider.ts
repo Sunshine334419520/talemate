@@ -139,7 +139,11 @@ async function chatOpenAI(opts: ChatOpts): Promise<AssistantTurn> {
       ? { thinking: { type: "disabled" } }
       : { thinking: { type: "enabled" }, reasoning_effort: reasoning };
 
-  const messages = toOpenAIMessages(opts.system, opts.messages);
+  // 只有 DeepSeek 的思考模式要求回传 reasoning_content；给 OpenAI / Gemini 加这个字段
+  // 可能被它们的严格 schema 拒掉。
+  const isDeepSeek =
+    cfg.baseURL?.includes("deepseek.com") === true || cfg.model.toLowerCase().startsWith("deepseek");
+  const messages = toOpenAIMessages(opts.system, opts.messages, isDeepSeek);
   const stream = await client.chat.completions.create(
     {
       model: cfg.model,
@@ -225,9 +229,15 @@ function geminiReasoning(reasoning: ModelConfig["reasoning"]): "minimal" | "low"
   return reasoning;
 }
 
-function toOpenAIMessages(
+type AssistantMessageWithReasoning = OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam & {
+  reasoning_content?: string;
+};
+
+/** `withReasoning` 只给 DeepSeek：思考模式要求把上一轮 assistant 的 reasoning_content 原样带回。 */
+export function toOpenAIMessages(
   system: string | undefined,
   messages: NeutralMsg[],
+  withReasoning = false,
 ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
   const out: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
   if (system) out.push({ role: "system", content: system });
@@ -235,17 +245,26 @@ function toOpenAIMessages(
     if (m.role === "user") {
       out.push({ role: "user", content: m.text });
     } else if (m.role === "assistant") {
-      out.push({
+      const assistant: AssistantMessageWithReasoning = {
         role: "assistant",
         content: m.text ?? "",
-        tool_calls: m.toolCalls?.length
-          ? m.toolCalls.map((tc) => ({
-              id: tc.id,
-              type: "function" as const,
-              function: { name: tc.name, arguments: JSON.stringify(tc.input ?? {}) },
-            }))
-          : undefined,
-      });
+        ...(m.toolCalls?.length
+          ? {
+              tool_calls: m.toolCalls.map((tc) => ({
+                id: tc.id,
+                type: "function" as const,
+                function: { name: tc.name, arguments: JSON.stringify(tc.input ?? {}) },
+              })),
+            }
+          : {}),
+      };
+      if (withReasoning) {
+        // 老消息/合成 apply-design 可能没有 reasoning 原文；字段仍然要在，否则 DeepSeek 400。
+        // 不用空串：部分兼容层会把它当成“没传”；给一条明确的占位说明。
+        assistant.reasoning_content =
+          m.reasoning ?? "The harness recorded this assistant turn; no model reasoning was stored.";
+      }
+      out.push(assistant);
     } else {
       out.push({ role: "tool", tool_call_id: m.toolCallId, content: m.output });
     }

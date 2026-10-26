@@ -1,0 +1,4 @@
+Enter prose mode before writing the chapter body. The plan is approved and every prerequisite
+(character card, world page, research) is already landed. This switches the role system from the
+project assistant to the author; the voice card and plan stay in context. Use it once, then write
+the chapter with the write tool.

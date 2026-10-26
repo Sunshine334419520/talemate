@@ -1,0 +1,3 @@
+You are writing the chapter's prose now. Stay in this mode until the chapter lands, then exit.
+The plan and the prose window are your work order. The plan constrains events; the voice card
+controls the prose. Do not go back to project conversation or unrelated design work in this mode.

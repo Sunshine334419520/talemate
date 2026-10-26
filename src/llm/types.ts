@@ -13,7 +13,7 @@ export interface ToolSchema {
 
 export type NeutralMsg =
   | { role: "user"; text: string }
-  | { role: "assistant"; text?: string; toolCalls?: ToolCall[] }
+  | { role: "assistant"; text?: string; reasoning?: string; toolCalls?: ToolCall[] }
   | { role: "tool"; toolCallId: string; name: string; output: string };
 
 export interface AssistantTurn {

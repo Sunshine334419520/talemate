@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-10-19 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> **对齐代码**：2026-10-25 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -47,7 +47,10 @@
 落盘那条路上，两者汇进同一个 `writeFile`：解析目标 → 读 → 算结果 → 算 diff → 取批准 → CAS + 原子写。
 
 **三向**（`propose-design` → 用户回话 → `apply-design`）。桌面端点「接受」时由 **harness 直接调用
-`apply-design`**（同一条 write_ops、同一套规则；省掉一轮模型往返）；CLI / 文本回复仍由模型调用。
+`apply-design`**（同一条 write_ops、同一套规则；省掉一轮模型往返）；CLI / 文本回复仍由模型调用。规划提案接受后，harness 用一条一次性的内部执行指令起模型回合
+（不落成用户消息），要求它按规划里的「产物（按序）」执行：需要的新卡/世界事实先各自走
+propose-design 给用户过目，再写正文；不能跳过前置产物。规划执行期间接受一个前置文档后，
+harness 会自动续跑该规划，不会停在半路。
 
 - **`propose-design` 的 `halt`**：结束本回合，把控制权交回用户。同回合剩下的 tool call 不再执行——但必须补 `error` part（见 `architecture.md` 的 halt 说明）。
 - **"同意"由 harness 判**：界面按钮走结构化 `decideProposal`（接受 / 拒绝）与 `refineProposal`（提意见），不再把“没问题 / 不行”写进对话；CLI 与用户手打回复仍走 `markPendingApproval` 的 `draftVerdict`（整句词表，fail-closed）。无论哪条路，**模型自述无效**；措辞不常见一律算“提意见”，多走一轮，绝不误判成接受。

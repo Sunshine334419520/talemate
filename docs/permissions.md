@@ -2,7 +2,7 @@
 
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
-> **对齐代码**：2026-10-24 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`；桌面端与 CLI 的默认模式分别在 `desktop/src/main/index.ts` 与 `src/cli.ts`（默认值 `DEFAULT_PERMISSION_MODE` 在 `desktop/src/shared/api.ts`）
+> **对齐代码**：2026-10-25 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`；桌面端与 CLI 的默认模式分别在 `desktop/src/main/index.ts` 与 `src/cli.ts`（默认值 `DEFAULT_PERMISSION_MODE` 在 `desktop/src/shared/api.ts`）
 > 相邻：`agents.md`（角色与工具名册）· `ask-user.md`（提问的三态与回答路由）· `design-docs.md`（两段式落盘）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
@@ -37,7 +37,7 @@
 
 **`notes` 是第五类，理由不是"更好管"**：它**装不进 `edit`**。求值第 1 步让任何匹配的 `deny` 恒赢、不受层级顺序影响，而子代理的规则集又是从父的 deny 派生的——researcher 身上挂着 `edit: "*": deny`，那条 deny 压得住 `edit` 里任何"考据本例外"。可它必须在**隔离上下文**里记下一笔、还不能弹用户的脸（子代理的 `ask` 就是一次 `io.confirm`），所以只能自成一类。
 
-**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `recall`（翻考据本，同上）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**「先摆出来、用户拍板才执行」已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft`（模式切换）。
+**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `recall`（翻考据本，同上）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**「先摆出来、用户拍板才执行」已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft` / `enter-prose` / `exit-prose`（模式切换）。
 
 **无权限的读有个代价，`recall` 上要记住：** 没有 `permission`，runner 那道粗粒度兜底（`if (tool.permission && …)`）对它就是死代码，`visibleTools` 也没有可 deny 的把手——**挡不住被幻觉调出来的调用，也不能被某个模式收走**。所以它的圈定必须是**结构性的**：目录由项目推死、不收任何路径参数、题目在读侧也过校验。
 
@@ -127,6 +127,8 @@ type PermissionConfig = Record<string, Action | Record<string, Action>>;
 模式不落盘；重开会话按这里的默认值重新起步，而不是读回上一次的模式。这个选择存在壳偏好 `<talemateHome>/desktop.json`，不会写进作品的 `talemate.json`。
 
 进入草稿模式时会暂存当前模式，接受 / 拒绝或 `exit-draft` 退出后恢复它——审阅一张角色卡不会把「工作区内修改」掉回「每次询问」。
+
+**正文模式（`prose`）** 只替换 role system（`prose.system`），不改变权限：用户在设置里选「每次询问」，正文落盘仍然要问；选「工作区内修改」，照旧允许。进入时同样暂存当前模式，`exit-prose` 或正文落盘后恢复。
 
 **CLI 的默认相同**：`openInSpace` 每次打开会话都以 `accept-edits` 起步；要退回每次询问就设 `TALEMATE_PERMISSION_MODE=ask`。CLI 没有桌面端那枚输入区开关，模式只在会话内存里。
 

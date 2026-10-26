@@ -1,0 +1,2 @@
+Leave prose mode and return to the project assistant. The chapter is already landed, or you are
+stopping this writing turn. Do not call it in the middle of the chapter body.

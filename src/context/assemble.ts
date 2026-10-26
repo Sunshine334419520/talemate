@@ -53,6 +53,12 @@ export function toNeutralMessages(messages: StoredMessage[]): NeutralMsg[] {
           .filter((p): p is Extract<(typeof parts)[number], { type: "text" }> => p.type === "text")
           .map((p) => p.text)
           .join("");
+        // DeepSeek 思考模式要求把 assistant 的 reasoning_content 随历史带回；
+        // 丢了它，下一轮带 tool_calls 的请求会直接 400。
+        const reasoning = parts
+          .filter((p): p is Extract<(typeof parts)[number], { type: "reasoning" }> => p.type === "reasoning")
+          .map((p) => p.text)
+          .join("");
         const toolParts = parts.filter((p) => p.type === "tool");
         const toolCalls = toolParts.map((p) => ({
           id: p.id,
@@ -62,6 +68,7 @@ export function toNeutralMessages(messages: StoredMessage[]): NeutralMsg[] {
         out.push({
           role: "assistant",
           text: text || undefined,
+          ...(reasoning === "" ? {} : { reasoning }),
           toolCalls: toolCalls.length ? toolCalls : undefined,
         });
         // tool 结果：只回放已完成/出错的

@@ -5,56 +5,53 @@ Call it once the plan for ONE chapter is ready: yours, or the planner's when the
 already in hand. The plan is saved as the chapter's plan artifact, so the user's answer applies to
 exactly the bytes they were shown; calling it again for the same chapter replaces that artifact.
 
-Write the plan in Chinese, and make it a list of artifacts rather than free text — a step is done
-when what it names exists:
-- 意图 — what the user wants out of this chapter.
-- 对应序列与功能 — which sequence contract item this chapter advances: the unit's question, one of
-  its turns, or a promise it must pay or plant.
-- 本章的价值变化 — what changes from what to what: information, relationship, resource, position, or
-  cognition. A chapter that changes none of these is filler; merge or cut it.
-- 本章不能提前兑现 — what must stay unresolved, and which 禁揭 item this chapter must not touch.
-- 章末的读者问题 — the question the chapter leaves open (an interrupted action, a discovery, a
-  relationship shift, a new question). A breather or closing chapter may end on an aftertaste; do
-  not force a cliffhanger.
-- 产物（按序）— where the work lands, **in the order the work is done**. A person this chapter needs
-  who has no card yet comes first (`design/characters/<名>.md`, landed the way design docs always
-  land — propose-design, then the user's answer): the card is what fixes how they speak and what
-  they would never do, so it lands **before** the prose, never after. A world fact the chapter needs
-  and the docs do not settle — a rule, what a term means, an ability's limit — lands before the prose
-  for the same reason (`design/wiki/world.md` or a topic page, again by propose-design): it constrains
-  what the prose may do. Bare naming is not this — a place that only needs to be called something can
-  be settled in the plan and stay there. Then the chapter file
-  (chapters/chapter_ch<N>_v<M>.md), then what the state layer takes on: the state file of each
-  character whose situation moves (state/characters/<名>.md), the ledger if a thread is planted or
-  paid off (state/foreshadowing.md), and always this chapter's entry in state/progress.md. Name only
-  the ones this chapter actually moves — a chapter that changes nothing does not get an empty update.
-  state/progress.md is a **window of the last 7 chapters**, not a growing log: one section per chapter
-  with two lines each (内容 and 落), written whole each time so the oldest chapter drops out — what it
-  said further back is in the chapter prose. The foreshadowing and the end-of-chapter state do
-  not belong here; the ledger and the character state files already carry them.
-  What a state file carries is what is true of that character **now**, not what happened: every line
-  answers one question — is this the present, or something that occurred? What occurred belongs in the
-  prose. A wall already climbed, a fact already learned, a debt
-  already settled is **deleted**, not left with a note saying it is over. A state file that grows with
-  the chapter count means this was skipped.
-  Then a look back at the world layer — 规则与秩序 and 术语表 against what the prose actually wrote: a
-  contradiction is reported for the user to rule on, never edited here; something the chapter settled
-  that was still open, or one of the hard facts the world was holding back now spent, is proposed as
-  that one cell (design/wiki/world.md, propose-design — the same two phases as every other design
-  change). A fact that appears once and is never asked for again goes nowhere: the prose is its home.
-- per step, what it takes: the beats in order (the user points at one — 改第 2 条 — and you follow
-  them); the characters the chapter must land and what each has to get across, each one checked
-  against the cards you read — someone the design docs mention but who has no card is marked 要建卡
-  here, and if the step needs *a* person to do something and nobody in the docs fits, say what they
-  have to do and leave them unnamed (naming them is the user's call, not yours); the facts that were
-  checked, each with its source; the constraints the material cannot supply — what must not break,
-  what must stay unresolved; and the step's 放大点 — the one moment it dwells on (a few hundred
-  words on a single action, decision or turn) and what it skips in half a sentence. Name the
-  moment, not the principle: steps at one even weight are how a competent chapter turns dull.
+Write a scene brief, not a step-by-step script. The prose writer needs room to invent blocking,
+dialogue, timing and emphasis; the plan fixes what happens, not where the camera sits.
+
+Write in Chinese, in exactly this shape:
+
+## 依据
+One line: which sequence function this chapter advances, and what changes (information, relationship,
+resource, position, cognition).
+
+## 前情
+2–4 sentences. Only what the reader must know entering this scene: who these people are to each other
+right now, what each of them wants, and what is already settled. Do not recap the whole book or the
+world.
+
+## 这场戏
+One continuous scene: where and when, who is present, what each person wants, who blocks the
+protagonist, and what is at stake. The protagonist must have a live person to act against, not only
+an interior realization — even a quiet chapter needs someone in the room who wants something and
+resists.
+
+## 必须发生
+3–6 bullets. Each is an event, decision or reversal with a person and an obstacle. Do not write camera
+directions, word counts, “放大点”, or “第 1 步 / 第 2 步”.
+
+## 不能提前兑现
+What must stay unresolved, and which 禁揭 item this chapter must not touch.
+
+## 章末问题
+The question the chapter leaves open — an interrupted action, a discovery, a relationship shift, or a
+new question. Do not force a cliffhanger.
+
+## 产物（按序）
+- design/characters/<名>.md for a new character, or design/wiki/<page>.md for a new world fact.
+  These are listed first because they still land through propose-design, before the prose; never
+  write prose around a missing prerequisite.
+- The chapter file: chapters/chapter_ch<N>_v<M>.md.
+- Only the state files this chapter actually moves (state/characters/<名>.md, state/foreshadowing.md,
+  state/progress.md). state/progress.md is a window of the last 7 chapters, one section per chapter,
+  two lines each.
+
+No 题材, no separate 意图, no 价值变化 section, no step-by-step beats, no per-step word budgets, no
+“放大点”, no execution red lines. Those were the old execution script; the brief replaces them.
+
 The volume outline's 本卷在全局的位置, 本卷目标与阻力, 本卷的承诺 and 本卷的节奏与情绪 bound this
 chapter; the sequence contract covering it says what this unit must make true. Read both before
-writing the plan. If the material reveals a better path that changes the sequence's exit state or
-promises, stop and raise it as a design change — the prose must not silently override the contract.
+writing the brief. If the material reveals a better path that changes the sequence's exit state or
+promises, raise it in 前情 as a design question — the prose must not silently override the contract.
 
 Plan text only: no notes to the user, no rationale, no questions — say those in your message before
 this call.

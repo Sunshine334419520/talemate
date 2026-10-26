@@ -7,7 +7,7 @@
 import { projectPaths, sessionPaths, talemateHome } from "../core/config";
 import type { ModelConfig, PendingProposal } from "../core/types";
 import { readText } from "../storage/atomic";
-import { loadMessages, loadSessionMeta } from "../storage/session-store";
+import { loadMessages, loadModelWindow, loadSessionMeta } from "../storage/session-store";
 import type { Session } from "./session";
 
 export interface SessionDebugInfo {
@@ -28,6 +28,10 @@ export interface SessionDebugInfo {
   pending: { name: string; approved: boolean; done?: boolean; chapter?: number }[];
   messageCount: number;
   lastSeq: number;
+  /** 实际会进模型窗口的条数与起点（最近一次 compaction 之后；无压缩则从第一条起） */
+  modelWindowCount: number;
+  modelWindowFromSeq: number;
+  compactionSeq?: number;
   lastUsage?: { input: number; output: number };
 }
 
@@ -37,6 +41,8 @@ export async function buildSessionDebug(session: Session): Promise<SessionDebugI
   const pp = projectPaths(home, session.projectId);
   const sp = sessionPaths(home, session.projectId, session.sessionId);
   const messages = await loadMessages(session.projectId, session.sessionId);
+  const window = loadModelWindow(messages);
+  const compaction = [...messages].reverse().find((m) => m.role === "compaction");
   const meta = await loadSessionMeta(session.projectId, session.sessionId).catch(() => undefined);
   const pending: SessionDebugInfo["pending"] = [...session.pending.values()].map((p: PendingProposal) => ({
     name: p.name,
@@ -68,6 +74,9 @@ export async function buildSessionDebug(session: Session): Promise<SessionDebugI
     pending,
     messageCount: messages.length,
     lastSeq: messages.at(-1)?.seq ?? 0,
+    modelWindowCount: window.length,
+    modelWindowFromSeq: window[0]?.seq ?? 0,
+    ...(compaction === undefined ? {} : { compactionSeq: compaction.seq }),
     ...(meta?.usage?.at(-1) === undefined ? {} : { lastUsage: meta.usage.at(-1) }),
   };
 }
@@ -102,6 +111,8 @@ export function renderSessionDebug(info: SessionDebugInfo): string {
     `- 会话目录：${info.sessionDir}`,
     `- 消息文件：${info.messagesPath}`,
     `  共 ${info.messageCount} 条，最后 seq=${info.lastSeq}`,
+    `- 模型窗口：${info.modelWindowCount} 条，从 seq=${info.modelWindowFromSeq} 起` +
+      `${info.compactionSeq === undefined ? "（无压缩）" : `（上次压缩 seq=${info.compactionSeq}）`}`,
     `- 未答提问记录：${info.pendingAskExists ? info.pendingAskPath : "无"}`,
     `- 模型：${model}`,
     ...(info.model.baseURL === undefined ? [] : [`- API 地址：${info.model.baseURL}`]),

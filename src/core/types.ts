@@ -267,6 +267,8 @@ export interface ToolContext {
   setMode(mode: string | undefined): void;
   /** 退出草稿模式，恢复进入草稿前的那一层（如 accept-edits） */
   exitDraft(): void;
+  /** 退出正文模式，恢复进入正文前的那一层 */
+  exitProse(): void;
   /**
    * 当前模式 id，没进模式 → undefined。
    *

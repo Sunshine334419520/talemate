@@ -7,7 +7,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { AgentRegistry } from "../agent/registry";
-import { DRAFT_MODE, MODES } from "../agent/modes";
+import { DRAFT_MODE, MODES, PROSE_MODE } from "../agent/modes";
 import {
   BASE_PERMISSIONS,
   deriveSubagentPermission,
@@ -18,6 +18,7 @@ import {
   visibleTools,
 } from "../permission";
 import { loadModelConfig } from "../core/config";
+import { readPrompt } from "../prompts";
 import { PLAN_KEY } from "../core/types";
 import type { ModeDef } from "../agent/modes";
 import type { Action, PermissionConfig, Rule, Ruleset } from "../permission";
@@ -249,7 +250,7 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
         continue;
       }
       const state = p.approved
-        ? "用户已表示同意 → 立刻开始写这一章的正文（规范与文风已随本 system 交给你）；不要重新提案，不要先解释"
+        ? "用户已表示同意 → 按「产物（按序）」执行：需要的新角色卡/世界事实先走 propose-design 给用户过目；前置都落地后先 enter-prose，再写正文；不要跳过任何前置产物"
         : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
       open.push(`- ${what}：${state}`);
       continue;
@@ -343,8 +344,14 @@ export class Session {
    * 硬保证不靠它：三向审阅的前置是模式，但那条链的"停"靠 `propose-design` 自己的 `halt`，丢了也不漏。
    */
   private mode?: string;
-  /** 进草稿模式前的那一层（通常是 accept-edits）；退出草稿时回到它，不能无条件清空。 */
+  /** 进草稿/正文模式前的那一层（通常是 accept-edits）；退出 overlay 时回到它，不能无条件清空。 */
   private baseMode?: string;
+  /** 只作用于下一次 buildRequest 的内部执行指令；不落成用户消息，也不进历史。 */
+  private turnInstruction?: string;
+  /** 规划者刚交回计划、还没 propose-plan；system 每步提醒先把计划交给用户。 */
+  private plannerAwaitingProposal = false;
+  /** 已接受、正在执行的规划章号；设计产物接受后据此自动续跑，plan done 清空。 */
+  private planChapter?: number;
 
   /** 用户说过「以后都允许」的规则（`ctx.ask` 答复为 `always` 时追加）。同样是会话内存。 */
   private readonly approved: Rule[] = [];
@@ -435,6 +442,10 @@ export class Session {
     // 目标之后的提案/提问都属于被撤回的那一段，不能留着让模型"执行一个已经不存在的提议"
     this.pending.clear();
     this.pendingAskRecord = undefined;
+    this.plannerAwaitingProposal = false;
+    this.planChapter = undefined;
+    this.exitDraftMode();
+    this.exitProseMode();
     await clearPendingAsk(this.projectId, this.sessionId);
     this.lastInput = undefined; // 上下文变小了；下一次按估算重新量
     this.lastUserSeq = undefined;
@@ -497,8 +508,13 @@ export class Session {
     const latest = this.latestOpenPending();
     if (!latest) throw new Error("没有待拍板的提案。");
 
-    if (verdict === "accept") latest.approved = true;
-    else this.pending.delete(latest.name);
+    if (verdict === "accept") {
+      latest.approved = true;
+      if (latest.name === PLAN_KEY) this.planChapter = latest.chapter;
+    } else {
+      this.pending.delete(latest.name);
+      if (latest.name === PLAN_KEY) this.planChapter = undefined;
+    }
     this.exitDraftMode();
   }
 
@@ -510,13 +526,15 @@ export class Session {
    * 路径，权限/不变量/CAS 一样不少；只是不再多一次模型往返。
    * 规划提案没法由 harness 执行（正文要模型写），返回 plan 让外壳跑执行回合。
    */
-  async acceptProposal(): Promise<{ kind: "design" | "plan" }> {
+  async acceptProposal(): Promise<{ kind: "design" | "plan"; chapter?: number }> {
     if (this.running) throw new Error("这一轮还在跑，等它结束再拍板。");
     const latest = this.latestOpenPending();
     if (!latest) throw new Error("没有待拍板的提案。");
 
     this.decideProposal("accept");
-    if (latest.name === PLAN_KEY) return { kind: "plan" };
+    if (latest.name === PLAN_KEY) {
+      return { kind: "plan", ...(latest.chapter === undefined ? {} : { chapter: latest.chapter }) };
+    }
 
     // 文档落盘虽然快，也要占住会话：否则用户在这几十毫秒里发话，会和写盘并发。
     this.running = true;
@@ -544,7 +562,13 @@ export class Session {
       output: part.type === "tool" ? (part.output ?? part.error ?? "") : "",
       change: part.type === "tool" ? part.change : undefined,
     });
-    await this.persistAssistant(this.agentId, [part], "tool_calls");
+    // 这是 harness 代模型执行的 apply-design；DeepSeek 思考模式仍要求这条 assistant
+    // 工具消息带 reasoning_content，不能让它成为一条“无 reasoning 的工具调用”。
+    await this.persistAssistant(
+      this.agentId,
+      [{ type: "reasoning", text: "The user approved this proposal; the harness applied it." }, part],
+      "tool_calls",
+    );
     // apply-design 失败时返回 completed + 错误文案（工具层约定），只有清掉提案才算成功
     if (this.pending.has(path)) {
       throw new Error(
@@ -584,12 +608,49 @@ export class Session {
     return [...this.pending.values()].some((p) => !p.done);
   }
 
+  /**
+   * 规划者交回计划、还没 propose-plan 时，除了把计划交出去（或先问用户），别的工具一律不执行。
+   * 这不是提示词层面的劝告：实测模型会跳过提案先去改设定/建卡，等它“想起来”已经走远了。
+   */
+  private planGatePart(call: ToolCall): AssistantPart | undefined {
+    if (!this.plannerAwaitingProposal) return undefined;
+    if (call.name === "propose-plan" || call.name === "ask-user") return undefined;
+    return {
+      type: "tool",
+      id: call.id,
+      name: call.name,
+      state: "error",
+      error:
+        `规划者已经交回计划，但还没通过 propose-plan 给用户过目。现在不能执行 ${call.name}；` +
+        "先调用 propose-plan 把计划交给用户，再按他的决定做。",
+      time: { ran: Date.now(), completed: Date.now() },
+    };
+  }
+
+  /**
+   * 规划者返回计划、或 propose-plan 把它交出去时，记下工作流状态。
+   * 只影响 system 注记；计划和落盘仍由工具与 halt 保证。
+   */
+  private notePlannerResult(call: ToolCall, part: AssistantPart): void {
+    if (call.name === "propose-plan" && part.type === "tool" && part.state === "completed") {
+      this.plannerAwaitingProposal = false;
+      return;
+    }
+    if (call.name !== "task" || part.type !== "tool" || part.state !== "completed") return;
+    if ((call.input as { agent?: unknown }).agent !== "planner") return;
+    // 空结果是另一种失败（步数用尽/没写结论），不该催它 propose-plan
+    if (part.output?.includes('state="empty"') === true) return;
+    this.plannerAwaitingProposal = true;
+  }
+
   /** 正文落盘 → 把那一章的规划记为"已执行"（判据见 `writeSettlesPlan`，`done` 见 core/types.ts）。 */
   private markPlanDone(call: ToolCall, part: AssistantPart): void {
     const plan = this.pending.get(PLAN_KEY);
     if (!plan) return;
     if (!writeSettlesPlan(plan, call, part.type === "tool" && !part.error)) return;
     plan.done = true;
+    this.planChapter = undefined;
+    this.exitProseMode();
   }
 
   /** 跑完一轮：输入 → runLoop（agent 循环）→ 返回最终 assistant 正文 */
@@ -601,8 +662,13 @@ export class Session {
   }
 
   /** 迟到回答已经落成一条用户消息，这里只跑模型这一轮，不再提交 user 消息。 */
-  async resumeAfterAnswer(): Promise<string> {
-    return this.runTurn(this.agent, "", async () => {});
+  async resumeAfterAnswer(instruction?: string): Promise<string> {
+    this.turnInstruction = instruction;
+    try {
+      return await this.runTurn(this.agent, "", async () => {});
+    } finally {
+      this.turnInstruction = undefined;
+    }
   }
 
   /** 一轮的真身。`post` 与 `resumeAfterAnswer` 的差别只在“user 消息由谁落盘”。 */
@@ -646,8 +712,10 @@ export class Session {
             const sub = (call.input as { agent?: string }).agent ?? call.name;
             this.io.onEvent({ type: "scope.open", label: `task → ${sub}` });
           }
-          const part = await executeToolPart(ag.id, call, this.tools, this.makeContext(ag, call.id));
+          const gated = this.planGatePart(call);
+          const part = gated ?? (await executeToolPart(ag.id, call, this.tools, this.makeContext(ag, call.id)));
           if (isTask) this.io.onEvent({ type: "scope.close", label: "task" });
+          this.notePlannerResult(call, part);
           this.markPlanDone(call, part);
           const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
           this.io.onEvent({
@@ -749,6 +817,11 @@ export class Session {
   /** 组装一次请求：截窗后的历史 → NeutralMsg + system + 该角色可见工具 */
   private async buildRequest(agent: AgentDef): Promise<{ system: string; messages: NeutralMsg[]; tools?: ToolSchema[] }> {
     const neutral = toNeutralMessages(await this.messageWindow());
+    // 结构化接受后的执行指令只进第一次请求：它是一次性的“现在动手”，不是一条用户消息。
+    if (this.turnInstruction !== undefined) {
+      neutral.push({ role: "user", text: this.turnInstruction });
+      this.turnInstruction = undefined;
+    }
     const system = await this.buildSystem(agent);
     const tools = this.allowedTools(agent);
     const toolSchemas = this.tools.schemasFor(
@@ -792,10 +865,24 @@ export class Session {
     return this.mode ? MODES[this.mode] : undefined;
   }
 
+  /** 正在执行的规划章号；没有已接受但未完成的规划时 undefined。 */
+  get planExecutionChapter(): number | undefined {
+    return this.planChapter;
+  }
+
+  /**
+   * 界面权限开关该显示哪一档。正文模式本身不覆盖权限，所以它要沿用它下面那一层，
+   * 不能因为 mode id 不是 accept-edits 就显示成“每次询问”。
+   */
+  get permissionMode(): "accept-edits" | "ask" {
+    const effective = this.mode === PROSE_MODE ? this.baseMode : this.mode;
+    return effective === "accept-edits" ? "accept-edits" : "ask";
+  }
+
   /** 壳给新会话定默认权限模式（见设置里的「权限」）；运行中切模式仍走 ctx.setMode。 */
   setMode(mode: string | undefined): void {
-    if (mode === DRAFT_MODE) {
-      if (this.mode !== DRAFT_MODE) this.baseMode = this.mode;
+    if (mode === DRAFT_MODE || mode === PROSE_MODE) {
+      if (this.mode !== DRAFT_MODE && this.mode !== PROSE_MODE) this.baseMode = this.mode;
       this.mode = mode;
       return;
     }
@@ -803,11 +890,20 @@ export class Session {
     this.baseMode = undefined;
   }
 
-  /** 退出草稿并恢复进入前的模式（accept-edits / undefined）。 */
-  private exitDraftMode(): void {
-    if (this.mode !== DRAFT_MODE) return;
+  private leaveOverlay(mode: string): void {
+    if (this.mode !== mode) return;
     this.mode = this.baseMode;
     this.baseMode = undefined;
+  }
+
+  /** 退出草稿并恢复进入前的模式（accept-edits / undefined）。 */
+  private exitDraftMode(): void {
+    this.leaveOverlay(DRAFT_MODE);
+  }
+
+  /** 退出正文模式，恢复进入前的模式。 */
+  private exitProseMode(): void {
+    this.leaveOverlay(PROSE_MODE);
   }
 
   /** 见 `PermissionView`：`rulesetFor` 只给结论，这里要的是每一层各自的来源。 */
@@ -848,21 +944,34 @@ export class Session {
     const skills = await discoverSkills(this.projectId);
     let resident: string | undefined;
     if (agent.mode === "primary" && !agent.hidden) resident = await buildResidentDesigns(this.projectId);
+    const mode = this.mode ? MODES[this.mode] : undefined;
+    // prose mode 用独立的 role system；其余模式仍用 agent.system。
+    const roleSystem = mode?.system === undefined ? agent.system : readPrompt(mode.system);
+    const prose = await this.proseWindow(agent);
     const base = buildSystemPrompt({
       projectTitle: this.meta.title,
       agentName: agent.name,
-      roleSystem: agent.system,
+      roleSystem,
       rules,
       skills: renderSkillCatalog(skills),
       resident,
     });
     // 模式注记排在角色壳之后、状态注记之前：它是"眼下在干什么"，压过角色的默认姿态。
-    const mode = this.mode ? MODES[this.mode] : undefined;
     const note = renderPendingNote(this.pending);
     // 未答提问每轮都在场：压缩或换轮之后，模型仍要知道“有个问题还挂着，别把沉默当同意”
     const askNote = renderOpenAskNote(await this.openAskViews());
-    const prose = await this.proseWindow(agent);
-    return [base, mode?.note, note, askNote, prose].filter(Boolean).join("\n\n");
+    // 规划者交回计划后，下一步必须是 propose-plan；这是工作流状态，不是模型自觉
+    const plannerNote =
+      this.plannerAwaitingProposal && !this.pending.has(PLAN_KEY)
+        ? [
+            "<planner-result>",
+            "A planner has just returned a chapter plan. It is not approved yet, and nothing in it may be created before the user sees it.",
+            "Your next tool call must be propose-plan; put the plan in front of the user now, then end the turn.",
+            "Do not create cards, world pages, or prose from it first.",
+            "</planner-result>",
+          ].join("\n")
+        : undefined;
+    return [base, mode?.note, note, askNote, plannerNote, prose].filter(Boolean).join("\n\n");
   }
 
   /**
@@ -934,6 +1043,7 @@ export class Session {
       // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
       setMode: (m) => this.setMode(m),
       exitDraft: () => this.exitDraftMode(),
+      exitProse: () => this.exitProseMode(),
       getMode: () => this.mode,
       getProposal: (name) => this.pending.get(name),
       setProposal: (p) => {

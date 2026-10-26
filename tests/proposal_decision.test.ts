@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject } from "../src/storage/project";
 import { createSession } from "../src/storage/session-store";
+import { PLAN_KEY } from "../src/core/types";
 import { readDoc } from "../src/storage/corpus";
 import { openSession, type Session } from "../src/session/session";
 
@@ -33,6 +34,7 @@ afterAll(async () => {
 });
 
 function propose(path = "design/core.md"): void {
+  session.pending.clear();
   session.setMode("accept-edits");
   session.pending.set(path, { name: path, content: "# 新版本\n", approved: false, at: Date.now() });
   session.setMode("draft");
@@ -59,6 +61,72 @@ describe("结构化拍板", () => {
     expect((await readDoc(projectId, path))?.trimEnd()).toBe(content.trimEnd());
     expect(session.pending.has(path)).toBe(false);
     expect(session.currentMode?.id).toBe("accept-edits");
+  });
+
+  test("接受规划提案：返回章节号、保留 approved，交给执行回合", async () => {
+    session.pending.clear();
+    session.setMode("accept-edits");
+    session.pending.set(PLAN_KEY, {
+      name: PLAN_KEY,
+      content: "# 第 1 章规划\n",
+      chapter: 1,
+      approved: false,
+      at: Date.now(),
+    });
+    session.setMode("draft");
+
+    const result = await session.acceptProposal();
+    expect(result).toEqual({ kind: "plan", chapter: 1 });
+    expect(session.pending.get(PLAN_KEY)?.approved).toBe(true);
+    expect(session.planExecutionChapter).toBe(1);
+    expect(session.currentMode?.id).toBe("accept-edits");
+  });
+
+  test("prose mode 不把权限开关打回 ask，而是沿用进入前那层", () => {
+    session.setMode("accept-edits");
+    session.setMode("prose");
+    expect(session.permissionMode).toBe("accept-edits");
+    session.setMode("accept-edits");
+    session.setMode("prose");
+    session.setMode(undefined);
+    expect(session.permissionMode).toBe("ask");
+  });
+
+  test("prose mode 切换 role system；exit 后恢复 mate", async () => {
+    const s = session as unknown as { buildSystem(agent: unknown): Promise<string> };
+    session.setMode("prose");
+    const prose = await s.buildSystem(session.agent);
+    expect(prose).toContain("You are writing this novel's prose");
+    expect(prose).not.toContain("You are talemate's writing partner.");
+    session.setMode("accept-edits");
+    const mate = await s.buildSystem(session.agent);
+    expect(mate).toContain("You are talemate's writing partner.");
+  });
+
+  test("规划者返回后，除 propose-plan/ask-user 外的工具被拦住", () => {
+    const s = session as unknown as {
+      plannerAwaitingProposal: boolean;
+      notePlannerResult(call: { id: string; name: string; input?: unknown }, part: unknown): void;
+      planGatePart(call: { id: string; name: string; input?: unknown }): { state?: string; error?: string } | undefined;
+    };
+    s.plannerAwaitingProposal = false;
+    s.notePlannerResult(
+      { id: "t", name: "task", input: { agent: "planner" } },
+      { type: "tool", id: "t", name: "task", state: "completed", output: '<task agent="planner" state="completed">x</task>' },
+    );
+    expect(s.plannerAwaitingProposal).toBe(true);
+
+    const blocked = s.planGatePart({ id: "e", name: "edit", input: {} });
+    expect(blocked?.state).toBe("error");
+    expect(blocked?.error).toContain("propose-plan");
+    expect(s.planGatePart({ id: "p", name: "propose-plan", input: {} })).toBeUndefined();
+    expect(s.planGatePart({ id: "a", name: "ask-user", input: {} })).toBeUndefined();
+
+    s.notePlannerResult(
+      { id: "p", name: "propose-plan" },
+      { type: "tool", id: "p", name: "propose-plan", state: "completed", output: "ok" },
+    );
+    expect(s.plannerAwaitingProposal).toBe(false);
   });
 
   test("拒绝：删除提案，退出草稿并恢复 accept-edits", () => {

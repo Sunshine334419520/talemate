@@ -12,6 +12,8 @@ export interface ModeDef {
   id: string;
   /** 这个模式是什么（一句话，给人看；模式切换工具的文案用它） */
   title: string;
+  /** 这个模式是否替换 agent 的 role system（prompt id；不填则用 agent.system） */
+  system?: string;
   /** 进 system 的短注记（英文，面向模型）：这个模式是什么、为什么有些工具不见了。不装工作流 */
   note: string;
   /** 模式对权限的覆盖（配置形）。`deny` 单调——不受层级顺序影响（见 `permission.evaluate` 第 1 步） */
@@ -23,6 +25,9 @@ export interface ModeDef {
  * ——两边写岔了，模型会看到"工具说可以提案、harness 却不认"。
  */
 export const DRAFT_MODE = "draft";
+
+/** 正文模式：只换 system，不改权限；进出由 enter-prose / exit-prose 与 plan done 管。 */
+export const PROSE_MODE = "prose";
 
 export const MODES: Record<string, ModeDef> = {
   /**
@@ -39,6 +44,15 @@ export const MODES: Record<string, ModeDef> = {
     title: "草稿模式",
     note: readPrompt("modes/draft"),
     permission: { edit: "deny", delegate: "deny" },
+  },
+
+  [PROSE_MODE]: {
+    id: PROSE_MODE,
+    title: "正文",
+    note: readPrompt("modes/prose"),
+    system: "prose.system",
+    // 不覆盖权限：用户在设置里选「每次询问」时，写正文仍然要问；选 accept-edits 时照旧允许。
+    permission: {},
   },
 
   /** 落盘不问，其余照问：委派和联网仍是 `ask`，只放开 `edit` 这一类。 */

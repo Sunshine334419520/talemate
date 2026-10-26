@@ -1,12 +1,12 @@
 /**
- * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / propose-plan / enter-draft / exit-draft）。
+ * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / propose-plan / 模式切换）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
  *
  * 改作品文档的工具不在这里，它们在 `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
  * 唯一的例外是 `propose-plan`：它自己落盘规划工件，因为规划不是作品文档（不审 diff、不做 CAS、
  * 不进语料），落点是 `.talemate/plans/` 引擎工作区，而 `write_ops` 只认作品的三个根。
  */
-import { DRAFT_MODE } from "../agent/modes";
+import { DRAFT_MODE, PROSE_MODE } from "../agent/modes";
 import { PLAN_KEY } from "../core/types";
 import type { AskOutcome, AskRecord } from "../core/types";
 import { planDisplay, renderPlan, savePlan } from "../framework/plan";
@@ -329,6 +329,43 @@ export const exitDraftTool: RegisteredTool<Record<string, never>> = defineTool<R
   },
 });
 
+/**
+ * enter-prose / exit-prose：正文模式的进出口。进入条件不是“用户说了写”，而是**规划已批准、
+ * 前置产物都已落地**——这决定它只能由模型在前置完成后显式调用，不能由 plan accept 自动进入。
+ * 权限沿用进入前那层：正文模式不额外放开 edit。
+ */
+export const enterProseTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
+  id: "enter-prose",
+  description: P("enter-prose"),
+  input: { type: "object", properties: {} },
+  async execute(_args, ctx) {
+    if (ctx.getMode() === DRAFT_MODE) {
+      return { output: "还在草稿模式——先 exit-draft，把前置产物落完，再 enter-prose。" };
+    }
+    const plan = ctx.getProposal(PLAN_KEY);
+    if (!plan || !plan.approved || plan.done || plan.chapter === undefined) {
+      return { output: "还没有已批准、未执行的本章规划。先用 propose-plan 让用户拍板，再写正文。" };
+    }
+    if (ctx.getMode() === PROSE_MODE) return { output: "已经在正文模式里。" };
+    ctx.setMode(PROSE_MODE);
+    return {
+      output:
+        `已进入正文模式（第 ${plan.chapter} 章）。接下来用 write 写这一章正文；` +
+        "不要回到项目对话，也不要先解释。",
+    };
+  },
+});
+
+export const exitProseTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
+  id: "exit-prose",
+  description: P("exit-prose"),
+  input: { type: "object", properties: {} },
+  async execute(_args, ctx) {
+    ctx.exitProse();
+    return { output: "已离开正文模式。" };
+  },
+});
+
 export const CORE_TOOLS: RegisteredTool[] = [
   skillTool,
   taskTool,
@@ -337,4 +374,6 @@ export const CORE_TOOLS: RegisteredTool[] = [
   proposePlanTool,
   enterDraftTool,
   exitDraftTool,
+  enterProseTool,
+  exitProseTool,
 ];

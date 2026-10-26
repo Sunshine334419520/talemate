@@ -22,7 +22,9 @@
  * 边界：不认识"层""角色卡""小节"。领域语义在工具层（派生成 op），内容不变量在 invariants.ts。
  */
 import { join } from "node:path";
+import { PLAN_KEY } from "../core/types";
 import type { FileOp, PermissionVerdict, ToolContext, WriteChange } from "../core/types";
+import { PROSE_MODE } from "../agent/modes";
 import { DOC_ROOTS, rootAbs } from "../core/config";
 import { readText, removeIfUnchanged, StaleContentError, writeIfUnchanged } from "../storage/atomic";
 import { recordFileCheckpoint } from "../storage/file-history";
@@ -157,6 +159,22 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
   const target = resolveTarget(ctx.projectId, op.path);
   if ("error" in target) return { ok: false, reason: "invalid", output: target.error };
   checkDeny = target.pattern;
+
+  // 规划已批准、正文还没落盘时，章节写入必须先进入正文模式；否则 mate.system 还在，
+  // 声口切换不会发生。这是模式的结构性用途，不是提示词劝告。
+  const plan = ctx.getProposal(PLAN_KEY);
+  if (
+    target.pattern.startsWith("chapters/") &&
+    plan?.approved === true &&
+    plan.done !== true &&
+    ctx.getMode() !== PROSE_MODE
+  ) {
+    return {
+      ok: false,
+      reason: "invalid",
+      output: "规划已批准，但还没进入正文模式。先把前置产物落完，调用 enter-prose，再写这一章正文。",
+    };
+  }
 
   // 读回来的字节原样留着（含 BOM）——CAS 比的就是它，得逐字节忠实。
   const raw = await readText(target.abs);

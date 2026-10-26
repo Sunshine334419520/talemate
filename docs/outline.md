@@ -2,7 +2,7 @@
 
 > **职责**：回答"大纲由什么构成、一卷的纲/一个序列的纲各写什么、为什么没有整本大纲"。
 > **读者**：要改 `framework/design_spec.ts` 里卷纲/序列纲那两条规范、或改情节层写入守卫的人。
-> **对齐代码**：2026-10-19 · 规范在 `framework/design_spec.ts` 的 `SPECS`（按路径 glob 登记，具体者胜出）；章规划在 `framework/plan.ts`；规划者读卷/序列契约在 `prompts/planner.system.txt`，提交在 `prompts/tools/propose-plan.txt`
+> **对齐代码**：2026-10-25 · 规范在 `framework/design_spec.ts` 的 `SPECS`（按路径 glob 登记，具体者胜出）；章规划在 `framework/plan.ts`；规划者读卷/序列契约在 `prompts/planner.system.txt`，提交在 `prompts/tools/propose-plan.txt`
 > 相邻：`design-docs.md`（四层与两段式落盘）· `characters.md`（另一个"主文档是目录"的层）· `state.md`（承诺的实际状态）· `chapter-planning.md`（章生产）· `roadmap.md`
 
 ## 一句话
@@ -130,7 +130,7 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 
 **规划是序列契约的投影**：序列契约说"这一小段必须让什么为真"，章规划说"这一章怎么让它为真"。
 每一章至少改变一项——信息、关系、资源、位置、认知；什么都不改变的一章是填充，应该合并或删掉。
-章规划还要写清：对应哪个序列功能、本章的价值变化、哪些问题不能提前兑现、章末留给读者什么问题。
+章规划是一份**场景简报**：前情、这场戏、必须发生、不能提前兑现、章末读者问题，再附一张按序的产物清单；不写逐步节拍、字数或放大点。
 
 **规划不落 `design/`**：它落在 `.talemate/plans/ch_<N>.md`——那是引擎的工作区，不是作品的一份
 文档。`design/` 里没有它，`chapters/` 里也没有。判据、命名与清理策略见 `framework/plan.ts`，
@@ -162,4 +162,4 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 | `storage/corpus.ts` | 枚举/读/扫词——`list` 与 `search` 的取数都出自这里 |
 | `tool/design_tools.ts` | `resolveDoc` 只拦"必须 `design/` 开头"——大纲本来就是 `design/` 下的路径，没有额外规则 |
 | `prompts/planner.system.txt` | 规划者读卷契约/序列契约，产出章规划 |
-| `prompts/tools/propose-plan.txt` | 提交章规划；每章四项：对应序列功能、价值变化、不能提前兑现、章末读者问题 |
+| `prompts/tools/propose-plan.txt` | 提交章规划；场景简报（依据 / 前情 / 这场戏 / 必须发生 / 不能提前兑现 / 章末问题）+ 产物清单 |

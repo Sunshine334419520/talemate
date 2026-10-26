@@ -565,6 +565,10 @@ export function Workspace({
    * 三向裁决不走这里——按钮直接发结构化裁决，不再合成一句用户消息。
    */
   const say = useCallback((text: string, sent?: string): void => {
+    // 手动发消息就是“我要看最新”的明确意图：之前翻到哪都先回到底部，
+    // 不能被 pinnedRef 里上一次阅读的位置拦住。
+    pinnedRef.current = true;
+    setAtBottom(true);
     setLive((prev) => [...prev, { kind: "me", text }]);
     window.tm.prompt(sent ?? text);
   }, []);
