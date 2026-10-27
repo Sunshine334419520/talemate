@@ -59,6 +59,10 @@ if (targets.length === 0) {
 
 let failed = false;
 for (const target of targets) {
+  const domino = join(target, "node_modules", "@mixmark-io", "domino", "lib", "index.js");
+  console.log(`[resources] ${target}: domino ${existsSync(domino) ? "present" : "MISSING"}`);
+  if (!existsSync(domino)) failed = true;
+
   for (const folder of ["prompts", "skills"]) {
     const source = await files(join(ROOT, folder));
     const packed = await files(join(target, folder));

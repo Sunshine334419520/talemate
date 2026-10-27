@@ -20,6 +20,12 @@ extraResources:
     to: prompts
   - from: ../skills
     to: skills
+  # turndown 的 CJS 里是运行时 require("@mixmark-io/domino")；它没有被打进 bundle。
+  # 放到 resources/node_modules 下，Node 从 app.asar/out/main 向上查找时能解析到。
+  - from: ../node_modules/@mixmark-io/domino/package.json
+    to: node_modules/@mixmark-io/domino/package.json
+  - from: ../node_modules/@mixmark-io/domino/lib
+    to: node_modules/@mixmark-io/domino/lib
 
 asar: true
 

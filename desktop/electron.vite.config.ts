@@ -25,8 +25,15 @@ import { defineConfig } from "electron-vite";
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 export default defineConfig({
-  main: {},
-  preload: {},
+  // electron-vite 5 默认 externalizeDeps=true，会把 turndown 及其依赖 @mixmark-io/domino
+  // 留成运行时 require；安装包不带 node_modules，于是启动/用 webfetch 时就报 Cannot find module。
+  // 桌面主进程必须自包含：依赖全部打进 bundle。
+  // turndown 的 CJS 构建里有一个静态 require("@mixmark-io/domino")；Vite 的 SSR
+  // externalize 不认这个传递依赖。仅关 externalizeDeps 不足以把它打进来，所以
+  // electron-builder 另外把 domino 作为 extraResource 放进 resources/node_modules。
+  // 详见 desktop/electron-builder.yml 的 extraResources。
+  main: { build: { externalizeDeps: false }, ssr: { noExternal: true } },
+  preload: { build: { externalizeDeps: false } },
   renderer: {
     plugins: [react()],
   },
