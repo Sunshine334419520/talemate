@@ -1,0 +1,129 @@
+# CLAUDE.md
+
+talemate — an AI novel-writing agent. TypeScript on Bun; CLI + agent harness. What it is and why: `docs/product.md`.
+
+## Commands
+
+```bash
+bun test                 # unit tests — all offline, no LLM calls
+bun run typecheck        # tsc --noEmit   (tsconfig excludes tests/ — test files are not typechecked)
+bun run probe --check    # validates ablation patch strings; no model calls
+bun run smoke            # mock-provider end-to-end, needs no API key
+```
+
+**IMPORTANT — this is the definition of done: `bun test` + `bun run typecheck` must pass.** If you touched `prompts/` or `src/probe/`, also run `bun run probe --check`: a prompt edit silently invalidates the ablation baseline, and the check is the only thing that notices.
+
+## Language
+
+The split is by **audience**, and it is not negotiable:
+
+- **Model-facing → English.** Tool `description`, JSON-schema field descriptions, `prompts/*.txt` and `prompts/tools/*.txt`, this file.
+- **Human-facing → Chinese.** `src/**` comments, tool `output` and error text, `confirm` text, CLI output, `docs/**`, `prompts/README.md`.
+
+So: a new tool's `description` is English, but the message it returns on success is Chinese.
+
+## Agent surfaces
+
+- Claude Code reads `CLAUDE.md` and `.claude/skills/`.
+- DSH reads `AGENTS.md` and project-level `.dsh/skills/` (`<project>/.dsh/skills/`).
+
+`AGENTS.md` is a byte-for-byte mirror of this file, and the release skill exists in both
+`.claude/skills/talemate-release/` and `.dsh/skills/talemate-release/`. Edit the canonical copy and
+re-copy; `tests/agent_surfaces.test.ts` fails if the mirrors drift.
+
+## Code conventions
+
+- **No `export default`** — zero in this codebase. Always inline named exports.
+- **`export function` / `export async function`** — never `export const x = () => {}`.
+- **Every source file opens with a `/** ... */` block comment** stating what the module is and where its boundaries are. Files that own a policy (see `framework/write_ops.ts`, `tool/web_tools.ts`) put the policy there as a numbered list or ASCII diagram.
+
+### Comments
+
+Comments explain *why*, not *what* — the bug that motivated the code, the thing
+that was tried and rejected, the invariant that must hold. A comment has to still
+be **true** after the next refactor. Chinese, plain sentences, no drama.
+
+**Delete a comment when:**
+- It restates the line below it (`// 组装本次请求`).
+- It narrates the development process — `上一版就是这么错的`, `曾经有过`,
+  `旧账`, a date, a removed patch variant. Git remembers; the file should not.
+- It is atmosphere rather than fact (`// 硬拽出来`, `// 骗人`, `// 糊成一片`).
+- Another comment nearby already says it.
+
+**Keep it — reword to a sentence or two, but keep the fact:**
+- An invariant the code cannot express (uniqueness, ordering, bounded spans).
+- A real bug the line exists to prevent (CRLF silently lost a skill).
+- An alternative that was tried and rejected, and why.
+- A security or trust boundary (all markdown goes through DOMPurify).
+- A constraint imposed from outside the file (wire format, provider quirk).
+
+**Shape**
+- `//` for one idea, no trailing period. Block comments for file headers and
+  non-obvious exports; keep a block to ≤ 4 lines.
+- No `**bold**` in source comments, no emoji. A file header says what the module
+  owns and what it refuses to do — not its contents, not its history.
+- Never cite a line number, commit, or date. Never name a path that no longer exists.
+- One fact, one place: if three files explain the same invariant, keep it in the
+  file that owns it and leave the others a pointer (`见 write_ops.ts`).
+- A comment-only edit must leave every byte outside the comment unchanged.
+- Unsure whether a comment carries weight? Keep it and say so — deleting a live
+  invariant costs far more than keeping a dull sentence.
+- **Types**: cross-layer ones live in `src/core/types.ts`; module-local ones are defined in place next to their module. Export `interface` / `type` — never a bare object-shape alias.
+- **`strict` TypeScript, no escape hatches**: no `any`, no `@ts-ignore`, no `@ts-expect-error`.
+- **No linter or formatter is configured.** Match the surrounding file: 2-space indent, double quotes, semicolons.
+- **`as const`** only to narrow a literal (a string that feeds a union, an array used as a source of truth). `_` prefix for unused params (`_args`) and runtime marker fields (`_type`).
+
+## Tool conventions
+
+```ts
+const P = (id: string) => readPrompt(`tools/${id}`);   // top of every file that DEFINES a tool, verbatim
+
+export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: string }>({
+  id: "skill",
+  description: P("skill"),                              // never inline the description
+  input: { type: "object", properties: { name: { type: "string", description: "Skill name" } }, required: ["name"] },
+  async execute(args, ctx) { /* ... */ },
+});
+```
+
+- **`description` always comes from `P(id)`** — i.e. from `prompts/tools/<id>.txt`, 1:1 with the tool id. The TS filename is the *domain* (`read_tools.ts` holds the three read verbs); the id is the *action*.
+- **Errors the model can fix go through `return`, not `throw`.** Bad argument, missing section, guard rejection — return `{ output: "..." }` with a message that lets the model correct its own call; that message *is* what recovers the turn. Failures it cannot fix by re-calling (HTTP status, size limit, binary content) may `throw` — `runner.ts` catches and turns it into an `error` part, so the message still reaches the model. What's forbidden is catching and re-throwing.
+- **Error messages have three shapes** — keep them: `"<tool> 缺少 <field>（收到：<JSON.stringify(args).slice(0, 200)>）——请…重新调用"`; `"没有找到 <X>「<名>」。可用小节：\n<list>"`; and `"<why not>——<what to do instead>。<next action>"`.
+- Optional hooks: `needsConfirm(args)` (returns a Chinese summary), `halt: true` (ends the turn — **only when the call succeeded**), `metadata` (only when there's machine-readable info).
+- **`AgentDef.tools` is not an enforcement boundary.** It only decides which schemas the model sees; execution looks up the global registry. **Removing a tool means deleting its definition** — taking it out of the whitelist does nothing.
+- **Adding a tool touches 7 places**: define it → add to its domain array → (new domain only) `tool/index.ts` → create `prompts/tools/<id>.txt` → add to an agent whitelist in `agent/registry.ts` → it must appear in `docs/agents.md` (enforced by `tests/docs.test.ts`) → if a probe patches that prompt, sync the `before` string in `src/probe/advance.ts`.
+
+## Tests
+
+- **All tests are offline** — no network, no LLM. A test that needs either is a bug.
+- **Assert on a list of failures**, not one `expect` per loop iteration: collect `missing.push(...)` then `expect(missing).toEqual([])`. The failure message is then the whole list.
+
+## Non-obvious decisions
+
+- **Agents are data.** Adding a role = one `AgentDef` + a whitelist. Don't touch the loop or registry code.
+- **Never hand-copy a list that can be derived.** This repo has been burned twice — a character index file that went stale, and a field list duplicated into `design_spec.ts` that was missed during a refactor. Either compute it or make a test guard it.
+- **A new document kind is one registry row.** Want a structural spec for it? Add a row to `design_spec.SPECS`. Want it to look different in `list`? Add a row to `summaries.SUMMARIES`. Nothing else cascades — no new type, no whitelist, no tool. (This used to be expensive: a fifth `LayerId` touched five places.) Details: `docs/roadmap.md`.
+- **Design documents are written in two phases** (`propose-design` → user replies → `apply-design`). **No model-driven path may write to `design/` outside those two phases** — the point is that the bytes the user saw are the bytes that land.
+  Three UI paths are the deliberate exception, and they hold for the same reason: the user *is* the one clicking, so there are no unseen bytes. `docs:save` (side-pane edit), `style:set` (status-bar style picker), and the shelf declaration seeded into `design/core.md` when a project is created (`withShelf`, `projects:create` in the desktop main process) write directly, keeping only what that path still needs — atomic write + CAS. All three write a value the user picked from a closed set; none of them generates anything.
+- **Data-fetching knows no domain.** The read side takes *locations* and returns *content*; any judgment about "which part of this document matters" is policy, and policy is a registry selected by path — `INVARIANTS` (does the result still hold together), `SUMMARIES` (what this document looks like in `list`), `SPECS` (what shape this kind has). All three share one path-glob vocabulary. A per-kind `if` inside a reader is the bug they replaced.
+- **A rename must be forced by a fact, never by symmetry.** The three read tools lost `-design` because their scope widened past `design/`; `design-spec` kept it because its scope did not (chapters have no structural spec, so the name never lies). "The family should be consistent" is not a reason.
+- **An addressing convention only holds when every tool agrees.** The flip to project-relative paths landed on every tool at once, read and write together — flipping the write side first would have made `design-spec` advertise an address the read tools resolve wrongly (`design/design/core.md`). Never change a convention in halves.
+
+## Navigation
+
+| Question | Read |
+|---|---|
+| What is this product, and what is it deliberately *not*? | `docs/product.md` |
+| How is the code organised; what happens in one turn? | `docs/architecture.md` |
+| Agents, tools, skills — how to classify and add them | `docs/agents.md` |
+| How questions, skipping, timeouts and pending answers work | `docs/ask-user.md` |
+| The four design doc families; two-phase writes; chapter production | `docs/design-docs.md` |
+| Who plans a chapter, who approves it, who writes it — and what that retires | `docs/chapter-planning.md` |
+| Character cards | `docs/characters.md` |
+| Volumes and sequences; why there is no whole-book outline | `docs/outline.md` |
+| Who may do what, and what needs asking | `docs/permissions.md` |
+| What the desktop UI looks like, and what the user is allowed to see | `docs/ui.md` |
+| What isn't built yet | `docs/roadmap.md` |
+| How prompts are organised and written | `prompts/README.md` |
+
+Every file in `docs/` opens with a Status block (职责 / 读者 / 对齐代码). If you change a fact one of them describes, bump that file's 对齐代码 date. `tests/docs.test.ts` enforces this, plus that no doc mentions a deleted tool.

@@ -15,3 +15,6 @@ experiments/style-bench/outputs/
 
 # macOS
 .DS_Store
+
+# 安装包输出
+release/

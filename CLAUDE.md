@@ -22,6 +22,15 @@ The split is by **audience**, and it is not negotiable:
 
 So: a new tool's `description` is English, but the message it returns on success is Chinese.
 
+## Agent surfaces
+
+- Claude Code reads `CLAUDE.md` and `.claude/skills/`.
+- DSH reads `AGENTS.md` and project-level `.dsh/skills/` (`<project>/.dsh/skills/`).
+
+`AGENTS.md` is a byte-for-byte mirror of this file, and the release skill exists in both
+`.claude/skills/talemate-release/` and `.dsh/skills/talemate-release/`. Edit the canonical copy and
+re-copy; `tests/agent_surfaces.test.ts` fails if the mirrors drift.
+
 ## Code conventions
 
 - **No `export default`** — zero in this codebase. Always inline named exports.

@@ -16,6 +16,7 @@
     "desktop": "bun run desktop:build && bun desktop/scripts/launch-electron.mjs",
     "desktop:dev": "cd desktop && electron-vite dev",
     "desktop:build": "cd desktop && electron-vite build",
+    "desktop:package": "electron-builder --projectDir desktop --publish=never",
     "desktop:selftest": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_PROVIDER=mock TALEMATE_MOCK_TOOL=task TALEMATE_DESKTOP_SELFTEST=1 bun desktop/scripts/launch-electron.mjs",
     "desktop:selftest:window": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_DESKTOP_SELFTEST=window bun desktop/scripts/launch-electron.mjs",
     "desktop:probe": "bun run desktop/probe/run-under-node.ts"
@@ -32,7 +33,8 @@
     "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^5",
     "dompurify": "^3.4.16",
-    "electron": "^44.5.1",
+    "electron": "44.5.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "esbuild": "^0.28.2",
     "marked": "^18.0.14",

@@ -17,6 +17,19 @@ CLI 用法：`talemate new <书名> [题材]` · `talemate ls` · `talemate use 
 
 模型配置走环境变量（`TALEMATE_PROVIDER` / `TALEMATE_MODEL` / `TALEMATE_REASONING` / `TALEMATE_MAX_TOKENS` / `TALEMATE_API_KEY` …），mock provider 无需 key。
 
+## 桌面安装包
+
+```bash
+bun run desktop:build
+bun run desktop:package -- --mac --x64 --arm64   # macOS DMG
+bun run desktop:package -- --win --x64           # Windows NSIS
+bun run desktop:package -- --linux --x64         # Linux AppImage
+```
+
+输出在仓库根目录的 `release/`。当前是不签名版本；macOS 首次打开需要在“系统设置 → 隐私与安全性”里放行。
+
+打 `v*` tag 会触发 `.github/workflows/release.yml`：在 macOS / Windows / Linux 三个 runner 上分别构建安装包，并把产物挂到 GitHub Release。`workflow_dispatch` 只构建 artifact，不发布。
+
 ## 一次创作长什么样
 
 ```

@@ -1,5 +1,8 @@
 {
   "name": "talemate-desktop",
+  "version": "0.1.0",
   "private": true,
+  "description": "Talemate desktop shell",
+  "author": "Talemate",
   "main": "./out/main/index.js"
 }

@@ -1,0 +1,54 @@
+# 桌面安装包：macOS dmg / Windows NSIS / Linux AppImage。
+#
+# 只打已经由 electron-vite 构建好的 desktop/out；prompts 与 skills 是运行时数据，放在
+# extraResources 里，打包后由 prelude.ts 的 process.resourcesPath 找到。
+appId: com.talemate.desktop
+productName: Talemate
+copyright: Copyright © 2026 Talemate
+# 根 package.json 用 ^ 范围；builder 需要精确版本才能下载对应平台的 Electron。
+electronVersion: 44.5.1
+
+directories:
+  output: ../release
+
+files:
+  - out/**/*
+  - package.json
+
+extraResources:
+  - from: ../prompts
+    to: prompts
+  - from: ../skills
+    to: skills
+
+asar: true
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+linux:
+  icon: build/icon.png
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Office
+  artifactName: ${productName}-${version}-${arch}.${ext}
