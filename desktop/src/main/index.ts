@@ -505,6 +505,14 @@ function registerHandlers(): void {
         profiles: [...now.profiles.filter((x) => x.name !== p.name), next],
         default: now.default ?? p.name,
       });
+      // 当前会话如果正在用这套配置，立刻补上刚保存的 baseURL/密钥，不必重启或切会话。
+      if (session !== undefined && session.profile === p.name) {
+        session.model = {
+          ...session.model,
+          ...(next.baseURL === undefined || next.baseURL === "" ? {} : { baseURL: next.baseURL }),
+          ...(next.apiKey === undefined ? {} : { apiKey: next.apiKey }),
+        };
+      }
     },
   );
 
@@ -659,12 +667,31 @@ function registerHandlers(): void {
         }
         answerQueue.length = 0;
         const chosen = p.sessionId === undefined ? await modelForNewSession() : undefined;
+        // 旧会话可能只存了 provider/model/key，没存 baseURL（早期创建/先建会话后补配置）。
+        // 缺了就按同名 profile 补回来；否则 SDK 会去 api.openai.com，DeepSeek 用户只会看到 timeout。
+        const stored = p.sessionId === undefined
+          ? undefined
+          : await loadSessionMeta(p.projectId, p.sessionId).catch(() => undefined);
+        const storedProfile = stored?.profile === undefined
+          ? undefined
+          : (await readModels()).profiles.find((x) => x.name === stored.profile);
+        const resumed = stored?.model === undefined
+          ? undefined
+          : {
+              ...stored.model,
+              ...(stored.model.baseURL === undefined || stored.model.baseURL === ""
+                ? storedProfile?.baseURL === undefined ? {} : { baseURL: storedProfile.baseURL }
+                : {}),
+              ...(stored.model.apiKey === undefined || stored.model.apiKey === ""
+                ? storedProfile?.apiKey === undefined ? {} : { apiKey: storedProfile.apiKey }
+                : {}),
+            };
         session = await openSession({
           projectId: p.projectId,
           sessionId: p.sessionId,
           // 续聊由 `openSession` 从会话元里读回自己那套；新建才取默认那套
-          model: chosen?.cfg,
-          profile: chosen?.name,
+          model: chosen?.cfg ?? resumed,
+          profile: chosen?.name ?? stored?.profile,
           // 新会话先叫「新会话」，第一句话发出去之后按那句话命名（见 tm:prompt）——
           // 都叫"桌面端"的话列表里分不出哪条是哪条
           title: p.sessionId === undefined ? NEW_SESSION_TITLE : undefined,
