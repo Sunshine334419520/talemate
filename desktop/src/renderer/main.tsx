@@ -9,6 +9,11 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
 
+// 主题以主进程的 nativeTheme 为准；Windows 上 prefers-color-scheme 不可靠，不能只靠 CSS 媒体查询。
+window.tm.onTheme((theme) => {
+  document.documentElement.dataset.theme = theme;
+});
+
 const root = document.getElementById("root");
 if (!root) throw new Error("没有 #root 容器");
 

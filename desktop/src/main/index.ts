@@ -44,6 +44,7 @@ import { DEFAULT_PERMISSION_MODE } from "../shared/api";
 import type {
   AskReply,
   AskView,
+  ColorScheme,
   DocNode,
   ModelProfile,
   ProfileView,
@@ -544,8 +545,12 @@ function registerHandlers(): void {
   ipcMain.handle("prefs:save", async (_e, patch: Prefs): Promise<void> => {
     const now = await readPrefs();
     await writeFile(prefsFile(), JSON.stringify({ ...now, ...patch }, null, 2), "utf-8");
-    // 外观是原生主题的一部分：改完立刻让标题栏、媒体查询与页面一起换
-    if (patch.appearance !== undefined) nativeTheme.themeSource = patch.appearance;
+    // 外观是原生主题的一部分：改完立刻让标题栏、渲染层与页面一起换
+    if (patch.appearance !== undefined) {
+      nativeTheme.themeSource = patch.appearance;
+      syncWindowTheme(win);
+      win?.webContents.send("tm:theme", currentTheme());
+    }
     // 权限偏好同时作用于当前会话：对话框左侧那一格和设置里的这一格是同一个开关
     if (patch.permissionMode !== undefined) {
       session?.setMode(patch.permissionMode === "accept-edits" ? "accept-edits" : undefined);
@@ -814,7 +819,12 @@ const PLATFORM = process.platform;
 /** 材质在开窗前定死（平台与系统版本决定，运行中不变）。 */
 const WINDOW_MATERIAL = resolveWindowMaterial();
 /** 主题监听只挂一次（窗口可能重建，回调里现取 `win`）。 */
-let overlayWired = false;
+let themeWired = false;
+
+/** 实际生效的配色。Windows 上 prefers-color-scheme 不可靠，统一由主进程推给渲染层。 */
+function currentTheme(): ColorScheme {
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
 
 /** Windows 标题栏按钮区：有材质时透明；没有材质时用实色。 */
 function overlayConfig() {
@@ -839,6 +849,8 @@ function windowChrome(): Electron.BrowserWindowConstructorOptions {
   }
   if (PLATFORM === "win32") {
     return {
+      // 菜单栏本身没有应用动作，但 Edit 菜单的 Ctrl+C/V 加速键必须留着；隐藏菜单栏，快捷键照常。
+      autoHideMenuBar: true,
       titleBarStyle: "hidden",
       titleBarOverlay: overlayConfig(),
       ...(WINDOW_MATERIAL === "acrylic" || WINDOW_MATERIAL === "mica"
@@ -846,13 +858,22 @@ function windowChrome(): Electron.BrowserWindowConstructorOptions {
         : {}),
     };
   }
-  return {};
+  return { autoHideMenuBar: true };
 }
 
 /** Windows 标题栏的颜色要跟着系统主题走（`titleBarOverlay` 不会自己变）。 */
 function syncTitleBarOverlay(w: BrowserWindow | undefined): void {
   if (PLATFORM !== "win32" || w === undefined) return;
   w.setTitleBarOverlay(overlayConfig());
+}
+
+/** 无材质时窗口底色也要跟主题；否则切深色后窗口边缘/加载瞬间会留浅色。 */
+function syncWindowTheme(w: BrowserWindow | undefined): void {
+  if (w === undefined) return;
+  syncTitleBarOverlay(w);
+  if (PLATFORM === "win32" && WINDOW_MATERIAL === "none") {
+    w.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#151513" : "#f6f6f3");
+  }
 }
 
 async function openWindow(show: boolean): Promise<BrowserWindow> {
@@ -870,20 +891,21 @@ async function openWindow(show: boolean): Promise<BrowserWindow> {
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      // 首帧前让 preload 拿到材质，避免异步 IPC 闪一下实色底
-      additionalArguments: [`--app-material=${WINDOW_MATERIAL}`],
+      // 首帧前让 preload 拿到材质与配色；Windows 上不能只等 prefers-color-scheme。
+      additionalArguments: [`--app-material=${WINDOW_MATERIAL}`, `--app-theme=${currentTheme()}`],
     },
   });
   // 必须挂到模块级：事件、确认、提问、报错全都经 `win` 发出去，漏了 `win?.webContents.send(...)`
   // 就变成静默空操作——界面照常打开、照常能发话，但一个实时回复都看不到，而且不报错。
   win = w;
-  // 主题切换时把 Windows 的标题栏颜色跟着换（只挂一次；`win` 可能换，所以回调里现取）
-  if (PLATFORM === "win32") {
-    syncTitleBarOverlay(w);
-    if (!overlayWired) {
-      overlayWired = true;
-      nativeTheme.on("updated", () => syncTitleBarOverlay(win));
-    }
+  // 主题切换：标题栏颜色与渲染层的 data-theme 一起换。只挂一次；`win` 可能换，回调里现取。
+  syncWindowTheme(w);
+  if (!themeWired) {
+    themeWired = true;
+    nativeTheme.on("updated", () => {
+      syncWindowTheme(win);
+      win?.webContents.send("tm:theme", currentTheme());
+    });
   }
   w.on("closed", () => {
     if (win === w) win = undefined;
@@ -895,6 +917,8 @@ async function openWindow(show: boolean): Promise<BrowserWindow> {
   });
   w.once("ready-to-show", () => w.setTitle("Talemate") ?? (show && w.show()));
   await w.loadFile(join(__dirname, "../renderer/index.html"));
+  // 首帧用 additionalArguments 已经落好；这里再推一次，覆盖加载期间发生的系统主题变化。
+  w.webContents.send("tm:theme", currentTheme());
   return w;
 }
 
@@ -969,9 +993,26 @@ async function selftestWindow(): Promise<void> {
 app.whenReady().then(async () => {
   // 外观偏好要在开窗之前落到 nativeTheme：窗口底色与 Windows 标题栏都按它取色
   nativeTheme.themeSource = (await readPrefs()).appearance ?? "system";
-  // Windows/Linux 把默认菜单栏画在窗口里，而那五项没有一项是这个应用的动作——新建/打开/保存指向的是
-  // 一个不存在的文档概念。macOS 的菜单在系统菜单栏，且 Cmd+C/V/Q 都得靠它，那边不动。
-  if (process.platform !== "darwin") Menu.setApplicationMenu(null);
+  // Windows/Linux 的 Edit 菜单不是装饰：去掉整个菜单，Ctrl+C/V 的加速键也会一起消失。
+  // 菜单栏用 autoHideMenuBar 藏起来，只保留编辑快捷键。macOS 用系统默认菜单。
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        {
+          label: "编辑",
+          submenu: [
+            { role: "undo", label: "撤销" },
+            { role: "redo", label: "重做" },
+            { type: "separator" },
+            { role: "cut", label: "剪切" },
+            { role: "copy", label: "复制" },
+            { role: "paste", label: "粘贴" },
+            { role: "selectAll", label: "全选" },
+          ],
+        },
+      ]),
+    );
+  }
   registerHandlers();
   if (SELFTEST === "window") return selftestWindow();
   if (SELFTEST === "1") return selftest();

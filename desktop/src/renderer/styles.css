@@ -33,6 +33,8 @@
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
+  color-scheme: light;
+
   /* 侧栏材质：CSS 只给染色 + 半透明填充；模糊由窗口材质给。none 时用预合成实色。 */
   --sb-fill: #f9fafb;
   --sb-fill-rgb: 249 250 251;
@@ -53,8 +55,8 @@
   );
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
+    color-scheme: dark;
     /* 深色不是把浅色取反：左栏在主区之上抬起一档（标准暗色面板的做法），
        浅色那边两者是"纯白 + 暖灰"的关系，方向相反但目的一样——让人一眼分得开。 */
     --ground: #151513;
@@ -94,7 +96,6 @@
       #202025 100%
     );
   }
-}
 
 * { box-sizing: border-box; }
 
@@ -322,10 +323,8 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 }
 .side .newbtn:hover { background: rgb(255 255 255 / 0.30); }
 .side .newbtn svg { width: 15px; height: 15px; }
-@media (prefers-color-scheme: dark) {
-  .side .newbtn { background: rgb(255 255 255 / 0.15); }
-  .side .newbtn:hover { background: rgb(255 255 255 / 0.24); }
-}
+:root[data-theme="dark"] .side .newbtn { background: rgb(255 255 255 / 0.15); }
+:root[data-theme="dark"] .side .newbtn:hover { background: rgb(255 255 255 / 0.24); }
 
 /* 中栏：对话。内容列居中、有最大宽度——一行拉满整屏是最难读也最像草稿的排版 */
 .main, .sidepane {

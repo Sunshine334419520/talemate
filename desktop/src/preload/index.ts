@@ -10,6 +10,7 @@ import type {
   AskPendingReason,
   AskReply,
   AskView,
+  ColorScheme,
   ConfirmRequest,
   DocNode,
   LLMEvent,
@@ -40,10 +41,16 @@ const material: WindowMaterial =
   (process.argv.find((arg) => arg.startsWith(MATERIAL_FLAG))?.slice(MATERIAL_FLAG.length) as
     | WindowMaterial
     | undefined) ?? "none";
+const THEME_FLAG = "--app-theme=";
+const theme: ColorScheme =
+  (process.argv.find((arg) => arg.startsWith(THEME_FLAG))?.slice(THEME_FLAG.length) as
+    | ColorScheme
+    | undefined) ?? "light";
 
 const api: TmApi = {
   platform: process.platform,
   material,
+  theme,
   listProjects: () => ipcRenderer.invoke("projects:list") as Promise<ProjectCard[]>,
   createProject: (title, channel, genre) =>
     ipcRenderer.invoke("projects:create", { title, channel, genre }) as Promise<{ id: string }>,
@@ -78,6 +85,7 @@ const api: TmApi = {
   webSettings: () => ipcRenderer.invoke("web:settings") as Promise<WebSettingsView>,
   saveWebSettings: (patch: WebSettingsPatch) =>
     ipcRenderer.invoke("web:save", patch) as Promise<WebSettingsView>,
+  onTheme: (cb) => ipcRenderer.on("tm:theme", (_e, t: ColorScheme) => cb(t)),
   onDocsChanged: (cb) => ipcRenderer.on("tm:docs-changed", () => cb()),
   onSessionState: (cb) => ipcRenderer.on("tm:session-state", (_e, s: SessionState) => cb(s)),
   history: (projectId, sessionId) =>

@@ -18,8 +18,8 @@
     "desktop:build": "cd desktop && electron-vite build",
     "desktop:package": "electron-builder --projectDir desktop --publish=never",
     "desktop:check-resources": "node desktop/scripts/check-package-resources.mjs",
-    "desktop:selftest": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_PROVIDER=mock TALEMATE_MOCK_TOOL=task TALEMATE_DESKTOP_SELFTEST=1 bun desktop/scripts/launch-electron.mjs",
-    "desktop:selftest:window": "TALEMATE_HOME=${TMPDIR:-/tmp}/talemate-selftest TALEMATE_RESOURCES=$PWD TALEMATE_DESKTOP_SELFTEST=window bun desktop/scripts/launch-electron.mjs",
+    "desktop:selftest": "bun desktop/scripts/selftest.mjs 1",
+    "desktop:selftest:window": "bun desktop/scripts/selftest.mjs window",
     "desktop:probe": "bun run desktop/probe/run-under-node.ts"
   },
   "dependencies": {

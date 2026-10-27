@@ -9,6 +9,8 @@
         const root = document.documentElement;
         root.dataset.platform = window.tm?.platform ?? "web";
         root.dataset.material = window.tm?.material ?? "none";
+        const dark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+        root.dataset.theme = window.tm?.theme ?? (dark ? "dark" : "light");
       })();
     </script>
     <!-- type="module" 是必须的：不然打包器不认它，产物里干脆没有这个文件（界面白屏、且不报错） -->

@@ -61,6 +61,8 @@ export interface ProjectCard {
  * "这台机器上这个人习惯的样子"，所以单独一个文件。
  */
 export type Appearance = "light" | "dark" | "system";
+/** 实际生效的配色，由主进程从 nativeTheme 推出；渲染层不再依赖 prefers-color-scheme。 */
+export type ColorScheme = "light" | "dark";
 /** 窗口材质：macOS vibrancy / Windows acrylic、mica / 无材质 */
 export type WindowMaterial = "vibrancy" | "acrylic" | "mica" | "none";
 /** 新会话默认权限：每次都问 / 工作区内免确认落盘（对应 `agent/modes.ts` 的 accept-edits） */
@@ -249,6 +251,8 @@ export interface TmApi {
   readonly platform: string;
   /** 侧栏材质：由主进程在开窗前定好，首帧前写进 `data-material` */
   readonly material: WindowMaterial;
+  /** 当前实际配色；首帧写进 `data-theme`，之后由 `onTheme` 更新 */
+  readonly theme: ColorScheme;
   listProjects(): Promise<ProjectCard[]>;
   createProject(title: string, channel: string, genre: string): Promise<{ id: string }>;
   /** 改书名 / 题材——卡上直接改，不经模型 */
@@ -319,6 +323,8 @@ export interface TmApi {
   /** 联网设置（DeepSeek Search / Fetch）；密钥只进不出 */
   webSettings(): Promise<WebSettingsView>;
   saveWebSettings(patch: WebSettingsPatch): Promise<WebSettingsView>;
+  /** 系统/设置里的配色变化；Windows 上不能只靠 prefers-color-scheme */
+  onTheme(cb: (theme: ColorScheme) => void): void;
   /** 盘上有人动了作品文档（mate 落了稿，或你在别处改了）——开着的右栏与目录树据此更新 */
   onDocsChanged(cb: () => void): void;
   onSessionState(cb: (s: SessionState) => void): void;
