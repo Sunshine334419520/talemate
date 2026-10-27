@@ -1324,6 +1324,7 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
   border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--card);
 }
 .profile-main { flex: 1; min-width: 0; }
+.profile-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .profile-name { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
 .profile-meta {
   margin-top: 3px; color: var(--faint); font-size: 12.5px;

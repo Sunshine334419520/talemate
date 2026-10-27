@@ -416,9 +416,22 @@ export function Settings({ onClose }: { onClose: () => void }) {
                           {p.provider} · {p.models.join(" · ")}
                         </div>
                       </div>
-                      <button className="btn small" onClick={() => setEditing({ draft: asDraft(p), saved: true })}>
-                        编辑
-                      </button>
+                      <div className="profile-actions">
+                        {defaultName !== p.name && (
+                          <button
+                            className="btn small"
+                            onClick={async () => {
+                              await window.tm.setDefaultProfile(p.name);
+                              await reloadModels();
+                            }}
+                          >
+                            设为默认
+                          </button>
+                        )}
+                        <button className="btn small" onClick={() => setEditing({ draft: asDraft(p), saved: true })}>
+                          编辑
+                        </button>
+                      </div>
                     </div>
                   ))}
                   <button
