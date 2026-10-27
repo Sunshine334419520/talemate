@@ -8,6 +8,8 @@ copyright: Copyright © 2026 Talemate
 # 根 package.json 用 ^ 范围；builder 需要精确版本才能下载对应平台的 Electron。
 electronVersion: 44.5.1
 
+afterPack: desktop/scripts/after-pack.mjs
+
 directories:
   output: ../release
 

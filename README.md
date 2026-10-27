@@ -26,7 +26,13 @@ bun run desktop:package -- --win --x64           # Windows NSIS
 bun run desktop:package -- --linux --x64         # Linux AppImage
 ```
 
-输出在仓库根目录的 `release/`。当前是不签名版本；macOS 首次打开需要在“系统设置 → 隐私与安全性”里放行。
+输出在仓库根目录的 `release/`。当前没有 Developer ID/notarization：本地构建会给 `.app` 做 ad-hoc 深度签名，但下载来的 DMG 仍带 quarantine，macOS 首次打开需要在“系统设置 → 隐私与安全性”里放行，或执行：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Talemate.app
+```
+
+要真正双击即开，需要配置 Developer ID 签名与 notarization。
 
 打 `v*` tag 会触发 `.github/workflows/release.yml`：在 macOS / Windows / Linux 三个 runner 上分别构建安装包，并把产物挂到 GitHub Release。`workflow_dispatch` 只构建 artifact，不发布。
 
