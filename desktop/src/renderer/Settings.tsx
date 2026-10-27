@@ -55,8 +55,13 @@ function Models({
       ))}
       <input
         value={input}
-        placeholder="加模型 id"
+        placeholder="加模型 id，回车加入"
         onChange={(e) => setInput(e.target.value)}
+        onBlur={() => {
+          const v = input.trim();
+          if (v !== "" && !value.includes(v)) onChange([...value, v]);
+          if (v !== "") setInput("");
+        }}
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
           e.preventDefault();
@@ -276,8 +281,18 @@ export function Settings({ onClose }: { onClose: () => void }) {
   /** `null` = 在看清单；有值 = 在编辑某一套（`saved: false` 表示它还没进清单、还没存过） */
   const [editing, setEditing] = useState<{ draft: Draft; saved: boolean } | null>(null);
   const [modelInput, setModelInput] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const asDraft = (p: ProfileView): Draft => ({ ...p, apiKey: "" });
+  // 不要展开 ProfileView：它带着 hasKey/isDefault，写回 models.json 会变成脏字段。
+  const asDraft = (p: ProfileView): Draft => ({
+    name: p.name,
+    provider: p.provider,
+    models: [...p.models],
+    baseURL: p.baseURL ?? "",
+    maxTokens: p.maxTokens,
+    reasoning: p.reasoning,
+    apiKey: "",
+  });
 
   async function reloadModels(): Promise<void> {
     const { profiles: list, default: d } = await window.tm.models();
@@ -306,19 +321,37 @@ export function Settings({ onClose }: { onClose: () => void }) {
   }
 
   const draft = editing?.draft;
-  const canSave = draft !== undefined && draft.name.trim() !== "" && draft.models.length > 0;
 
   async function save(): Promise<void> {
-    if (draft === undefined || !canSave) return;
+    if (draft === undefined) return;
+    // 模型输入框里的文字还没按回车时，不能因为 draft.models 为空就把「保存」当没看见。
+    const typed = modelInput.trim();
+    const models = typed !== "" && !draft.models.includes(typed) ? [...draft.models, typed] : draft.models;
+    if (draft.name.trim() === "") {
+      setSaveError("先给这套配置起个名字。");
+      return;
+    }
+    if (models.length === 0) {
+      setSaveError("至少填一个模型。输入模型 id 后按回车，或直接点保存。");
+      return;
+    }
+
+    setSaveError(null);
     const { apiKey, ...rest } = draft;
-    // 密钥那栏留空 = 没重填 → 整项省掉，让主进程沿用存着的那一份（它只进不出）
-    await window.tm.saveProfile({
-      ...rest,
-      name: draft.name.trim(),
-      ...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
-    });
-    await reloadModels();
-    setEditing(null); // 存完回清单
+    try {
+      // 密钥那栏留空 = 没重填 → 整项省掉，让主进程沿用存着的那一份（它只进不出）
+      await window.tm.saveProfile({
+        ...rest,
+        models,
+        name: draft.name.trim(),
+        ...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
+      });
+      await reloadModels();
+      setModelInput("");
+      setEditing(null); // 存完回清单
+    } catch (e) {
+      setSaveError(`保存失败：${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   const setDraft = (next: Draft): void => setEditing((e) => (e === null ? e : { ...e, draft: next }));
@@ -390,7 +423,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
                   ))}
                   <button
                     className="profile-add"
-                    onClick={() => setEditing({ draft: { ...BLANK }, saved: false })}
+                    onClick={() => {
+                      setSaveError(null);
+                      setEditing({ draft: { ...BLANK }, saved: false });
+                    }}
                   >
                     ＋ 添加模型提供商
                   </button>
@@ -484,6 +520,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
                   </div>
                 </div>
 
+                {saveError !== null && <p className="settings-error">{saveError}</p>}
+
                 <div className="settings-actions">
                   {editing.saved && draft !== undefined && defaultName !== draft.name && (
                     <button
@@ -509,7 +547,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
                     </button>
                   )}
                   <span className="spacer" />
-                  <button className="btn primary" onClick={() => void save()} disabled={!canSave}>
+                  <button className="btn primary" onClick={() => void save()}>
                     {editing.saved ? "保存" : "存为一套配置"}
                   </button>
                 </div>

@@ -246,7 +246,7 @@ async function readModels(): Promise<{ profiles: ModelProfile[]; default?: strin
     // 老文件一套配置只装一个模型（`model`）——顺手认下来，别让它们读不出来
     const profiles = (raw.profiles ?? []).map((p): ModelProfile => {
       const { model, ...rest } = p;
-      return { ...rest, models: p.models ?? (model !== undefined ? [model] : []) } as ModelProfile;
+      return cleanProfile({ ...rest, models: p.models ?? (model !== undefined ? [model] : []) } as ModelProfile);
     });
     return { profiles, default: raw.default };
   } catch {
@@ -264,8 +264,25 @@ function modelsFile(): string {
   return join(talemateHome(), "models.json");
 }
 
+/** 只落库这七个字段：ProfileView 的 hasKey/isDefault 不该被回写到 models.json。 */
+function cleanProfile(p: ModelProfile): ModelProfile {
+  return {
+    name: p.name,
+    provider: p.provider,
+    models: p.models,
+    ...(p.baseURL === undefined || p.baseURL === "" ? {} : { baseURL: p.baseURL }),
+    maxTokens: p.maxTokens,
+    reasoning: p.reasoning,
+    ...(p.apiKey === undefined || p.apiKey === "" ? {} : { apiKey: p.apiKey }),
+  };
+}
+
 async function writeModels(next: { profiles: ModelProfile[]; default?: string }): Promise<void> {
-  await writeFile(modelsFile(), JSON.stringify(next, null, 2), "utf-8");
+  await writeFile(
+    modelsFile(),
+    JSON.stringify({ ...next, profiles: next.profiles.map(cleanProfile) }, null, 2),
+    "utf-8",
+  );
 }
 
 function toModelConfig(p: ModelProfile, model?: string): ModelConfig {
