@@ -44,14 +44,20 @@ jobs:
             name: macOS (x64 + arm64)
             args: --mac --x64 --arm64
             artifact: talemate-macos
+            glob: release/*.dmg
+            resources: mac
           - os: windows-latest
             name: Windows (x64)
             args: --win --x64
             artifact: talemate-windows
+            glob: release/*.exe
+            resources: win
           - os: ubuntu-latest
             name: Linux (x64)
             args: --linux --x64
             artifact: talemate-linux
+            glob: release/*.AppImage
+            resources: linux
 
     steps:
       - uses: actions/checkout@v4
@@ -81,10 +87,13 @@ jobs:
           # 没有签名证书时不要尝试自动发现 identity；DMG 仍然可以生成。
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      - name: Verify packaged resources
+        run: bun run desktop:check-resources -- ${{ matrix.resources }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: release/**
+          path: ${{ matrix.glob }}
           if-no-files-found: error
 
   publish:
