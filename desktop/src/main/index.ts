@@ -37,7 +37,8 @@ import { writeIfUnchanged } from "../../../src/storage/atomic";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { DOC_ROOTS, docAbs } from "../../../src/storage/corpus";
 import { projectPaths, rootAbs, sessionPaths, talemateHome } from "../../../src/core/config";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
+import { homeStatePath, readHomeState, readHomeStateOr, writeHomeState } from "../../../src/storage/home_state";
 import { webSettingsView } from "../../../src/core/web";
 import { loadWebSettings, saveWebSettings } from "../../../src/storage/web_config";
 import { DEFAULT_PERMISSION_MODE } from "../shared/api";
@@ -201,68 +202,59 @@ function watchDocs(projectId: string): void {
 }
 
 /**
- * CLI 的"上次打开哪本书"（`<home>/current.json`）若正指向这本刚被删掉的书，就把那份指针清掉——
+ * CLI 的"上次打开哪本书"（`current.json`）若正指向这本刚被删掉的书，就把那份指针清掉——
  * 否则 `talemate`（不带参数）下次启动会去开一个不存在的空间。
- *
- * 这个文件今天还写在 `src/cli.ts` 里、没挪进 `storage/`（见 docs/ui.md 十一.3），所以这里只做最小的
- * 一步、不做收口：收口是那一项的事，顺手长第二份判据只会让那件事更难做。
  */
 async function clearCurrentIf(projectId: string): Promise<void> {
-  const file = join(talemateHome(), "current.json");
-  try {
-    const raw = JSON.parse(await readFile(file, "utf-8")) as { id?: string };
-    if (raw.id === projectId) await rm(file, { force: true });
-  } catch {
-    // 没有这个文件、或读不动 —— 那就没有指针要清，不是错误
-  }
+  const cur = await readHomeStateOr<{ id?: string }>("current", {});
+  if (cur.id === projectId) await rm(homeStatePath("current"), { force: true });
 }
 
-/** 壳自己的偏好文件。读失败一律当没有——偏好丢了只是回到默认值，不值得为它报错。 */
-function prefsFile(): string {
-  return join(talemateHome(), "desktop.json");
-}
-
-/** 读壳的偏好；读失败一律当没有——偏好丢了只是回到默认值，不值得为它报错。 */
+/** 读壳的偏好；坏文件当没有——偏好丢了只是回到默认值，不值得为它报错，界面更不能因此打不开。 */
 async function readPrefs(): Promise<Prefs> {
-  try {
-    const stored = JSON.parse(await readFile(prefsFile(), "utf-8")) as Prefs;
-    // 文件里没写 ≠ 没偏好：没写过这一格的人要拿到产品默认（工作区内修改），而不是"问不问看运气"。
-    return { ...stored, permissionMode: stored.permissionMode ?? DEFAULT_PERMISSION_MODE };
-  } catch {
-    return { permissionMode: DEFAULT_PERMISSION_MODE };
-  }
+  const stored = await readHomeStateOr<Prefs>("desktop", { permissionMode: DEFAULT_PERMISSION_MODE });
+  // 文件里没写 ≠ 没偏好：没写过这一格的人要拿到产品默认（工作区内修改），而不是"问不问看运气"。
+  return { ...stored, permissionMode: stored.permissionMode ?? DEFAULT_PERMISSION_MODE };
+}
+
+/** `models.json` 的落盘形状。 */
+interface StoredModels {
+  profiles?: (Omit<ModelProfile, "models"> & { models?: string[]; model?: string })[];
+  default?: string;
+}
+
+function normalizeModels(raw: StoredModels): { profiles: ModelProfile[]; default?: string } {
+  // 老文件一套配置只装一个模型（`model`）——顺手认下来，别让它们读不出来
+  const profiles = (raw.profiles ?? []).map((p): ModelProfile => {
+    const { model, ...rest } = p;
+    return cleanProfile({ ...rest, models: p.models ?? (model !== undefined ? [model] : []) } as ModelProfile);
+  });
+  return { profiles, default: raw.default };
 }
 
 /**
  * 模型配置清单：`<talemateHome>/models.json`。作者级、跨作品——同一台机器上的模型清单不该跟着书走
  * （书只该说"我这本书用什么声音"，不该说"你用什么模型"）。一份都没有时一律退回环境变量，`.env`
  * 那套照旧能用、不是被替代了。
+ *
+ * 这里宽松：坏文件当空清单，设置界面照常打得开。改写路径用下面的严格读。
  */
 async function readModels(): Promise<{ profiles: ModelProfile[]; default?: string }> {
-  try {
-    const raw = JSON.parse(await readFile(modelsFile(), "utf-8")) as Partial<{
-      profiles: (Omit<ModelProfile, "models"> & { models?: string[]; model?: string })[];
-      default: string;
-    }>;
-    // 老文件一套配置只装一个模型（`model`）——顺手认下来，别让它们读不出来
-    const profiles = (raw.profiles ?? []).map((p): ModelProfile => {
-      const { model, ...rest } = p;
-      return cleanProfile({ ...rest, models: p.models ?? (model !== undefined ? [model] : []) } as ModelProfile);
-    });
-    return { profiles, default: raw.default };
-  } catch {
-    return { profiles: [] };
-  }
+  return normalizeModels(await readHomeStateOr<StoredModels>("models", {}));
+}
+
+/**
+ * 改写用（save / delete / default 都是"读 → 改 → 整份重写"）：坏文件必须抛。
+ * 宽松读在这里的后果是把用户的多套配置与密钥当成"没有"，然后用一行数据整份盖掉。
+ */
+async function readModelsStrict(): Promise<{ profiles: ModelProfile[]; default?: string }> {
+  return normalizeModels((await readHomeState<StoredModels>("models")) ?? {});
 }
 
 /** 给界面看的那一份：密钥换成"有没有"——不该为了显示就把密钥在进程间多绕一圈。 */
 function view(p: ModelProfile, isDefault: boolean): ProfileView & { isDefault?: boolean } {
   const { apiKey, ...rest } = p;
   return { ...rest, hasKey: apiKey !== undefined && apiKey !== "", isDefault };
-}
-
-function modelsFile(): string {
-  return join(talemateHome(), "models.json");
 }
 
 /** 只落库这七个字段：ProfileView 的 hasKey/isDefault 不该被回写到 models.json。 */
@@ -279,11 +271,7 @@ function cleanProfile(p: ModelProfile): ModelProfile {
 }
 
 async function writeModels(next: { profiles: ModelProfile[]; default?: string }): Promise<void> {
-  await writeFile(
-    modelsFile(),
-    JSON.stringify({ ...next, profiles: next.profiles.map(cleanProfile) }, null, 2),
-    "utf-8",
-  );
+  await writeHomeState("models", { ...next, profiles: next.profiles.map(cleanProfile) });
 }
 
 function toModelConfig(p: ModelProfile, model?: string): ModelConfig {
@@ -497,7 +485,7 @@ function registerHandlers(): void {
   ipcMain.handle(
     "models:save",
     async (_e, p: Omit<ModelProfile, "apiKey"> & { apiKey?: string }): Promise<void> => {
-      const now = await readModels();
+      const now = await readModelsStrict();
       const before = now.profiles.find((x) => x.name === p.name);
       // 表单里没重填密钥 = 沿用旧的（界面看不到密钥，没法重发）
       const next: ModelProfile = { ...p, apiKey: p.apiKey ?? before?.apiKey };
@@ -518,14 +506,14 @@ function registerHandlers(): void {
   );
 
   ipcMain.handle("models:delete", async (_e, name: string): Promise<void> => {
-    const now = await readModels();
+    const now = await readModelsStrict();
     const profiles = now.profiles.filter((x) => x.name !== name);
     // 默认那套被删了就顺位给第一个——留一个指向不存在名字的 default 只会让人以为选了没用
     await writeModels({ profiles, default: now.default === name ? profiles[0]?.name : now.default });
   });
 
   ipcMain.handle("models:default", async (_e, name: string): Promise<void> => {
-    await writeModels({ ...(await readModels()), default: name });
+    await writeModels({ ...(await readModelsStrict()), default: name });
   });
 
   /** 换当前这个会话用哪套：会话对象上的 `model` 是活的，下一轮请求就按新的发。 */
@@ -543,8 +531,9 @@ function registerHandlers(): void {
   ipcMain.handle("prefs:get", (): Promise<Prefs> => readPrefs());
 
   ipcMain.handle("prefs:save", async (_e, patch: Prefs): Promise<void> => {
-    const now = await readPrefs();
-    await writeFile(prefsFile(), JSON.stringify({ ...now, ...patch }, null, 2), "utf-8");
+    // 严格读：这里是"读 → 合并 → 重写"，把坏掉的偏好当空对象会把权限模式一起悄悄改回去
+    const now = (await readHomeState<Prefs>("desktop")) ?? { permissionMode: DEFAULT_PERMISSION_MODE };
+    await writeHomeState("desktop", { ...now, ...patch });
     // 外观是原生主题的一部分：改完立刻让标题栏、渲染层与页面一起换
     if (patch.appearance !== undefined) {
       nativeTheme.themeSource = patch.appearance;

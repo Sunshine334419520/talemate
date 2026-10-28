@@ -2,7 +2,7 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：2026-10-25 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段
+> **对齐代码**：2026-10-28 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `ask-user.md`（提问与 pending）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
@@ -357,7 +357,7 @@ rm -rf node_modules/electron && bun install && ./node_modules/.bin/electron --ve
 
 1. ~~**恢复会话的历史。**~~ **不用动**（2026-10-01 核对）：`storage/session-store.ts` 的 `loadMessages(projectId, sessionId)` 已经是"按 `seq` 排序的消息数组"，主进程直接调它就能拿到历史投影。原先记的"只有内部读"说的是 `Session` 私有那份，是我看窄了——**盘上那一层本来就是公开的**。
 2. ~~**三向裁决的结构化入口。**~~ **已做**：接受 / 拒绝走 `resolveProposal` / `decideProposal`，不再合成固定短语；提意见走 `refineProposal`，显式标 refine，不经过文本词表。CLI 与手打回复仍保留 `draftVerdict`，判定仍归 harness。
-3. **`current.json` 从 `cli.ts` 挪到 `storage/`。** 它是"上次打开哪本书"，今天写在 CLI 里；桌面端与 CLI 共用同一个 `~/.talemate/`，各记一份就会打架。
+3. ~~**`current.json` 从 `cli.ts` 挪到 `storage/`。**~~ **已做**（2026-10-28）：三份用户级文件（`models.json` / `desktop.json` / `current.json`）的路径与读写在 `storage/home_state.ts` 一处，CLI 与桌面端共用。顺带补上一条踩到的坑：全新机器上 `~/.talemate` 还不存在（它平时是 `createProject` 顺带建的），而在设置里保存模型配置是**裸写** `models.json`——于是第一次保存就 `ENOENT`。现在写口统一走 `writeAtomic`（自带 mkdir），坏文件也不再被当成"还没配"、被下一笔保存整份覆盖。
 
 其余的接口已经就位，不用动：`openSession`（含 `sessionId` 续聊）、`session.post`、`abortCurrent`（停止按钮）、`pendingLabel`（待落盘提案的提示）、`permissionView`（权限面板）、以及 `UserIO` 的三个口。
 

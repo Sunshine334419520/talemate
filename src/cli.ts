@@ -4,15 +4,14 @@
  *
  * 边界：只管接命令与渲染，LLM / 工具 / 权限的实现都在 session 与 tool 层。
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { join } from "node:path";
-import { loadModelConfig, hasCredentials, talemateHome } from "./core/config";
+import { loadModelConfig, hasCredentials } from "./core/config";
 import type { AskAnswer, AskOutcome, AskRequest, LLMEvent, StoredMessage } from "./core/types";
 import { buildProjectStatus } from "./framework/report";
 import { createProject, loadProjectMeta } from "./storage/project";
 import { enumerateDocs, readDoc } from "./storage/corpus";
+import { readHomeStateOr, writeHomeState } from "./storage/home_state";
 import { isSubagentSession, listSessionIds, loadMessages, loadSessionMeta } from "./storage/session-store";
 import { openSession, renderPermissionView, type Session, type UserIO } from "./session/session";
 import { buildSessionDebug, renderSessionDebug } from "./session/debug";
@@ -33,23 +32,12 @@ async function visibleSessionIds(projectId: string): Promise<string[]> {
   return ids.filter((_, i) => !isSubagentSession(metas[i]));
 }
 
-function currentFile(): string {
-  return join(talemateHome(), "current.json");
-}
-
 async function loadCurrent(): Promise<string | undefined> {
-  try {
-    const raw = await readFile(currentFile(), "utf-8");
-    const c = JSON.parse(raw) as { id?: string };
-    return c.id;
-  } catch {
-    return undefined;
-  }
+  return (await readHomeStateOr<{ id?: string }>("current", {})).id;
 }
 
 async function saveCurrent(id: string): Promise<void> {
-  await mkdir(talemateHome(), { recursive: true });
-  await writeFile(currentFile(), JSON.stringify({ id }, null, 2), "utf-8");
+  await writeHomeState("current", { id });
 }
 
 // ─────────────────────────── 展示辅助 ───────────────────────────
