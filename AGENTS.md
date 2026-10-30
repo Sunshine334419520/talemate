@@ -124,6 +124,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | Who may do what, and what needs asking | `docs/permissions.md` |
 | What the desktop UI looks like, and what the user is allowed to see | `docs/ui.md` |
 | What isn't built yet | `docs/roadmap.md` |
+| Evals & observability — how to learn them, and how far I've got | `docs/learning/evals-observability/progress.md` |
 | How prompts are organised and written | `prompts/README.md` |
 
 Every file in `docs/` opens with a Status block (职责 / 读者 / 对齐代码). If you change a fact one of them describes, bump that file's 对齐代码 date. `tests/docs.test.ts` enforces this, plus that no doc mentions a deleted tool.
