@@ -149,6 +149,22 @@ describe("判据执行", () => {
     expect(results[3]?.detail).toContain("180 token");
   });
 
+  test("file-equals 比完整字节，不是 contains", async () => {
+    const snap = snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" });
+    const out = await runChecks(
+      {
+        ...CASE,
+        checks: [
+          { kind: "file-equals", path: "design/core.md", text: "# 核心设定\n\n旧书店。\n" },
+          { kind: "file-equals", path: "design/core.md", text: "# 核心设定\n\n旧书店。" },
+        ],
+      },
+      [snap],
+      fixtureRoot,
+    );
+    expect(out.map((r) => r.ok)).toEqual([true, false]);
+  });
+
   test("file-not-contains 与 assistant-text-contains", async () => {
     const snap = snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" });
     const out = await runChecks(

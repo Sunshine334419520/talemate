@@ -27,6 +27,7 @@ const CHECK_FIELDS: Record<CheckKind, readonly string[]> = {
   "file-exists": ["path"],
   "file-absent": ["path"],
   "file-unchanged": ["path", "against"],
+  "file-equals": ["path", "text"],
   "file-contains": ["path", "text"],
   "file-not-contains": ["path", "text"],
   "file-matches": ["path", "pattern"],

@@ -59,6 +59,7 @@ function labelOf(check: Check): string {
   switch (check.kind) {
     case "file-exists":
     case "file-absent":
+    case "file-equals":
     case "file-not-contains":
     case "file-unchanged":
     case "file-contains":
@@ -145,6 +146,18 @@ async function evaluate(
       return actual === expected
         ? { id: labelOf(check), ok: true, detail: "与 fixture 一致" }
         : { id: labelOf(check), ok: false, detail: `与 fixture 不同（${actual.length} 字 vs ${expected.length} 字）` };
+    }
+
+    case "file-equals": {
+      const actual = file(check.path);
+      if (actual === undefined) {
+        return { id: labelOf(check), ok: false, detail: `文件不存在：${check.path}` };
+      }
+      const expected = check.text.replace(/\r\n/g, "\n");
+      const got = actual.replace(/\r\n/g, "\n");
+      return got === expected
+        ? { id: labelOf(check), ok: true, detail: `${check.path} 完全一致` }
+        : { id: labelOf(check), ok: false, detail: `${check.path} 与期望不同（期望 ${expected.length} 字，实际 ${got.length} 字）` };
     }
 
     case "file-not-contains": {

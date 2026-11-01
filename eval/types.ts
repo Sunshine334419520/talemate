@@ -15,6 +15,7 @@ export const CHECK_KINDS = [
   "file-exists",
   "file-absent",
   "file-unchanged",
+  "file-equals",
   "file-contains",
   "file-not-contains",
   "file-matches",
@@ -43,6 +44,7 @@ export type Check = CheckBase &
     | { kind: "file-exists"; path: string }
     | { kind: "file-absent"; path: string }
     | { kind: "file-unchanged"; path: string; against: "fixture" | "before" }
+    | { kind: "file-equals"; path: string; text: string }
     | { kind: "file-contains"; path: string; text: string }
     | { kind: "file-not-contains"; path: string; text: string }
     | { kind: "file-matches"; path: string; pattern: string }
