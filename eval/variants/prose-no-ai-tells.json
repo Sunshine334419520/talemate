@@ -1,0 +1,13 @@
+{
+  "id": "prose-no-ai-tells",
+  "note": "删掉 prose.rules 的「No AI tells」整条，看正文质量是否变差",
+  "patches": [
+    {
+      "kind": "prompt",
+      "file": "prose.rules",
+      "note": "prose.rules：删掉 No AI tells",
+      "before": "- No AI tells. Shapes, not words: banning “仿佛” only moves it to “宛如”. Watch for the “not A, but\n  B” symmetry used for atmosphere; the balanced hedge about one thing; the closing line reaching for\n  a significance it did not earn; the stock body reaction used in place of a specific response; the\n  evenly-paced paragraph.",
+      "after": ""
+    }
+  ]
+}

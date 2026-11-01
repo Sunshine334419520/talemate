@@ -1,0 +1,51 @@
+{
+  "id": "prose-chapter-pairwise",
+  "family": "prose",
+  "base": false,
+  "brief": "第 1 章的规划已经批准，所有前置产物都已就位。直接写第 1 章正文到 chapters/chapter_ch1_v1.md，目标 1200 字左右；不要提案、不要重新规划。\n\n已批准的规划：\n- 场景：傍晚，旧书店，沈越在为房租整理旧书；贺守一在一旁看着他。\n- 必须发生：沈越在一本旧书的扉页看见第一行只有自己能看见的遗言。\n- 不能提前：遗言主人的身份。\n- 章末问题：这行字是谁写的？\n- 产物：只有 chapters/chapter_ch1_v1.md。",
+  "fixtures": true,
+  "checks": [
+    {
+      "kind": "tool-called",
+      "name": "write"
+    },
+    {
+      "kind": "file-exists",
+      "path": "chapters/chapter_ch1_v1.md"
+    },
+    {
+      "kind": "file-matches",
+      "path": "chapters/chapter_ch1_v1.md",
+      "pattern": "^[\\s\\S]{600,}$"
+    },
+    {
+      "kind": "file-contains",
+      "path": "chapters/chapter_ch1_v1.md",
+      "text": "沈越"
+    },
+    {
+      "kind": "change-recorded",
+      "path": "chapters/chapter_ch1_v1.md"
+    }
+  ],
+  "rubric": "prose-chapter-basic",
+  "budget": {
+    "maxTurns": 1,
+    "maxSteps": 12,
+    "maxTokens": 180000
+  },
+  "tags": [
+    "prose",
+    "pairwise"
+  ],
+  "followUps": [],
+  "prosePlanChapter": 1,
+  "prosePlanContent": "# 第 1 章规划\n\n- 场景：傍晚，旧书店，沈越在为房租整理旧书；贺守一在一旁看着他。\n- 必须发生：沈越在一本旧书的扉页看见第一行只有自己能看见的遗言。\n- 不能提前：遗言主人的身份。\n- 章末问题：这行字是谁写的？\n- 产物：只有 chapters/chapter_ch1_v1.md。\n",
+  "model": {
+    "reasoning": "low",
+    "temperature": 0.8,
+    "maxTokens": 32000
+  },
+  "answerer": true,
+  "mode": "prose"
+}

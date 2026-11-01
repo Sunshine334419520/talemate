@@ -10,6 +10,7 @@ import { AgentRegistry, DEFAULT_AGENTS } from "../agent/registry";
 import type { AgentDef } from "../core/types";
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
+import { overridePrompt, readPrompt } from "../prompts";
 
 export type Patch =
   | { kind: "persona"; note: string; before: string; after: string }
@@ -20,7 +21,9 @@ export type Patch =
    *
    * 消融法测不出"缺失型病因"（删不掉不存在的东西），只能把它加进去看行为变不变。
    */
-  | { kind: "appendResult"; tool: string; note: string; text: string };
+  | { kind: "appendResult"; tool: string; note: string; text: string }
+  /** 覆盖一份 prompt 文本（如 `prose.rules`）；只在本进程内生效，不写仓库文件 */
+  | { kind: "prompt"; file: string; note: string; before: string; after: string };
 
 export interface Variant {
   id: string;
@@ -46,6 +49,15 @@ export function mustReplace(text: string, before: string, after: string, what: s
 
 /** 变体只在内存里装配本次要用的 agents / tools，不改仓库里的任何文件。 */
 export function buildHarness(variant: Variant): { agents: AgentRegistry; tools: ToolRegistry } {
+  // prompt 覆盖是进程级的；调用方在每次 run 前 clear，这里只负责把本变体的补丁叠上去
+  for (const p of variant.patches) {
+    if (p.kind !== "prompt") continue;
+    overridePrompt(
+      p.file,
+      mustReplace(readPrompt(p.file), p.before, p.after, `${variant.id}/${p.file}: ${p.note}`),
+    );
+  }
+
   const patched = BUILTIN_TOOLS.map((t) => {
     let description = t.description;
     for (const p of variant.patches) {

@@ -10,6 +10,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { CHECK_KINDS, FAMILIES } from "./types";
 import { buildHarness } from "../src/probe/patches";
+import { clearPromptOverrides } from "../src/prompts";
 import type { Variant } from "../src/probe/patches";
 import type { CheckKind, EvalCase } from "./types";
 
@@ -319,10 +320,13 @@ export async function validateVariants(
     if (value.id !== expected) issues.push({ where, message: `id 与文件名不一致：${value.id}` });
     if (seen.has(value.id)) issues.push({ where, message: `变体 id 重复：${value.id}` });
     seen.add(value.id);
+    clearPromptOverrides();
     try {
       buildHarness(value as unknown as Variant);
     } catch (err) {
       issues.push({ where, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      clearPromptOverrides();
     }
   }
   return { variants: files.length, issues };

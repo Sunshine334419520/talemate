@@ -16,7 +16,24 @@ function promptsDir(): string {
   return join(resourceRoot() ?? fallback, "prompts");
 }
 
+/**
+ * 评测变体的内存覆盖：只改本次进程读到的文本，不碰仓库文件。
+ * 键是 readPrompt 的 id（如 `prose.rules`），调用方负责在每次 run 前 clear。
+ */
+const overrides = new Map<string, string>();
+
+export function overridePrompt(id: string, text: string): void {
+  overrides.set(id, text.trim());
+}
+
+export function clearPromptOverrides(): void {
+  overrides.clear();
+}
+
 export function readPrompt(rel: string): string {
-  const file = join(promptsDir(), rel.endsWith(".txt") ? rel : `${rel}.txt`);
+  const id = rel.endsWith(".txt") ? rel.slice(0, -4) : rel;
+  const override = overrides.get(id);
+  if (override !== undefined) return override;
+  const file = join(promptsDir(), `${id}.txt`);
   return readFileSync(file, "utf-8").trim();
 }

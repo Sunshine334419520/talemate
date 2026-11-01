@@ -27,6 +27,7 @@ import { readChanges } from "../src/storage/change_index";
 import { eventLogFor, resetEventLogs } from "../src/telemetry/log";
 import { hashJson, readCassette } from "../src/llm/replay";
 import { buildHarness } from "../src/probe/patches";
+import { clearPromptOverrides } from "../src/prompts";
 import type { Variant } from "../src/probe/patches";
 import { runChecks } from "./checks";
 import type { TurnSnapshot } from "./checks";
@@ -302,6 +303,7 @@ async function runOnce(
   variant: Variant | undefined,
   variantId: string,
 ): Promise<RunResult> {
+  clearPromptOverrides();
   const caseDir = join(EVAL_ROOT, "cases", evalCase.id);
   const fixtures = evalCase.fixtures === true ? await readTree(join(caseDir, "fixtures")) : {};
   const runId = variantId === "baseline" ? `${evalCase.id}-r${repeat}` : `${evalCase.id}-${variantId}-r${repeat}`;
@@ -368,8 +370,6 @@ async function runOnce(
     });
     sessionId = session.sessionId;
 
-    if (evalCase.mode !== undefined) session.setMode(evalCase.mode);
-
     if (evalCase.prosePlanChapter !== undefined) {
       const plan: PendingProposal = {
         name: PLAN_KEY,
@@ -380,6 +380,8 @@ async function runOnce(
       };
       session.pending.set(PLAN_KEY, plan);
     }
+    // 先种规划再进模式：prose/draft 的 system 依赖当前章节的 plan
+    if (evalCase.mode !== undefined) session.setMode(evalCase.mode);
 
     const prompts = [evalCase.brief, ...(evalCase.followUps ?? [])];
     if (prompts.length > evalCase.budget.maxTurns) {
