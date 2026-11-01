@@ -1,0 +1,43 @@
+{
+  "rubric": "prose-chapter-basic",
+  "model": {
+    "provider": "openai",
+    "model": "deepseek-v4-flash",
+    "baseURL": "https://api.deepseek.com",
+    "maxTokens": 8192,
+    "reasoning": "high",
+    "temperature": 0.8
+  },
+  "results": [
+    {
+      "id": "A",
+      "sample": "eval/judge/samples/A.md",
+      "human": null,
+      "score": {
+        "dimensions": {
+          "场景落实": 5,
+          "人物": 5,
+          "节奏与声音": 5,
+          "正文卫生": 5
+        },
+        "total": 5,
+        "reason": "场景以武汉夏夜旧书店的感官细节扎实落地，人物习惯与对话互相咬合，节奏张弛有度，且无元叙述或设定解释。"
+      }
+    },
+    {
+      "id": "B",
+      "sample": "eval/judge/samples/B.md",
+      "human": null,
+      "score": {
+        "dimensions": {
+          "场景落实": 5,
+          "人物": 5,
+          "节奏与声音": 5,
+          "正文卫生": 5
+        },
+        "total": 5,
+        "reason": "场景具体到可指认的物件、声音与光线，沈越的职业习惯先于情绪反应，对话与节奏共同推进，且无元叙述或设定倾倒。"
+      }
+    }
+  ]
+}

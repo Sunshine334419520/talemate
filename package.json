@@ -23,7 +23,8 @@
     "desktop:probe": "bun run desktop/probe/run-under-node.ts",
     "eval:check": "bun run eval/check.ts",
     "eval:run": "bun run eval/run.ts",
-    "eval:gate": "bun run eval:check && bun run eval:run --replay --repeat 1"
+    "eval:gate": "bun run eval:check && bun run eval:run --replay --repeat 1",
+    "eval:judge": "bun run eval/judge-cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
