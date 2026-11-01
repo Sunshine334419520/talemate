@@ -1,0 +1,10 @@
+{
+  "case": "prose-chapter-pairwise",
+  "variant": "prose-no-ai-tells",
+  "blind": { "A": "prose-no-ai-tells", "B": "baseline" },
+  "humanWinner": "B",
+  "winner": "baseline",
+  "loser": "prose-no-ai-tells",
+  "judge": { "A": 5.0, "B": 5.0 },
+  "note": "人工选 B=baseline；删掉「No AI tells」没有更好。judge 两版都 5/5，饱和，不能用于这个决定。"
+}

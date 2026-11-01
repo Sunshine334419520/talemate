@@ -548,7 +548,7 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 - **校准**：`eval/judge/calibration.jsonl`（`human` 可空）；quadratic weighted κ + MAE；`n < 5` 只当方向。
 - **安全**：judge 报告里的 model 会**去掉 apiKey**，不能把密钥写进 git。
 - **首次结果**：`prose-chapter-pairwise` 的 A/B 两版，judge 都给 **5.0/5**（四维全 5），暂时**分不出差异**；人工分还没填，κ 未计算。
-- **pairwise**：`reports/2026-11-01-pairwise/` 有盲评 A/B 与 `.key.json`；等用户选 A/B 后再写 winner。
+- **pairwise**：第一次结果人工选 **B=baseline**，即「删掉 No AI tells」没有更好；记录在 `reports/2026-11-01-pairwise/result.json` 与 `eval/judge/pairwise.jsonl`。judge 两版都 5/5，饱和，不能用于这个决定。
 - **待办**：人工分/κ（至少 5 个样本）、M3 的 6 个 case、holdout、决策规则；1M 压缩压测按用户要求留待办。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。
