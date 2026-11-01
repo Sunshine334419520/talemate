@@ -48,11 +48,37 @@ export function isOverBudget(
   env = process.env,
 ): boolean {
   const trigger = Number(env.TALEMATE_COMPACT_TOKENS) || compactTrigger(model);
-  return lastInput === undefined ? estimateChars(messages) > trigger : lastInput > trigger;
+  // 真数是上一次请求的输入；它看不到"这一步刚产生的大工具输出"。字符估算补这一刀：
+  // 中文按 1 字符 ≈ 1 token 估，宁可早压，也不要在下一次请求时才被 provider 顶回来。
+  return estimateChars(messages) > trigger || (lastInput !== undefined && lastInput > trigger);
 }
 
 /** 保留的 recent 消息条数（原样留在上下文里，防止摘要丢细节） */
 const RECENT_KEEP = 6;
+
+/** 把一段文本按不超过 size 切块；优先在换行处切，单行过长才硬切。 */
+function splitText(text: string, size: number): string[] {
+  const chunks: string[] = [];
+  let rest = text;
+  while (rest.length > size) {
+    let cut = rest.lastIndexOf("\n", size);
+    if (cut < size * 0.5) cut = size;
+    chunks.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+  }
+  if (rest.length > 0) chunks.push(rest);
+  return chunks;
+}
+
+/**
+ * 摘要的输入上限：一次把 80 万字的 head 喂给 summarizer，摘要请求自己就会超窗。
+ * 按模型窗口的一半切块；测试可以用 TALEMATE_SUMMARY_CHUNK_CHARS 压小。
+ */
+function summaryChunkChars(model: string, env = process.env): number {
+  const pinned = Number(env.TALEMATE_SUMMARY_CHUNK_CHARS);
+  if (Number.isFinite(pinned) && pinned > 0) return Math.floor(pinned);
+  return Math.max(20_000, Math.floor(compactTrigger(model) * 0.5));
+}
 
 /**
  * 执行一次压缩。messages 可由调用方传入（会话内存缓存）以免重复读盘；缺省从盘读。
@@ -107,13 +133,52 @@ export async function compact(opts: {
     .filter(Boolean)
     .join("\n\n");
 
-  const summary = (
-    await chat({
-      model,
-      system: opts.system ?? SUMMARIZER_SYSTEM,
-      messages: [{ role: "user", text: `以下是需要摘要的内容：\n\n${headText}` }],
-    })
-  ).text;
+  if (headText.trim() === "") return null;
+
+  const system = opts.system ?? SUMMARIZER_SYSTEM;
+  const chunks = splitText(headText, summaryChunkChars(model.model));
+  let summary: string;
+  if (chunks.length === 1) {
+    summary = (
+      await chat({
+        model,
+        system,
+        messages: [{ role: "user", text: `以下是需要摘要的内容：\n\n${chunks[0]}` }],
+      })
+    ).text;
+  } else {
+    const partials: string[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      partials.push(
+        (
+          await chat({
+            model,
+            system,
+            messages: [
+              {
+                role: "user",
+                text: `以下是需要摘要的内容（第 ${i + 1}/${chunks.length} 段）：\n\n${chunks[i]}`,
+              },
+            ],
+          })
+        ).text,
+      );
+    }
+    summary = (
+      await chat({
+        model,
+        system,
+        messages: [
+          {
+            role: "user",
+            text:
+              "以下是同一段历史的分段摘要。把它们合并成一份摘要，保留人名、硬设定、未兑现的承诺与当前进度：\n\n" +
+              partials.join("\n\n---\n\n"),
+          },
+        ],
+      })
+    ).text;
+  }
 
   return appendMessage(
     projectId,

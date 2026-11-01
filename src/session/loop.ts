@@ -96,11 +96,12 @@ function withSubagentBudget(
 /** 循环本体。单独一层是为了让上面那对 busy / idle 一眼看出是 `try` / `finally` 的关系。 */
 async function runBody(agent: AgentDef, input: string, deps: LoopDeps): Promise<string> {
   await deps.commitUser(input, agent.id);
-  if (deps.maybeCompact) await deps.maybeCompact();
 
   let lastText = "";
   const steps = deps.steps ?? 10;
   for (let step = 0; step < steps; step++) {
+    // 每步都量一次：上一步的工具结果可能很大，等到下一轮开始才压就已经顶过窗口了
+    if (deps.maybeCompact) await deps.maybeCompact();
     deps.onEvent({ type: "step.start" });
     const { system, messages, tools } = withSubagentBudget(agent, step, steps, await deps.buildRequest(agent));
     // 本步已经流出去的正文。**中止时要用它**：正文落盘在整轮之后（`commitAssistant`），

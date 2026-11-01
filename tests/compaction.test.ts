@@ -66,11 +66,21 @@ describe("压缩 · 文本量与阈值", () => {
     expect(estimateChars(messages)).toBe(5 + 3 + 2 + 4 + 6 + 3 + 2);
   });
 
-  test("有真实 usage 时以 lastInput 为准，没有时才退回字符估算", () => {
-    const messages = [user(1, "x".repeat(1000))];
-    expect(isOverBudget("mock", 100, messages, { TALEMATE_COMPACT_TOKENS: "500" })).toBe(false);
-    expect(isOverBudget("mock", 900, messages, { TALEMATE_COMPACT_TOKENS: "500" })).toBe(true);
-    expect(isOverBudget("mock", undefined, messages, { TALEMATE_COMPACT_TOKENS: "500" })).toBe(true);
+  test("lastInput 之外还保留字符守门：大工具输出不会被上一次请求的旧数字掩盖", () => {
+    const small = [user(1, "x".repeat(100))];
+    expect(isOverBudget("mock", 100, small, { TALEMATE_COMPACT_TOKENS: "500" })).toBe(false);
+    expect(isOverBudget("mock", 900, small, { TALEMATE_COMPACT_TOKENS: "500" })).toBe(true);
+
+    const huge: StoredMessage[] = [
+      {
+        seq: 1,
+        role: "assistant",
+        ts: 1,
+        parts: [{ type: "tool", id: "c", name: "read", state: "completed", input: "", output: "x".repeat(1000) }],
+      },
+    ];
+    // 上一次请求只有 100，但这一步的工具输出已经是 1000 字——不能等下一次请求再发现
+    expect(isOverBudget("mock", 100, huge, { TALEMATE_COMPACT_TOKENS: "500" })).toBe(true);
   });
 
   test("1M 模型的触发点是 80 万，不是 8 万", () => {
@@ -109,6 +119,27 @@ describe("压缩 · 窗口", () => {
     expect(window[0]?.role).toBe("compaction");
     // 窗口只从 compaction 起，不把整份历史再喂回去
     expect(window.length).toBeLessThan(after.length);
+  });
+
+  test("head 超过块大小时分块摘要，仍然只落一条 compaction", async () => {
+    const sessionId = nextSession();
+    await createSession(projectId, { id: sessionId, projectId, title: "分块", agent: "mate" });
+    for (let i = 0; i < 8; i++) {
+      await appendMessage(projectId, sessionId, { role: "user", agent: "mate", text: `${i} ` + "x".repeat(100) });
+      await appendMessage(projectId, sessionId, {
+        role: "assistant",
+        agent: "mate",
+        parts: [{ type: "text", text: "答 " + "y".repeat(100) }],
+      });
+    }
+    process.env.TALEMATE_SUMMARY_CHUNK_CHARS = "120";
+    try {
+      const compaction = await compact({ projectId, sessionId, model: MODEL });
+      expect(compaction?.role).toBe("compaction");
+      expect((compaction?.summary ?? "").length).toBeGreaterThan(0);
+    } finally {
+      delete process.env.TALEMATE_SUMMARY_CHUNK_CHARS;
+    }
   });
 
   test("第二次压缩吃的是窗口，不会把已压掉的段落再总结一遍", async () => {
