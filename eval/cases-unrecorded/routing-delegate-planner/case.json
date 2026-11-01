@@ -1,0 +1,15 @@
+{
+  "id": "routing-delegate-planner",
+  "family": "routing",
+  "base": true,
+  "brief": "第 1 章：沈越在旧书店整理旧书时发现第一行遗言。不要问我，先让规划者做这一章的规划，先别写正文。",
+  "fixtures": true,
+  "checks": [
+    { "kind": "tool-called", "name": "task" },
+    { "kind": "tool-not-called", "name": "write" },
+    { "kind": "file-absent", "path": "chapters/chapter_ch1_v1.md" }
+  ],
+  "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
+  "budget": { "maxTurns": 1, "maxSteps": 30, "maxTokens": 50000 },
+  "tags": ["routing", "planner"]
+}

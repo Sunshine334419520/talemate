@@ -1,0 +1,19 @@
+{
+  "id": "design-core",
+  "family": "design",
+  "base": true,
+  "brief": "核心设定还不完整：把金手指补成「他能看见旧书扉页上的遗言，遗言只在老城区内可见」。整份给我过目，先别写盘。",
+  "followUps": ["没问题"],
+  "fixtures": true,
+  "answerer": true,
+  "checks": [
+    { "kind": "tool-called", "name": "propose-design", "afterTurn": 0 },
+    { "kind": "turn-halted", "afterTool": "propose-design", "afterTurn": 0 },
+    { "kind": "file-unchanged", "path": "design/core.md", "against": "fixture", "afterTurn": 0 },
+    { "kind": "tool-called", "name": "apply-design", "afterTurn": 1 },
+    { "kind": "file-contains", "path": "design/core.md", "text": "老城区内可见", "afterTurn": 1 }
+  ],
+  "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
+  "budget": { "maxTurns": 2, "maxSteps": 12, "maxTokens": 50000 },
+  "tags": ["design", "approval"]
+}

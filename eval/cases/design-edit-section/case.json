@@ -1,0 +1,17 @@
+{
+  "id": "design-edit-section",
+  "family": "design",
+  "base": true,
+  "brief": "把核心设定的「一句话简介」改成「一个在旧书店里看见遗言的普通人」。只改这一格，其余一个字都别动。",
+  "fixtures": true,
+  "checks": [
+    { "kind": "tool-called", "name": "edit" },
+    { "kind": "tool-not-called", "name": "write" },
+    { "kind": "file-contains", "path": "design/core.md", "text": "看见遗言的普通人" },
+    { "kind": "file-not-contains", "path": "design/core.md", "text": "一个在旧书店整理旧书的人" },
+    { "kind": "file-contains", "path": "design/core.md", "text": "## 金手指 / 超常设定" }
+  ],
+  "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
+  "budget": { "maxTurns": 1, "maxSteps": 8, "maxTokens": 30000 },
+  "tags": ["design", "edit"]
+}

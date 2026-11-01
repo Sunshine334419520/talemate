@@ -1,0 +1,35 @@
+{
+  "id": "workflow-ask-ambiguous",
+  "family": "workflow",
+  "base": true,
+  "brief": "第 1 章让主角死掉还是活着？这是作品级取舍，别自己定，先问我，让我选。",
+  "fixtures": true,
+  "checks": [
+    {
+      "kind": "tool-called",
+      "name": "ask-user"
+    },
+    {
+      "kind": "tool-not-called",
+      "name": "write"
+    },
+    {
+      "kind": "file-absent",
+      "path": "chapters/chapter_ch1_v1.md"
+    }
+  ],
+  "model": {
+    "reasoning": "low",
+    "temperature": 0.8,
+    "maxTokens": 32000
+  },
+  "budget": {
+    "maxTurns": 1,
+    "maxSteps": 8,
+    "maxTokens": 30000
+  },
+  "tags": [
+    "ask",
+    "workflow"
+  ]
+}

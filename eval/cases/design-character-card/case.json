@@ -1,0 +1,58 @@
+{
+  "id": "design-character-card",
+  "family": "design",
+  "base": true,
+  "brief": "给旧书店的前店主建一张角色卡，名字叫贺守一，六十出头、瘦高、右手有旧疤。给我过目，先别写盘。",
+  "followUps": [
+    "没问题"
+  ],
+  "fixtures": true,
+  "answerer": true,
+  "checks": [
+    {
+      "kind": "tool-called",
+      "name": "propose-design",
+      "afterTurn": 0
+    },
+    {
+      "kind": "turn-halted",
+      "afterTool": "propose-design",
+      "afterTurn": 0
+    },
+    {
+      "kind": "file-absent",
+      "path": "design/characters/贺守一.md",
+      "afterTurn": 0
+    },
+    {
+      "kind": "tool-called",
+      "name": "apply-design",
+      "afterTurn": 1
+    },
+    {
+      "kind": "file-exists",
+      "path": "design/characters/贺守一.md",
+      "afterTurn": 1
+    },
+    {
+      "kind": "file-contains",
+      "path": "design/characters/贺守一.md",
+      "text": "贺守一",
+      "afterTurn": 1
+    }
+  ],
+  "model": {
+    "reasoning": "low",
+    "temperature": 0.8,
+    "maxTokens": 32000
+  },
+  "budget": {
+    "maxTurns": 2,
+    "maxSteps": 12,
+    "maxTokens": 100000
+  },
+  "tags": [
+    "characters",
+    "design"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "context-compaction-retains",
+  "family": "context",
+  "base": false,
+  "brief": "记住一条硬设定：沈越离开老城区就看不见遗言。接下来我们聊几轮别的，最后我会让你复述。",
+  "followUps": ["今天天气怎么样？", "旧书店的房租多少？", "贺守一多大年纪？", "再说一次那条硬设定是什么。"],
+  "fixtures": true,
+  "answerer": true,
+  "env": { "TALEMATE_COMPACT_TOKENS": "800" },
+  "checks": [
+    { "kind": "event-exists", "type": "compaction/start" },
+    { "kind": "assistant-text-contains", "text": "离开老城区" }
+  ],
+  "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
+  "budget": { "maxTurns": 5, "maxSteps": 12, "maxTokens": 120000 },
+  "tags": ["context", "compaction"]
+}
