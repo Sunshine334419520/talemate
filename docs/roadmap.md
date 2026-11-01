@@ -121,7 +121,7 @@
 3. OTLP logs 导出（只换 backend，不换事件）。
 
 实现细节：[telemetry.md](telemetry.md)
-评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0 契约、M1 垂直切片、M2 部分已落地**（10 个 case / 本地门禁 / 基线报告）；变体与 2 个待录 case 在 M2c。
+评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0 契约、M1 垂直切片、M2 已落地**（12 个 case / 本地门禁 / 基线报告 / 压缩窗口修正）；变体对比在 M2D。
 评审背景：[learning/evals-observability/architecture-review-dsh.md](learning/evals-observability/architecture-review-dsh.md)
 
 ---
