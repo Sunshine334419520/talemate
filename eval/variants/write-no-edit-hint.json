@@ -1,0 +1,13 @@
+{
+  "id": "write-no-edit-hint",
+  "note": "去掉 write 描述里「局部改用 edit」的提示，看设计编辑 case 会不会改走整篇写",
+  "patches": [
+    {
+      "kind": "describe",
+      "tool": "write",
+      "note": "write.txt：删掉「局部改用 edit」那段",
+      "before": "- Use this when you are the author of the whole file. To change part of a file that already\n  exists, use `edit` instead: it needs only the piece you are changing, and the user reviews a\n  diff of that piece rather than re-reading the whole document.\n",
+      "after": ""
+    }
+  ]
+}

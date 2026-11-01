@@ -465,7 +465,7 @@ key = sha256(canonicalJson({
 | 场景 | 命令 | 说明 |
 |---|---|---|
 | 日常 | `bun test` | 单元测试，离线、秒级 |
-| 做变体对比 | `bun run eval:run --variant <id> --repeat 1` | 先跑 baseline，再跑 `eval/variants/<id>.json`；noop 共享 baseline cassette |
+| 做变体对比 | `bun run eval:run --variant <id> --repeat 1` | 先跑 baseline，再跑 `eval/variants/<id>.json`；noop 共享 baseline cassette；变体失败退出 0 |
 | 改 prompt / case 后 | `bun run eval:gate` | = `eval:check` + `eval:run --replay --repeat 1`；几秒 |
 | 发布前 | `bun run eval:run --replay --repeat 3` | 全量重复 + 一页报告 |
 | 录制 | `bun run eval:run --record` | 需要 key 与预算，手动、一次录完 |
@@ -531,8 +531,14 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 - **压缩修正**：`maybeCompact` 只把 `loadModelWindow` 交给 `compact`，不再把已压掉的段落重新总结；新增 `tests/compaction.test.ts`（1M 模型触发点 = 800k）。
 - **新判据**：`file-not-contains`、`assistant-text-contains`；case 级 `env`（压低的压缩阈值）。
 - **本地门禁**：`bun run eval:gate`（`eval:check` + `eval:run --replay --repeat 1`）。
-- **M2D**：变体对比基础（`--variant`、probe patch 共用、`eval:check` 校验替换命中、noop 变体跑通 baseline vs variant）；压缩硬化（每步检查、字符守门、分段摘要）。
-- **未完成**：真实变体的录制（目前只有 noop 共享 cassette）；单步超大工具输出把下一次请求顶过 1M、以及摘要请求本身超窗的路径，仍只有低阈值测试，没有真实 1M 规模验证。
+- **M2D**：变体对比（`--variant`、probe patch 共用、`eval:check` 校验替换命中）；压缩硬化（每步检查、字符守门、分段摘要）。
+- **真实变体**（都只跑 `design-edit-section`）：
+  - `noop`：共享 baseline cassette，结果无差异（验证链路，0 token）；
+  - `write-no-edit-hint`：删掉 write 描述里的「局部改用 edit」提示，结果仍用 edit，但 token +48%；
+  - `no-edit-tool`：删掉 edit 工具，baseline ✅ / variant ❌（`+tool-called:edit`、`+tool-not-called:write`）——**证明变体能抓到行为变化**。
+  - 变体判据失败是实验结果，命令退出 0；只有 baseline 坏或 runtime 坏才非零退出。
+  - 这轮变体录制约 47k token（预算 1M）。
+- **未完成**：`apply-handback` 还没录；单步超大工具输出把下一次请求顶过 1M、以及摘要请求本身超窗的路径，仍只有低阈值测试，没有真实 1M 规模验证（按用户要求留作待办，不烧 token）。
 - **预算**：录制累计约 1.11M token（含 case 试错、plan/ask 重录）；最终基线首轮 550k。M2D 录制前先报清单与上限。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。

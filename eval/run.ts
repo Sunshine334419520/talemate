@@ -561,12 +561,29 @@ async function main(): Promise<void> {
   );
 
   const failed = results.filter((result) => result.verdict !== "pass");
+  const broken = results.filter((result) => result.verdict === "error" || result.verdict === "timeout");
+  const baselineFailed = failed.filter((result) => result.variantId === "baseline");
+  const variantFailed = failed.filter((result) => result.variantId !== "baseline");
+
   console.log(`\n报告：${reportPath}`);
-  if (failed.length > 0) {
-    console.error(`✘ ${failed.length}/${results.length} 条 run 未通过`);
-    process.exit(1);
+  if (variant === undefined) {
+    if (failed.length > 0) {
+      console.error(`✘ ${failed.length}/${results.length} 条 run 未通过`);
+      process.exit(1);
+    }
+    console.log(`✔ ${results.length} 条 run 全部通过`);
+  } else {
+    // 变体失败是实验结果，不是命令失败；只有 baseline 坏/runtime 坏才非零退出
+    if (baselineFailed.length > 0 || broken.length > 0) {
+      console.error(`✘ baseline ${baselineFailed.length} 条未通过 · runtime ${broken.length} 条`);
+      process.exit(1);
+    }
+    console.log(
+      variantFailed.length === 0
+        ? `✔ baseline 全过；${variant.id} 也没有判据差异（${results.length} 条 run）`
+        : `✔ baseline 全过；${variant.id} 有 ${variantFailed.length} 条 run 判据失败（见报告，这是实验结果）`,
+    );
   }
-  console.log(`✔ ${results.length} 条 run 全部通过`);
 }
 
 await main();

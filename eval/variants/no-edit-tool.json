@@ -1,0 +1,11 @@
+{
+  "id": "no-edit-tool",
+  "note": "删掉 edit 工具：验证变体对比能抓到行为变化（预期 design-edit-section 改走 write）",
+  "patches": [
+    {
+      "kind": "dropTools",
+      "note": "去掉 edit",
+      "names": ["edit"]
+    }
+  ]
+}
