@@ -25,6 +25,12 @@ describe("桌面端 / 命令", () => {
     expect(missing).toEqual([]);
   });
 
+  test("每条命令在 Workspace 里都有处理分支——表里多一行、行为没接上，是静默死命令", async () => {
+    const workspace = await readFile(join(ROOT, "desktop/src/renderer/Workspace.tsx"), "utf8");
+    const missing = COMMANDS.filter((c) => !workspace.includes(`name === "${c.name}"`)).map((c) => c.name);
+    expect(missing).toEqual([]);
+  });
+
   test("名字是英文小写：界面上打的就是它，中文名会与 CLI 分叉", () => {
     const bad = COMMANDS.filter((c) => !/^[a-z][a-z-]*$/.test(c.name)).map((c) => c.name);
     expect(bad).toEqual([]);

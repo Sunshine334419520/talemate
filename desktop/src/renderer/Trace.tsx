@@ -223,9 +223,9 @@ export function Trace({
   const visible = useMemo(() => filterTraceRows(rows, filter), [rows, filter]);
 
   async function copyPath(): Promise<void> {
-    if (info?.messagesPath === undefined) return;
+    if (info?.eventsPath === undefined) return;
     try {
-      await navigator.clipboard.writeText(info.messagesPath);
+      await navigator.clipboard.writeText(info.eventsPath);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -252,9 +252,9 @@ export function Trace({
         <span className="trace-count">
           {visible.length} / {rows.length} 条
         </span>
-        {info?.messagesPath !== undefined && (
-          <button type="button" className="trace-path" title={info.messagesPath} onClick={() => void copyPath()}>
-            {copied ? "已复制路径" : "复制会话文件路径"}
+        {info?.eventsPath !== undefined && (
+          <button type="button" className="trace-path" title={info.eventsPath} onClick={() => void copyPath()}>
+            {copied ? "已复制路径" : "复制事件日志路径"}
           </button>
         )}
       </div>

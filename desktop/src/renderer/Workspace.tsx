@@ -19,6 +19,7 @@ import { SidePane, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
 import { Trace } from "./Trace";
 import type { ChangeScope } from "./TurnChanges";
+import type { ChangeRow } from "./changes";
 import { tokens } from "../shared/tokens";
 import { contextWindow } from "../../../src/core/windows";
 
@@ -519,11 +520,20 @@ export function Workspace({
     [project.id, tree],
   );
 
-  /** 打开改动记录：主进程按会话聚合，右栏只负责把路径换成显示名并分组。 */
+  /**
+   * 打开改动记录：本次会话只读那一个索引文件；本书读 N 个会话的索引。
+   * 两边都不折 messages——这是改动索引存在的理由。
+   */
+  const fetchChangeGroups = useCallback(
+    async (scope: ChangeScope) =>
+      window.tm.changes(project.id, scope === "session" ? (current ?? undefined) : undefined),
+    [project.id, current],
+  );
+
   const openHistory = useCallback(
     async (scope: ChangeScope): Promise<void> => {
       try {
-        const groups = await window.tm.changes(project.id);
+        const groups = await fetchChangeGroups(scope);
         setHistoryScope(scope);
         setBackPane(null);
         setPane({ kind: "changes", name: "改动记录", groups, currentSessionId: current ?? "" });
@@ -531,7 +541,21 @@ export function Workspace({
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [project.id, current],
+    [fetchChangeGroups, current],
+  );
+
+  /** 切「本次会话 / 本书」时重新取：两个范围读的文件不同，不能靠本地过滤。 */
+  const changeScope = useCallback(
+    async (scope: ChangeScope): Promise<void> => {
+      setHistoryScope(scope);
+      try {
+        const groups = await fetchChangeGroups(scope);
+        setPane((prev) => (prev?.kind === "changes" ? { ...prev, groups } : prev));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [fetchChangeGroups],
   );
 
   /** 从改动记录点进一份文档：记住那一屏，左上角的「← 改动记录」才能回去。 */
@@ -551,6 +575,32 @@ export function Workspace({
       setPane({ kind: "diff", name, text, path });
     },
     [pane],
+  );
+
+  /**
+   * 历史行的 diff 是懒加载的：索引里只有指针，点开时才回那条消息里取。
+   * 同一个文件一轮写了多次就都取回来按顺序拼；取不到就退回打开文档正文。
+   */
+  const openHistoryRefs = useCallback(
+    async (sessionId: string, row: ChangeRow): Promise<void> => {
+      try {
+        const parts = await Promise.all(
+          row.refs.map((ref) =>
+            window.tm.changeDiff(project.id, sessionId, ref.messageSeq, ref.callId),
+          ),
+        );
+        const text = parts.filter((d): d is string => d !== undefined && d !== "").join("\n\n");
+        if (text === "") {
+          await openHistoryDoc(row.path);
+          return;
+        }
+        setBackPane(pane);
+        setPane({ kind: "diff", name: row.label, text, path: row.path });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [project.id, pane, openHistoryDoc],
   );
 
   const goBack = useCallback((): void => {
@@ -574,7 +624,7 @@ export function Workspace({
   }, []);
 
   /**
-   * 就地回退到某条用户消息之前。目标文本回填输入框，原日志先备份。
+   * 就地回退到某条用户消息之前。目标文本回填输入框；历史只追加，没有备份。
    *
    * 两种模式：仅回退对话，或连同 write_ops 写过的文件一起还原。文件还原失败时主进程会
    * 先回滚已改文件再抛错，对话不撤回——不会出现"文件回了一半、对话已经没了"。
@@ -592,9 +642,7 @@ export function Workspace({
         setLive([
           {
             kind: "note",
-            text:
-              `已回退到 seq ${seq}。${fileNote}` +
-              `${result.backup === undefined ? "" : `原对话已备份到 ${result.backup}。`}`,
+            text: `已回退到 seq ${seq}。${fileNote}历史只追加，没有覆盖任何东西。`,
           },
         ]);
         setDraft(result.text);
@@ -819,6 +867,34 @@ export function Workspace({
           openPane({ kind: "text", name: "规则表", text: await window.tm.permissions() });
         } else if (name === "debug") {
           openPane({ kind: "text", name: "调试信息", text: await window.tm.sessionDebug() });
+        } else if (name === "trace") {
+          const view = await window.tm.sessionTrace();
+          // 导出结果也落回这一屏：窗口里没有终端，不把路径写出来就等于没导出
+          const show = (note?: string): void => {
+            const lines = [view.summary];
+            if (view.eventsPath !== "") lines.push("", `事件日志：${view.eventsPath}`);
+            if (note !== undefined) lines.push("", note);
+            openPane({
+              kind: "text",
+              name: "轨迹",
+              text: lines.join("\n"),
+              actions: [
+                {
+                  label: "导出脱敏副本",
+                  title: "把这份轨迹脱敏后写到会话目录的 trace-export.jsonl",
+                  run: async () => {
+                    try {
+                      const out = await window.tm.sessionTraceExport();
+                      show(`已导出 ${out.written} 条（扣下 ${out.dropped} 条）→ ${out.path}`);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    }
+                  },
+                },
+              ],
+            });
+          };
+          show();
         }
       } catch (err) {
         // 命令失败要说出来：静默什么都不发生，人就以为是自己打错了
@@ -1206,7 +1282,7 @@ export function Workspace({
 
               <p className="rewind-warn">
                 「仅回退对话」保留文件改动；「回退并还原」失败时会先回滚已还原的文件，对话不撤回。
-                原 messages.jsonl 会先整份备份。
+                历史只追加：回退是写一条撤销记录，不覆盖任何东西。
               </p>
               <div className="rewind-actions">
                 <button className="btn" onClick={() => setRewindAsk(null)}>
@@ -1275,11 +1351,12 @@ export function Workspace({
           busy={busy}
           onBack={backPane !== null ? goBack : undefined}
           historyScope={historyScope}
-          onHistoryScope={setHistoryScope}
+          onHistoryScope={(scope) => void changeScope(scope)}
           labelOf={labelOf}
           rankOf={rankOf}
           onOpenDoc={(path) => void openHistoryDoc(path)}
           onOpenDiff={openHistoryDiff}
+          onOpenRefs={(sessionId, row) => void openHistoryRefs(sessionId, row)}
           annotations={pane.kind === "doc" ? (annotations[pane.path] ?? NO_ANNOTATIONS) : NO_ANNOTATIONS}
           onAnnotationsChange={(notes) => {
             if (pane.kind !== "doc") return;

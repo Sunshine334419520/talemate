@@ -27,6 +27,8 @@ import type {
   StoredMessage,
   StyleCatalog,
   TmApi,
+  TraceExportResult,
+  TraceView,
   WebSettingsPatch,
   WebSettingsView,
   WindowMaterial,
@@ -59,6 +61,8 @@ const api: TmApi = {
   projectStatus: (projectId) => ipcRenderer.invoke("projects:status", projectId) as Promise<string>,
   permissions: () => ipcRenderer.invoke("session:permissions") as Promise<string>,
   sessionDebug: () => ipcRenderer.invoke("session:debug") as Promise<string>,
+  sessionTrace: () => ipcRenderer.invoke("session:trace") as Promise<TraceView>,
+  sessionTraceExport: () => ipcRenderer.invoke("session:trace-export") as Promise<TraceExportResult>,
   listSessions: (projectId) => ipcRenderer.invoke("sessions:list", projectId) as Promise<SessionRow[]>,
   docsTree: (projectId) => ipcRenderer.invoke("docs:tree", projectId) as Promise<DocNode[]>,
   docText: (projectId, path) =>
@@ -94,8 +98,12 @@ const api: TmApi = {
     ipcRenderer.invoke("session:rewind", { seq, ...opts }) as Promise<RewindResult>,
   rewindPreview: (seq) => ipcRenderer.invoke("session:rewind-preview", seq) as Promise<RewindFilePreview>,
   resolveProposal: (req) => ipcRenderer.invoke("session:proposal", req) as Promise<void>,
-  changes: (projectId) =>
-    ipcRenderer.invoke("sessions:changes", projectId) as Promise<SessionTurnChanges[]>,
+  changes: (projectId, sessionId) =>
+    ipcRenderer.invoke("sessions:changes", { projectId, sessionId }) as Promise<SessionTurnChanges[]>,
+  changeDiff: (projectId, sessionId, messageSeq, callId) =>
+    ipcRenderer.invoke("changes:diff", { projectId, sessionId, messageSeq, callId }) as Promise<
+      string | undefined
+    >,
   openSession: (projectId, sessionId) =>
     ipcRenderer.invoke("session:open", { projectId, sessionId }) as Promise<OpenInfo>,
 

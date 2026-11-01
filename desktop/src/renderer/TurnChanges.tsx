@@ -11,14 +11,29 @@ import { groupChanges, type ChangeRow } from "./changes";
 
 export type ChangeScope = "session" | "book";
 
-/** 行点击：新建/没有 diff 的打开全文；修改/删除看合并 diff。 */
+/**
+ * 行点击：新建的打开全文；有 diff 的直接看；历史行只有指针，先让上层去取 diff。
+ * 取不到时回落到全文——不编一份 diff。
+ */
 function openChange(
   row: ChangeRow,
   onOpenDoc: (path: string) => void,
   onOpenDiff: (name: string, text: string, path: string) => void,
+  onOpenRefs?: (row: ChangeRow) => void,
 ): void {
-  if (row.kind === "created" || row.diff === "") onOpenDoc(row.path);
-  else onOpenDiff(row.label, row.diff, row.path);
+  if (row.kind === "created") {
+    onOpenDoc(row.path);
+    return;
+  }
+  if (row.diff !== "") {
+    onOpenDiff(row.label, row.diff, row.path);
+    return;
+  }
+  if (onOpenRefs !== undefined && row.refs.length > 0) {
+    onOpenRefs(row);
+    return;
+  }
+  onOpenDoc(row.path);
 }
 
 function isCharacter(path: string): boolean {
@@ -39,10 +54,13 @@ export function ChangeList({
   rows,
   onOpenDoc,
   onOpenDiff,
+  onOpenRefs,
 }: {
   rows: ChangeRow[];
   onOpenDoc: (path: string) => void;
   onOpenDiff: (name: string, text: string, path: string) => void;
+  /** 历史行：按指针懒加载 diff；本轮改动卡不需要（diff 就在内存里） */
+  onOpenRefs?: (row: ChangeRow) => void;
 }) {
   return (
     <div className="changes-list">
@@ -51,7 +69,7 @@ export function ChangeList({
           key={row.path}
           type="button"
           className="change-row"
-          onClick={() => openChange(row, onOpenDoc, onOpenDiff)}
+          onClick={() => openChange(row, onOpenDoc, onOpenDiff, onOpenRefs)}
         >
           <span className="change-ico" aria-hidden="true">
             {isCharacter(row.path) ? <PersonIcon /> : <FileIcon />}
@@ -125,6 +143,7 @@ export function ChangeHistory({
   rankOf,
   onOpenDoc,
   onOpenDiff,
+  onOpenRefs,
 }: {
   groups: SessionTurnChanges[];
   currentSessionId: string;
@@ -134,6 +153,7 @@ export function ChangeHistory({
   rankOf: (path: string) => number;
   onOpenDoc: (path: string) => void;
   onOpenDiff: (name: string, text: string, path: string) => void;
+  onOpenRefs?: (sessionId: string, row: ChangeRow) => void;
 }) {
   const turns = useMemo(
     () =>
@@ -194,7 +214,14 @@ export function ChangeHistory({
               </div>
               {group.user !== "" && <p className="history-turn">“{group.user}”</p>}
               <div className="history-rows">
-                <ChangeList rows={rows} onOpenDoc={onOpenDoc} onOpenDiff={onOpenDiff} />
+                <ChangeList
+                  rows={rows}
+                  onOpenDoc={onOpenDoc}
+                  onOpenDiff={onOpenDiff}
+                  {...(onOpenRefs === undefined
+                    ? {}
+                    : { onOpenRefs: (row: ChangeRow) => onOpenRefs(group.sessionId, row) })}
+                />
               </div>
             </section>
           ))}

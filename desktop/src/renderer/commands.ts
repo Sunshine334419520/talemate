@@ -20,5 +20,6 @@ export interface CommandSpec {
 export const COMMANDS: CommandSpec[] = [
   { name: "status", hint: "四层现状：核心设定 / 世界观 / 角色 / 大纲" },
   { name: "permissions", hint: "当前规则表：每类动作是什么、是哪一层定的" },
-  { name: "debug", hint: "当前会话的调试信息与存储路径（含 messages.jsonl）" },
+  { name: "debug", hint: "当前会话的调试信息与存储路径（含 events.jsonl / changes.jsonl）" },
+  { name: "trace", hint: "当前会话的轨迹摘要：事件 / span / 失败 / 耗时，可导出脱敏副本" },
 ];

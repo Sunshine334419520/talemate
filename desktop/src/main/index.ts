@@ -29,6 +29,8 @@ import { resolveWindowMaterial } from "./material";
 import { chapterNumberOf } from "../../../src/framework/plan";
 import { openSession, renderPermissionView, type Session, type UserIO } from "../../../src/session/session";
 import { buildSessionDebug, renderSessionDebug } from "../../../src/session/debug";
+import { buildTraceView, exportTrace } from "../../../src/session/trace_view";
+import { readChangeDiff } from "../../../src/session/change_history";
 import { buildProjectStatus } from "../../../src/framework/report";
 import { enumerateDocs } from "../../../src/storage/corpus";
 import { isSubagentSession, listSessionIds, loadMessages, loadSessionMeta } from "../../../src/storage/session-store";
@@ -393,6 +395,25 @@ function registerHandlers(): void {
     return renderSessionDebug(await buildSessionDebug(session));
   });
 
+  /**
+   * `/trace`：事件日志的摘要 + 原始日志路径。与 CLI 那条命令读同一份实现，窗口里不另算一遍。
+   *
+   * 没有会话时回一句而不是抛：命令面板打得开，只是还没有能谈轨迹的会话。
+   */
+  ipcMain.handle("session:trace", async () => {
+    if (session === undefined) return { summary: "（还没有打开会话）", eventsPath: "" };
+    return buildTraceView(session.projectId, session.sessionId);
+  });
+
+  /**
+   * `/trace` 右栏的「导出脱敏副本」按钮。落点是会话目录的 `trace-export.jsonl`——桌面上没有终端，
+   * 要让排查的人（或 agent）拿到一份能带走的文件。
+   */
+  ipcMain.handle("session:trace-export", async () => {
+    if (session === undefined) throw new Error("还没有打开会话，没有轨迹可导出。");
+    return exportTrace(session.projectId, session.sessionId);
+  });
+
   /** 改书名 / 题材。书名不是作品文档（在 talemate.json 里），所以不经模型、不问权限。 */
   ipcMain.handle(
     "projects:update",
@@ -637,8 +658,18 @@ function registerHandlers(): void {
     return webSettingsView(next);
   });
 
-  /** 改动记录：所有会话按时序聚合；历史视图按会话/全书筛。 */
-  ipcMain.handle("sessions:changes", (_e, projectId: string) => listTurnChanges(projectId));
+  /** 改动记录：`sessionId` 省略 = 本书（读 N 个索引）；给了 = 只读那一个会话的索引。 */
+  ipcMain.handle(
+    "sessions:changes",
+    (_e, p: { projectId: string; sessionId?: string }) => listTurnChanges(p.projectId, p.sessionId),
+  );
+
+  /** 索引里只有指针；点开一行时才按 (messageSeq, callId) 回消息里取 diff。 */
+  ipcMain.handle(
+    "changes:diff",
+    (_e, p: { projectId: string; sessionId: string; messageSeq: number; callId: string }) =>
+      readChangeDiff(p.projectId, p.sessionId, p.messageSeq, p.callId),
+  );
 
   ipcMain.handle(
     "session:open",
@@ -734,7 +765,7 @@ function registerHandlers(): void {
         ...(warn === undefined ? {} : { modelWarning: warn }),
         ...(ask === undefined ? {} : { ask }),
         sessionDir: sessionPaths(talemateHome(), active.projectId, active.sessionId).dir,
-        messagesPath: sessionPaths(talemateHome(), active.projectId, active.sessionId).messages,
+        eventsPath: sessionPaths(talemateHome(), active.projectId, active.sessionId).events,
       };
     },
   );
@@ -933,8 +964,16 @@ async function selftest(): Promise<void> {
   const n = await latestChapter(book.id);
   console.log(`[selftest] 取数口：${(await sessionsOf(book.id)).length} 条会话 · ${n === null ? "还没有正文" : `写到第 ${n} 章`}`);
   console.log(`[selftest] 工具调用=${tools.join(",") || "（无）"}`);
-  console.log(text.length > 0 ? "✔ harness 在 Electron 里跑通了" : "✘ 一个字的文本都没收到");
-  app.exit(text.length > 0 ? 0 : 1);
+
+  // `/trace` 走的是这两步：摘要与脱敏导出。在主进程里真跑一遍，才不会等到用户点开右栏才发现断了
+  const trace = await buildTraceView(s.projectId, s.sessionId);
+  const exported = await exportTrace(s.projectId, s.sessionId);
+  console.log(`[selftest] 轨迹：${trace.summary.split("\n")[1] ?? "（无事件）"}`);
+  console.log(`[selftest] 导出：${exported.written} 条 → ${exported.path}`);
+
+  const ok = text.length > 0 && exported.written > 0;
+  console.log(ok ? "✔ harness 在 Electron 里跑通了" : "✘ 文本或轨迹有一项是空的");
+  app.exit(ok ? 0 : 1);
 }
 
 /**

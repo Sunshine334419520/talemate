@@ -7,10 +7,12 @@
  */
 import type { DocNode } from "../../../src/framework/anchor";
 import type { StyleCatalog } from "../../../src/framework/prose";
+import type { TraceExportResult, TraceView } from "../../../src/session/trace_view";
 import type {
   AskAnswer,
   AskQuestion,
   AskRecord,
+  ChangePoint,
   LLMEvent,
   ProposalDisplay,
   StoredMessage,
@@ -21,11 +23,14 @@ export type {
   AskAnswer,
   AskQuestion,
   AskRecord,
+  ChangePoint,
   DocNode,
   LLMEvent,
   ProposalDisplay,
   StoredMessage,
   StyleCatalog,
+  TraceExportResult,
+  TraceView,
   WriteChange,
 };
 
@@ -38,7 +43,8 @@ export interface SessionTurnChanges {
   user: string;
   /** 这一轮的起点（用户消息的时间） */
   ts: number;
-  changes: WriteChange[];
+  /** 只有指针，没有 diff——点开某一行时才按 messageSeq/callId 去取 */
+  changes: ChangePoint[];
 }
 
 /** 首屏的一张作品卡。全部现取、不缓存——真相在盘上。 */
@@ -177,15 +183,15 @@ export interface OpenInfo {
   modelWarning?: string;
   /** 重开/刷新后仍然开着的提问；没有就不带 */
   ask?: AskView;
-  /** 会话目录与 messages.jsonl 的绝对路径——轨迹视图与 `/debug` 都要拿它看完整过程 */
+  /** 会话目录与事件日志的绝对路径——轨迹视图与 `/debug` 都要拿它看完整过程 */
   sessionDir?: string;
-  messagesPath?: string;
+  eventsPath?: string;
 }
 
 /** 三向裁决：接受 / 拒绝 / 提意见。界面按钮直接发它，不再合成一句用户消息。 */
 export type ProposalVerdict = "accept" | "reject" | "refine";
 
-/** 一次就地回退的结果：目标消息的原文（回填输入框）与备份文件路径。 */
+/** 一次就地回退的结果：目标消息的原文（回填输入框）与文件还原情况。 */
 /** 回退会怎样处理一个文件：写回旧内容，或删除回退后才新建的文件。 */
 export interface RewindFilePreviewItem {
   path: string;
@@ -203,8 +209,6 @@ export interface RewindFileOutcome {
 
 export interface RewindResult {
   text: string;
-  /** 回退前的 messages.jsonl 备份；文件不存在时没有 */
-  backup?: string;
   /** 仅"回退对话和文件"模式：实际还原/删除了哪些文件 */
   files?: RewindFileOutcome;
 }
@@ -279,12 +283,25 @@ export interface TmApi {
    */
   permissions(): Promise<string>;
   /**
-   * `/debug` 的文本：会话 id、模型、模式、待批/未答，以及会话目录与 `messages.jsonl` 的绝对路径。
+   * `/debug` 的文本：会话 id、模型、模式、待批/未答，以及会话目录、事件日志与改动索引的绝对路径。
    *
    * 它不是给模型看的，是给排查的人（或 agent）拿到路径去读完整过程的——所以渲染在 harness
    * （`session/debug.ts`），与 CLI 共用一份。
    */
   sessionDebug(): Promise<string>;
+  /**
+   * `/trace` 的那一屏：事件日志折出来的摘要 + 原始日志路径。
+   *
+   * 与 CLI 的 `/trace` 调同一个 `renderTraceSummary`；桌面多给一个"导出"动作，
+   * 因为窗口里没有 `cat`，要看原始事件得先知道路径。
+   */
+  sessionTrace(): Promise<TraceView>;
+  /**
+   * 把当前会话的轨迹导出成**脱敏副本**（落会话目录的 `trace-export.jsonl`）。
+   *
+   * 返回写了几条、扣了几条；canonical 的 events.jsonl 一个字都不改。
+   */
+  sessionTraceExport(): Promise<TraceExportResult>;
   listSessions(projectId: string): Promise<SessionRow[]>;
   docsTree(projectId: string): Promise<DocNode[]>;
   /**
@@ -334,7 +351,7 @@ export interface TmApi {
   /**
    * 就地回退到某条用户消息之前：目标及之后从会话移除，目标文本回填输入框。
    *
-   * 原 `messages.jsonl` 会先备份到会话目录的 `rewind-backups/`——回退重写了日志，不是只追加。
+   * 历史只追加：事件日志写一条 `session/rewind`，改动索引写一条墓碑，没有东西被覆盖。
    */
   rewind(seq: number, opts?: { restoreFiles?: boolean }): Promise<RewindResult>;
   /** 回退前预览会被还原/删除的文件；只读，不改任何东西 */
@@ -344,8 +361,13 @@ export interface TmApi {
    * `reject` 只关掉提案；`refine` 的 `text` 是用户真正写的意见，照常落成用户消息。
    */
   resolveProposal(req: { verdict: ProposalVerdict; text?: string }): Promise<void>;
-  /** 每个会话每一轮的文件改动，最新在前——历史视图按会话/全书筛选 */
-  changes(projectId: string): Promise<SessionTurnChanges[]>;
+  /**
+   * 每个会话每一轮的文件改动，最新在前。`sessionId` 省略 = 本书（读 N 个索引）；
+   * 给了 = 只读那一个会话的索引，不折任何消息。
+   */
+  changes(projectId: string, sessionId?: string): Promise<SessionTurnChanges[]>;
+  /** 改动索引里只存指针；点开某一行才用这个读 diff（`""` = 新建文件，没有 diff）。 */
+  changeDiff(projectId: string, sessionId: string, messageSeq: number, callId: string): Promise<string | undefined>;
   openSession(projectId: string, sessionId?: string): Promise<OpenInfo>;
   onEvent(cb: (e: LLMEvent) => void): void;
   onConfirm(cb: (req: ConfirmRequest) => void): void;

@@ -12,7 +12,15 @@ import { AnnotatedDoc } from "./AnnotatedDoc";
 import type { Annotation } from "./annotations";
 import { HistoryIcon } from "./icons";
 import { ChangeHistory, type ChangeScope } from "./TurnChanges";
+import type { ChangeRow } from "./changes";
 import type { SessionTurnChanges } from "../shared/api";
+
+/** 右栏顶部的动作（目前只有命令输出用：把 `/trace` 的轨迹导出成脱敏副本）。 */
+export interface PaneAction {
+  label: string;
+  title?: string;
+  run(): void | Promise<void>;
+}
 
 export type Pane =
   | { kind: "doc"; name: string; path: string; text: string }
@@ -24,7 +32,7 @@ export type Pane =
    * **不走 markdown**：那两份都是对齐过的、一行一条的文本，markdown 会把空格吃掉、把 `◇` 开头的行
    * 并成一段。也不给编辑——命令输出不是作品，改它没有去处。
    */
-  | { kind: "text"; name: string; text: string }
+  | { kind: "text"; name: string; text: string; actions?: PaneAction[] }
   /** 改动记录：按轮分组的时间线；点一行再进 doc/diff，右上角留返回 */
   | { kind: "changes"; name: string; groups: SessionTurnChanges[]; currentSessionId: string };
 
@@ -46,6 +54,7 @@ export function SidePane({
   rankOf,
   onOpenDoc,
   onOpenDiff,
+  onOpenRefs,
 }: {
   pane: Pane;
   /** 宽度由外面给——分隔缝拖动改的是它（见 Workspace 的 splitter） */
@@ -74,6 +83,8 @@ export function SidePane({
   rankOf: (path: string) => number;
   onOpenDoc: (path: string) => void;
   onOpenDiff: (name: string, text: string, path: string) => void;
+  /** 历史行只有指针：上层按 (sessionId, messageSeq, callId) 去取 diff */
+  onOpenRefs?: (sessionId: string, row: ChangeRow) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -142,6 +153,18 @@ export function SidePane({
               </button>
             </>
           )}
+          {pane.kind === "text" &&
+            pane.actions?.map((action) => (
+              <button
+                key={action.label}
+                className="btn tiny"
+                type="button"
+                title={action.title ?? action.label}
+                onClick={() => void action.run()}
+              >
+                {action.label}
+              </button>
+            ))}
           <button className="iconbtn" title="关闭" onClick={onClose}>
             <XIcon />
           </button>
@@ -173,6 +196,7 @@ export function SidePane({
             rankOf={rankOf}
             onOpenDoc={onOpenDoc}
             onOpenDiff={onOpenDiff}
+            {...(onOpenRefs === undefined ? {} : { onOpenRefs })}
           />
         </div>
       ) : editing ? (
