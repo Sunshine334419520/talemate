@@ -32,7 +32,7 @@
 | `src/probe/advance.ts` | 单变量消融与"替换必须命中"的雏形 |
 | `experiments/style-bench/run.ts` | 已有的文风盲评用例，可直接进 case 库 |
 
-缺口：**case 契约、runner、replay provider、checks/rubric、report、manifest、CI 分层**。这份文档定义它们。
+缺口：**case 契约、runner、replay provider、checks/rubric、report、manifest、本地门禁**。这份文档定义它们。
 
 ## 3. 不做什么
 
@@ -40,7 +40,7 @@
 - 不做实时看板 / OTel / 告警：那是在线可观测性，走另一条线（`telemetry.md`）。
 - 不做"全 prompt × 全能力"的矩阵：按风险取样，不按文件铺。
 - 不让 LLM judge 当唯一门禁：先 L1/L2 确定性判据，judge 只做 L4 且要校准。
-- 不在 `bun test` 里调真实模型；评测是独立命令，CI 只跑 replay。
+- 不在 `bun test` 里调真实模型；评测是独立命令，门禁只跑 replay。
 - 不用 holdout 调参；不用一次运行下结论。
 
 ## 4. 术语
@@ -411,12 +411,12 @@ key = sha256(canonicalJson({
 |---|---|---|---|---|
 | **M0 契约** | 把"评测长什么样"钉死 | case schema、manifest、RunResult、报告模板；固定时钟；1 个手写 case + `--check` | 不调模型；类型与报告模板评审通过；case 能被 `--check` 解析 | 无 |
 | **M1 垂直切片** | 打通"录 → 放 → 跑 → 判 → 报告" | replay provider + cassette + runner + 4 个 case + 一页报告 | `--replay` 连跑 3 次，checks/verdict/usage 一致（时间字段除外）；报告能下结论 | M0 ✅ |
-| **M2 宽度** | 让评测覆盖不变量与设计文档 | 12 个 case（含 base 集）、3 次重复、pass^k、失败桶、CI replay 层、变体复用 probe | PR 上 base 全绿；报告含 prompt/context hash；新增 case 不改 runner | M1 |
+| **M2 宽度** | 让评测覆盖不变量与设计文档 | 12 个 case（含 base 集）、3 次重复、pass^k、失败桶、本地 replay 门禁、变体复用 probe | 本地 replay 全绿；报告含 prompt/context hash；新增 case 不改 runner | M1 |
 | **M3 决策力** | 从"能跑"到"能拍板" | judge + 校准集、pairwise、holdout、live 夜间、决策规则落地 | 一次真实 prompt 改动能被判定 adopt/reject；judge 与人工 κ ≥ 阈值 | M2 |
 
 ### 13.1 为什么是这个顺序
 
-**为什么先 M0 契约，而不是先写 runner。** case 格式、manifest、报告格式是后面所有东西的接口。先写 runner 再改格式，等于把 cassette、报告、CI 全部返工一遍。契约很便宜，返工很贵。
+**为什么先 M0 契约，而不是先写 runner。** case 格式、manifest、报告格式是后面所有东西的接口。先写 runner 再改格式，等于把 cassette、报告、门禁全部返工一遍。契约很便宜，返工很贵。
 
 **为什么 M1 只做 4 个 case。** 这条链上真正有风险的是 **replay 的哈希/时钟**与 **报告能不能下结论**，不是 case 数量。4 个 case 足以暴露"录不上、放不出、判不了、报告没法看"；10 个 case 只会把同样的 bug 放大十倍。垂直切片先证明链路，再谈覆盖。
 
@@ -454,16 +454,18 @@ key = sha256(canonicalJson({
 - **不按工具铺 case**：20 个工具描述不需要 20 个 case；由"用这个工具完成什么"的场景覆盖。
 - **patch 的替换串必须命中**：复用 `src/probe` 的 `mustReplace`，`--check` 先跑，避免静默退化成 baseline（P4）。
 
-## 15. CI 分层
+## 15. 门禁：本地为主，CI 可选
 
-| 层 | 触发 | 跑什么 | 成本 |
-|---|---|---|---|
-| `bun test` | 每次提交 | 现有单元测试，离线、无模型 | 秒级 |
-| `eval --replay --base` | 每次 PR | base case × 3，replay，无 key | 秒到分钟级 |
-| `eval --replay`（全量） | 夜间 / 手动 | 所有 case，对比 baseline | 分钟级 |
-| `eval --record` / `--live` | 手动 / 发布前 | 真实模型，录制或验收 | 有 token 成本 |
+这个仓库目前只有 release workflow（打 tag 时跑 typecheck / test），没有 PR CI。评测不新开一条 CI：
 
-PR 上只跑 base，是因为 base 是"有没有坏"；comparison 需要重复与成本，不适合每次提交。
+| 场景 | 命令 | 说明 |
+|---|---|---|
+| 日常 | `bun test` | 单元测试，离线、秒级 |
+| 改 prompt / case 后 | `bun run eval:run --replay --repeat 1` | 读 cassette，几秒；base 全绿才继续 |
+| 发布前 | `bun run eval:run --replay --repeat 3` | 全量重复 + 一页报告 |
+| 录制 | `bun run eval:run --record` | 需要 key 与预算，手动、一次录完 |
+
+可选：在 release workflow 的 `check` job 加一行 `bun run eval:run --replay --repeat 1`，只在打 tag 时跑。**不引入 PR 流水线**——一个人开发时，本地门禁和 CI 是同一件事，多一套只会多一处要维护。
 
 ## 16. 风险与开放问题
 
@@ -516,6 +518,6 @@ bun run eval:check   ✔ 1 个 case 通过校验（base 1 · holdout 0）
 bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 ```
 
-下一步是 M2：把 case 扩到 12 个，接 CI replay，加 design / context / routing。
+下一步是 M2：把 case 扩到 12 个，加 design / context / routing，加变体对比与本地门禁。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。
