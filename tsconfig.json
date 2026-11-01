@@ -13,6 +13,7 @@
   // 单独一份 `desktop/tsconfig.renderer.json`（两边的类型环境不同，混在一起等于两边都不设防）。
   "include": [
     "src",
+    "eval",
     "desktop/src/main",
     "desktop/src/preload",
     "desktop/src/shared",

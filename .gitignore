@@ -18,3 +18,6 @@ experiments/style-bench/outputs/
 
 # 安装包输出
 release/
+
+# 评测现场（机器产物，不进 git；报告引用 runId）
+traces/

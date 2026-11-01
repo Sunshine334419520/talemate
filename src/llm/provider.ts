@@ -7,6 +7,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { JsonSchema, ModelConfig, ToolCall } from "../core/types";
 import type { AssistantTurn, NeutralMsg, ToolSchema } from "./types";
+import { chatWithCassette } from "./replay";
 
 export interface ChatOpts {
   model: ModelConfig;
@@ -21,6 +22,15 @@ export interface ChatOpts {
 }
 
 export async function chat(opts: ChatOpts): Promise<AssistantTurn> {
+  const replayFile = process.env.TALEMATE_REPLAY_FILE;
+  if (replayFile !== undefined && replayFile !== "") {
+    return chatWithCassette(opts, replayFile, chatDirect);
+  }
+  return chatDirect(opts);
+}
+
+/** 真实/ mock provider 的 dispatch；replay 通过 `chatWithCassette` 在它前面拦一层。 */
+async function chatDirect(opts: ChatOpts): Promise<AssistantTurn> {
   switch (opts.model.provider) {
     case "anthropic":
       return chatAnthropic(opts);

@@ -1,0 +1,68 @@
+{
+  "id": "workflow-proposal-gate",
+  "family": "workflow",
+  "base": true,
+  "brief": "不要提问，也不要先解释。把整份核心设定重写成这一版：一句话简介「一个在旧书店里看见死者遗言的普通人」；金手指「他能看见旧书扉页上的遗言，遗言只在老城区内可见」；文风保持 storytelling；题材与频道不变。照两段式来：先 enter-draft，再 propose-design 把整篇交给我过目，拍板前不要写盘。",
+  "followUps": [
+    "没问题"
+  ],
+  "fixtures": true,
+  "checks": [
+    {
+      "kind": "tool-called",
+      "name": "enter-draft",
+      "afterTurn": 0
+    },
+    {
+      "kind": "tool-called",
+      "name": "propose-design",
+      "afterTurn": 0
+    },
+    {
+      "kind": "turn-halted",
+      "afterTool": "propose-design",
+      "afterTurn": 0
+    },
+    {
+      "kind": "file-unchanged",
+      "path": "design/core.md",
+      "against": "fixture",
+      "afterTurn": 0
+    },
+    {
+      "kind": "tool-not-called",
+      "name": "write",
+      "afterTurn": 0
+    },
+    {
+      "kind": "tool-not-called",
+      "name": "edit",
+      "afterTurn": 0
+    },
+    {
+      "kind": "tool-called",
+      "name": "apply-design",
+      "afterTurn": 1
+    },
+    {
+      "kind": "file-contains",
+      "path": "design/core.md",
+      "text": "看见死者遗言",
+      "afterTurn": 1
+    }
+  ],
+  "budget": {
+    "maxTurns": 2,
+    "maxSteps": 12,
+    "maxTokens": 50000
+  },
+  "tags": [
+    "approval",
+    "design"
+  ],
+  "model": {
+    "reasoning": "high",
+    "temperature": 0.8,
+    "maxTokens": 32000
+  }
+}

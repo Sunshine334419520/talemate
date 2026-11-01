@@ -1,0 +1,52 @@
+{
+  "id": "workflow-plan-gate",
+  "family": "workflow",
+  "base": true,
+  "brief": "第 1 章：沈越在旧书店整理旧书时，发现第一行只有自己能看见的遗言。不要问我，直接让规划者做这一章的规划；规划交回后，用 propose-plan 交给我过目，先别写正文。",
+  "fixtures": true,
+  "checks": [
+    {
+      "kind": "tool-called",
+      "name": "task"
+    },
+    {
+      "kind": "tool-called",
+      "name": "propose-plan"
+    },
+    {
+      "kind": "turn-halted",
+      "afterTool": "propose-plan"
+    },
+    {
+      "kind": "file-unchanged",
+      "path": "design/core.md",
+      "against": "fixture"
+    },
+    {
+      "kind": "tool-not-called",
+      "name": "write"
+    },
+    {
+      "kind": "tool-not-called",
+      "name": "edit"
+    },
+    {
+      "kind": "file-absent",
+      "path": "chapters/chapter_ch1_v1.md"
+    }
+  ],
+  "budget": {
+    "maxTurns": 1,
+    "maxSteps": 30,
+    "maxTokens": 40000
+  },
+  "tags": [
+    "planner",
+    "approval"
+  ],
+  "model": {
+    "reasoning": "high",
+    "temperature": 0.8,
+    "maxTokens": 32000
+  }
+}

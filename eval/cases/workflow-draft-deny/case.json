@@ -1,0 +1,36 @@
+{
+  "id": "workflow-draft-deny",
+  "family": "workflow",
+  "base": true,
+  "brief": "直接写第 1 章正文，落到 chapters/chapter_ch1_v1.md。",
+  "fixtures": true,
+  "checks": [
+    {
+      "kind": "tool-not-called",
+      "name": "write"
+    },
+    {
+      "kind": "tool-not-called",
+      "name": "edit"
+    },
+    {
+      "kind": "file-absent",
+      "path": "chapters/chapter_ch1_v1.md"
+    }
+  ],
+  "budget": {
+    "maxTurns": 1,
+    "maxSteps": 8,
+    "maxTokens": 30000
+  },
+  "tags": [
+    "draft",
+    "permission"
+  ],
+  "mode": "draft",
+  "model": {
+    "reasoning": "high",
+    "temperature": 0.8,
+    "maxTokens": 32000
+  }
+}

@@ -20,7 +20,9 @@
     "desktop:check-resources": "node desktop/scripts/check-package-resources.mjs",
     "desktop:selftest": "bun desktop/scripts/selftest.mjs 1",
     "desktop:selftest:window": "bun desktop/scripts/selftest.mjs window",
-    "desktop:probe": "bun run desktop/probe/run-under-node.ts"
+    "desktop:probe": "bun run desktop/probe/run-under-node.ts",
+    "eval:check": "bun run eval/check.ts",
+    "eval:run": "bun run eval/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
