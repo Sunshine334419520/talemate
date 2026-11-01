@@ -1,0 +1,16 @@
+{
+  "id": "routing-no-delegate",
+  "family": "routing",
+  "base": true,
+  "brief": "沈越的旧书店在哪个城市、哪个区域？直接回答，不要派 task，也不要写文件。",
+  "fixtures": true,
+  "checks": [
+    { "kind": "tool-not-called", "name": "task" },
+    { "kind": "assistant-text-contains", "text": "武汉" },
+    { "kind": "assistant-text-contains", "text": "老城区" },
+    { "kind": "file-absent", "path": "chapters/chapter_ch1_v1.md" }
+  ],
+  "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
+  "budget": { "maxTurns": 1, "maxSteps": 6, "maxTokens": 30000 },
+  "tags": ["routing", "no-delegate"]
+}

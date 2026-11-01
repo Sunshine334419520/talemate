@@ -1,0 +1,40 @@
+{
+  "id": "prose-revision",
+  "family": "prose",
+  "base": true,
+  "brief": "只把下面这一行里的「柜台」改成「窗边」，不要拆行、不要改其他字：\n\n贺守一坐在柜台后面。",
+  "fixtures": true,
+  "checks": [
+    {
+      "kind": "tool-called",
+      "name": "edit"
+    },
+    {
+      "kind": "tool-not-called",
+      "name": "write"
+    },
+    {
+      "kind": "file-equals",
+      "path": "chapters/chapter_ch1_v1.md",
+      "text": "# 第一章\n\n贺守一坐在窗边后面。\n"
+    },
+    {
+      "kind": "change-recorded",
+      "path": "chapters/chapter_ch1_v1.md"
+    }
+  ],
+  "model": {
+    "reasoning": "low",
+    "temperature": 0.8,
+    "maxTokens": 32000
+  },
+  "budget": {
+    "maxTurns": 1,
+    "maxSteps": 4,
+    "maxTokens": 40000
+  },
+  "tags": [
+    "prose",
+    "revision"
+  ]
+}
