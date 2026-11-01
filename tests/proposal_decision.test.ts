@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject } from "../src/storage/project";
 import { createSession } from "../src/storage/session-store";
+import { readChanges } from "../src/storage/change_index";
 import { PLAN_KEY } from "../src/core/types";
 import { readDoc } from "../src/storage/corpus";
 import { openSession, type Session } from "../src/session/session";
@@ -61,6 +62,8 @@ describe("结构化拍板", () => {
     expect((await readDoc(projectId, path))?.trimEnd()).toBe(content.trimEnd());
     expect(session.pending.has(path)).toBe(false);
     expect(session.currentMode?.id).toBe("accept-edits");
+    // harness 代模型执行 apply-design 也要进改动索引——它和模型自己写走的是同一条提交路径
+    expect((await readChanges(projectId, SESSION)).some((r) => r.path === path)).toBe(true);
   });
 
   test("接受规划提案：返回章节号、保留 approved，交给执行回合", async () => {

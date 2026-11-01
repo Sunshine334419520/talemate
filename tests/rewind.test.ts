@@ -1,17 +1,16 @@
 /**
- * 就地回退的存储与 Session 语义：目标用户消息及其之后被移除、原文回传、原日志先备份。
+ * 就地回退的存储与 Session 语义：目标用户消息及其之后被移除、原文回传、历史只追加。
  *
- * 回退是**重写** messages.jsonl（不是 append-only），所以备份必须真的落在
- * `rewind-backups/` 里；这条测试同时钉住"只能回退到用户消息"。
+ * 回退是**追加**一条撤销记录（不是重写），所以历史本身还在；这条测试同时钉住
+ * "只能回退到用户消息"。
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createProject } from "../src/storage/project";
 import {
   appendMessage,
-  backupMessages,
   createSession,
   loadMessages,
   truncateMessagesBefore,
@@ -55,19 +54,17 @@ async function seed(): Promise<void> {
 }
 
 describe("会话回退", () => {
-  test("备份留在 rewind-backups/，截断只保留目标之前", async () => {
+  test("回退只追加 rewind，投影只保留目标之前", async () => {
     await seed();
-    const backup = await backupMessages(projectId, SESSION);
-    expect(backup).toBeDefined();
-    const raw = await readFile(backup as string, "utf-8");
-    expect(raw.trim().split("\n")).toHaveLength(4);
 
     const kept = await truncateMessagesBefore(projectId, SESSION, 3);
     expect(kept).toBe(2);
     expect((await loadMessages(projectId, SESSION)).map((m) => m.seq)).toEqual([1, 2]);
 
-    const dir = join(sessionPaths(home, projectId, SESSION).dir, "rewind-backups");
-    expect((await readdir(dir)).length).toBeGreaterThan(0);
+    // 历史没有删：目标之后的 user/message 事件仍在，只是被 rewind 遮住
+    const raw = await readFile(sessionPaths(home, projectId, SESSION).events, "utf-8");
+    expect(raw).toContain('"targetSeq":3');
+    expect(raw).toContain("第二问");
   });
 
   test("Session.rewindTo：回传目标原文，只能指向用户消息", async () => {
@@ -76,7 +73,6 @@ describe("会话回退", () => {
 
     const result = await session.rewindTo(3);
     expect(result.text).toBe("第二问");
-    expect(result.backup).toBeDefined();
     expect((await loadMessages(projectId, SESSION)).map((m) => m.seq)).toEqual([1, 2]);
 
     // 目标及其之后已经不在文件里

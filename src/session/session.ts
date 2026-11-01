@@ -51,10 +51,10 @@ import { loadProjectMeta, readProjectRules } from "../storage/project";
 import { readDoc, scanDocs } from "../storage/corpus";
 import { loadWebSettings } from "../storage/web_config";
 import { dropFileCheckpointsFrom } from "../storage/file-history";
+import { appendChanges, readChanges, writeChanges } from "../storage/change_index";
 import {
   appendMessage,
   appendUsage,
-  backupMessages,
   clearPendingAsk,
   createSession,
   loadMessages,
@@ -67,6 +67,8 @@ import {
 import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
 import { executeToolPart } from "../tool/runner";
+import { eventLogFor } from "../telemetry/log";
+import type { TraceError, TraceEventData, TraceEventType, TurnStatus } from "../telemetry/events";
 import {
   mergeJournalAsk,
   openAsks,
@@ -77,6 +79,7 @@ import {
   type OpenAsk,
 } from "./asks";
 import { compact, isOverBudget } from "./compaction";
+import { changePointsOfMessage, changeRecordsOf, userLine } from "./change_history";
 import { runLoop } from "./loop";
 import { previewFileRewind, restoreFilesForRewind, type FileRewindOutcome, type FileRewindPreview } from "./rewind_files";
 
@@ -159,6 +162,12 @@ export const autoIO: UserIO = {
     return { kind: "cancelled", reason: "no-answerer" };
   },
 };
+
+/** 异常 → 事件里的最小形状：名字 + 一句话。堆栈属于调试器，不属于会话账本。 */
+function traceError(err: unknown): TraceError {
+  if (err instanceof Error) return { name: err.name, message: err.message };
+  return { name: "Error", message: String(err) };
+}
 
 
 /**
@@ -322,8 +331,10 @@ export class Session {
   private cache: StoredMessage[] | null = null;
   /** 上一次请求发出去多少 token（provider 报的真数）——压缩的触发判据 */
   private lastInput: number | undefined;
-  /** 这一轮由哪条用户消息发起；文件回退快照按它归组。 */
+  /** 这一轮由哪条用户消息发起；文件回退快照按它归组，改动索引也用它分轮。 */
   private lastUserSeq: number | undefined;
+  /** 这一轮用户的原话（第一行会进改动索引的组头） */
+  private lastUserText = "";
   /**
    * 待落盘的提案（design 写入 propose → apply 的中转态），按文档路径索引。
    * 只在内存里：重启即失效，apply 会要求重新提案。
@@ -396,35 +407,54 @@ export class Session {
     this.io.onEvent(e);
   }
 
+  /**
+   * 观测事件是旁路：入队就返回，写不动就丢——canonical 日志落不了盘不该让这一轮失败。
+   * 消息事件不走这里：它们由 appendMessage 同步落盘，是消息投影的唯一来源。
+   */
+  private trace<T extends TraceEventType>(type: T, data: TraceEventData[T]): void {
+    void eventLogFor(this.projectId, this.sessionId).append(type, data).catch(() => {});
+  }
+
   async saveMeta(title?: string): Promise<void> {
+    const sessionTitle = title ?? this.agent.name;
     await createSession(this.projectId, {
       id: this.sessionId,
       projectId: this.projectId,
-      title: title ?? this.agent.name,
+      title: sessionTitle,
       agent: this.agentId,
       model: this.model,
       profile: this.profile,
       ...(this.depth > 0 ? { depth: this.depth } : {}),
       ...(this.parentSessionId !== undefined ? { parentSessionId: this.parentSessionId } : {}),
     });
+    // 同一份会话会被再次 saveMeta（首句改名）：起点只能有一条，否则按事件重放会多出一段没发生过的生命周期
+    const log = eventLogFor(this.projectId, this.sessionId);
+    if ((await log.read()).length > 0) return;
+    await log.append("session/start", {
+      agent: this.agentId,
+      model: this.model.model,
+      provider: this.model.provider,
+      title: sessionTitle,
+      ...(this.depth > 0 ? { depth: this.depth } : {}),
+      ...(this.parentSessionId === undefined ? {} : { parentSessionId: this.parentSessionId }),
+    });
   }
 
   /**
    * 就地回退到某条用户消息**之前**。
    *
-   * 目标消息及其之后的内容从当前会话移除，目标文本返回给外壳回填输入框。原 messages.jsonl
-   * 先整份备份到 `rewind-backups/` 再重写——talemate 的日志本来只追加，这里为了"就地回退"
-   * 付的代价是重写；备份是那次重写的审计底。
+   * 目标消息及其之后的内容从当前会话移除，目标文本返回给外壳回填输入框。历史本身不删：
+   * 追加一条 `session/rewind`，消息投影与改动索引都按它裁。所以不需要备份——没有字节被覆盖。
    *
    * 只允许空闲时调用：正在跑的回合里撤回它读过的消息，没有安全的落点。
    *
    * `restoreFiles` 为 true 时，先把 `seq >= target` 的写还原；还原失败会先回滚已改的文件再抛错，
-   * 对话**不**撤回——半还原比不还原更糟。成功后才备份并截断会话，最后清掉这些检查点。
+   * 对话**不**撤回——半还原比不还原更糟。成功后才截断会话，最后清掉这些检查点。
    */
   async rewindTo(
     seq: number,
     opts: { restoreFiles?: boolean } = {},
-  ): Promise<{ text: string; backup?: string; files?: FileRewindOutcome }> {
+  ): Promise<{ text: string; files?: FileRewindOutcome }> {
     if (this.running) throw new Error("这一轮还在跑，等它结束再回退。");
     const all = await this.ensureLoaded();
     const target = all.find((m) => m.seq === seq && m.role === "user");
@@ -433,7 +463,6 @@ export class Session {
     const files = opts.restoreFiles === true
       ? await restoreFilesForRewind(this.projectId, this.sessionId, seq)
       : undefined;
-    const backup = await backupMessages(this.projectId, this.sessionId);
     await truncateMessagesBefore(this.projectId, this.sessionId, seq);
     // 两种模式都清：seq 会被新分支复用，旧账留着会还原错东西
     await dropFileCheckpointsFrom(this.projectId, this.sessionId, seq);
@@ -449,10 +478,10 @@ export class Session {
     await clearPendingAsk(this.projectId, this.sessionId);
     this.lastInput = undefined; // 上下文变小了；下一次按估算重新量
     this.lastUserSeq = undefined;
+    this.lastUserText = "";
 
     return {
       text: target.text ?? "",
-      ...(backup === undefined ? {} : { backup }),
       ...(files === undefined ? {} : { files }),
     };
   }
@@ -553,8 +582,21 @@ export class Session {
     if (!this.tools.has("apply-design")) throw new Error("apply-design 工具没有注册。");
     const callId = `apply-${randomUUID()}`;
     const call: ToolCall = { id: callId, name: "apply-design", input: { path } };
+    const t0 = Date.now();
+    this.trace("tool/call", { callId, name: call.name, inputChars: JSON.stringify(call.input).length });
     this.io.onEvent({ type: "tool-call", id: callId, name: call.name, input: JSON.stringify(call.input) });
     const part = await executeToolPart(this.agentId, call, this.tools, this.makeContext(this.agent, callId));
+    this.trace("tool/result", {
+      callId,
+      name: call.name,
+      state: part.type === "tool" ? part.state : "error",
+      outputChars: part.type === "tool" ? (part.output ?? part.error ?? "").length : 0,
+      durationMs: Date.now() - t0,
+      ...(part.type === "tool" && part.error !== undefined ? { error: part.error } : {}),
+      ...(part.type === "tool" && part.change !== undefined
+        ? { change: { path: part.change.path, kind: part.change.kind } }
+        : {}),
+    });
     this.io.onEvent({
       type: "tool.result",
       id: callId,
@@ -685,26 +727,89 @@ export class Session {
     const ctrl = new AbortController();
     this.abort = ctrl;
 
+    const startedAt = Date.now();
+    let step = 0;
+    /** 最近一次模型请求的步号；工具事件带它，span 才能挂到那次请求下 */
+    let activeStep = -1;
+    this.trace("turn/start", { agent: agent.id, resumed: input === "" });
+    const endTurn = (status: TurnStatus, error?: TraceError): void => {
+      this.trace("turn/end", {
+        status,
+        durationMs: Date.now() - startedAt,
+        ...(error === undefined ? {} : { error }),
+      });
+    };
+
     try {
-      return await runLoop(agent, input, {
+      const result = await runLoop(agent, input, {
         signal: ctrl.signal,
         steps: agent.steps,
         onEvent: (e) => this.forwardEvent(e),
         maybeCompact: () => this.maybeCompact(),
         commitUser,
         buildRequest: (ag) => this.buildRequest(ag),
-        generate: (req, o) =>
-          chat({
-            model: this.model,
-            system: req.system,
-            messages: req.messages,
-            tools: req.tools?.length ? req.tools : undefined,
-            signal: o.signal,
-            onText: o.onText,
-            onReasoning: o.onReasoning,
-            onToolCallStart: o.onToolCallStart,
-          }),
+        generate: async (req, o) => {
+          const current = step++;
+          activeStep = current;
+          const t0 = Date.now();
+          let streamedChars = 0;
+          const requestChars = {
+            system: req.system.length,
+            tools: JSON.stringify(req.tools ?? []).length,
+            messages: JSON.stringify(req.messages).length,
+          };
+          this.trace("step/start", { step: current });
+          try {
+            const turn = await chat({
+              model: this.model,
+              system: req.system,
+              messages: req.messages,
+              tools: req.tools?.length ? req.tools : undefined,
+              signal: o.signal,
+              onText: (d) => {
+                streamedChars += d.length;
+                o.onText(d);
+              },
+              onReasoning: o.onReasoning,
+              onToolCallStart: o.onToolCallStart,
+            });
+            this.trace("step/end", {
+              step: current,
+              finish: turn.toolCalls.length ? "tool_calls" : "stop",
+              durationMs: Date.now() - t0,
+              requestChars,
+              ...(turn.usage === undefined
+                ? {}
+                : { usage: { input: turn.usage.input, output: turn.usage.output } }),
+            });
+            return turn;
+          } catch (err) {
+            // 这次请求没有产出消息：不留 attempt 的话，它在任何消息投影里都不存在
+            const interrupted = ctrl.signal.aborted;
+            this.trace("assistant/attempt", {
+              step: current,
+              outcome: interrupted ? "interrupted" : "error",
+              durationMs: Date.now() - t0,
+              streamedChars,
+              error: traceError(err),
+            });
+            this.trace("step/end", {
+              step: current,
+              finish: "error",
+              durationMs: Date.now() - t0,
+              requestChars,
+            });
+            throw err;
+          }
+        },
         executeTool: async (ag, call) => {
+          const t0 = Date.now();
+          this.trace("tool/call", {
+            callId: call.id,
+            name: call.name,
+            inputChars: JSON.stringify(call.input ?? {}).length,
+            ...(activeStep < 0 ? {} : { step: activeStep }),
+          });
           // 详细打印事件：工具调用、task 子代理边界（子会话事件发生在 scope.open/close 之间）、工具结果
           const isTask = call.name === "task";
           this.io.onEvent({ type: "tool-call", id: call.id, name: call.name, input: JSON.stringify(call.input ?? {}) });
@@ -718,6 +823,17 @@ export class Session {
           this.notePlannerResult(call, part);
           this.markPlanDone(call, part);
           const out = part.type === "tool" ? (part.output ?? part.error ?? "") : "";
+          this.trace("tool/result", {
+            callId: call.id,
+            name: call.name,
+            state: part.type === "tool" ? part.state : "error",
+            outputChars: out.length,
+            durationMs: Date.now() - t0,
+            ...(part.type === "tool" && part.error !== undefined ? { error: part.error } : {}),
+            ...(part.type === "tool" && part.change !== undefined
+              ? { change: { path: part.change.path, kind: part.change.kind } }
+              : {}),
+          });
           this.io.onEvent({
             type: "tool.result",
             id: call.id,
@@ -730,10 +846,14 @@ export class Session {
         },
         commitAssistant: (msg) => this.persistAssistant(msg.agent, msg.parts, msg.finish),
       });
+      endTurn(ctrl.signal.aborted ? "aborted" : "completed");
+      return result;
     } catch (err) {
       // 用户按了停止：**中止不是错误**。状态收尾在 `runLoop` 的 finally 里，这里只把它转成
       // 一次正常结束，免得壳把"用户主动停的"报成 [错误]。
-      if (ctrl.signal.aborted) return "";
+      const aborted = ctrl.signal.aborted;
+      endTurn(aborted ? "aborted" : "error", aborted ? undefined : traceError(err));
+      if (aborted) return "";
       throw err;
     } finally {
       this.running = false;
@@ -787,12 +907,21 @@ export class Session {
     const ask = open.find((a) => a.callId === callId);
     if (ask === undefined) return "stale";
     if (validateAnswers(ask.questions, answers) !== undefined) return "invalid";
-    const m = await appendMessage(this.projectId, this.sessionId, {
-      role: "user",
-      agent: this.agentId,
-      text: renderAnswerMessage(ask.questions, answers, callId),
-      answersTo: { callId, questions: ask.questions, answers },
-    });
+    const text = renderAnswerMessage(ask.questions, answers, callId);
+    const all = await this.ensureLoaded();
+    const m = await appendMessage(
+      this.projectId,
+      this.sessionId,
+      {
+        role: "user",
+        agent: this.agentId,
+        text,
+        answersTo: { callId, questions: ask.questions, answers },
+      },
+      { seq: (all.at(-1)?.seq ?? 0) + 1 },
+    );
+    this.lastUserSeq = m.seq;
+    this.lastUserText = text;
     await this.push(m);
     await clearPendingAsk(this.projectId, this.sessionId);
     if (this.pendingAskRecord?.callId === callId) this.pendingAskRecord = undefined;
@@ -1096,6 +1225,22 @@ export class Session {
     return { text: await child.post(prompt), sessionId: child.sessionId };
   }
 
+  /**
+   * 打开会话时折一次消息，并让改动索引追上它。
+   *
+   * 索引是投影，可能因为崩溃/手删落后于事件；打开本来就要折一次消息，顺手对账几乎免费。
+   * 只比较 (messageSeq, callId, path) 集合：多一行、少一行都重写成同一份正确快照。
+   */
+  async syncChangeIndex(): Promise<void> {
+    const records = changeRecordsOf(await this.ensureLoaded());
+    const existing = await readChanges(this.projectId, this.sessionId);
+    const key = (r: { messageSeq: number; callId: string; path: string }): string =>
+      `${r.messageSeq}:${r.callId}:${r.path}`;
+    const have = new Set(existing.map(key));
+    const stale = records.some((r) => !have.has(key(r))) || existing.length !== records.length;
+    if (stale) await writeChanges(this.projectId, this.sessionId, records);
+  }
+
   // ─── 消息缓存与持久化（唯一读写磁盘/内存的出口） ───
 
   /** 取当前上下文窗口（最新 compaction 之后的 seq），从内存拿，不重读盘 */
@@ -1119,22 +1264,43 @@ export class Session {
   }
 
   private async persistUser(text: string, agentId: string): Promise<void> {
-    const m = await appendMessage(this.projectId, this.sessionId, { role: "user", agent: agentId, text });
+    const all = await this.ensureLoaded();
+    const m = await appendMessage(
+      this.projectId,
+      this.sessionId,
+      { role: "user", agent: agentId, text },
+      { seq: (all.at(-1)?.seq ?? 0) + 1 },
+    );
     this.lastUserSeq = m.seq;
+    this.lastUserText = text;
     await this.push(m);
     // 界面用 seq 把实时气泡变成可回退目标。只报事件，不进模型上下文。
     this.io.onEvent({ type: "user.message", seq: m.seq, text, sessionId: this.sessionId, agent: agentId });
   }
 
   private async persistAssistant(agent: string, parts: AssistantPart[], finish: "stop" | "tool_calls"): Promise<void> {
-    const m = await appendMessage(this.projectId, this.sessionId, {
-      role: "assistant",
-      agent,
-      parts,
-      finish,
-      model: this.model.model,
-    });
+    const all = await this.ensureLoaded();
+    const m = await appendMessage(
+      this.projectId,
+      this.sessionId,
+      {
+        role: "assistant",
+        agent,
+        parts,
+        finish,
+        model: this.model.model,
+      },
+      { seq: (all.at(-1)?.seq ?? 0) + 1 },
+    );
     await this.push(m);
+    // 改动索引是投影：落后一条可以重建，所以写失败不能挡会话。
+    // 没有用户消息的那一段（harness 代执行）turnSeq=0、user 留空，不拿上一轮的话冒充组头。
+    const turnSeq = this.lastUserSeq ?? 0;
+    const user = this.lastUserSeq === undefined ? "" : userLine(this.lastUserText);
+    const points = changePointsOfMessage(m, turnSeq, user);
+    if (points.length > 0) {
+      await appendChanges(this.projectId, this.sessionId, points, { ts: m.ts, user }).catch(() => {});
+    }
   }
 
   /** 压缩前检查：用内存消息判断是否超阈值，是则压缩并把 compaction 消息同步回缓存 */
@@ -1143,14 +1309,22 @@ export class Session {
     // 量窗口，不是文件：文件只增不减，量它等于过了阈值就永远超预算（见 isOverBudget 的注释）。
     if (!isOverBudget(this.model.model, this.lastInput, loadModelWindow(all))) return;
     const summarizer = this.agents.get("summarizer");
-    const m = await compact({
-      projectId: this.projectId,
-      sessionId: this.sessionId,
-      model: this.model,
-      system: summarizer.system,
-      messages: all,
-    });
-    if (m) await this.push(m);
+    const t0 = Date.now();
+    this.trace("compaction/start", { model: this.model.model });
+    try {
+      const m = await compact({
+        projectId: this.projectId,
+        sessionId: this.sessionId,
+        model: this.model,
+        system: summarizer.system,
+        messages: all,
+      });
+      if (m) await this.push(m);
+      this.trace("compaction/end", { durationMs: Date.now() - t0, ok: true, compacted: m !== null });
+    } catch (err) {
+      this.trace("compaction/end", { durationMs: Date.now() - t0, ok: false, compacted: false });
+      throw err;
+    }
   }
 }
 
@@ -1178,5 +1352,7 @@ export async function openSession(deps: SessionDeps): Promise<Session> {
   if (!deps.sessionId) await session.saveMeta(deps.title);
   // 续聊/重开：把“提问已开始、助手消息还没提交”的那条 journal 接回来
   await session.hydrate();
+  // 打开本来就折一次消息；顺手让改动索引追上（索引落后于事件时重写，见 syncChangeIndex）
+  await session.syncChangeIndex().catch(() => {});
   return session;
 }

@@ -1,5 +1,5 @@
 /**
- * `/debug` 的渲染守卫：它要给出会话目录与 messages.jsonl 的绝对路径（排查要拿这个），
+ * `/debug` 的渲染守卫：它要给出会话目录、事件日志与改动索引的绝对路径（排查要拿这个），
  * 但**绝不能**把密钥写进去——这段文本会进终端、右栏，甚至被复制给别人。
  */
 import { describe, test, expect } from "bun:test";
@@ -11,7 +11,29 @@ const info: SessionDebugInfo = {
   projectRoot: "/Users/x/.talemate/novels/novel-a556",
   sessionId: "30d5b481",
   sessionDir: "/Users/x/.talemate/novels/novel-a556/.talemate/sessions/30d5b481",
-  messagesPath: "/Users/x/.talemate/novels/novel-a556/.talemate/sessions/30d5b481/messages.jsonl",
+  eventsPath: "/Users/x/.talemate/novels/novel-a556/.talemate/sessions/30d5b481/events.jsonl",
+  eventCount: 120,
+  stats: {
+    events: 120,
+    turns: 12,
+    completedTurns: 10,
+    failedTurns: 1,
+    abortedTurns: 1,
+    steps: 20,
+    llmMs: 1500,
+    attemptsFailed: 2,
+    interruptions: 1,
+    toolCalls: 14,
+    toolErrors: 1,
+    toolMs: 320,
+    compactions: 1,
+    inputTokens: 12496,
+    outputTokens: 3142,
+    messages: 33,
+    firstTime: 1,
+    lastTime: 2,
+  },
+  changesPath: "/Users/x/.talemate/novels/novel-a556/.talemate/sessions/30d5b481/changes.jsonl",
   pendingAskPath: "/Users/x/.talemate/novels/novel-a556/.talemate/sessions/30d5b481/pending-ask.json",
   pendingAskExists: false,
   agent: "mate",
@@ -33,8 +55,11 @@ describe("/debug 渲染", () => {
     const text = renderSessionDebug(info);
     expect(text).toContain(info.projectRoot);
     expect(text).toContain(info.sessionDir);
-    expect(text).toContain(info.messagesPath);
-    expect(text).toContain("共 33 条，最后 seq=33");
+    expect(text).toContain(info.eventsPath);
+    expect(text).toContain("共 120 条");
+    expect(text).toContain(info.changesPath);
+    expect(text).toContain("消息：33 条");
+    expect(text).toContain("最后 seq=33");
     expect(text).toContain("模型窗口：33 条，从 seq=1 起（无压缩）");
     expect(text).toContain("工作区内修改");
     expect(text).toContain("第 3 章");

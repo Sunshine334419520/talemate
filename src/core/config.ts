@@ -8,6 +8,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ModelConfig, Provider, Reasoning } from "./types";
 
+/**
+ * 当前日期（YYYY-MM-DD），system prompt 的 env 行用它。
+ *
+ * 评测必须冻结它：按请求哈希回放 cassette 时，日期一变 system 就变，所有键都会 miss。
+ * `TALEMATE_TODAY` 只影响这一行，不影响事件时间戳；格式不对就退回真实日期，不静默用坏值。
+ */
+export function today(env = process.env): string {
+  const pinned = env.TALEMATE_TODAY?.trim();
+  if (pinned !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(pinned)) return pinned;
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function talemateHome(env = process.env): string {
   return env.TALEMATE_HOME || join(homedir(), ".talemate");
 }
@@ -117,7 +129,10 @@ export function sessionPaths(home: string, projectId: string, sessionId: string)
   return {
     dir,
     meta: join(dir, "session.json"),
-    messages: join(dir, "messages.jsonl"),
+    /** canonical 事件日志：这份会话的唯一真源（见 src/telemetry/） */
+    events: join(dir, "events.jsonl"),
+    /** 改动索引：按轮列出的文件改动 + 回取 diff 的指针（见 storage/change_index.ts） */
+    changes: join(dir, "changes.jsonl"),
     /** 提问已开始、助手消息还没提交时的 write-ahead 记录（见 session/asks.ts） */
     pendingAsk: join(dir, "pending-ask.json"),
   };

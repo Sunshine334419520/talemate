@@ -158,7 +158,7 @@ function printPermissions(session: Session): void {
 
 /**
  * 收起模式下的思考显示（不需要 TUI）：流式期间用一行 `\r` 重写的状态行顶着，推理一结束就擦掉、
- * 换成一行摘要。展开全文走 /msg <seq>——推理本来就落盘在 messages.jsonl 的 reasoning part 里。
+ * 换成一行摘要。展开全文走 /msg <seq>——推理本来就落盘在 assistant 消息的 reasoning part 里。
  */
 let think: { started: number; chars: number; head: string; live: boolean } | undefined;
 let lastLiveWrite = 0;
@@ -358,7 +358,8 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /sessions      列出当前空间的历史会话",
           "  /open <n>      恢复当前空间第 n 个历史会话",
           "  /permissions   当前生效的规则表：每类动作是什么、是哪一层定的、各层都贡献了什么",
-          "  /debug         当前会话的调试信息：模型、模式、待批，以及会话目录与 messages.jsonl 路径",
+          "  /debug         当前会话的调试信息：模型、模式、待批，以及会话目录与事件/改动索引路径",
+          "  /trace         会话轨迹摘要（事件/span/耗时）；/trace export [路径] 导出脱敏副本",
           "  /design <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
@@ -388,6 +389,22 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
         return "continue";
       }
       console.log(renderSessionDebug(await buildSessionDebug(curSession)));
+      return "continue";
+    }
+    case "/trace": {
+      if (!curSession) {
+        console.log("还没有打开会话。先进入一个项目空间。");
+        return "continue";
+      }
+      const { exportTrace, readTraceSummary } = await import("./session/trace_view");
+      const sub = arg.trim();
+      if (sub === "export" || sub.startsWith("export ")) {
+        const target = sub.slice("export".length).trim();
+        const result = await exportTrace(curSession.projectId, curSession.sessionId, target || undefined);
+        console.log(`已导出 ${result.written} 条（扣下 ${result.dropped} 条）→ ${result.path}`);
+        return "continue";
+      }
+      console.log(await readTraceSummary(curSession.projectId, curSession.sessionId));
       return "continue";
     }
     case "/projects": {

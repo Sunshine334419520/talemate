@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-10-24 · 本文与代码冲突时**以代码为准**
+> **对齐代码**：2026-10-31 · 本文与代码冲突时**以代码为准** · 2026-10-31 落地 canonical 事件日志与投影（阶段 1，见 `telemetry.md`）
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -27,10 +27,11 @@ llm/  provider(anthropic/openai/mock) + 工具循环 + 流式
    │
    ▼
 storage/  corpus.ts(语料读取唯一实现，三个根) · project.ts(项目元/规则/测试夹具) · session-store.ts · atomic/bom/util.ts
+telemetry/ 事件日志 events.jsonl + 投影(messages/spans/stats) + 脱敏 + sink（只依赖 core/*，不依赖 storage/session）
 skill/    SKILL.md 发现与注入（内置库 / 全局库 / 项目库，优先级由扫描顺序决定）
 ```
 
-依赖方向（实际 import 边）：`cli → session → {agent, tool, framework, context, llm, storage, skill}`；`context/llm/skill` 是叶；`tool/runner` 不依赖 Session。
+依赖方向（实际 import 边）：`cli → session → {agent, tool, framework, context, llm, storage, skill}`；`context/llm/skill/telemetry` 是叶；`storage/session-store` 依赖 `telemetry`（事件是真源，消息是投影），反过来不成立；`tool/runner` 不依赖 Session。
 
 ## 技术栈
 
@@ -67,7 +68,7 @@ skill/    SKILL.md 发现与注入（内置库 / 全局库 / 项目库，优先�
     └── .talemate/                  # ◀ 引擎工作区（不是作品）
         ├── plans/ch_<N>.md         #   章节规划工件（propose-plan 落，见 framework/plan.ts）
         ├── research/<题目>.md      #   考据本：researcher 查证过的结论（一题一份；读口只有 recall）
-        └── sessions/<id>/          #   会话元 session.json + messages.jsonl
+        └── sessions/<id>/          #   会话元 session.json + 事件日志 events.jsonl + 改动索引 changes.jsonl
 ```
 
 **三个根 vs 工作区**：`design/`（设定）、`chapters/`（正文）、`state/`（当前状态）是**作品的三个根**
@@ -182,12 +183,15 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 落盘只写**稳定态**（delta 不持久化，只落结束值）：
 
 - **`session.json`**：会话元（id / projectID / title / agent / model / profile / usage / time；子会话另有 `depth` / `parentSessionId`）。
-- **`messages.jsonl`**：每行一条消息，**必须含 `seq`**；类型 `user / assistant / system / synthetic / compaction`。正常只追加；**就地回退**会先把整份日志备份到 `<session>/rewind-backups/`，再重写到目标用户消息之前（目标文本回填输入框）。回退可选「仅对话」或「连文件」；文件快照见下一条。
+- **`events.jsonl`**：canonical 事件日志，**这份会话的唯一真源**。一行一条事件，带 `schemaVersion / sessionId / seq / time / type / data`；`seq` 单调、永不复用，去重身份是 `sessionId + seq`。只追加——回退也是追加一条 `session/rewind`（见 `telemetry.md`）。
+- **消息不落文件**：打开会话时从 `events.jsonl` 折一次进内存（`Session.cache`），之后增量维护；冷读（`loadMessages`）现场折。消息的 `seq` 是投影内的顺序（回退后可复用），不是事件身份。
+- **`changes.jsonl`**：改动索引，按轮列出"哪个文件被改了、去哪取 diff"——路径 / 类型 / 增删行数 / `messageSeq` + `callId` 指针，**不存 diff**。只追加；回退追加墓碑 `{type:"rewind"}`。它是投影，能由事件重算（`rebuildSessionChanges`，打开会话时也会对账一次）；本次会话读一个文件，本书读 N 个。
+- **回退不改写任何文件**：事件追加 `session/rewind`，改动索引追加墓碑；历史只增不减，没有备份。
 - **文件回退检查点**：`<session>/rewind-files.json`——`write_ops` 成功落盘后记的写前内容，按发起这一轮的用户 `seq` 归组。回退到 seq N 时，取每条路径在 `seq >= N` 里最早的那份 `before` 还原；写前不存在则删除。它只服务回退，不是作品文档。
   - assistant 的 content = `[{ text, reasoning, tool: [{id, name, state, input, output, time}] }]`。
 - **规则：delta 仅 live 不落盘，ended/complete 才是落盘的全值**——文件里只有稳定态。
 - **compaction 消息必落**，它是恢复上下文的关键。
-- `seq` 单调递增；消息顺序 = 文件顺序 = seq 顺序。
+- 事件 `seq` 单调递增、永不复用；消息顺序 = 投影顺序 = 消息 `seq` 顺序（回退后新消息会复用被撤掉的序号）。
 - 全部 `fs/promises`，无数据库。
 
 ## 边界与演进
@@ -198,6 +202,23 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 
 未来稳定契约（暂不实现）：`POST /api/session` · `POST /api/session/:id/prompt` · `GET /api/session/:id/message`（投影）· `GET /api/session/:id/event?after=seq`（SSE replay-then-live）· `POST /interrupt`。届时薄 TUI = "先拉投影 + 事件增量更新本地读模型"。
 
+## 评测与可观测性（阶段 1 已实现）
+
+2026-10-31 对照 DeepSeek Harness 定下底座，并已落地阶段 1：**canonical append-only 事件日志是唯一真源，messages / spans / stats 全是投影。** 评测方法论（case / rubric / pairwise / replay）仍未实现。
+
+- **`events.jsonl`**：每会话一条，只追加，`seq` 单调。失败与中断也留事件（`assistant/attempt`）——它们在消息投影里根本不存在。
+- **投影**（`src/telemetry/projection.ts`，纯函数）：`projectMessages` / `projectSpans` / `projectStats`。同一份日志重算必须得到同一个结果；删掉缓存不影响历史。
+- **`Span`**（`invoke_agent` / `chat` / `execute_tool` / `compaction`）由事件折叠，不落盘。没闭合的段标 `error + incomplete`，不替它编结束时间。
+- **捕获与传输分离**：`TraceSink.emit` 只入队；事件先落 canonical 日志，再交给 sink；sink 抛异常不影响会话。
+- **脱敏只作用于导出副本**（`redact.ts`，fail-closed）：本地账本保留原文，导出副本洗密钥与家目录。`/trace` 看摘要；导出走 CLI 的 `/trace export [路径]` 或桌面右栏的「导出脱敏副本」。
+- **OTel 仍未接**：先把本地事件与投影做对；将来只换 backend，不换事件。
+
+还没做：eval case / rubric / pairwise / replay provider；跨会话的 span 查询与可视化；OTLP logs 导出。
+
+细节（ADR、事件词汇、怎么加一类事件、怎么读）见 [telemetry.md](telemetry.md)；为什么这么改见 [learning/evals-observability/architecture-review-dsh.md](learning/evals-observability/architecture-review-dsh.md)。
+
+---
+
 ## 刻意不做的
 
 写作是纯文本世界，通用 coding agent 的许多机制在这里没有位置。**明确不做**，免得被当成"还没做"：
@@ -206,8 +227,8 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 |---|---|
 | bash / 文件编辑 / pty / grep / glob / LSP / MCP | 只需要读写 `design/` 与 `chapters/` 下的文本 |
 | 权限级联（allow/ask/deny 队列） | 简化为"默认放行 + 工具自声明是否需 confirm" |
-| 数据库 / 事件溯源 / projector | 文件系统 + jsonl（`seq` 单调）够用 |
+| 通用数据库 / 全仓事件溯源框架 | 文件系统 + jsonl 够用；只做**会话级** append-only 事件日志（`events.jsonl`），不引入通用 DB / 全仓事件溯源（见上节） |
 | 多版本协议栈 / 迁移债 | 自研只有一份实现，不留双栈 |
-| 遥测 / 云同步 / todo 工具 | 与产品无关 |
+| 遥测 / 云同步 / todo 工具 | 与产品无关；本地事件日志与投影是另一条学习线，且**默认不导出**（见 `telemetry.md`） |
 
 > 判据：**"这个机制服务于代码编辑，还是服务于小说创作？"** 前者一律不做。

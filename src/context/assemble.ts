@@ -5,6 +5,7 @@
  * 存储 → LLM 不是 1:1：compaction 折成一条 <story-state> 前情摘要 user 消息；一条含工具 part 的 assistant
  * 展开成 assistant(toolCalls) + 每条 completed tool 一条 role:"tool" 结果。
  */
+import { today } from "../core/config";
 import type { StoredMessage } from "../core/types";
 import type { NeutralMsg } from "../llm/types";
 
@@ -18,7 +19,7 @@ export function buildSystemPrompt(parts: {
   resident?: string;
 }): string {
   const blocks: string[] = [];
-  const env = `${new Date().toISOString().slice(0, 10)} 作品：${parts.projectTitle} 当前角色：${parts.agentName}`;
+  const env = `${today()} 作品：${parts.projectTitle} 当前角色：${parts.agentName}`;
   blocks.push(env);
   blocks.push(parts.roleSystem);
   if (parts.resident) blocks.push(parts.resident);

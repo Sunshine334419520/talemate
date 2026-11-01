@@ -115,5 +115,10 @@ export async function compact(opts: {
     })
   ).text;
 
-  return appendMessage(projectId, sessionId, { role: "compaction", summary, recent: recentText });
+  return appendMessage(
+    projectId,
+    sessionId,
+    { role: "compaction", summary, recent: recentText },
+    { seq: (messages.at(-1)?.seq ?? 0) + 1 },
+  );
 }

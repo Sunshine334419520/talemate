@@ -308,16 +308,35 @@ export interface ToolContext {
 }
 
 /**
+ * 一次成功落盘的改动（不含 diff）。它是改动索引里那一行的形状，也是界面分组的最小单位。
+ *
+ * 单独抽出来是因为索引不能存 diff：diff 动辄几千行，而索引是给"列出有哪些改动"读的。
+ */
+export interface ChangeRef {
+  path: string;
+  kind: "created" | "modified" | "deleted";
+  additions: number;
+  deletions: number;
+}
+
+/**
+ * 索引里的一行：改动 + 回取 diff 的指针。
+ *
+ * `messageSeq` / `callId` 指向那条 assistant 消息里的 tool part——索引不复制正文，点开时按它取。
+ */
+export interface ChangePoint extends ChangeRef {
+  turnSeq: number;
+  messageSeq: number;
+  callId: string;
+}
+
+/**
  * 一次成功落盘的改动记录。界面按轮汇总"这次改了什么"，模型上下文不读它。
  *
  * `diff` 只对修改/删除有值；新建文件的正文就在盘上，界面点开读全文，不另存一份。
  */
-export interface WriteChange {
-  path: string;
-  kind: "created" | "modified" | "deleted";
+export interface WriteChange extends ChangeRef {
   diff: string;
-  additions: number;
-  deletions: number;
 }
 
 export interface ToolResult {
@@ -369,7 +388,7 @@ export interface ToolDef<Args = unknown> {
   execute(args: Args, ctx: ToolContext): Promise<ToolResult>;
 }
 
-/** ─── 消息模型（持久化 messages.jsonl 的一行 = 一条消息） ─── */
+/** ─── 消息模型（事件日志折出来的一条消息；不再单独落文件） ─── */
 
 export type ToolState = "pending" | "running" | "completed" | "error";
 
