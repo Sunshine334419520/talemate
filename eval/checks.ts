@@ -59,6 +59,7 @@ function labelOf(check: Check): string {
   switch (check.kind) {
     case "file-exists":
     case "file-absent":
+    case "file-not-contains":
     case "file-unchanged":
     case "file-contains":
     case "file-matches":
@@ -78,6 +79,8 @@ function labelOf(check: Check): string {
     case "event-exists":
     case "event-count-at-most":
       return `${check.kind}:${check.type}`;
+    case "assistant-text-contains":
+      return `assistant-text-contains:${check.text}`;
   }
 }
 
@@ -142,6 +145,16 @@ async function evaluate(
       return actual === expected
         ? { id: labelOf(check), ok: true, detail: "与 fixture 一致" }
         : { id: labelOf(check), ok: false, detail: `与 fixture 不同（${actual.length} 字 vs ${expected.length} 字）` };
+    }
+
+    case "file-not-contains": {
+      const actual = file(check.path);
+      if (actual === undefined) {
+        return { id: labelOf(check), ok: false, detail: `文件不存在：${check.path}` };
+      }
+      return actual.includes(check.text)
+        ? { id: labelOf(check), ok: false, detail: `仍包含「${check.text}」` }
+        : { id: labelOf(check), ok: true, detail: `不含「${check.text}」` };
     }
 
     case "file-contains": {
@@ -230,6 +243,21 @@ async function evaluate(
       return count > 0
         ? { id: labelOf(check), ok: true, detail: `${check.type} × ${count}` }
         : { id: labelOf(check), ok: false, detail: `没有 ${check.type} 事件` };
+    }
+
+    case "assistant-text-contains": {
+      const text = [...snap.messages]
+        .reverse()
+        .find((message) => message.role === "assistant")
+        ?.parts?.filter((part) => part.type === "text")
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join("");
+      if (text === undefined || text.trim() === "") {
+        return { id: labelOf(check), ok: false, detail: "没有助手正文" };
+      }
+      return text.includes(check.text)
+        ? { id: labelOf(check), ok: true, detail: `包含「${check.text}」` }
+        : { id: labelOf(check), ok: false, detail: `不包含「${check.text}」（正文 ${text.length} 字）` };
     }
 
     case "event-count-at-most": {

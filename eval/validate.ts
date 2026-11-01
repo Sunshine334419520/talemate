@@ -25,6 +25,7 @@ const CHECK_FIELDS: Record<CheckKind, readonly string[]> = {
   "file-absent": ["path"],
   "file-unchanged": ["path", "against"],
   "file-contains": ["path", "text"],
+  "file-not-contains": ["path", "text"],
   "file-matches": ["path", "pattern"],
   "tool-called": ["name"],
   "tool-not-called": ["name"],
@@ -35,6 +36,7 @@ const CHECK_FIELDS: Record<CheckKind, readonly string[]> = {
   "max-tokens": ["n"],
   "event-exists": ["type"],
   "event-count-at-most": ["type", "n"],
+  "assistant-text-contains": ["text"],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -139,6 +141,11 @@ export function validateCase(value: unknown): Issue[] {
   }
   if (value.answerer !== undefined && typeof value.answerer !== "boolean") {
     issues.push({ where: "answerer", message: "answerer 必须是布尔值" });
+  }
+  if (value.env !== undefined) {
+    if (!isRecord(value.env) || Object.values(value.env).some((v) => typeof v !== "string")) {
+      issues.push({ where: "env", message: "env 必须是字符串到字符串的对象" });
+    }
   }
   if (value.model !== undefined) {
     if (!isRecord(value.model)) {

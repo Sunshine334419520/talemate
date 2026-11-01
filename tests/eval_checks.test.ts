@@ -32,6 +32,7 @@ const MESSAGES: StoredMessage[] = [
     ts: 2,
     finish: "tool_calls",
     parts: [
+      { type: "text", text: "我先看一下设定。" },
       { type: "tool", id: "c1", name: "enter-draft", state: "completed" },
       { type: "tool", id: "c2", name: "propose-design", state: "completed", halt: true },
     ],
@@ -146,6 +147,24 @@ describe("判据执行", () => {
     expect(results[1]?.detail).toContain("与 fixture 不同");
     expect(results[2]?.detail).toContain("没有调用 write");
     expect(results[3]?.detail).toContain("180 token");
+  });
+
+  test("file-not-contains 与 assistant-text-contains", async () => {
+    const snap = snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" });
+    const out = await runChecks(
+      {
+        ...CASE,
+        checks: [
+          { kind: "file-not-contains", path: "design/core.md", text: "不存在的句子" },
+          { kind: "file-not-contains", path: "design/core.md", text: "旧书店" },
+          { kind: "assistant-text-contains", text: "我先看一下" },
+          { kind: "assistant-text-contains", text: "没有这句" },
+        ],
+      },
+      [snap],
+      fixtureRoot,
+    );
+    expect(out.map((r) => r.ok)).toEqual([true, false, true, false]);
   });
 
   test("afterTurn 超出实际轮数时判失败，不静默取最后一轮", async () => {

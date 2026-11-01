@@ -16,6 +16,7 @@ export const CHECK_KINDS = [
   "file-absent",
   "file-unchanged",
   "file-contains",
+  "file-not-contains",
   "file-matches",
   "tool-called",
   "tool-not-called",
@@ -26,6 +27,7 @@ export const CHECK_KINDS = [
   "max-tokens",
   "event-exists",
   "event-count-at-most",
+  "assistant-text-contains",
 ] as const;
 
 export type CheckKind = (typeof CHECK_KINDS)[number];
@@ -42,6 +44,7 @@ export type Check = CheckBase &
     | { kind: "file-absent"; path: string }
     | { kind: "file-unchanged"; path: string; against: "fixture" | "before" }
     | { kind: "file-contains"; path: string; text: string }
+    | { kind: "file-not-contains"; path: string; text: string }
     | { kind: "file-matches"; path: string; pattern: string }
     | { kind: "tool-called"; name: string }
     | { kind: "tool-not-called"; name: string }
@@ -52,6 +55,7 @@ export type Check = CheckBase &
     | { kind: "max-tokens"; n: number }
     | { kind: "event-exists"; type: string }
     | { kind: "event-count-at-most"; type: string; n: number }
+    | { kind: "assistant-text-contains"; text: string }
   );
 
 export interface EvalCase {
@@ -76,6 +80,8 @@ export interface EvalCase {
   mode?: "draft" | "accept-edits" | "prose";
   /** 评测用户是否回答提问；false = 沿用 autoIO（无回答方），true = 一律答"按你的判断来" */
   answerer?: boolean;
+  /** 本 case 专用的环境变量（如压低的压缩阈值）；跑完恢复 */
+  env?: Record<string, string>;
   /** 钉死模型参数：评测不能跟着 `.env` 漂，否则 cassette 全是 miss */
   model?: {
     reasoning?: "off" | "low" | "high" | "max";

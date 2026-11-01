@@ -294,6 +294,7 @@ async function runOnce(
   const prevTemperature = process.env.TALEMATE_TEMPERATURE;
   const prevMaxTokens = process.env.TALEMATE_MAX_TOKENS;
   const prevUsed = process.env.TALEMATE_REPLAY_USED;
+  const prevEnv = new Map(Object.keys(evalCase.env ?? {}).map((key) => [key, process.env[key]]));
 
   process.env.TALEMATE_HOME = home;
   process.env.TALEMATE_TODAY = options.clock;
@@ -303,6 +304,7 @@ async function runOnce(
   if (evalCase.model?.reasoning !== undefined) process.env.TALEMATE_REASONING = evalCase.model.reasoning;
   if (evalCase.model?.temperature !== undefined) process.env.TALEMATE_TEMPERATURE = String(evalCase.model.temperature);
   if (evalCase.model?.maxTokens !== undefined) process.env.TALEMATE_MAX_TOKENS = String(evalCase.model.maxTokens);
+  for (const [key, value] of Object.entries(evalCase.env ?? {})) process.env[key] = value;
   if (options.record) process.env.TALEMATE_RECORD = "1";
   else delete process.env.TALEMATE_RECORD;
 
@@ -388,6 +390,10 @@ async function runOnce(
     else process.env.TALEMATE_MAX_TOKENS = prevMaxTokens;
     if (prevUsed === undefined) delete process.env.TALEMATE_REPLAY_USED;
     else process.env.TALEMATE_REPLAY_USED = prevUsed;
+    for (const [key, value] of prevEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 
   const last = snapshots.at(-1);
