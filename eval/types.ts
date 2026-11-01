@@ -151,18 +151,7 @@ export interface RunResult {
 }
 
 /**
- * 变体 patch：与 `src/probe/advance.ts` 的 Patch 同形。
- *
- * M1 抽公共实现时再删掉这一份；在那之前它只是契约，不会被执行。
+ * 变体 patch：唯一实现是 `src/probe/patches.ts`，probe 与 eval 共用。
+ * `VariantPatch` 保留旧名，避免调用方一起改。
  */
-export type VariantPatch =
-  | { kind: "persona"; note: string; before: string; after: string }
-  | { kind: "describe"; tool: string; note: string; before: string; after: string }
-  | { kind: "dropTools"; note: string; names: string[] }
-  | { kind: "appendResult"; tool: string; note: string; text: string };
-
-export interface Variant {
-  id: string;
-  note: string;
-  patches: VariantPatch[];
-}
+export type { Patch as VariantPatch, Variant } from "../src/probe/patches";

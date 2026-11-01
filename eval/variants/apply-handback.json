@@ -1,0 +1,12 @@
+{
+  "id": "apply-handback",
+  "note": "落盘结果里补上「这一层到此为止」的交回契约",
+  "patches": [
+    {
+      "kind": "appendResult",
+      "tool": "apply-design",
+      "note": "apply-design 结果里补交回契约",
+      "text": "\n（这一层到此为止——把球交回用户：说一句这层落好了，其余几层等他点名。）"
+    }
+  ]
+}

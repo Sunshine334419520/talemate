@@ -26,9 +26,11 @@ import { loadMessages } from "../src/storage/session-store";
 import { readChanges } from "../src/storage/change_index";
 import { eventLogFor, resetEventLogs } from "../src/telemetry/log";
 import { hashJson, readCassette } from "../src/llm/replay";
+import { buildHarness } from "../src/probe/patches";
+import type { Variant } from "../src/probe/patches";
 import { runChecks } from "./checks";
 import type { TurnSnapshot } from "./checks";
-import { renderBaselineReport } from "./report";
+import { renderBaselineReport, renderComparisonReport } from "./report";
 import type { EvalCase, FailureBucket, Manifest, RunResult } from "./types";
 import { validateAll } from "./validate";
 
@@ -43,6 +45,7 @@ interface Options {
   timeoutMs: number;
   maxTokens: number;
   report?: string;
+  variant?: string;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -87,6 +90,9 @@ function parseArgs(argv: string[]): Options {
       case "--report":
         options.report = next();
         break;
+      case "--variant":
+        options.variant = next();
+        break;
       case "--help":
       case "-h":
         console.log(
@@ -100,6 +106,7 @@ function parseArgs(argv: string[]): Options {
             "  --timeout <ms>      单轮超时（默认 180000）",
             "  --max-tokens <n>    录制模式的总 token 上限（默认 500000）",
             "  --report <path>     报告落点",
+            "  --variant <id>      跑 baseline 与 eval/variants/<id>.json 的对比",
           ].join("\n"),
         );
         process.exit(0);
@@ -134,6 +141,20 @@ async function loadCases(selected: string[]): Promise<EvalCase[]> {
   if (missing.length > 0) throw new Error(`找不到 case：${missing.join("、")}`);
   if (cases.length === 0) throw new Error("没有可跑的 case");
   return cases;
+}
+
+async function loadVariant(id: string): Promise<Variant> {
+  const file = join(EVAL_ROOT, "variants", `${id}.json`);
+  let value: Variant;
+  try {
+    value = JSON.parse(await readFile(file, "utf-8")) as Variant;
+  } catch (err) {
+    throw new Error(`读不到变体 ${id}：${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (value.id !== id) throw new Error(`变体 id 与文件名不一致：${value.id} vs ${id}`);
+  // buildHarness 会在替换串没命中时抛——在花钱之前就把坏变体拦下
+  buildHarness(value);
+  return value;
 }
 
 /** 读一棵 fixture 树，返回"相对路径 → 内容"。也用来算 contextHash。 */
@@ -278,11 +299,14 @@ async function runOnce(
   evalCase: EvalCase,
   repeat: number,
   options: Options,
+  variant: Variant | undefined,
+  variantId: string,
 ): Promise<RunResult> {
   const caseDir = join(EVAL_ROOT, "cases", evalCase.id);
   const fixtures = evalCase.fixtures === true ? await readTree(join(caseDir, "fixtures")) : {};
-  const runId = `${evalCase.id}-r${repeat}`;
-  const replayFile = join(EVAL_ROOT, "cassettes", evalCase.id, "baseline.jsonl");
+  const runId = variantId === "baseline" ? `${evalCase.id}-r${repeat}` : `${evalCase.id}-${variantId}-r${repeat}`;
+  const cassetteName = variant !== undefined && variant.patches.length > 0 ? `${variantId}.jsonl` : "baseline.jsonl";
+  const replayFile = join(EVAL_ROOT, "cassettes", evalCase.id, cassetteName);
   const traceDir = join(REPO_ROOT, "traces", runId);
 
   const home = await mkdtemp(join(tmpdir(), "talemate-eval-"));
@@ -334,10 +358,12 @@ async function runOnce(
       throw new Error("录制模式缺少 API key；先配置 TALEMATE_API_KEY / ANTHROPIC_API_KEY");
     }
 
+    const harness = variant === undefined ? undefined : buildHarness(variant);
     const session = await openSession({
       projectId,
       title: evalCase.id,
       model,
+      ...(harness === undefined ? {} : { agents: harness.agents, tools: harness.tools }),
       ...(evalCase.answerer === true ? { io: EVAL_IO } : {}),
     });
     sessionId = session.sessionId;
@@ -450,7 +476,7 @@ async function runOnce(
     family: evalCase.family,
     base: evalCase.base,
     ...(evalCase.rubric === undefined ? {} : { rubric: evalCase.rubric }),
-    variantId: "baseline",
+    variantId,
     repeat,
     manifest: await manifestOf(evalCase, runId, replayFile, join(home, "used-keys.txt"), fixtures, options.clock),
     checks: checkResults,
@@ -492,29 +518,47 @@ async function runOnce(
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const cases = await loadCases(options.cases);
+  const variant = options.variant === undefined ? undefined : await loadVariant(options.variant);
+  const variantId = variant?.id ?? "baseline";
 
   const results: RunResult[] = [];
   let spent = 0;
   for (const [index, evalCase] of cases.entries()) {
-    for (let repeat = 0; repeat < options.repeat; repeat++) {
-      process.stdout.write(`[${index + 1}/${cases.length}] ${evalCase.id} r${repeat} … `);
-      const result = await runOnce(evalCase, repeat, options);
-      results.push(result);
-      console.log(result.verdict);
-      if (repeat === 0) spent += result.usage.input + result.usage.output;
-      if (options.record && spent > options.maxTokens) {
-        console.error(`\n✘ 录制 token 已超过上限 ${options.maxTokens}（约 ${spent}）。停止。`);
-        break;
+    const variants: { variant: Variant | undefined; id: string }[] = variant === undefined
+      ? [{ variant: undefined, id: "baseline" }]
+      : [
+          { variant: undefined, id: "baseline" },
+          { variant, id: variant.id },
+        ];
+    for (const entry of variants) {
+      for (let repeat = 0; repeat < options.repeat; repeat++) {
+        process.stdout.write(
+          `[${index + 1}/${cases.length}] ${evalCase.id} ${entry.id === "baseline" ? "" : `${entry.id} `}r${repeat} … `,
+        );
+        const result = await runOnce(evalCase, repeat, options, entry.variant, entry.id);
+        results.push(result);
+        console.log(result.verdict);
+        if (entry.id !== "baseline" && repeat === 0) spent += result.usage.input + result.usage.output;
+        if (options.record && spent > options.maxTokens) {
+          console.error(`\n✘ 录制 token 已超过上限 ${options.maxTokens}（约 ${spent}）。停止。`);
+          break;
+        }
       }
     }
     if (options.record && spent > options.maxTokens) break;
   }
 
   const reportPath = options.report === undefined
-    ? join(REPO_ROOT, "reports", `${options.clock}-baseline.md`)
+    ? join(REPO_ROOT, "reports", `${options.clock}-${variantId}.md`)
     : resolve(options.report);
   await mkdir(dirname(reportPath), { recursive: true });
-  await writeFile(reportPath, renderBaselineReport(results, options.clock), "utf-8");
+  await writeFile(
+    reportPath,
+    variant === undefined
+      ? renderBaselineReport(results, options.clock)
+      : renderComparisonReport(results, options.clock, variant.id, variant.note),
+    "utf-8",
+  );
 
   const failed = results.filter((result) => result.verdict !== "pass");
   console.log(`\n报告：${reportPath}`);

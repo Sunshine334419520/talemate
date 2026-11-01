@@ -1,0 +1,5 @@
+{
+  "id": "noop",
+  "note": "空变体：验证 baseline vs variant 的对比链路；共享 baseline cassette，不花 token",
+  "patches": []
+}

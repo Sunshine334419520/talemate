@@ -10,13 +10,12 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { AgentRegistry, DEFAULT_AGENTS } from "../agent/registry";
 import { loadModelConfig } from "../core/config";
-import type { AgentDef, LLMEvent, ModelConfig } from "../core/types";
-import { BUILTIN_TOOLS } from "../tool";
-import { ToolRegistry } from "../tool/registry";
+import type { LLMEvent, ModelConfig } from "../core/types";
 import { Session, type UserIO } from "../session/session";
 import { createProject, loadProjectMeta } from "../storage/project";
+import { buildHarness } from "./patches";
+import type { Patch, Variant } from "./patches";
 import { enumerateDocs } from "../storage/corpus";
 
 // ─────────────────────────── 被测场景 ───────────────────────────
@@ -32,25 +31,6 @@ const MAX_TURNS = 4;
 
 // ─────────────────────────── 变体（单变量消融） ───────────────────────────
 
-type Patch =
-  | { kind: "persona"; note: string; before: string; after: string }
-  | { kind: "describe"; tool: string; note: string; before: string; after: string }
-  | { kind: "dropTools"; note: string; names: string[] }
-  /**
-   * 给某工具的结果追加一句（加上去测，不是删）。
-   *
-   * 消融法测不出"缺失型病因"（删不掉不存在的东西），只能把它加进去看行为变不变。
-   */
-  | { kind: "appendResult"; tool: string; note: string; text: string };
-
-interface Variant {
-  id: string;
-  note: string;
-  patches: Patch[];
-}
-
-/** 已进产品的规则不再做"加上它"的变体——baseline 里已经有它了。 */
-
 /** design-spec 描述里「一段想法讨论通常碰到核心设定与世界观」——可能是「两层一起做」的暗示源。 */
 const P_DESIGNSPEC_PAIR: Patch = {
   kind: "describe",
@@ -61,14 +41,7 @@ const P_DESIGNSPEC_PAIR: Patch = {
   after: "",
 };
 
-/** 角色层现在的写入靠 `propose-design`，它的描述不列格。 */
-
-/** `--check` 只校验描述替换串命不命中，不校验 `dropTools` 的名字——名字写错会静默退化成 baseline。 */
-
-/**
- * 加上一个交回契约（而不是删掉什么）：落盘的结果里写明"这一层到此为止"。
- * 这是唯一能证伪"缺失型病因"的手段——如果加了它行为就变，说明病在"没东西让它交回"。
- */
+/** 加一个交回契约：落盘结果里写明"这一层到此为止"。 */
 const P_APPLY_HANDBACK: Patch = {
   kind: "appendResult",
   tool: "apply-design",
@@ -83,66 +56,6 @@ const VARIANTS: Variant[] = [
 ];
 
 // ─────────────────────────── 消融的落地 ───────────────────────────
-
-/**
- * 替换必须命中：没命中说明原文变了、变体会静默退化成 baseline，整场实验就成了假的。
- *
- * 行尾容忍：patch 的字面量按 `\n` 写（git 里存的就是 LF），但检出到工作区可能是 CRLF
- * （本机 `core.autocrlf=true`）。不认这一层，整场 probe 会因为行尾而在第一处就抛。
- */
-function mustReplace(text: string, before: string, after: string, what: string): string {
-  for (const [b, a] of [
-    [before, after],
-    [before.replace(/\n/g, "\r\n"), after.replace(/\n/g, "\r\n")],
-  ]) {
-    if (text.includes(b)) return text.replace(b, a);
-  }
-  throw new Error(`变体没生效（找不到要替换的原文）：${what}\n原文片段：${JSON.stringify(before.slice(0, 80))}`);
-}
-
-/** 变体只在内存里装配本次要用的 agents / tools，不改仓库里的任何文件。 */
-function buildHarness(variant: Variant): { agents: AgentRegistry; tools: ToolRegistry } {
-  const patched = BUILTIN_TOOLS.map((t) => {
-    let description = t.description;
-    for (const p of variant.patches) {
-      if (p.kind === "describe" && p.tool === t.id) {
-        description = mustReplace(description, p.before, p.after, `${variant.id}/${p.tool}: ${p.note}`);
-      }
-    }
-    return { ...t, description };
-  });
-  const dropped = new Set(variant.patches.flatMap((p) => (p.kind === "dropTools" ? p.names : [])));
-  const appended = new Map<string, string[]>();
-  for (const p of variant.patches) {
-    if (p.kind === "appendResult") appended.set(p.tool, [...(appended.get(p.tool) ?? []), p.text]);
-  }
-  const tools = new ToolRegistry();
-  for (const t of patched) {
-    if (dropped.has(t.id)) continue;
-    const extra = appended.get(t.id);
-    if (!extra) {
-      tools.register(t);
-      continue;
-    }
-    const orig = t.execute.bind(t);
-    tools.register({
-      ...t,
-      execute: async (args, ctx) => {
-        const r = await orig(args, ctx);
-        return { ...r, output: r.output + extra.join("") };
-      },
-    });
-  }
-
-  const mate = DEFAULT_AGENTS.find((a) => a.id === "mate")!;
-  let system = mate.system;
-  for (const p of variant.patches) {
-    if (p.kind === "persona") system = mustReplace(system, p.before, p.after, `${variant.id}/persona: ${p.note}`);
-  }
-  const patchedMate: AgentDef = { ...mate, system, tools: mate.tools.filter((id) => !dropped.has(id)) };
-  const agents = new AgentRegistry(DEFAULT_AGENTS.map((a) => (a.id === "mate" ? patchedMate : a)));
-  return { agents, tools };
-}
 
 // ─────────────────────────── 一次运行 ───────────────────────────
 

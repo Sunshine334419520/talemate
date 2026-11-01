@@ -6,15 +6,17 @@
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateAll } from "./validate";
+import { validateAll, validateVariants } from "./validate";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const { cases, base, holdout, issues } = await validateAll(root);
+const variants = await validateVariants(root);
+const all = [...issues, ...variants.issues];
 
-if (issues.length > 0) {
-  console.error(`✘ ${issues.length} 个问题：`);
-  for (const issue of issues) console.error(`  · ${issue.where}：${issue.message}`);
+if (all.length > 0) {
+  console.error(`✘ ${all.length} 个问题：`);
+  for (const issue of all) console.error(`  · ${issue.where}：${issue.message}`);
   process.exit(1);
 }
 
-console.log(`✔ ${cases} 个 case 通过校验（base ${base} · holdout ${holdout}）`);
+console.log(`✔ ${cases} 个 case（base ${base} · holdout ${holdout}）· ${variants.variants} 个变体`);

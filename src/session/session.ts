@@ -310,6 +310,9 @@ export interface SessionDeps {
   parentSessionId?: string;
   /** 子会话专用：父会话当前生效的规则集，用来派生自己的（父的 deny 继承、allow 不继承） */
   parentRuleset?: Ruleset;
+  /** 评测变体：传入已装配的注册表；省略则按项目元信息新建（见 eval/variants） */
+  agents?: AgentRegistry;
+  tools?: ToolRegistry;
 }
 
 export class Session {
@@ -1334,10 +1337,10 @@ export class Session {
 /** 打开（或新建并落盘）一个项目会话，返回可 post 的 Session */
 export async function openSession(deps: SessionDeps): Promise<Session> {
   const meta = await loadProjectMeta(deps.projectId);
-  const agents = new AgentRegistry();
-  agents.applyProject(meta);
-  const tools = new ToolRegistry();
-  for (const t of BUILTIN_TOOLS) tools.register(t);
+  const agents = deps.agents ?? new AgentRegistry();
+  if (deps.agents === undefined) agents.applyProject(meta);
+  const tools = deps.tools ?? new ToolRegistry();
+  if (deps.tools === undefined) for (const t of BUILTIN_TOOLS) tools.register(t);
   // 续聊：把这份会话自己记的模型配置读回来。不读的话每开一次就退回 `.env`——用户配的那套
   // 等于只在"新建会话"那一次生效，重开 app 就悄悄换了厂商。
   const stored = deps.sessionId

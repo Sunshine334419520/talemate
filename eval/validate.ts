@@ -9,6 +9,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { CHECK_KINDS, FAMILIES } from "./types";
+import { buildHarness } from "../src/probe/patches";
+import type { Variant } from "../src/probe/patches";
 import type { CheckKind, EvalCase } from "./types";
 
 export interface Issue {
@@ -284,4 +286,44 @@ export async function validateAll(
   if (dirs.length === 0) issues.push({ where: casesDir, message: "没有任何 case" });
 
   return { cases: dirs.length, base, holdout, issues };
+}
+
+/** 变体校验：id 与文件名一致、patch 必须命中（buildHarness 会抛）。 */
+export async function validateVariants(
+  evalRoot: string,
+): Promise<{ variants: number; issues: Issue[] }> {
+  const dir = join(evalRoot, "variants");
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((name) => name.endsWith(".json")).sort();
+  } catch {
+    return { variants: 0, issues: [] };
+  }
+
+  const issues: Issue[] = [];
+  const seen = new Set<string>();
+  for (const file of files) {
+    const where = `variants/${file}`;
+    let value: unknown;
+    try {
+      value = JSON.parse(await readFile(join(dir, file), "utf-8"));
+    } catch (err) {
+      issues.push({ where, message: `读不到：${err instanceof Error ? err.message : String(err)}` });
+      continue;
+    }
+    if (!isRecord(value) || !isText(value.id) || !isText(value.note) || !Array.isArray(value.patches)) {
+      issues.push({ where, message: "需要 id / note / patches" });
+      continue;
+    }
+    const expected = file.replace(/\.json$/, "");
+    if (value.id !== expected) issues.push({ where, message: `id 与文件名不一致：${value.id}` });
+    if (seen.has(value.id)) issues.push({ where, message: `变体 id 重复：${value.id}` });
+    seen.add(value.id);
+    try {
+      buildHarness(value as unknown as Variant);
+    } catch (err) {
+      issues.push({ where, message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { variants: files.length, issues };
 }

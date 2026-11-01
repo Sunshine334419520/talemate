@@ -465,6 +465,7 @@ key = sha256(canonicalJson({
 | 场景 | 命令 | 说明 |
 |---|---|---|
 | 日常 | `bun test` | 单元测试，离线、秒级 |
+| 做变体对比 | `bun run eval:run --variant <id> --repeat 1` | 先跑 baseline，再跑 `eval/variants/<id>.json`；noop 共享 baseline cassette |
 | 改 prompt / case 后 | `bun run eval:gate` | = `eval:check` + `eval:run --replay --repeat 1`；几秒 |
 | 发布前 | `bun run eval:run --replay --repeat 3` | 全量重复 + 一页报告 |
 | 录制 | `bun run eval:run --record` | 需要 key 与预算，手动、一次录完 |
@@ -483,7 +484,7 @@ key = sha256(canonicalJson({
 | fixture 腐烂 | fixture 进 git；case 的 `--check` 校验文件存在 |
 | 工具不确定性 | 评测 case 禁网（除 research case）；固定 fixture 与时钟 |
 | 一次运行下结论 | 3 次重复；报告必须带置信区间 |
-| 1M 窗口下的压缩 | 触发点 800k；`maybeCompact` 只压窗口（已修）。**未验证**：单步超大工具输出把下一次请求顶过 1M；摘要请求自身超窗。低阈值 case 只验证机制，不验证规模 |
+| 1M 窗口下的压缩 | 触发点 800k；`maybeCompact` 每步检查、只压窗口、字符守门、head 分段摘要（已修，见 `tests/compaction.test.ts`）。**仍未验证**：真实 1M 规模、单个超大工具输出把请求顶过窗口、摘要分块大小与 summarizer 窗口的匹配 |
 
 待拍板：
 
@@ -492,7 +493,7 @@ key = sha256(canonicalJson({
 3. holdout 比例与验收时点；
 4. judge 用什么模型、κ 阈值多少。
 
-## 17. M0 / M1 / M2（部分）已落地（2026-11-01）
+## 17. M0 / M1 / M2 / M2D 已落地（2026-11-01）
 
 - **固定时钟**：`src/core/config.ts` 的 `today()` 读 `TALEMATE_TODAY`，`src/context/assemble.ts` 的 system env 行改用它；manifest 记录 `clock`。
 - **契约**：`eval/types.ts`（case / Check / Manifest / RunResult / Variant）、`eval/validate.ts`（纯校验 + 目录校验）、`eval/check.ts`（`bun run eval:check`）。
@@ -530,7 +531,8 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 - **压缩修正**：`maybeCompact` 只把 `loadModelWindow` 交给 `compact`，不再把已压掉的段落重新总结；新增 `tests/compaction.test.ts`（1M 模型触发点 = 800k）。
 - **新判据**：`file-not-contains`、`assistant-text-contains`；case 级 `env`（压低的压缩阈值）。
 - **本地门禁**：`bun run eval:gate`（`eval:check` + `eval:run --replay --repeat 1`）。
-- **未完成**：变体对比（`--variant` / probe patch 复用）留到 M2D；单步超大工具输出把下一次请求顶过 1M、以及摘要请求本身超窗的路径，仍只有低阈值测试，没有真实 1M 规模验证。
+- **M2D**：变体对比基础（`--variant`、probe patch 共用、`eval:check` 校验替换命中、noop 变体跑通 baseline vs variant）；压缩硬化（每步检查、字符守门、分段摘要）。
+- **未完成**：真实变体的录制（目前只有 noop 共享 cassette）；单步超大工具输出把下一次请求顶过 1M、以及摘要请求本身超窗的路径，仍只有低阈值测试，没有真实 1M 规模验证。
 - **预算**：录制累计约 1.11M token（含 case 试错、plan/ask 重录）；最终基线首轮 550k。M2D 录制前先报清单与上限。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。

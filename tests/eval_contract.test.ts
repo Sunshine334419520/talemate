@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { buildSystemPrompt } from "../src/context/assemble";
 import { today } from "../src/core/config";
-import { validateAll, validateCase } from "../eval/validate";
+import { validateAll, validateCase, validateVariants } from "../eval/validate";
 
 const EVAL_ROOT = join(import.meta.dir, "..", "eval");
 
@@ -57,6 +57,12 @@ describe("case 契约 · 校验器", () => {
     expect(result.issues).toEqual([]);
     expect(result.cases).toBeGreaterThan(0);
     expect(result.base).toBeGreaterThan(0);
+  });
+
+  test("仓库里的变体 patch 全部命中（替换串失效会静默退化成 baseline）", async () => {
+    const result = await validateVariants(EVAL_ROOT);
+    expect(result.issues).toEqual([]);
+    expect(result.variants).toBeGreaterThan(0);
   });
 
   test("最小合法 case 没有意见", () => {

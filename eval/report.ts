@@ -98,3 +98,90 @@ export function renderBaselineReport(results: readonly RunResult[], clock: strin
 
   return lines.join("\n");
 }
+
+/** baseline vs variant：同一批 case 的判据结果对照。只做聚合，不重新跑。 */
+export function renderComparisonReport(
+  results: readonly RunResult[],
+  clock: string,
+  variantId: string,
+  note: string,
+): string {
+  const byCase = new Map<string, { baseline: RunResult[]; variant: RunResult[] }>();
+  for (const result of results) {
+    const entry = byCase.get(result.caseId) ?? { baseline: [], variant: [] };
+    if (result.variantId === "baseline") entry.baseline.push(result);
+    else entry.variant.push(result);
+    byCase.set(result.caseId, entry);
+  }
+
+  const cases = [...byCase.entries()];
+  const first = results.find((result) => result.variantId === "baseline");
+  const variantRuns = results.filter((result) => result.variantId === variantId);
+  const changed = cases.filter(([, pair]) => {
+    const b = pair.baseline.every((r) => r.verdict === "pass");
+    const v = pair.variant.every((r) => r.verdict === "pass");
+    return b !== v;
+  });
+
+  const lines: string[] = [
+    `# ${variantId} vs baseline`,
+    "",
+    `> 时钟：\`${clock}\` · case：${cases.length} · 变体：${variantId} · ${note}`,
+    "",
+    "## 结论",
+    "",
+    changed.length === 0
+      ? "两组结果没有差异（判据维度）。"
+      : `${changed.length} 个 case 的结果变了：${changed.map(([id]) => id).join("、")}。`,
+    "",
+    "## 主表",
+    "",
+    "| case | family | baseline | variant | 判据变化 | token Δ |",
+    "|---|---|---|---|---|---:|",
+  ];
+
+  for (const [caseId, pair] of cases) {
+    const bPass = pair.baseline.length > 0 && pair.baseline.every((r) => r.verdict === "pass");
+    const vPass = pair.variant.length > 0 && pair.variant.every((r) => r.verdict === "pass");
+    const bFailed = new Set(pair.baseline.flatMap((r) => r.checks.filter((c) => !c.ok).map((c) => c.id)));
+    const vFailed = new Set(pair.variant.flatMap((r) => r.checks.filter((c) => !c.ok).map((c) => c.id)));
+    const delta = [
+      ...[...vFailed].filter((id) => !bFailed.has(id)).map((id) => `+${id}`),
+      ...[...bFailed].filter((id) => !vFailed.has(id)).map((id) => `-${id}`),
+    ].join("<br>") || "—";
+    const bTokens = pair.baseline[0] === undefined ? 0 : pair.baseline[0].usage.input + pair.baseline[0].usage.output;
+    const vTokens = pair.variant[0] === undefined ? 0 : pair.variant[0].usage.input + pair.variant[0].usage.output;
+    const deltaTokens = bTokens === 0 ? "—" : `${Math.round(((vTokens - bTokens) / bTokens) * 100)}%`;
+    lines.push(
+      `| ${caseId} | ${pair.baseline[0]?.family ?? pair.variant[0]?.family ?? "?"} | ${
+        pair.baseline.length === 0 ? "—" : bPass ? "✅" : "❌"
+      } | ${pair.variant.length === 0 ? "—" : vPass ? "✅" : "❌"} | ${delta} | ${deltaTokens} |`,
+    );
+  }
+
+  const failures = variantRuns.filter((result) => result.verdict !== "pass");
+  if (failures.length > 0) {
+    lines.push("", "## variant 的失败", "");
+    for (const result of failures) {
+      lines.push(`### ${result.runId} · ${result.verdict}${result.failureBucket === undefined ? "" : ` · ${result.failureBucket}`}`, "");
+      for (const check of result.checks.filter((c) => !c.ok)) lines.push(`- \`${check.id}\`：${check.detail ?? ""}`);
+    }
+  }
+
+  lines.push(
+    "",
+    "## 成本",
+    "",
+    `- baseline 首轮 token：${cases.reduce((n, [, p]) => n + (p.baseline[0]?.usage.input ?? 0) + (p.baseline[0]?.usage.output ?? 0), 0)}`,
+    `- ${variantId} 首轮 token：${cases.reduce((n, [, p]) => n + (p.variant[0]?.usage.input ?? 0) + (p.variant[0]?.usage.output ?? 0), 0)}`,
+    `- 失败桶：${failures.length === 0 ? "无" : [...new Set(failures.map((f) => f.failureBucket ?? "other"))].join("、")}`,
+    "",
+    "## Manifest",
+    "",
+    "```json",
+    JSON.stringify(first?.manifest ?? {}, null, 2),
+    "```",
+    "",
+  );
+  return lines.join("\n");
+}
