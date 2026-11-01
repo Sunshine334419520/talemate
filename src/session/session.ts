@@ -1307,7 +1307,10 @@ export class Session {
   private async maybeCompact(): Promise<void> {
     const all = await this.ensureLoaded();
     // 量窗口，不是文件：文件只增不减，量它等于过了阈值就永远超预算（见 isOverBudget 的注释）。
-    if (!isOverBudget(this.model.model, this.lastInput, loadModelWindow(all))) return;
+    // 压缩本身也只能吃窗口：把整份历史（含已被上次压缩掉的段落）再喂一遍，会重复总结、
+    // 越压越大——1M 窗口跑到 80 万时这条路径最先坏。
+    const window = loadModelWindow(all);
+    if (!isOverBudget(this.model.model, this.lastInput, window)) return;
     const summarizer = this.agents.get("summarizer");
     const t0 = Date.now();
     this.trace("compaction/start", { model: this.model.model });
@@ -1317,7 +1320,7 @@ export class Session {
         sessionId: this.sessionId,
         model: this.model,
         system: summarizer.system,
-        messages: all,
+        messages: window,
       });
       if (m) await this.push(m);
       this.trace("compaction/end", { durationMs: Date.now() - t0, ok: true, compacted: m !== null });
