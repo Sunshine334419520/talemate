@@ -2,7 +2,7 @@
 
 > **职责**：回答"还没做什么、哪些地方是已知的坑、哪些决策还没拍板"。
 > **读者**：要决定下一步做什么的人。
-> **对齐代码**：2026-10-24 · 本文记的都是**当前不存在**的东西；写完就删掉对应条目
+> **对齐代码**：2026-10-31 · 本文记的都是**当前不存在**的东西；写完就删掉对应条目
 > 相邻：`product.md`（演进方向）· `state.md`（状态层，已落地）· `characters.md` · `design-docs.md` · `chapter-planning.md`
 
 ## 已确认的缺口
@@ -91,6 +91,40 @@
 - **规划级点名抓不住"正文自己写出来的路人后来变得重要了"。** 章末回写只写 `state/`，不建卡。真遇到了，就当一次普通的设计动作补上——**不加自动对账**（那正是 `product.md` 否决掉的"后台自动回写企划"）。
 
 **什么情况下回头重开这一条**：实测里一章经常冒出两个以上新人（那说明规划在攒人海，要往前看序列纲），或者"路人后来变常驻"反复发生——那时该想的是"谁需要卡"这条判据是不是划错了线，而不是加一层自动建卡。
+
+## 评测与可观测性（Stage 1 已落地，Stage 2 计划）
+
+**状态：底座已实现，评测方法论未开始。** 这不是产品功能，是让 prompt 改动可被数据回答的基础设施。
+
+2026-10-31 对照 DSH 后定下并落地的底座：
+
+- **canonical append-only event log 是唯一真源**（`events.jsonl`）；messages / spans / stats 是投影；
+- 消息不落文件：打开会话折一次进内存，冷读现场折；回退写 `session/rewind`；
+- 事件在边界埋点：turn / step / `assistant/attempt` / tool / compaction；失败与中断也留下；
+- 改动索引 `changes.jsonl`（每会话一份，只存指针）：本次会话读一个文件、本书读 N 个，不折任何会话；
+- capture 与 transport 分离（`TraceSink.emit` 只入队），本地默认、导出前脱敏（fail-closed）；
+- `/trace` 看摘要、`/trace export` 导出脱敏副本，`/debug` 报事件路径与统计；
+- OTel 仍未接——先保证事件完整，再谈查询视图。
+
+已拍板的 ADR（细节见 `telemetry.md`）：
+
+1. canonical event log，不做 sidecar；
+2. 消息改成内存投影，不再落文件；
+3. OTel 先接 logs，span 由事件派生；
+4. 脱敏只作用于导出副本，默认不导出；
+5. 身份是 `sessionId + seq`，`spanId` 由起始 seq 派生。
+
+下一步（Stage 2）：
+
+1. eval case / rubric / pairwise / replay provider —— 手册里的方法论那一层；
+2. 跨会话 trace 查询与失败聚合（成本、失败桶）；
+3. OTLP logs 导出（只换 backend，不换事件）。
+
+实现细节：[telemetry.md](telemetry.md)
+评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0 契约与 M1 垂直切片已落地**（replay / runner / 4 个 case / 基线报告），M2 未开始。
+评审背景：[learning/evals-observability/architecture-review-dsh.md](learning/evals-observability/architecture-review-dsh.md)
+
+---
 
 ## 后续阶段
 

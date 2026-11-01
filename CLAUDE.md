@@ -115,6 +115,8 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 |---|---|
 | What is this product, and what is it deliberately *not*? | `docs/product.md` |
 | How is the code organised; what happens in one turn? | `docs/architecture.md` |
+| Session events, projections, redaction, and trace export | `docs/telemetry.md` |
+| How the eval system is designed: cases, families, replay, milestones | `docs/eval-system.md` |
 | Agents, tools, skills — how to classify and add them | `docs/agents.md` |
 | How questions, skipping, timeouts and pending answers work | `docs/ask-user.md` |
 | The four design doc families; two-phase writes; chapter production | `docs/design-docs.md` |
