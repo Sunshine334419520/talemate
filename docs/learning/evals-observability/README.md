@@ -19,6 +19,11 @@
 | [handbook.md](handbook.md) | 原始材料，11 章 1394 行。**只读不改**——这是基准，改了就没法回看自己当初读到哪 |
 | [progress.md](progress.md) | 学到第几个点、每个点的状态、对话里的问答记录与批改 |
 | [01-why-tests-fail-on-agents.md](01-why-tests-fail-on-agents.md) | 知识点 1 的笔记（手册 §1.1） |
+| [02-two-coordinate-systems.md](02-two-coordinate-systems.md) | 知识点 2 的笔记（手册 §1.2） |
+| [03-closed-loop.md](03-closed-loop.md) | 知识点 3 的笔记（手册 §1.3） |
+| [13-four-dimensions-of-good.md](13-four-dimensions-of-good.md) | 知识点 13 的笔记（手册 §3.1） |
+| [14-strength-ladder.md](14-strength-ladder.md) | 知识点 14 的笔记（手册 §3.2） |
+| [architecture-review-dsh.md](architecture-review-dsh.md) | 对照 DSH 的架构评审：canonical event log + 投影（ADR 已拍板，阶段 1 已落地，见 `../../telemetry.md`） |
 
 ## 关于 `.dsh-ops-*.lock`
 
