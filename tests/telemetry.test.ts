@@ -219,6 +219,7 @@ describe("会话接线 · 一轮留下什么", () => {
       "turn/start",
       "user/message",
       "step/start",
+      "request/header",
       "step/end",
       "assistant/message",
       "turn/end",
@@ -226,6 +227,17 @@ describe("会话接线 · 一轮留下什么", () => {
     expect(missing).toEqual([]);
 
     expect(projectStats(events)).toMatchObject({ turns: 1, completedTurns: 1, steps: 1, messages: 2 });
+
+    const header = events.find((e) => e.type === "request/header");
+    expect(header?.type).toBe("request/header");
+    if (header?.type !== "request/header") throw new Error("expected request/header");
+    expect(header.data).toMatchObject({ step: 0, provider: "mock", model: "mock" });
+    for (const hash of [header.data.systemHash, header.data.toolsHash, header.data.messagesHash, header.data.promptHash]) {
+      expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    }
+    expect(header.data.systemChars).toBeGreaterThan(0);
+    // 只有 hash 与长度，不把正文复制进账本
+    expect(JSON.stringify(header.data)).not.toContain("你好");
     // sink 是 openSession 之后才挂上的，所以从它挂上那一刻起的事件应当一条不少地到齐
     const captured = sink.events.map((e) => e.seq);
     expect(captured.length).toBeGreaterThan(0);

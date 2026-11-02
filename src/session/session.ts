@@ -19,6 +19,7 @@ import {
 } from "../permission";
 import { loadModelConfig } from "../core/config";
 import { readPrompt } from "../prompts";
+import { hashJson } from "../core/hash";
 import { PLAN_KEY } from "../core/types";
 import type { ModeDef } from "../agent/modes";
 import type { Action, PermissionConfig, Rule, Ruleset } from "../permission";
@@ -762,6 +763,24 @@ export class Session {
             messages: JSON.stringify(req.messages).length,
           };
           this.trace("step/start", { step: current });
+          this.trace("request/header", {
+            step: current,
+            agent: this.agent.id,
+            provider: this.model.provider,
+            model: this.model.model,
+            temperature: this.model.temperature ?? null,
+            maxTokens: this.model.maxTokens,
+            ...(this.model.reasoning === undefined ? {} : { reasoning: this.model.reasoning }),
+            systemHash: hashJson(req.system),
+            toolsHash: hashJson(req.tools ?? []),
+            messagesHash: hashJson(req.messages),
+            promptHash: hashJson({ system: req.system, tools: req.tools ?? [] }),
+            systemChars: requestChars.system,
+            toolsChars: requestChars.tools,
+            messagesChars: requestChars.messages,
+            ...(this.depth === 0 ? {} : { depth: this.depth }),
+            ...(this.parentSessionId === undefined ? {} : { parentSessionId: this.parentSessionId }),
+          });
           try {
             const turn = await chat({
               model: this.model,

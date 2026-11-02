@@ -64,6 +64,28 @@ export interface TraceEventData {
   "turn/start": { agent: string; resumed: boolean };
   "turn/end": { status: TurnStatus; durationMs: number; error?: TraceError };
   "step/start": { step: number };
+  /**
+   * 一次请求的"头"：模型参数与三段 hash，不含正文。
+   * 它把在线 trace 与 eval manifest 接起来——两边用同一份 hash，才能互相指认。
+   */
+  "request/header": {
+    step: number;
+    agent: string;
+    provider: string;
+    model: string;
+    temperature: number | null;
+    maxTokens: number;
+    reasoning?: string;
+    systemHash: string;
+    toolsHash: string;
+    messagesHash: string;
+    promptHash: string;
+    systemChars: number;
+    toolsChars: number;
+    messagesChars: number;
+    depth?: number;
+    parentSessionId?: string;
+  };
   "step/end": {
     step: number;
     finish: StepFinish;

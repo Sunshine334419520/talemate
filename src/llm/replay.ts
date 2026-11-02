@@ -12,10 +12,12 @@
  *
  * 边界：只管一个 cassette 文件的读写与回放；不认识 Session、不认识 case。
  */
-import { createHash } from "node:crypto";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AssistantTurn, ChatOpts } from "./provider";
+import { hashJson } from "../core/hash";
+
+export { canonicalJson, hashJson } from "../core/hash";
 
 /** cassette 里存下来的请求；不含 apiKey，也不含 signal。 */
 export interface CassetteRequest {
@@ -33,27 +35,6 @@ export interface CassetteEntry {
   key: string;
   request: CassetteRequest;
   response: AssistantTurn;
-}
-
-/** 递归排序对象键：同一次请求不能因为键序不同算出两个 hash。 */
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const key of Object.keys(value).sort()) {
-      out[key] = canonicalize((value as Record<string, unknown>)[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
-}
-
-export function hashJson(value: unknown): string {
-  return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
 export function requestOf(opts: ChatOpts): CassetteRequest {

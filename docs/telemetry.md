@@ -2,7 +2,7 @@
 
 > **职责**：回答"会话事件是什么形状、谁在什么时候发、messages/span/统计怎么从它折出来、导出时怎么脱敏"。
 > **读者**：要加一类事件、加一个投影、接一个观测消费者（eval reader / OTel）的人。
-> **对齐代码**：2026-10-31 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
+> **对齐代码**：2026-11-02 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
 
 ## 一句话
 
@@ -44,12 +44,15 @@
 | `session/rewind` | 就地回退；投影据此遮住 `seq >= targetSeq` 的消息 | `truncateMessagesBefore` |
 | `turn/start` / `turn/end` | 一次用户输入到模型停下 | `Session.runTurn` |
 | `step/start` / `step/end` | 一次模型请求（`step` 从 0 起） | `Session.runTurn` 的 `generate` |
+| `request/header` | 每次请求前：模型参数 + system/tools/messages/prompt 的 hash 与字符数，**不含正文** | 同上 |
 | `assistant/attempt` | 这次请求失败或被中止（**没有产出消息**） | 同上 |
 | `user/message` / `assistant/message` / `compaction/summary` | 一条消息提交进事件日志 | `appendMessage` |
 | `tool/call` / `tool/result` | 每次工具执行前后（含被 `planGatePart` 拦下的） | `Session` 的 `executeTool` / `applyApprovedDesign` |
 | `compaction/start` / `compaction/end` | 上下文压缩 | `Session.maybeCompact` |
 
 为什么 `assistant/attempt` 必须存在：上面那三种消息事件只记得成功落盘的消息。一次网络失败、一次用户中止、一次被截断的流，在任何消息投影里都不存在——不单独记，它们就永远查不到。
+
+`request/header` 与 eval 的 manifest 用同一份 `core/hash.ts`：在线 trace 与 cassette 的 promptHash/toolsHash 能互相指认；manifest 优先读它，不再依赖 cassette 第一条。
 
 为什么工具正文不复制进事件：入参与输出已经在 `assistant/message` 的 parts 里。事件只记边界上才拿得到的事实（`state` / `durationMs` / `outputChars` / `error`），再存一份正文就是第二份真源。
 
