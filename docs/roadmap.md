@@ -118,7 +118,8 @@
 
 1. eval case / rubric / pairwise / replay provider —— 手册里的方法论那一层；
 2. 跨会话 trace 查询与失败聚合（成本、失败桶）；
-3. OTLP logs 导出（只换 backend，不换事件）。
+3. OTLP logs 导出（只换 backend，不换事件）；
+4. 观测框架完成后再对齐轨迹 UI（DSH）：先补 `request/header`（prompt/context/tools hash、模型参数）、事件视图模型、跨会话查询与保留，再做搜索、分组、水位、详情、token/成本。轨迹 UI 不在事件账补齐之前动。
 
 实现细节：[telemetry.md](telemetry.md)
 评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0–M2、M2D、M3 部分已落地**（16 个 case / 本地门禁 / 变体对比 / judge + κ 工具 / 3 个确定性 M3 case / 一次 pairwise）；人工校准、M3 剩余 3 个 case、holdout 与 1M 压缩压测待办。
