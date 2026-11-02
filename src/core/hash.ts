@@ -25,3 +25,8 @@ export function canonicalJson(value: unknown): string {
 export function hashJson(value: unknown): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
+
+/** 已经序列化好的文本直接哈希：大请求不再为哈希再 canonicalize 一遍整棵树。 */
+export function hashText(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}

@@ -19,7 +19,7 @@ import {
 } from "../permission";
 import { loadModelConfig } from "../core/config";
 import { readPrompt } from "../prompts";
-import { hashJson } from "../core/hash";
+import { hashJson, hashText } from "../core/hash";
 import { PLAN_KEY } from "../core/types";
 import type { ModeDef } from "../agent/modes";
 import type { Action, PermissionConfig, Rule, Ruleset } from "../permission";
@@ -757,11 +757,19 @@ export class Session {
           activeStep = current;
           const t0 = Date.now();
           let streamedChars = 0;
+          // 序列化只做一次：requestChars 与 request/header 的 hash 复用同一份文本。
+          // 不再让 hashJson 对整棵 messages 树做 canonicalize + 二次 stringify——1M 上下文下
+          // 那是白白多出的一份完整副本。
+          const toolsJson = JSON.stringify(req.tools ?? []);
+          const messagesJson = JSON.stringify(req.messages);
           const requestChars = {
             system: req.system.length,
-            tools: JSON.stringify(req.tools ?? []).length,
-            messages: JSON.stringify(req.messages).length,
+            tools: toolsJson.length,
+            messages: messagesJson.length,
           };
+          const systemHash = hashText(req.system);
+          const toolsHash = hashText(toolsJson);
+          const messagesHash = hashText(messagesJson);
           this.trace("step/start", { step: current });
           this.trace("request/header", {
             step: current,
@@ -771,10 +779,10 @@ export class Session {
             temperature: this.model.temperature ?? null,
             maxTokens: this.model.maxTokens,
             ...(this.model.reasoning === undefined ? {} : { reasoning: this.model.reasoning }),
-            systemHash: hashJson(req.system),
-            toolsHash: hashJson(req.tools ?? []),
-            messagesHash: hashJson(req.messages),
-            promptHash: hashJson({ system: req.system, tools: req.tools ?? [] }),
+            systemHash,
+            toolsHash,
+            messagesHash,
+            promptHash: hashJson({ systemHash, toolsHash }),
             systemChars: requestChars.system,
             toolsChars: requestChars.tools,
             messagesChars: requestChars.messages,
