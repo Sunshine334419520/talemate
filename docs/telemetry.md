@@ -60,6 +60,23 @@
 
 `changes.jsonl` 每会话一份、只追加：一行一条"哪个文件被改了"，带 `turnSeq` / `messageSeq` / `callId` / 增删行数，**不存 diff**。写点在 `Session.persistAssistant`（事件先落、索引后落）；回退追加 `{type:"rewind"}`，读取按文件顺序重放；打开会话时顺手对账一次（落后就重写）。本次会话读一个文件，本书读 N 个——两边都不折事件。点开某一行才按指针回消息里取 diff。
 
+## 事件视图模型
+
+`src/telemetry/view.ts` 的 `buildTraceModel(events)` 把事件折成：
+
+```text
+session
+└─ turn（agent / resumed / status / error）
+   ├─ step（request/header、finish、usage、attempts）
+   │  └─ tool（callId / state / inputChars / outputChars / durationMs / change）
+   ├─ tools（没有 step 的 harness 调用，例如 apply-design）
+   └─ compactions（start/end）
+rewinds
+```
+
+它**不读 messages**：失败的请求（`assistant/attempt`）、没有结果的工具、step 级耗时/token 都还在。
+这是桌面轨迹 UI 将来的数据面；当前标题栏「轨迹」仍是 messages 投影，`/trace` 摘要仍走 spans/stats。
+
 ## 五个已经拍板的决定
 
 1. **canonical 事件日志，不是 sidecar。** 两份可写历史一定会分叉；`events.jsonl` 只追加，消息只在内存里折（不再落文件）。
