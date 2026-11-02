@@ -105,7 +105,7 @@
 - capture 与 transport 分离（`TraceSink.emit` 只入队），本地默认、导出前脱敏（fail-closed）；
 - `/trace` 看摘要、`/trace export` 导出脱敏副本，`/debug` 报事件路径与统计；
 - 每个请求落 `request/header`（模型参数 + prompt/tools/messages hash，不含正文），eval manifest 优先用它；
-- 事件视图模型 `src/telemetry/view.ts`（turn/step/attempt/tool/compaction/rewind，不读 messages）已落地，UI 尚未切过去；
+- 事件视图模型 `src/telemetry/view.ts`（turn/step/attempt/tool/compaction/rewind，不读 messages）已落地；桌面轨迹默认「事件」面，「消息」面保留正文；
 - OTel 仍未接——先保证事件完整，再谈查询视图。
 
 已拍板的 ADR（细节见 `telemetry.md`）：
@@ -119,7 +119,7 @@
 下一步（Stage 2）：
 
 1. eval case / rubric / pairwise / replay provider —— 手册里的方法论那一层；
-2. 跨会话 trace 查询与失败聚合（成本、失败桶）；
+2. 跨会话 trace 查询与失败聚合（成本、失败桶）——`buildTraceIndex` + `/trace list` 已落地；
 3. OTLP logs 导出（只换 backend，不换事件）；
 4. 观测框架完成后再对齐轨迹 UI（DSH）：先补 `request/header`（prompt/context/tools hash、模型参数）、事件视图模型、跨会话查询与保留，再做搜索、分组、水位、详情、token/成本。轨迹 UI 不在事件账补齐之前动。
 

@@ -60,6 +60,28 @@
 
 `changes.jsonl` 每会话一份、只追加：一行一条"哪个文件被改了"，带 `turnSeq` / `messageSeq` / `callId` / 增删行数，**不存 diff**。写点在 `Session.persistAssistant`（事件先落、索引后落）；回退追加 `{type:"rewind"}`，读取按文件顺序重放；打开会话时顺手对账一次（落后就重写）。本次会话读一个文件，本书读 N 个——两边都不折事件。点开某一行才按指针回消息里取 diff。
 
+## 跨会话索引
+
+`src/session/trace_index.ts` 的 `buildTraceIndex({ query, projectId, since, until, limit, includeSubagents })`
+扫所有（或指定）项目的会话，折成一行一条：
+
+- 项目 / 会话 / agent / model / 状态 / 起止时间；
+- 轮、步、工具、失败请求、压缩、input/output token；
+- `failures`：turn / request / tool 的失败按 (name, message) 聚合，带会话 id；
+- `retention`：当前索引里最早/最晚事件时间。
+
+它是**读侧投影**：不删日志、不建第二份可写索引。保留/轮转是运维策略；这里的 since/until 只是
+读侧过滤。CLI 的 `/trace list [查询]` 是第一个消费者；桌面列表以后也走它。
+
+## schema 版本与契约
+
+`src/telemetry/schema.ts` 是所有读日志的入口：
+
+- `TRACE_SCHEMA_VERSION` 当前是 1；`MIGRATIONS` 是版本 n → n+1 的迁移表；
+- `upgradeEvent(raw)` 只接受已知版本/已知类型/完整字段，未知未来版本或未知类型返回 `null`（跳过，不猜）；
+- `events.ts` 的 `EVENT_TYPES` 是穷尽的 `Record<TraceEventType, true>`，加事件不更新它会编译失败；
+- `tests/telemetry_schema.test.ts` 用穷尽的 `SAMPLES` 保证每种事件都有可读样例。
+
 ## 事件视图模型
 
 `src/telemetry/view.ts` 的 `buildTraceModel(events)` 把事件折成：
