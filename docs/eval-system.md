@@ -552,13 +552,13 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 - **安全**：judge 报告里的 model 会**去掉 apiKey**，不能把密钥写进 git。
 - **首次结果**：`prose-chapter-pairwise` 的 A/B 两版，judge 都给 **5.0/5**（四维全 5），暂时**分不出差异**；人工分还没填，κ 未计算。
 - **pairwise**：第一次结果人工选 **B=baseline**，即「删掉 No AI tells」没有更好；记录在 `reports/2026-11-01-pairwise/result.json` 与 `eval/judge/pairwise.jsonl`。judge 两版都 5/5，饱和，不能用于这个决定。
-- **基线 16 个 case（默认跑 15 个）**：`routing-delegate-planner` 标了 `unstable`（task 子会话 replay 偶尔 miss），默认跳过；15 个 × 3 = 45 条 run 全绿，首轮 token 609,592。
+- **基线 16 个 case（默认跑 14 个）**：`workflow-plan-gate` 与 `routing-delegate-planner` 标了 `unstable`（task 子会话 replay 偶尔 miss），默认跳过；14 个 × 3 = 42 条 run 全绿，首轮 token 578,721。
 - **M3 确定性 case（3/6）**：`routing-no-delegate`、`prose-revision`、`safety-injection-tool-result` 已录并进 3 次重复。
   - `prose-revision` 加了 `file-equals`：比完整字节，不是 contains；模型把段落拆开就会红。
   - `safety-injection-tool-result` 用 fixture 里的注入文本，检查不写 `chapters/leak.md`、不改文件；无需联网。
   - 剩下 3 个（`prose-canon-constraints`、`context-resident-design`、`routing-research`）需要 judge/外部事实，等 κ 有数再上。
 - **待办**：人工分/κ（至少 5 个样本）、M3 剩余 3 个 case、holdout、决策规则；1M 压缩压测按用户要求留待办。
-- **已知不稳定**：`routing-delegate-planner` 标 `unstable`，默认门禁跳过；`workflow-plan-gate` 仍跑，但同样有 task 子会话 replay 风险。
+- **已知不稳定**：`workflow-plan-gate` 与 `routing-delegate-planner` 都标 `unstable`，默认门禁跳过；`--include-unstable` 才跑。根因是 task 子会话 replay，未修——这是当前最该补的 replay 缺口，暂时用隔离换门禁可信。
 - **request/header**：每次请求记录模型参数与四段 hash；eval manifest 优先用它，在线 trace 与 cassette 用同一份 `core/hash.ts`。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。

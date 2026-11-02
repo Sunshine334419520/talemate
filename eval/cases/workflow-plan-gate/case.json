@@ -48,5 +48,6 @@
     "reasoning": "high",
     "temperature": 0.8,
     "maxTokens": 32000
-  }
+  },
+  "unstable": "task 子会话 replay 偶尔 miss（与 routing-delegate-planner 同一根因，未修）"
 }
