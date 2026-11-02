@@ -359,7 +359,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /open <n>      恢复当前空间第 n 个历史会话",
           "  /permissions   当前生效的规则表：每类动作是什么、是哪一层定的、各层都贡献了什么",
           "  /debug         当前会话的调试信息：模型、模式、待批，以及会话目录与事件/改动索引路径",
-          "  /trace         会话轨迹摘要（事件/span/耗时）；/trace export [路径] 导出脱敏副本",
+          "  /trace         会话轨迹摘要（事件/span/耗时）；/trace export [路径] 导出脱敏副本；/trace list [查询] 跨会话列表",
           "  /design <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
@@ -398,6 +398,26 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
       }
       const { exportTrace, readTraceSummary } = await import("./session/trace_view");
       const sub = arg.trim();
+      if (sub === "list" || sub.startsWith("list ")) {
+        const { buildTraceIndex } = await import("./session/trace_index");
+        const index = await buildTraceIndex({ query: sub.slice("list".length).trim() || undefined });
+        if (index.entries.length === 0) {
+          console.log("（没有匹配的会话轨迹）");
+          return "continue";
+        }
+        console.log(`共 ${index.entries.length} / ${index.total} 个会话：`);
+        for (const entry of index.entries) {
+          const at = new Date(entry.lastAt).toISOString().slice(0, 16).replace("T", " ");
+          console.log(
+            `${at}  ${entry.projectTitle} / ${entry.title}  [${entry.status}]  轮 ${entry.turns} 步 ${entry.steps}  工具 ${entry.toolCalls}（错 ${entry.toolErrors}）  token ${entry.inputTokens}/${entry.outputTokens}`,
+          );
+        }
+        if (index.failures.length > 0) {
+          console.log("\n失败聚合：");
+          for (const f of index.failures) console.log(`  ${f.kind} ${f.name} × ${f.count}：${f.message}`);
+        }
+        return "continue";
+      }
       if (sub === "export" || sub.startsWith("export ")) {
         const target = sub.slice("export".length).trim();
         const result = await exportTrace(curSession.projectId, curSession.sessionId, target || undefined);
