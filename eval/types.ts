@@ -84,6 +84,11 @@ export interface EvalCase {
   answerer?: boolean;
   /** 本 case 专用的环境变量（如压低的压缩阈值）；跑完恢复 */
   env?: Record<string, string>;
+  /**
+   * 已知 replay 不稳定：默认门禁跳过，`--include-unstable` 才跑。
+   * 不删 case——它仍然有价值，只是不能拿来当每次提交的红绿灯。
+   */
+  unstable?: string;
   /** 钉死模型参数：评测不能跟着 `.env` 漂，否则 cassette 全是 miss */
   model?: {
     reasoning?: "off" | "low" | "high" | "max";

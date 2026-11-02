@@ -104,6 +104,7 @@
 - 改动索引 `changes.jsonl`（每会话一份，只存指针）：本次会话读一个文件、本书读 N 个，不折任何会话；
 - capture 与 transport 分离（`TraceSink.emit` 只入队），本地默认、导出前脱敏（fail-closed）；
 - `/trace` 看摘要、`/trace export` 导出脱敏副本，`/debug` 报事件路径与统计；
+- 每个请求落 `request/header`（模型参数 + prompt/tools/messages hash，不含正文），eval manifest 优先用它；
 - OTel 仍未接——先保证事件完整，再谈查询视图。
 
 已拍板的 ADR（细节见 `telemetry.md`）：

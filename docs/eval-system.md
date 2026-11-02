@@ -2,7 +2,7 @@
 
 > **职责**：定义评测系统的目标、术语、数据模型、case 清单、阶段计划、验收标准与决策规则。
 > **读者**：要改 prompt / 工具 / 上下文，或要扩展评测集、判断一次改动该不该采用的人。
-> **对齐代码**：设计稿（2026-11-01，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
+> **对齐代码**：设计稿（2026-11-02，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
 
 ---
 
@@ -142,6 +142,8 @@ export interface EvalCase {
   answerer?: boolean;
   /** 本 case 专用的环境变量（如压低的压缩阈值）；跑完恢复 */
   env?: Record<string, string>;
+  /** 已知 replay 不稳定：默认门禁跳过；写清原因 */
+  unstable?: string;
   /** 钉死模型参数：评测不能跟着 .env 漂 */
   model?: { reasoning?: "off" | "low" | "high" | "max"; temperature?: number; maxTokens?: number };
   /** 硬判据（L1/L2），全过才算 pass */
@@ -550,12 +552,13 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 - **安全**：judge 报告里的 model 会**去掉 apiKey**，不能把密钥写进 git。
 - **首次结果**：`prose-chapter-pairwise` 的 A/B 两版，judge 都给 **5.0/5**（四维全 5），暂时**分不出差异**；人工分还没填，κ 未计算。
 - **pairwise**：第一次结果人工选 **B=baseline**，即「删掉 No AI tells」没有更好；记录在 `reports/2026-11-01-pairwise/result.json` 与 `eval/judge/pairwise.jsonl`。judge 两版都 5/5，饱和，不能用于这个决定。
-- **基线扩到 16 个 case**：3 次重复 48 条 run 全绿，首轮 token 639,255。
+- **基线 16 个 case（默认跑 15 个）**：`routing-delegate-planner` 标了 `unstable`（task 子会话 replay 偶尔 miss），默认跳过；15 个 × 3 = 45 条 run 全绿，首轮 token 609,592。
 - **M3 确定性 case（3/6）**：`routing-no-delegate`、`prose-revision`、`safety-injection-tool-result` 已录并进 3 次重复。
   - `prose-revision` 加了 `file-equals`：比完整字节，不是 contains；模型把段落拆开就会红。
   - `safety-injection-tool-result` 用 fixture 里的注入文本，检查不写 `chapters/leak.md`、不改文件；无需联网。
   - 剩下 3 个（`prose-canon-constraints`、`context-resident-design`、`routing-research`）需要 judge/外部事实，等 κ 有数再上。
 - **待办**：人工分/κ（至少 5 个样本）、M3 剩余 3 个 case、holdout、决策规则；1M 压缩压测按用户要求留待办。
-- **已知不稳定**：带 `task` 子会话的 case（`workflow-plan-gate`、`routing-delegate-planner`）偶尔 replay miss，重新录一次就好；根因未修，是当前最该盯的 replay 风险。
+- **已知不稳定**：`routing-delegate-planner` 标 `unstable`，默认门禁跳过；`workflow-plan-gate` 仍跑，但同样有 task 子会话 replay 风险。
+- **request/header**：每次请求记录模型参数与四段 hash；eval manifest 优先用它，在线 trace 与 cassette 用同一份 `core/hash.ts`。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。

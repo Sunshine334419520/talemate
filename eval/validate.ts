@@ -146,6 +146,9 @@ export function validateCase(value: unknown): Issue[] {
   if (value.answerer !== undefined && typeof value.answerer !== "boolean") {
     issues.push({ where: "answerer", message: "answerer 必须是布尔值" });
   }
+  if (value.unstable !== undefined && (typeof value.unstable !== "string" || value.unstable.trim() === "")) {
+    issues.push({ where: "unstable", message: "unstable 必须是非空字符串（写清为什么不稳定）" });
+  }
   if (value.env !== undefined) {
     if (!isRecord(value.env) || Object.values(value.env).some((v) => typeof v !== "string")) {
       issues.push({ where: "env", message: "env 必须是字符串到字符串的对象" });

@@ -25,7 +25,9 @@ import { createProject } from "../src/storage/project";
 import { loadMessages } from "../src/storage/session-store";
 import { readChanges } from "../src/storage/change_index";
 import { eventLogFor, resetEventLogs } from "../src/telemetry/log";
-import { hashJson, readCassette } from "../src/llm/replay";
+import { readCassette } from "../src/llm/replay";
+import { hashJson } from "../src/core/hash";
+import type { AnyTraceEvent } from "../src/telemetry/events";
 import { buildHarness } from "../src/probe/patches";
 import { clearPromptOverrides } from "../src/prompts";
 import type { Variant } from "../src/probe/patches";
@@ -47,6 +49,7 @@ interface Options {
   maxTokens: number;
   report?: string;
   variant?: string;
+  includeUnstable: boolean;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -57,6 +60,7 @@ function parseArgs(argv: string[]): Options {
     clock: "2026-11-01",
     timeoutMs: 180_000,
     maxTokens: 500_000,
+    includeUnstable: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -94,6 +98,9 @@ function parseArgs(argv: string[]): Options {
       case "--variant":
         options.variant = next();
         break;
+      case "--include-unstable":
+        options.includeUnstable = true;
+        break;
       case "--help":
       case "-h":
         console.log(
@@ -108,6 +115,7 @@ function parseArgs(argv: string[]): Options {
             "  --max-tokens <n>    录制模式的总 token 上限（默认 500000）",
             "  --report <path>     报告落点",
             "  --variant <id>      跑 baseline 与 eval/variants/<id>.json 的对比",
+            "  --include-unstable  连同 unstable case 一起跑（默认跳过）",
           ].join("\n"),
         );
         process.exit(0);
@@ -236,6 +244,7 @@ async function manifestOf(
   runId: string,
   replayFile: string,
   usedKeysFile: string,
+  events: readonly AnyTraceEvent[],
   fixtures: Record<string, string>,
   clock: string,
 ): Promise<Manifest> {
@@ -246,26 +255,34 @@ async function manifestOf(
     .catch(() => [] as string[]);
   // 真正跑过的第一条请求才是这次 run 的 prompt；cassette 里可能还留着旧 case 的历史条目
   const request = usedKeys.map((key) => byKey.get(key)).find((entry) => entry !== undefined)?.request ?? entries[0]?.request;
-  const promptParts: Record<string, string> = request === undefined
-    ? {}
-    : {
-        system: hashJson(request.system),
-        tools: hashJson(request.tools),
-        messages: hashJson(request.messages),
-      };
+  // 在线事件里的 request/header 与 cassette 的第一条请求应该一致；优先用前者，
+  // 这样 manifest 不再依赖"cassette 里还剩什么"，在线 trace 与 eval 也能互相指认。
+  const header = events.find((event) => event.type === "request/header");
+  const h = header?.type === "request/header" ? header.data : undefined;
+  const promptParts: Record<string, string> = h === undefined
+    ? request === undefined
+      ? {}
+      : {
+          system: hashJson(request.system),
+          tools: hashJson(request.tools),
+          messages: hashJson(request.messages),
+        }
+    : { system: h.systemHash, tools: h.toolsHash, messages: h.messagesHash };
   return {
     runId,
     caseHash: hashJson(evalCase),
-    promptHash: request === undefined ? "" : hashJson({ system: request.system, tools: request.tools }),
+    promptHash: h?.promptHash ?? (request === undefined ? "" : hashJson({ system: request.system, tools: request.tools })),
     promptParts,
     contextHash: hashJson(fixtures),
-    toolsHash: request === undefined ? "" : hashJson(request.tools),
+    toolsHash: h?.toolsHash ?? (request === undefined ? "" : hashJson(request.tools)),
     model: {
-      provider: request?.provider ?? "unknown",
-      model: request?.model ?? "unknown",
-      ...(request?.reasoning === undefined ? {} : { reasoning: request.reasoning }),
-      ...(request?.temperature === null || request?.temperature === undefined ? {} : { temperature: request.temperature }),
-      maxTokens: request?.maxTokens ?? 0,
+      provider: h?.provider ?? request?.provider ?? "unknown",
+      model: h?.model ?? request?.model ?? "unknown",
+      ...((h?.reasoning ?? request?.reasoning) === undefined ? {} : { reasoning: h?.reasoning ?? request?.reasoning }),
+      ...((h?.temperature ?? request?.temperature) === null || (h?.temperature ?? request?.temperature) === undefined
+        ? {}
+        : { temperature: (h?.temperature ?? request?.temperature) as number }),
+      maxTokens: h?.maxTokens ?? request?.maxTokens ?? 0,
     },
     codeCommit: codeCommit(),
     bun: process.versions.bun ?? "unknown",
@@ -480,7 +497,15 @@ async function runOnce(
     ...(evalCase.rubric === undefined ? {} : { rubric: evalCase.rubric }),
     variantId,
     repeat,
-    manifest: await manifestOf(evalCase, runId, replayFile, join(home, "used-keys.txt"), fixtures, options.clock),
+    manifest: await manifestOf(
+      evalCase,
+      runId,
+      replayFile,
+      join(home, "used-keys.txt"),
+      snapshots.at(-1)?.events ?? [],
+      fixtures,
+      options.clock,
+    ),
     checks: checkResults,
     verdict,
     ...(verdict === "pass" ? {} : { failureBucket: failureBucketOf(checkResults, verdict) }),
@@ -519,7 +544,10 @@ async function runOnce(
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const cases = await loadCases(options.cases);
+  const allCases = await loadCases(options.cases);
+  const cases = options.includeUnstable ? allCases : allCases.filter((c) => c.unstable === undefined);
+  const skipped = allCases.length - cases.length;
+  if (skipped > 0) console.log(`跳过 ${skipped} 个 unstable case（--include-unstable 可跑）`);
   const variant = options.variant === undefined ? undefined : await loadVariant(options.variant);
   const variantId = variant?.id ?? "baseline";
 
