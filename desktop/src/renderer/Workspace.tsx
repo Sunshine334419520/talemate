@@ -267,6 +267,8 @@ export function Workspace({
   }, [current]);
 
   useEffect(() => {
+    // 折叠时不扫；每轮结束（busy 落回 false）刷新一次，不跟着每条消息重扫全部会话
+    if (!showTraces) return;
     let alive = true;
     void window.tm
       .traceIndex({ projectId: project.id, limit: 30 })
@@ -279,7 +281,7 @@ export function Workspace({
     return () => {
       alive = false;
     };
-  }, [project.id, busy, history.length]);
+  }, [project.id, busy, showTraces]);
 
   useEffect(() => {
     if (view !== "trace") return;
