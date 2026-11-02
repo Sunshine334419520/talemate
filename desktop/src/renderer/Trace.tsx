@@ -7,7 +7,7 @@
  * 它只读，不改任何状态；路径那格是给"去文件系统里看完整 jsonl"用的。
  */
 import { useMemo, useState } from "react";
-import type { AskRecord, OpenInfo, StoredMessage } from "../shared/api";
+import type { AskRecord, OpenInfo, StoredMessage, TraceModel } from "../shared/api";
 import { filterTraceRows, traceRows, type TraceFilter, type TraceRow } from "../shared/trace";
 import type { LiveItem } from "./Thread";
 
@@ -208,15 +208,110 @@ function AskLine({ record, live }: { record: AskRecord; live?: boolean }) {
   );
 }
 
+function shortHash(hash: string): string {
+  return hash.slice(0, 12);
+}
+
+/** 事件面：turn → step → attempt / tool。正文仍在「消息」面；这里看结构、状态、耗时与 hash。 */
+function EventTrace({ model }: { model: TraceModel | null }) {
+  if (model === null) return <p className="note">事件模型读取中…</p>;
+  if (model.turns.length === 0) return <p className="note">还没有可看的事件。</p>;
+  return (
+    <div className="trace-events">
+      {model.turns.map((turn) => (
+        <details className="trace-row trace-turn" key={turn.index} open>
+          <summary className="trace-summary">
+            <span className="trace-tag">轮</span>
+            <b className="trace-name">#{turn.index + 1}</b>
+            <span className={`trace-state${turn.status === "error" || turn.status === "aborted" ? " bad" : ""}`}>
+              {turn.status}
+            </span>
+            <span className="trace-sub">{turn.agent}</span>
+            <span className="trace-meta">
+              {turn.endedAt === undefined ? "进行中" : `${turn.endedAt - turn.startedAt} ms`}
+            </span>
+          </summary>
+          {turn.error !== undefined && (
+            <div className="trace-line">
+              <span className="trace-state bad">{turn.error.name}</span>：{turn.error.message}
+            </div>
+          )}
+          {turn.steps.map((step) => (
+            <details className="trace-step" key={step.index} open>
+              <summary className="trace-summary">
+                <span className="trace-tag">步</span>
+                <b className="trace-name">{step.index}</b>
+                <span className={`trace-state${step.status === "error" || step.status === "interrupted" ? " bad" : ""}`}>
+                  {step.status}
+                </span>
+                {step.finish !== undefined && <span className="trace-sub">{step.finish}</span>}
+                {step.usage !== undefined && (
+                  <span className="trace-sub">
+                    in {step.usage.input} · out {step.usage.output}
+                  </span>
+                )}
+                <span className="trace-meta">{step.durationMs === undefined ? "—" : `${step.durationMs} ms`}</span>
+              </summary>
+              {step.request !== undefined && (
+                <div className="trace-line">
+                  prompt <code>{shortHash(step.request.promptHash)}</code> · system{" "}
+                  {step.request.systemChars} · tools {step.request.toolsChars} · messages{" "}
+                  {step.request.messagesChars} · {step.request.model}
+                </div>
+              )}
+              {step.attempts.map((attempt, i) => (
+                <div className="trace-line" key={`a-${i}`}>
+                  <span className="trace-state bad">{attempt.outcome}</span> · {attempt.error.message} ·{" "}
+                  {attempt.durationMs} ms · 流出 {attempt.streamedChars} 字
+                </div>
+              ))}
+              {step.tools.map((tool) => (
+                <div className="trace-line" key={tool.callId}>
+                  <b className="trace-name">{tool.name}</b>{" "}
+                  <span className={`trace-state${tool.state === "error" ? " bad" : ""}`}>{tool.state}</span> ·
+                  in {tool.inputChars} / out {tool.outputChars ?? "—"} · {tool.durationMs ?? "—"} ms
+                  {tool.error !== undefined && <span className="trace-state bad"> · {tool.error}</span>}
+                  {tool.change !== undefined && <span> · {tool.change.path}</span>}
+                </div>
+              ))}
+            </details>
+          ))}
+          {turn.tools.map((tool) => (
+            <div className="trace-line" key={tool.callId}>
+              <b className="trace-name">{tool.name}</b>{" "}
+              <span className={`trace-state${tool.state === "error" ? " bad" : ""}`}>{tool.state}</span> ·
+              harness 直调 · {tool.durationMs ?? "—"} ms
+            </div>
+          ))}
+          {turn.compactions.map((compaction, i) => (
+            <div className="trace-line" key={`c-${i}`}>
+              压缩 · {compaction.model ?? "?"} · {compaction.ok === false ? "失败" : "完成"} ·{" "}
+              {compaction.durationMs ?? "—"} ms
+            </div>
+          ))}
+        </details>
+      ))}
+      {model.rewinds.map((rewind, i) => (
+        <div className="trace-line" key={`r-${i}`}>
+          回退到 seq {rewind.targetSeq}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Trace({
   history,
   live,
   info,
+  model,
 }: {
   history: StoredMessage[];
   live: LiveItem[];
   info: OpenInfo | null;
+  model: TraceModel | null;
 }) {
+  const [mode, setMode] = useState<"events" | "messages">("events");
   const [filter, setFilter] = useState<TraceFilter>("all");
   const [copied, setCopied] = useState(false);
   const rows = useMemo(() => traceRows(history), [history]);
@@ -237,6 +332,25 @@ export function Trace({
     <div className="trace">
       <div className="trace-bar">
         <div className="trace-filters">
+          <button
+            type="button"
+            className="trace-chip"
+            aria-current={mode === "events"}
+            onClick={() => setMode("events")}
+          >
+            事件
+          </button>
+          <button
+            type="button"
+            className="trace-chip"
+            aria-current={mode === "messages"}
+            onClick={() => setMode("messages")}
+          >
+            消息
+          </button>
+        </div>
+        {mode === "messages" && (
+        <div className="trace-filters">
           {FILTERS.map((f) => (
             <button
               key={f.value}
@@ -249,8 +363,13 @@ export function Trace({
             </button>
           ))}
         </div>
+        )}
         <span className="trace-count">
-          {visible.length} / {rows.length} 条
+          {mode === "events"
+            ? model === null
+              ? "读取中"
+              : `${model.turns.length} 轮 · ${model.turns.reduce((n, t) => n + t.steps.length, 0)} 步`
+            : `${visible.length} / ${rows.length} 条`}
         </span>
         {info?.eventsPath !== undefined && (
           <button type="button" className="trace-path" title={info.eventsPath} onClick={() => void copyPath()}>
@@ -259,24 +378,30 @@ export function Trace({
         )}
       </div>
 
-      {visible.length === 0 && live.length === 0 && (
-        <p className="note">还没有可看的轨迹。发一句话，或切到「对话」。</p>
-      )}
+      {mode === "events" ? (
+        <EventTrace model={model} />
+      ) : (
+        <>
+          {visible.length === 0 && live.length === 0 && (
+            <p className="note">还没有可看的轨迹。发一句话，或切到「对话」。</p>
+          )}
 
-      {visible.map((row) => (
-        <Row key={row.key} row={row} />
-      ))}
-
-      {live.length > 0 && (
-        <div className="trace-live">
-          <div className="trace-live-head">
-            <span className="pulse" />
-            本轮（实时，尚未落盘）
-          </div>
-          {live.map((item, i) => (
-            <LiveRow key={`live-${i}`} item={item} />
+          {visible.map((row) => (
+            <Row key={row.key} row={row} />
           ))}
-        </div>
+
+          {live.length > 0 && (
+            <div className="trace-live">
+              <div className="trace-live-head">
+                <span className="pulse" />
+                本轮（实时，尚未落盘）
+              </div>
+              {live.map((item, i) => (
+                <LiveRow key={`live-${i}`} item={item} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

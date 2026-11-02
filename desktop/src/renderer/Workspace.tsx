@@ -6,7 +6,7 @@
  * （谁在哪儿、什么时候取数），画法全在 `Thread` 里。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, ProposalDisplay, RewindFilePreviewItem, SessionRow, SessionState, StoredMessage, StyleCatalog, WriteChange } from "../shared/api";
+import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, ProposalDisplay, RewindFilePreviewItem, SessionRow, SessionState, StoredMessage, StyleCatalog, TraceModel, WriteChange } from "../shared/api";
 import { composeAnnotationMessage, type Annotation } from "./annotations";
 import { AskDock } from "./AskCard";
 import { COMMANDS } from "./commands";
@@ -181,6 +181,8 @@ export function Workspace({
   const programmaticScroll = useRef(false);
   /** 对话 / 轨迹：同一份消息，两种看法的切换 */
   const [view, setView] = useState<"chat" | "trace">("chat");
+  /** 轨迹里的「事件」面：turn/step/attempt/tool 的过程树，来自 canonical events */
+  const [traceModel, setTraceModel] = useState<TraceModel | null>(null);
   /** 待确认的回退目标；files=null 表示还在检查文件改动 */
   const [rewindAsk, setRewindAsk] = useState<{
     seq: number;
@@ -253,6 +255,22 @@ export function Workspace({
   useEffect(() => {
     currentRef.current = current;
   }, [current]);
+
+  useEffect(() => {
+    if (view !== "trace") return;
+    let alive = true;
+    void window.tm
+      .sessionTraceModel()
+      .then((model) => {
+        if (alive) setTraceModel(model);
+      })
+      .catch(() => {
+        if (alive) setTraceModel(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [view, info?.sessionId, history.length, live.length]);
 
   useEffect(() => {
     void (async () => {
@@ -1090,7 +1108,7 @@ export function Workspace({
               canRewind={canRewind}
             />
           ) : (
-            <Trace history={history} live={live} info={info} />
+            <Trace history={history} live={live} info={info} model={traceModel} />
           )}
             {warn !== null && <p className="note zhu">［提醒］{warn}</p>}
             {error !== null && <p className="note">［错误］{error}</p>}

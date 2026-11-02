@@ -8,6 +8,7 @@
 import type { DocNode } from "../../../src/framework/anchor";
 import type { StyleCatalog } from "../../../src/framework/prose";
 import type { TraceExportResult, TraceView } from "../../../src/session/trace_view";
+import type { TraceModel } from "../../../src/telemetry/view";
 import type {
   AskAnswer,
   AskQuestion,
@@ -30,6 +31,7 @@ export type {
   StoredMessage,
   StyleCatalog,
   TraceExportResult,
+  TraceModel,
   TraceView,
   WriteChange,
 };
@@ -296,6 +298,8 @@ export interface TmApi {
    * 因为窗口里没有 `cat`，要看原始事件得先知道路径。
    */
   sessionTrace(): Promise<TraceView>;
+  /** 事件级过程视图；标题栏「轨迹」用它，标题栏不再从 messages 反推 step/attempt。 */
+  sessionTraceModel(): Promise<TraceModel | null>;
   /**
    * 把当前会话的轨迹导出成**脱敏副本**（落会话目录的 `trace-export.jsonl`）。
    *

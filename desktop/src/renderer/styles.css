@@ -1476,3 +1476,9 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .rewind-files li span { flex: none; color: var(--faint); font-size: 11px; }
+
+.trace-events { display: flex; flex-direction: column; gap: 7px; }
+.trace-turn { padding: 6px 8px; }
+.trace-step { margin: 6px 0 0 10px; border-left: 1px solid var(--line); padding-left: 8px; }
+.trace-turn > summary, .trace-step > summary { cursor: pointer; list-style: none; }
+.trace-events .trace-line { margin-top: 4px; }

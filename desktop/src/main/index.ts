@@ -30,6 +30,8 @@ import { chapterNumberOf } from "../../../src/framework/plan";
 import { openSession, renderPermissionView, type Session, type UserIO } from "../../../src/session/session";
 import { buildSessionDebug, renderSessionDebug } from "../../../src/session/debug";
 import { buildTraceView, exportTrace } from "../../../src/session/trace_view";
+import { buildTraceModel } from "../../../src/telemetry/view";
+import { eventLogFor } from "../../../src/telemetry/log";
 import { readChangeDiff } from "../../../src/session/change_history";
 import { buildProjectStatus } from "../../../src/framework/report";
 import { enumerateDocs } from "../../../src/storage/corpus";
@@ -403,6 +405,12 @@ function registerHandlers(): void {
   ipcMain.handle("session:trace", async () => {
     if (session === undefined) return { summary: "（还没有打开会话）", eventsPath: "" };
     return buildTraceView(session.projectId, session.sessionId);
+  });
+
+  /** 事件级过程视图：只读 canonical events，标题栏「轨迹」不再从 messages 反推 step/attempt。 */
+  ipcMain.handle("session:trace-model", async () => {
+    if (session === undefined) return null;
+    return buildTraceModel(await eventLogFor(session.projectId, session.sessionId).read());
   });
 
   /**
