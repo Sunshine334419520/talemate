@@ -32,6 +32,7 @@ import { buildSessionDebug, renderSessionDebug } from "../../../src/session/debu
 import { buildTraceView, exportTrace } from "../../../src/session/trace_view";
 import { buildTraceModel } from "../../../src/telemetry/view";
 import { eventLogFor } from "../../../src/telemetry/log";
+import { buildTraceIndex } from "../../../src/session/trace_index";
 import { readChangeDiff } from "../../../src/session/change_history";
 import { buildProjectStatus } from "../../../src/framework/report";
 import { enumerateDocs } from "../../../src/storage/corpus";
@@ -411,6 +412,11 @@ function registerHandlers(): void {
   ipcMain.handle("session:trace-model", async () => {
     if (session === undefined) return null;
     return buildTraceModel(await eventLogFor(session.projectId, session.sessionId).read());
+  });
+
+  /** 左栏「轨迹」：跨会话索引，只读事件日志。 */
+  ipcMain.handle("trace:index", async (_e, options: { projectId?: string; query?: string; limit?: number } = {}) => {
+    return buildTraceIndex(options);
   });
 
   /**

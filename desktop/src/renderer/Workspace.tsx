@@ -6,7 +6,7 @@
  * （谁在哪儿、什么时候取数），画法全在 `Thread` 里。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, ProposalDisplay, RewindFilePreviewItem, SessionRow, SessionState, StoredMessage, StyleCatalog, TraceModel, WriteChange } from "../shared/api";
+import type { AskAnswer, AskRecord, AskView, ConfirmRequest, DocNode, LLMEvent, OpenInfo, PermissionDefault, ProjectCard, ProposalDisplay, RewindFilePreviewItem, SessionRow, SessionState, StoredMessage, StyleCatalog, TraceIndex, TraceModel, WriteChange } from "../shared/api";
 import { composeAnnotationMessage, type Annotation } from "./annotations";
 import { AskDock } from "./AskCard";
 import { COMMANDS } from "./commands";
@@ -160,7 +160,9 @@ export function Workspace({
   const [collapsed, setCollapsed] = useState(false);
   /** 左栏两段各自的折叠状态：默认都展开，用户想专心看目录时可以收掉会话。 */
   const [showSessions, setShowSessions] = useState(true);
+  const [showTraces, setShowTraces] = useState(true);
   const [showTree, setShowTree] = useState(true);
+  const [traceIndex, setTraceIndex] = useState<TraceIndex | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   /** 事件订阅只挂一次，所以用 ref 读"当前会话"——闭包里的 current 会是首帧的 null */
@@ -252,9 +254,32 @@ export function Workspace({
     [loadSessions, project.id],
   );
 
+  const openTrace = useCallback(
+    async (sessionId: string): Promise<void> => {
+      if (sessionId !== current) await enter(sessionId);
+      setView("trace");
+    },
+    [current, enter],
+  );
+
   useEffect(() => {
     currentRef.current = current;
   }, [current]);
+
+  useEffect(() => {
+    let alive = true;
+    void window.tm
+      .traceIndex({ projectId: project.id, limit: 30 })
+      .then((index) => {
+        if (alive) setTraceIndex(index);
+      })
+      .catch(() => {
+        if (alive) setTraceIndex(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [project.id, busy, history.length]);
 
   useEffect(() => {
     if (view !== "trace") return;
@@ -1007,6 +1032,35 @@ export function Workspace({
                   <span className="when">{when(s.updatedAt)}</span>
                 </button>
               ))}
+            </div>
+          )}
+
+          <button className="section-head" aria-expanded={showTraces} onClick={() => setShowTraces((v) => !v)}>
+            <ChevronIcon open={showTraces} />
+            <span className="section-title">轨迹</span>
+            <span className="count">{traceIndex?.entries.length ?? 0}</span>
+          </button>
+          {showTraces && (
+            <div className="list sessions trace-list">
+              {(traceIndex?.entries ?? []).map((entry) => {
+                const bad = entry.failedAttempts + entry.toolErrors;
+                return (
+                  <button
+                    key={entry.sessionId}
+                    className="sess trace-sess"
+                    aria-current={entry.sessionId === current && view === "trace"}
+                    title={`${entry.projectTitle} / ${entry.title}`}
+                    onClick={() => void openTrace(entry.sessionId)}
+                  >
+                    <span className="title">{entry.title}</span>
+                    <span className="when">
+                      {entry.status} · {entry.turns} 轮 · {entry.steps} 步
+                      {bad > 0 ? ` · 失败 ${bad}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+              {traceIndex !== null && traceIndex.entries.length === 0 && <p className="note">还没有会话轨迹。</p>}
             </div>
           )}
 

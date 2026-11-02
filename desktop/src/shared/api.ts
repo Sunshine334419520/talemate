@@ -9,6 +9,7 @@ import type { DocNode } from "../../../src/framework/anchor";
 import type { StyleCatalog } from "../../../src/framework/prose";
 import type { TraceExportResult, TraceView } from "../../../src/session/trace_view";
 import type { TraceModel } from "../../../src/telemetry/view";
+import type { TraceIndex } from "../../../src/session/trace_index";
 import type {
   AskAnswer,
   AskQuestion,
@@ -31,6 +32,7 @@ export type {
   StoredMessage,
   StyleCatalog,
   TraceExportResult,
+  TraceIndex,
   TraceModel,
   TraceView,
   WriteChange,
@@ -300,6 +302,8 @@ export interface TmApi {
   sessionTrace(): Promise<TraceView>;
   /** 事件级过程视图；标题栏「轨迹」用它，标题栏不再从 messages 反推 step/attempt。 */
   sessionTraceModel(): Promise<TraceModel | null>;
+  /** 跨会话 trace 索引：左栏「轨迹」列表与失败聚合。 */
+  traceIndex(options?: { projectId?: string; query?: string; limit?: number }): Promise<TraceIndex>;
   /**
    * 把当前会话的轨迹导出成**脱敏副本**（落会话目录的 `trace-export.jsonl`）。
    *
