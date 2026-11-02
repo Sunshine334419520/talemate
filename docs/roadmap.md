@@ -119,7 +119,7 @@
 下一步（Stage 2）：
 
 1. eval case / rubric / pairwise / replay provider —— 手册里的方法论那一层；
-2. 跨会话 trace 查询与失败聚合（成本、失败桶）——`buildTraceIndex` + `/trace list` 已落地；
+2. 跨会话 trace 查询与失败聚合（成本、失败桶）——`buildTraceIndex` + `/trace list` + 桌面左栏「轨迹」已落地；
 3. OTLP logs 导出（只换 backend，不换事件）；
 4. 观测框架完成后再对齐轨迹 UI（DSH）：先补 `request/header`（prompt/context/tools hash、模型参数）、事件视图模型、跨会话查询与保留，再做搜索、分组、水位、详情、token/成本。轨迹 UI 不在事件账补齐之前动。
 
