@@ -118,6 +118,35 @@ export interface TraceEventData {
   };
 }
 
+/**
+ * 运行时事件类型表：`Record<TraceEventType, true>` 是穷尽的——给 `TraceEventData` 加一条
+ * 却忘了更新这里，编译就会报错。读日志时靠它拒绝未知类型。
+ */
+const EVENT_TYPES: Record<TraceEventType, true> = {
+  "session/start": true,
+  "session/seed": true,
+  "session/rewind": true,
+  "turn/start": true,
+  "turn/end": true,
+  "step/start": true,
+  "request/header": true,
+  "step/end": true,
+  "assistant/attempt": true,
+  "user/message": true,
+  "assistant/message": true,
+  "compaction/start": true,
+  "compaction/summary": true,
+  "compaction/end": true,
+  "tool/call": true,
+  "tool/result": true,
+};
+
+const EVENT_TYPE_SET = new Set<string>(Object.keys(EVENT_TYPES));
+
+export function isTraceEventType(value: string): value is TraceEventType {
+  return EVENT_TYPE_SET.has(value);
+}
+
 export type TraceEventType = keyof TraceEventData;
 
 export interface TraceEvent<T extends TraceEventType = TraceEventType> {

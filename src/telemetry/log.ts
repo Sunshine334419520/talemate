@@ -15,6 +15,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { sessionPaths, talemateHome } from "../core/config";
 import { TRACE_SCHEMA_VERSION } from "./events";
+import { upgradeEvent } from "./schema";
 import type { AnyTraceEvent, TraceEvent, TraceEventData, TraceEventType } from "./events";
 import type { TraceSink } from "./sink";
 
@@ -24,8 +25,8 @@ export function parseEvents(text: string): AnyTraceEvent[] {
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     try {
-      const event = JSON.parse(line) as AnyTraceEvent;
-      if (typeof event.seq !== "number" || typeof event.type !== "string") continue;
+      const event = upgradeEvent(JSON.parse(line));
+      if (event === null) continue;
       out.push(event);
     } catch {
       // 只可能是末尾那半行：进程在写这一行的中途被杀

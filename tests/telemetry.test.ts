@@ -77,7 +77,9 @@ describe("事件日志 · 只追加", () => {
   });
 
   test("解析坏行时跳过，不抛", () => {
-    expect(parseEvents('not json\n{"seq":3,"type":"turn/start","data":null}\n')).toHaveLength(1);
+    expect(
+      parseEvents('not json\n{"schemaVersion":1,"sessionId":"s","seq":3,"time":1,"type":"turn/start","data":{"agent":"mate","resumed":false}}\n'),
+    ).toHaveLength(1);
   });
 
   test("sink 在落盘后收到事件；sink 抛异常不影响 append", async () => {
