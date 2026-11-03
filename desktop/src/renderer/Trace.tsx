@@ -174,7 +174,11 @@ function Overview({ record, turn }: { record: TrajectoryRecord; turn: number }) 
         )}
         <div>
           <dt>开始时间</dt>
-          <dd>{record.at === undefined ? "—" : new Date(record.at).toLocaleString("zh-CN", { hour12: false })}</dd>
+          <dd>
+            {(record.requestStartedAt ?? record.at) === undefined
+              ? "—"
+              : new Date(record.requestStartedAt ?? record.at!).toLocaleString("zh-CN", { hour12: false })}
+          </dd>
         </div>
         <div>
           <dt>耗时</dt>
@@ -193,8 +197,26 @@ function Overview({ record, turn }: { record: TrajectoryRecord; turn: number }) 
         )}
         {record.stepMs !== undefined && (
           <div>
-            <dt>请求耗时</dt>
-            <dd>{record.stepMs} ms</dd>
+            <dt>总时长</dt>
+            <dd>{(record.stepMs / 1000).toFixed(2)} 秒</dd>
+          </div>
+        )}
+        {record.ttftMs !== undefined && (
+          <div>
+            <dt>首 token</dt>
+            <dd>{(record.ttftMs / 1000).toFixed(2)} 秒</dd>
+          </div>
+        )}
+        {record.decodeMs !== undefined && (
+          <div>
+            <dt>生成</dt>
+            <dd>{(record.decodeMs / 1000).toFixed(2)} 秒</dd>
+          </div>
+        )}
+        {record.outputTokens !== undefined && record.decodeMs !== undefined && record.decodeMs > 0 && (
+          <div>
+            <dt>吞吐量</dt>
+            <dd>{((record.outputTokens / record.decodeMs) * 1000).toFixed(1)} tok/s</dd>
           </div>
         )}
         {record.seq !== undefined && (

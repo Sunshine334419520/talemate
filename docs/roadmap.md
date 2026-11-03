@@ -104,7 +104,7 @@
 - 改动索引 `changes.jsonl`（每会话一份，只存指针）：本次会话读一个文件、本书读 N 个，不折任何会话；
 - capture 与 transport 分离（`TraceSink.emit` 只入队），本地默认、导出前脱敏（fail-closed）；
 - `/trace` 看摘要、`/trace export` 导出脱敏副本，`/debug` 报事件路径与统计；
-- 每个请求落 `request/header`（模型参数 + hash；首个/变化时带完整 tools 快照）、`system/prompt`、`request/context`，eval manifest 优先用它；
+- 每个请求落 `request/header`（模型参数 + hash；首个/变化时带完整 tools 快照）、`system/prompt`、`request/context`，恢复时先折基线再判 `resume`/`change`；`step/end` 带 TTFT/decode；eval manifest 优先用它；
 - 请求详情由 `buildRequestDetail` 从日志折叠（system + tools + messages），不存请求体；
 - 轨迹表 `src/telemetry/trajectory.ts`（system/user/assistant/tool/compaction/attempt/rewind，一条记录同时带内容与元数据）已落地；桌面是「左表 + 右检查器 + 静态时间概览」，不再分事件/消息；
 - OTel 仍未接——先保证事件完整，再谈查询视图。
