@@ -2,7 +2,7 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：2026-11-03 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`
+> **对齐代码**：2026-11-04 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `ask-user.md`（提问与 pending）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
@@ -160,7 +160,8 @@
   当前页用下划线标出（同 DSH 的视图切换）。标签独占一行，不和标题挤在同一排。
 - **轨迹是「左表 + 右检查器」，不再是卡片堆**：左侧两列（类型 / 一行摘要），`system / user /
   assistant / tool / compaction / attempt / rewind` 都是表里的记录；选中一行才在右侧展开完整内容
-  （正文/思考/工具输入输出/system prompt），请求详情也在右侧。右侧检查器占满可用高度、内容自己滚，
+  （正文/思考/工具输入输出/system prompt），请求详情也在右侧。检查器是白底、固定标题，下面按
+  「概览 / 预览 / 原始内容」分 tab（工具记录另有「入参 / 输出」）；检查器占满可用高度、内容自己滚，
   不再被某一轮/某一行的高度卡住。上方有搜索、类型筛选、静态时间概览与事件日志路径；原始事件仍走
   `/trace` 的摘要/导出（`Trace.tsx` + `src/telemetry/trajectory.ts` + `src/telemetry/request_detail.ts`）。
 - **左栏有「轨迹」段**：跨会话列表，显示状态 / 轮 / 步 / 失败数；点一条会切到那份会话并打开「轨迹」的**事件面**。

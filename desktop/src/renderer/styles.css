@@ -1685,3 +1685,76 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 .trace-timeline-seg.attempt { background: var(--zhu); }
 .trace-timeline-seg.compaction { background: #7f8c8d; }
 .trace-timeline-seg.rewind { background: #7f8c8d; }
+
+/* 检查器：白底、固定头 + tab + 独立滚动；和左侧表格同层级，不再是一张灰卡片 */
+.trace-details {
+  background: var(--card);
+  border-left: 1px solid var(--line);
+}
+.trace-details-head { height: 42px; background: var(--card); margin-bottom: 0; }
+.trace-details-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.trace-tabs {
+  display: flex;
+  flex: none;
+  gap: 18px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+.trace-tab {
+  position: relative;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.trace-tab:hover { color: var(--ink); }
+.trace-tab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.trace-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+}
+.trace-details-body { background: var(--card); padding: 12px; font-size: 12px; }
+.trace-table { background: var(--card); }
+.trace-overview { display: grid; gap: 2px; margin: 0; }
+.trace-overview > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.trace-overview dt { flex: none; color: var(--faint); font-size: 11px; }
+.trace-overview dd { margin: 0; color: var(--ink); font-size: 12px; text-align: left; overflow-wrap: anywhere; }
+.trace-overview-note { margin-top: 10px; color: var(--faint); font-size: 11.5px; }
+.trace-overview-note.bad { color: var(--zhu); }
+.trace-prose {
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.trace-thinking { margin-top: 14px; }
+.trace-thinking summary { color: var(--muted); font-size: 11.5px; cursor: pointer; margin-bottom: 4px; }
+.trace-code {
+  margin: 0;
+  max-height: none;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink);
+}
