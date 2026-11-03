@@ -10,6 +10,7 @@ import type { StyleCatalog } from "../../../src/framework/prose";
 import type { TraceExportResult, TraceView } from "../../../src/session/trace_view";
 import type { TraceModel } from "../../../src/telemetry/view";
 import type { TraceIndex } from "../../../src/session/trace_index";
+import type { RequestDetail } from "../../../src/telemetry/request_detail";
 import type {
   AskAnswer,
   AskQuestion,
@@ -32,6 +33,7 @@ export type {
   StoredMessage,
   StyleCatalog,
   TraceExportResult,
+  RequestDetail,
   TraceIndex,
   TraceModel,
   TraceView,
@@ -304,6 +306,8 @@ export interface TmApi {
   sessionTraceModel(): Promise<TraceModel | null>;
   /** 跨会话 trace 索引：左栏「轨迹」列表与失败聚合。 */
   traceIndex(options?: { projectId?: string; query?: string; limit?: number }): Promise<TraceIndex>;
+  /** 某一步请求详情：header 配置/工具 + system prompt + 消息窗口，由日志折叠。 */
+  sessionRequestDetail(seq: number): Promise<RequestDetail | null>;
   /**
    * 把当前会话的轨迹导出成**脱敏副本**（落会话目录的 `trace-export.jsonl`）。
    *

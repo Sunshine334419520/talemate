@@ -1482,3 +1482,21 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 .trace-step { margin: 6px 0 0 10px; border-left: 1px solid var(--line); padding-left: 8px; }
 .trace-turn > summary, .trace-step > summary { cursor: pointer; list-style: none; }
 .trace-events .trace-line { margin-top: 4px; }
+
+.trace-detail { margin: 6px 0 0 10px; border-left: 2px solid var(--line); padding-left: 8px; }
+.trace-detail details { margin-top: 5px; }
+.trace-detail summary { cursor: pointer; font-size: 11.5px; color: var(--muted); }
+.trace-detail pre {
+  margin: 5px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px;
+}

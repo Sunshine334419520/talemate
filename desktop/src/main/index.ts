@@ -31,6 +31,7 @@ import { openSession, renderPermissionView, type Session, type UserIO } from "..
 import { buildSessionDebug, renderSessionDebug } from "../../../src/session/debug";
 import { buildTraceView, exportTrace } from "../../../src/session/trace_view";
 import { buildTraceModel } from "../../../src/telemetry/view";
+import { buildRequestDetail } from "../../../src/telemetry/request_detail";
 import { eventLogFor } from "../../../src/telemetry/log";
 import { buildTraceIndex } from "../../../src/session/trace_index";
 import { readChangeDiff } from "../../../src/session/change_history";
@@ -417,6 +418,12 @@ function registerHandlers(): void {
   /** 左栏「轨迹」：跨会话索引，只读事件日志。 */
   ipcMain.handle("trace:index", async (_e, options: { projectId?: string; query?: string; limit?: number } = {}) => {
     return buildTraceIndex(options);
+  });
+
+  /** 某一步的请求详情：纯折叠，不存请求体。 */
+  ipcMain.handle("session:request-detail", async (_e, seq: number) => {
+    if (session === undefined) return null;
+    return buildRequestDetail(await eventLogFor(session.projectId, session.sessionId).read(), seq);
   });
 
   /**

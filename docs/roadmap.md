@@ -104,7 +104,8 @@
 - 改动索引 `changes.jsonl`（每会话一份，只存指针）：本次会话读一个文件、本书读 N 个，不折任何会话；
 - capture 与 transport 分离（`TraceSink.emit` 只入队），本地默认、导出前脱敏（fail-closed）；
 - `/trace` 看摘要、`/trace export` 导出脱敏副本，`/debug` 报事件路径与统计；
-- 每个请求落 `request/header`（模型参数 + prompt/tools/messages hash，不含正文），eval manifest 优先用它；
+- 每个请求落 `request/header`（模型参数 + hash；首个/变化时带完整 tools 快照）、`system/prompt`、`request/context`，eval manifest 优先用它；
+- 请求详情由 `buildRequestDetail` 从日志折叠（system + tools + messages），不存请求体；
 - 事件视图模型 `src/telemetry/view.ts`（turn/step/attempt/tool/compaction/rewind，不读 messages）已落地；桌面轨迹默认「事件」面，「消息」面保留正文；
 - OTel 仍未接——先保证事件完整，再谈查询视图。
 

@@ -7,7 +7,7 @@
  * 它只读，不改任何状态；路径那格是给"去文件系统里看完整 jsonl"用的。
  */
 import { useMemo, useState } from "react";
-import type { AskRecord, OpenInfo, StoredMessage, TraceModel } from "../shared/api";
+import type { AskRecord, OpenInfo, RequestDetail, StoredMessage, TraceModel } from "../shared/api";
 import { filterTraceRows, traceRows, type TraceFilter, type TraceRow } from "../shared/trace";
 import type { LiveItem } from "./Thread";
 
@@ -212,8 +212,76 @@ function shortHash(hash: string): string {
   return hash.slice(0, 12);
 }
 
+function messageText(message: StoredMessage): string {
+  if (message.role === "compaction") return [message.summary, message.recent].filter(Boolean).join("\n\n");
+  if (message.role === "assistant") {
+    return (message.parts ?? [])
+      .map((part) => {
+        if (part.type === "text" || part.type === "reasoning") return part.text;
+        if (part.type === "tool") {
+          return [
+            `[tool ${part.name}] ${part.input ?? ""}`,
+            part.output === undefined ? "" : `→ ${part.output}`,
+          ]
+            .filter(Boolean)
+            .join("\n");
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return message.text ?? "";
+}
+
+function RequestDetailView({ detail }: { detail: RequestDetail | null }) {
+  if (detail === null) return <div className="trace-line">读不到这一段的请求详情。</div>;
+  return (
+    <div className="trace-detail">
+      <div className="trace-line">
+        {detail.config.provider} / {detail.config.model} · temp {detail.config.temperature ?? "—"} · max{" "}
+        {detail.config.maxTokens}
+        {detail.context?.contextWindow === undefined ? "" : ` · window ${detail.context.contextWindow}`}
+      </div>
+      {detail.system !== undefined && (
+        <details>
+          <summary>system · {detail.system.text.length} 字</summary>
+          <pre>{detail.system.text}</pre>
+        </details>
+      )}
+      {detail.tools !== undefined && (
+        <details>
+          <summary>tools · {detail.tools.length} 个</summary>
+          <pre>{JSON.stringify(detail.tools, null, 2)}</pre>
+        </details>
+      )}
+      <details open>
+        <summary>messages · {detail.messages.length} 条</summary>
+        {detail.messages.map((message, i) => {
+          const text = messageText(message);
+          return (
+            <div className="trace-line" key={`${message.seq ?? i}-${i}`}>
+              <b className="trace-name">{message.role}</b>
+              {message.role === "compaction" ? " · compaction" : ""}
+              <pre>{text.length > 4000 ? `${text.slice(0, 4000)}…（截断展示）` : text}</pre>
+            </div>
+          );
+        })}
+      </details>
+    </div>
+  );
+}
+
 /** 事件面：turn → step → attempt / tool。正文仍在「消息」面；这里看结构、状态、耗时与 hash。 */
 function EventTrace({ model }: { model: TraceModel | null }) {
+  const [details, setDetails] = useState<Record<number, RequestDetail | null>>({});
+
+  async function openDetail(seq: number): Promise<void> {
+    if (seq in details) return;
+    const detail = await window.tm.sessionRequestDetail(seq).catch(() => null);
+    setDetails((prev) => ({ ...prev, [seq]: detail }));
+  }
+
   if (model === null) return <p className="note">事件模型读取中…</p>;
   if (model.turns.length === 0) return <p className="note">还没有可看的事件。</p>;
   return (
@@ -257,7 +325,15 @@ function EventTrace({ model }: { model: TraceModel | null }) {
                   prompt <code>{shortHash(step.request.promptHash)}</code> · system{" "}
                   {step.request.systemChars} · tools {step.request.toolsChars} · messages{" "}
                   {step.request.messagesChars} · {step.request.model}
+                  {step.requestSeq !== undefined && (
+                    <button type="button" className="trace-path" onClick={() => void openDetail(step.requestSeq!)}>
+                      请求详情
+                    </button>
+                  )}
                 </div>
+              )}
+              {step.requestSeq !== undefined && details[step.requestSeq] !== undefined && (
+                <RequestDetailView detail={details[step.requestSeq] ?? null} />
               )}
               {step.attempts.map((attempt, i) => (
                 <div className="trace-line" key={`a-${i}`}>
