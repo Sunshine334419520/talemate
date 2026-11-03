@@ -8,9 +8,10 @@
  * 边界：只定义形状与版本号，不碰文件、不碰投影。写入在 `log.ts`，折叠在 `projection.ts`。
  */
 import type { StoredMessage, ToolState } from "../core/types";
+import type { ToolSchema } from "../llm/types";
 
 /** 日志格式版本。改字段含义就加一，消费方靠它决定怎么读旧记录。 */
-export const TRACE_SCHEMA_VERSION = 1;
+export const TRACE_SCHEMA_VERSION = 2;
 
 /** 失败只有名字和一句话：堆栈属于调试器，不属于会话账本。 */
 export interface TraceError {
@@ -64,12 +65,18 @@ export interface TraceEventData {
   "turn/start": { agent: string; resumed: boolean };
   "turn/end": { status: TurnStatus; durationMs: number; error?: TraceError };
   "step/start": { step: number };
+  /** 渲染后的 system prompt。按变化才写；它不是 messages 投影的一部分，模型上下文仍走 ChatOpts.system。 */
+  "system/prompt": { step: number; text: string; hash: string };
   /**
    * 一次请求的"头"：模型参数与三段 hash，不含正文。
    * 它把在线 trace 与 eval manifest 接起来——两边用同一份 hash，才能互相指认。
    */
   "request/header": {
     step: number;
+    /** 只有完整快照带 reason：首个请求 initial，配置/工具变化 change；其余 step 沿用最新快照 */
+    reason?: "initial" | "change";
+    /** 只有完整快照带 tools：完整 schema，供请求详情重建 */
+    tools?: ToolSchema[];
     agent: string;
     provider: string;
     model: string;
@@ -86,6 +93,8 @@ export interface TraceEventData {
     depth?: number;
     parentSessionId?: string;
   };
+  /** 路由元数据：provider/model/contextWindow 变化时才写 */
+  "request/context": { provider: string; model: string; contextWindow?: number };
   "step/end": {
     step: number;
     finish: StepFinish;
@@ -129,7 +138,9 @@ const EVENT_TYPES: Record<TraceEventType, true> = {
   "turn/start": true,
   "turn/end": true,
   "step/start": true,
+  "system/prompt": true,
   "request/header": true,
+  "request/context": true,
   "step/end": true,
   "assistant/attempt": true,
   "user/message": true,

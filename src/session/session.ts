@@ -19,6 +19,7 @@ import {
 } from "../permission";
 import { loadModelConfig } from "../core/config";
 import { readPrompt } from "../prompts";
+import { contextWindow } from "../core/windows";
 import { hashJson, hashText } from "../core/hash";
 import { PLAN_KEY } from "../core/types";
 import type { ModeDef } from "../agent/modes";
@@ -335,6 +336,10 @@ export class Session {
   private cache: StoredMessage[] | null = null;
   /** 上一次请求发出去多少 token（provider 报的真数）——压缩的触发判据 */
   private lastInput: number | undefined;
+  /** 最近一次写进事件的 system prompt / header / 路由键：只记变化，不每步复制大文本 */
+  private lastSystemHash: string | undefined;
+  private lastHeaderKey: string | undefined;
+  private lastContextKey: string | undefined;
   /** 这一轮由哪条用户消息发起；文件回退快照按它归组，改动索引也用它分轮。 */
   private lastUserSeq: number | undefined;
   /** 这一轮用户的原话（第一行会进改动索引的组头） */
@@ -771,6 +776,25 @@ export class Session {
           const toolsHash = hashText(toolsJson);
           const messagesHash = hashText(messagesJson);
           this.trace("step/start", { step: current });
+
+          // system prompt 是模型可见状态，必须能从日志重建；按变化才写，避免每步复制几 KB。
+          if (systemHash !== this.lastSystemHash) {
+            this.trace("system/prompt", { step: current, text: req.system, hash: systemHash });
+            this.lastSystemHash = systemHash;
+          }
+
+          // header 只在首个请求或配置/工具变化时写完整快照；其余 step 只写轻量 hash。
+          const headerKey = hashJson({
+            provider: this.model.provider,
+            model: this.model.model,
+            temperature: this.model.temperature ?? null,
+            maxTokens: this.model.maxTokens,
+            reasoning: this.model.reasoning,
+            toolsHash,
+          });
+          const headerReason =
+            this.lastHeaderKey === undefined ? "initial" : this.lastHeaderKey === headerKey ? undefined : "change";
+          this.lastHeaderKey = headerKey;
           this.trace("request/header", {
             step: current,
             agent: this.agent.id,
@@ -786,9 +810,23 @@ export class Session {
             systemChars: requestChars.system,
             toolsChars: requestChars.tools,
             messagesChars: requestChars.messages,
+            ...(headerReason === undefined ? {} : { reason: headerReason }),
+            ...(headerReason !== undefined && req.tools !== undefined && req.tools.length > 0
+              ? { tools: req.tools }
+              : {}),
             ...(this.depth === 0 ? {} : { depth: this.depth }),
             ...(this.parentSessionId === undefined ? {} : { parentSessionId: this.parentSessionId }),
           });
+
+          const contextKey = `${this.model.provider}\u0000${this.model.model}\u0000${contextWindow(this.model.model)}`;
+          if (contextKey !== this.lastContextKey) {
+            this.trace("request/context", {
+              provider: this.model.provider,
+              model: this.model.model,
+              contextWindow: contextWindow(this.model.model),
+            });
+            this.lastContextKey = contextKey;
+          }
           try {
             const turn = await chat({
               model: this.model,

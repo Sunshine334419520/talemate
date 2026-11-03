@@ -15,6 +15,7 @@ import { appendMessage, loadMessages, truncateMessagesBefore } from "../src/stor
 import { EventLog, eventLogFor, parseEvents, resetEventLogs } from "../src/telemetry/log";
 import { projectMessages, projectSpans, projectStats } from "../src/telemetry/projection";
 import { buildTraceView, exportTrace, readTraceSummary } from "../src/session/trace_view";
+import { buildRequestDetail } from "../src/telemetry/request_detail";
 import { redactEvent, redactEvents, redactText } from "../src/telemetry/redact";
 import { MemoryTraceSink, type TraceSink } from "../src/telemetry/sink";
 import type { AnyTraceEvent } from "../src/telemetry/events";
@@ -221,7 +222,9 @@ describe("会话接线 · 一轮留下什么", () => {
       "turn/start",
       "user/message",
       "step/start",
+      "system/prompt",
       "request/header",
+      "request/context",
       "step/end",
       "assistant/message",
       "turn/end",
@@ -234,12 +237,28 @@ describe("会话接线 · 一轮留下什么", () => {
     expect(header?.type).toBe("request/header");
     if (header?.type !== "request/header") throw new Error("expected request/header");
     expect(header.data).toMatchObject({ step: 0, provider: "mock", model: "mock" });
+    expect(header.data.reason).toBe("initial");
+    expect(header.data.tools?.length ?? 0).toBeGreaterThan(0);
+    const systemPrompt = events.find((e) => e.type === "system/prompt");
+    expect(systemPrompt?.type).toBe("system/prompt");
+    if (systemPrompt?.type === "system/prompt") {
+      expect(systemPrompt.data.text.length).toBeGreaterThan(0);
+      expect(systemPrompt.data.hash).toMatch(/^[0-9a-f]{64}$/);
+    }
+    const context = events.find((e) => e.type === "request/context");
+    expect(context?.type).toBe("request/context");
+    if (context?.type === "request/context") expect(context.data.contextWindow).toBeGreaterThan(0);
     for (const hash of [header.data.systemHash, header.data.toolsHash, header.data.messagesHash, header.data.promptHash]) {
       expect(hash).toMatch(/^[0-9a-f]{64}$/);
     }
     expect(header.data.systemChars).toBeGreaterThan(0);
     // 只有 hash 与长度，不把正文复制进账本
     expect(JSON.stringify(header.data)).not.toContain("你好");
+
+    const detail = buildRequestDetail(events, header.seq);
+    expect(detail?.system?.text.length).toBeGreaterThan(0);
+    expect(detail?.tools?.length ?? 0).toBeGreaterThan(0);
+    expect(detail?.messages.some((m) => m.role === "user" && m.text === "你好")).toBe(true);
     // sink 是 openSession 之后才挂上的，所以从它挂上那一刻起的事件应当一条不少地到齐
     const captured = sink.events.map((e) => e.seq);
     expect(captured.length).toBeGreaterThan(0);

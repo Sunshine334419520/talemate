@@ -13,7 +13,10 @@ import {
 } from "./events";
 
 /** 版本 n → 版本 n+1 的迁移。加一个字段含义时在这里补一条，并把 TRACE_SCHEMA_VERSION 加一。 */
-const MIGRATIONS: Record<number, (event: Record<string, unknown>) => Record<string, unknown>> = {};
+const MIGRATIONS: Record<number, (event: Record<string, unknown>) => Record<string, unknown>> = {
+  // v2 只新增了 system/prompt、request/context 与 header 快照字段；旧事件仍是合法输入。
+  1: (event) => ({ ...event, schemaVersion: 2 }),
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

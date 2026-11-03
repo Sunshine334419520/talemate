@@ -15,6 +15,7 @@ const SAMPLES: { [K in TraceEventType]: TraceEventData[K] } = {
   "turn/start": { agent: "mate", resumed: false },
   "turn/end": { status: "completed", durationMs: 1 },
   "step/start": { step: 0 },
+  "system/prompt": { step: 0, text: "system", hash: "e".repeat(64) },
   "request/header": {
     step: 0,
     agent: "mate",
@@ -30,6 +31,7 @@ const SAMPLES: { [K in TraceEventType]: TraceEventData[K] } = {
     toolsChars: 2,
     messagesChars: 3,
   },
+  "request/context": { provider: "mock", model: "mock", contextWindow: 1000 },
   "step/end": { step: 0, finish: "stop", durationMs: 1 },
   "assistant/attempt": {
     step: 0,
