@@ -56,8 +56,9 @@
 
 `request/header` 与 eval 的 manifest 用同一份 `core/hash.ts`：在线 trace 与 cassette 的 promptHash/toolsHash 能互相指认；manifest 优先读它，不再依赖 cassette 第一条。
 
-`request/header` 的完整快照只在首个请求（`reason: "initial"`）或配置/工具变化（`reason: "change"`）时携带
-`tools`；普通 step 只写 hash。`system/prompt` 只在 system 变化时写全文。这样请求可以被**重建**，
+`request/header` 的完整快照在以下时携带 `tools`：首个请求（`initial`）、恢复已有会话（`resume`）、
+配置/工具变化（`change`）、以及压缩/回退后的新序列（`series`）；普通 step 只写 hash。
+`change` / `resume` / `initial` 同时开启新序列时带 `startsSeries: true`，`series` 本身已表达。`system/prompt` 只在 system 变化时写全文。这样请求可以被**重建**，
 而不是把同一份 system/messages 复制进 header。
 
 为什么工具正文不复制进事件：入参与输出已经在 `assistant/message` 的 parts 里。事件只记边界上才拿得到的事实（`state` / `durationMs` / `outputChars` / `error`），再存一份正文就是第二份真源。

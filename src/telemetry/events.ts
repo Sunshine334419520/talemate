@@ -73,8 +73,10 @@ export interface TraceEventData {
    */
   "request/header": {
     step: number;
-    /** 只有完整快照带 reason：首个请求 initial，配置/工具变化 change；其余 step 沿用最新快照 */
-    reason?: "initial" | "change";
+    /** 只有完整快照带 reason：首个请求 initial、恢复 resume、配置/工具变化 change、新序列 series */
+    reason?: "initial" | "resume" | "change" | "series";
+    /** change/resume/initial 同时开启新序列时标记；series 本身已表达 */
+    startsSeries?: boolean;
     /** 只有完整快照带 tools：完整 schema，供请求详情重建 */
     tools?: ToolSchema[];
     agent: string;

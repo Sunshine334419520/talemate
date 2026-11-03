@@ -11,7 +11,7 @@ import { join } from "node:path";
 import type { ModelConfig, StoredMessage } from "../src/core/types";
 import { openSession } from "../src/session/session";
 import { createProject } from "../src/storage/project";
-import { appendMessage, loadMessages, truncateMessagesBefore } from "../src/storage/session-store";
+import { appendMessage, createSession, loadMessages, truncateMessagesBefore } from "../src/storage/session-store";
 import { EventLog, eventLogFor, parseEvents, resetEventLogs } from "../src/telemetry/log";
 import { projectMessages, projectSpans, projectStats } from "../src/telemetry/projection";
 import { buildTraceView, exportTrace, readTraceSummary } from "../src/session/trace_view";
@@ -264,6 +264,30 @@ describe("会话接线 · 一轮留下什么", () => {
     expect(captured.length).toBeGreaterThan(0);
     expect(captured).toEqual(events.slice(-captured.length).map((e) => e.seq));
     expect(await loadMessages(projectId, session.sessionId)).toEqual(projectMessages(events));
+  });
+
+  test("恢复已有会话时首个 header 是 resume", async () => {
+    const id = nextSessionId();
+    await createSession(projectId, { id, projectId, title: "恢复", agent: "mate", model: MODEL });
+    const session = await openSession({ projectId, sessionId: id, model: MODEL, title: "恢复" });
+    await session.post("你好");
+    const events = await eventLogFor(projectId, id).read();
+    const header = events.find((e) => e.type === "request/header");
+    expect(header?.type).toBe("request/header");
+    if (header?.type === "request/header") expect(header.data.reason).toBe("resume");
+  });
+
+  test("回退后下一次 header 是 series", async () => {
+    const session = await openSession({ projectId, model: MODEL, title: "回退序列" });
+    await session.post("第一句");
+    const first = await eventLogFor(projectId, session.sessionId).read();
+    const user = first.find((e) => e.type === "user/message");
+    if (user?.type !== "user/message") throw new Error("expected user/message");
+    await session.rewindTo(user.data.message.seq);
+    await session.post("第二句");
+    const events = await eventLogFor(projectId, session.sessionId).read();
+    const reasons = events.filter((e) => e.type === "request/header").map((e) => e.data.reason);
+    expect(reasons).toContain("series");
   });
 
   test("工具调用有 call/result 成对事件，span 能挂到 step 上", async () => {

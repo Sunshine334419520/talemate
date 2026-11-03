@@ -340,6 +340,10 @@ export class Session {
   private lastSystemHash: string | undefined;
   private lastHeaderKey: string | undefined;
   private lastContextKey: string | undefined;
+  /** 这个 Session 是恢复已有会话（true）还是新建（false） */
+  private readonly resumed: boolean;
+  /** 刚发生过重写历史（压缩/回退）：下一次仍兼容的 header 要写成 series */
+  private seriesPending = false;
   /** 这一轮由哪条用户消息发起；文件回退快照按它归组，改动索引也用它分轮。 */
   private lastUserSeq: number | undefined;
   /** 这一轮用户的原话（第一行会进改动索引的组头） */
@@ -387,6 +391,7 @@ export class Session {
 
   constructor(deps: SessionDeps & { meta: ProjectMeta; agents: AgentRegistry; tools: ToolRegistry; model: ModelConfig }) {
     this.projectId = deps.projectId;
+    this.resumed = deps.sessionId !== undefined;
     this.sessionId = deps.sessionId ?? randomUUID();
     this.depth = deps.depth ?? 0;
     this.parentSessionId = deps.parentSessionId;
@@ -473,6 +478,7 @@ export class Session {
       ? await restoreFilesForRewind(this.projectId, this.sessionId, seq)
       : undefined;
     await truncateMessagesBefore(this.projectId, this.sessionId, seq);
+    this.seriesPending = true;
     // 两种模式都清：seq 会被新分支复用，旧账留着会还原错东西
     await dropFileCheckpointsFrom(this.projectId, this.sessionId, seq);
 
@@ -793,7 +799,20 @@ export class Session {
             toolsHash,
           });
           const headerReason =
-            this.lastHeaderKey === undefined ? "initial" : this.lastHeaderKey === headerKey ? undefined : "change";
+            this.lastHeaderKey === undefined
+              ? this.resumed
+                ? "resume"
+                : "initial"
+              : this.lastHeaderKey === headerKey
+                ? this.seriesPending
+                  ? "series"
+                  : undefined
+                : "change";
+          const startsSeries =
+            this.seriesPending && (headerReason === "initial" || headerReason === "resume" || headerReason === "change")
+              ? true
+              : undefined;
+          this.seriesPending = false;
           this.lastHeaderKey = headerKey;
           this.trace("request/header", {
             step: current,
@@ -811,6 +830,7 @@ export class Session {
             toolsChars: requestChars.tools,
             messagesChars: requestChars.messages,
             ...(headerReason === undefined ? {} : { reason: headerReason }),
+            ...(startsSeries === undefined ? {} : { startsSeries }),
             ...(headerReason !== undefined && req.tools !== undefined && req.tools.length > 0
               ? { tools: req.tools }
               : {}),
@@ -1390,7 +1410,10 @@ export class Session {
         system: summarizer.system,
         messages: window,
       });
-      if (m) await this.push(m);
+      if (m) {
+        await this.push(m);
+        this.seriesPending = true;
+      }
       this.trace("compaction/end", { durationMs: Date.now() - t0, ok: true, compacted: m !== null });
     } catch (err) {
       this.trace("compaction/end", { durationMs: Date.now() - t0, ok: false, compacted: false });
