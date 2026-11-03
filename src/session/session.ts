@@ -70,7 +70,7 @@ import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
 import { executeToolPart } from "../tool/runner";
 import { eventLogFor } from "../telemetry/log";
-import type { TraceError, TraceEventData, TraceEventType, TurnStatus } from "../telemetry/events";
+import type { AnyTraceEvent, TraceError, TraceEventData, TraceEventType, TurnStatus } from "../telemetry/events";
 import {
   mergeJournalAsk,
   openAsks,
@@ -342,6 +342,8 @@ export class Session {
   private lastContextKey: string | undefined;
   /** 这个 Session 是恢复已有会话（true）还是新建（false） */
   private readonly resumed: boolean;
+  /** 这个 Session 进程里的第一次请求；恢复时即使 header 没变也要写 resume 快照 */
+  private firstRequest = true;
   /** 刚发生过重写历史（压缩/回退）：下一次仍兼容的 header 要写成 series */
   private seriesPending = false;
   /** 这一轮由哪条用户消息发起；文件回退快照按它归组，改动索引也用它分轮。 */
@@ -407,6 +409,24 @@ export class Session {
 
   get agent(): AgentDef {
     return this.agents.get(this.agentId);
+  }
+
+  private headerKeyOf(header: {
+    provider: string;
+    model: string;
+    temperature?: number | null;
+    maxTokens: number;
+    reasoning?: string;
+    toolsHash: string;
+  }): string {
+    return hashJson({
+      provider: header.provider,
+      model: header.model,
+      temperature: header.temperature ?? null,
+      maxTokens: header.maxTokens,
+      reasoning: header.reasoning,
+      toolsHash: header.toolsHash,
+    });
   }
 
   /**
@@ -768,6 +788,10 @@ export class Session {
           activeStep = current;
           const t0 = Date.now();
           let streamedChars = 0;
+          let firstTokenAt: number | undefined;
+          const markFirstToken = (): void => {
+            if (firstTokenAt === undefined) firstTokenAt = Date.now();
+          };
           // 序列化只做一次：requestChars 与 request/header 的 hash 复用同一份文本。
           // 不再让 hashJson 对整棵 messages 树做 canonicalize + 二次 stringify——1M 上下文下
           // 那是白白多出的一份完整副本。
@@ -790,28 +814,31 @@ export class Session {
           }
 
           // header 只在首个请求或配置/工具变化时写完整快照；其余 step 只写轻量 hash。
-          const headerKey = hashJson({
+          const headerKey = this.headerKeyOf({
             provider: this.model.provider,
             model: this.model.model,
-            temperature: this.model.temperature ?? null,
+            temperature: this.model.temperature,
             maxTokens: this.model.maxTokens,
             reasoning: this.model.reasoning,
             toolsHash,
           });
-          const headerReason =
-            this.lastHeaderKey === undefined
-              ? this.resumed
-                ? "resume"
-                : "initial"
-              : this.lastHeaderKey === headerKey
-                ? this.seriesPending
-                  ? "series"
-                  : undefined
-                : "change";
+          const headerChanged = this.lastHeaderKey !== undefined && this.lastHeaderKey !== headerKey;
+          const headerReason = this.firstRequest
+            ? this.resumed
+              ? headerChanged
+                ? "change"
+                : "resume"
+              : "initial"
+            : headerChanged
+              ? "change"
+              : this.seriesPending
+                ? "series"
+                : undefined;
           const startsSeries =
             this.seriesPending && (headerReason === "initial" || headerReason === "resume" || headerReason === "change")
               ? true
               : undefined;
+          this.firstRequest = false;
           this.seriesPending = false;
           this.lastHeaderKey = headerKey;
           this.trace("request/header", {
@@ -855,17 +882,28 @@ export class Session {
               tools: req.tools?.length ? req.tools : undefined,
               signal: o.signal,
               onText: (d) => {
+                markFirstToken();
                 streamedChars += d.length;
                 o.onText(d);
               },
-              onReasoning: o.onReasoning,
-              onToolCallStart: o.onToolCallStart,
+              onReasoning: (d) => {
+                markFirstToken();
+                o.onReasoning?.(d);
+              },
+              onToolCallStart: (call) => {
+                markFirstToken();
+                o.onToolCallStart?.(call);
+              },
             });
+            const completedAt = Date.now();
             this.trace("step/end", {
               step: current,
               finish: turn.toolCalls.length ? "tool_calls" : "stop",
-              durationMs: Date.now() - t0,
+              durationMs: completedAt - t0,
               requestChars,
+              ...(firstTokenAt === undefined
+                ? {}
+                : { ttftMs: firstTokenAt - t0, decodeMs: completedAt - firstTokenAt }),
               ...(turn.usage === undefined
                 ? {}
                 : { usage: { input: turn.usage.input, output: turn.usage.output } }),
@@ -1342,6 +1380,17 @@ export class Session {
       // 续聊时把上一轮的用量读回来：它是压缩的判据，而进程重启之后内存里没有
       const meta = await loadSessionMeta(this.projectId, this.sessionId).catch(() => undefined);
       this.lastInput = meta?.usage?.at(-1)?.input;
+      // 恢复基线：不看上一份日志，第一请求会把“配置没变”误报成 resume，或重复写 system/tools
+      const events = await eventLogFor(this.projectId, this.sessionId).read();
+      for (const event of events) {
+        if (event.type === "system/prompt") {
+          this.lastSystemHash = event.data.hash;
+        } else if (event.type === "request/context") {
+          this.lastContextKey = `${event.data.provider}\u0000${event.data.model}\u0000${event.data.contextWindow ?? ""}`;
+        } else if (event.type === "request/header") {
+          this.lastHeaderKey = this.headerKeyOf(event.data);
+        }
+      }
     }
     return this.cache;
   }

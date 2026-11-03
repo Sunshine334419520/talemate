@@ -103,6 +103,10 @@ export interface TraceEventData {
     durationMs: number;
     usage?: TraceUsage;
     requestChars?: TraceRequestChars;
+    /** 从请求开始到第一个正文/思考/工具调用 token 的毫秒数；没有流式事件时缺省 */
+    ttftMs?: number;
+    /** 从首 token 到请求结束的毫秒数（解码时间） */
+    decodeMs?: number;
   };
   "assistant/attempt": {
     step: number;

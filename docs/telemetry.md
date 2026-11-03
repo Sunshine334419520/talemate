@@ -2,7 +2,7 @@
 
 > **职责**：回答"会话事件是什么形状、谁在什么时候发、messages/span/统计怎么从它折出来、导出时怎么脱敏"。
 > **读者**：要加一类事件、加一个投影、接一个观测消费者（eval reader / OTel）的人。
-> **对齐代码**：2026-11-03 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
+> **对齐代码**：2026-11-04 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
 
 ## 一句话
 
@@ -43,7 +43,7 @@
 | `session/seed` | 旧日志里的迁移记录（新代码不再产生，只保留读取） | — |
 | `session/rewind` | 就地回退；投影据此遮住 `seq >= targetSeq` 的消息 | `truncateMessagesBefore` |
 | `turn/start` / `turn/end` | 一次用户输入到模型停下 | `Session.runTurn` |
-| `step/start` / `step/end` | 一次模型请求（`step` 从 0 起） | `Session.runTurn` 的 `generate` |
+| `step/start` / `step/end` | 一次模型请求（`step` 从 0 起）；end 带 `usage`、`ttftMs`、`decodeMs` | `Session.runTurn` 的 `generate` |
 | `system/prompt` | 渲染后的 system prompt；**按变化才写**，不是 messages 投影 | 同上 |
 | `request/header` | 每步的轻量 hash；首个请求/配置或工具变化时带 `reason` 与完整 `tools` 快照 | 同上 |
 | `request/context` | 路由的 provider/model/contextWindow；变化才写 | 同上 |
@@ -58,7 +58,9 @@
 
 `request/header` 的完整快照在以下时携带 `tools`：首个请求（`initial`）、恢复已有会话（`resume`）、
 配置/工具变化（`change`）、以及压缩/回退后的新序列（`series`）；普通 step 只写 hash。
-`change` / `resume` / `initial` 同时开启新序列时带 `startsSeries: true`，`series` 本身已表达。`system/prompt` 只在 system 变化时写全文。这样请求可以被**重建**，
+`change` / `resume` / `initial` 同时开启新序列时带 `startsSeries: true`，`series` 本身已表达。
+恢复会话时 `ensureLoaded` 会先折出上一次的 header/system/context 作为基线：配置没变写 `resume`，变了写 `change`，
+没变的 system/context 不重复写；这是跨重启的请求出处正确性。`system/prompt` 只在 system 变化时写全文。这样请求可以被**重建**，
 而不是把同一份 system/messages 复制进 header。
 
 为什么工具正文不复制进事件：入参与输出已经在 `assistant/message` 的 parts 里。事件只记边界上才拿得到的事实（`state` / `durationMs` / `outputChars` / `error`），再存一份正文就是第二份真源。

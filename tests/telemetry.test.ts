@@ -266,15 +266,38 @@ describe("会话接线 · 一轮留下什么", () => {
     expect(await loadMessages(projectId, session.sessionId)).toEqual(projectMessages(events));
   });
 
-  test("恢复已有会话时首个 header 是 resume", async () => {
+  test("恢复已有会话时首个 header 是 resume，且不重复写没变的 system", async () => {
     const id = nextSessionId();
     await createSession(projectId, { id, projectId, title: "恢复", agent: "mate", model: MODEL });
-    const session = await openSession({ projectId, sessionId: id, model: MODEL, title: "恢复" });
-    await session.post("你好");
+    const first = await openSession({ projectId, sessionId: id, model: MODEL, title: "恢复" });
+    await first.post("第一句");
+    const before = await eventLogFor(projectId, id).read();
+    const systemCount = before.filter((e) => e.type === "system/prompt").length;
+
+    const second = await openSession({ projectId, sessionId: id, model: MODEL, title: "恢复" });
+    await second.post("第二句");
     const events = await eventLogFor(projectId, id).read();
-    const header = events.find((e) => e.type === "request/header");
-    expect(header?.type).toBe("request/header");
-    if (header?.type === "request/header") expect(header.data.reason).toBe("resume");
+    const headers = events.filter((e) => e.type === "request/header");
+    expect(headers.at(-1)?.data.reason).toBe("resume");
+    expect(events.filter((e) => e.type === "system/prompt")).toHaveLength(systemCount);
+  });
+
+  test("恢复时配置变了，header 是 change 而不是 resume", async () => {
+    const id = nextSessionId();
+    await createSession(projectId, { id, projectId, title: "恢复改配置", agent: "mate", model: MODEL });
+    const first = await openSession({ projectId, sessionId: id, model: MODEL, title: "恢复改配置" });
+    await first.post("第一句");
+
+    const second = await openSession({
+      projectId,
+      sessionId: id,
+      model: { ...MODEL, maxTokens: 2000 },
+      title: "恢复改配置",
+    });
+    await second.post("第二句");
+    const events = await eventLogFor(projectId, id).read();
+    const headers = events.filter((e) => e.type === "request/header");
+    expect(headers.at(-1)?.data.reason).toBe("change");
   });
 
   test("回退后下一次 header 是 series", async () => {

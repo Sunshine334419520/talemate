@@ -50,7 +50,14 @@ describe("轨迹记录 · 一张表", () => {
           ],
         },
       }),
-      ev(10, "step/end", { step: 0, finish: "stop", durationMs: 5, usage: { input: 100, output: 10 } }),
+      ev(10, "step/end", {
+        step: 0,
+        finish: "stop",
+        durationMs: 5,
+        usage: { input: 100, output: 10 },
+        ttftMs: 3,
+        decodeMs: 2,
+      }),
       ev(11, "turn/end", { status: "completed", durationMs: 6 }),
     ]);
 
@@ -68,6 +75,9 @@ describe("轨迹记录 · 一张表", () => {
     expect(assistant.inputTokens).toBe(100);
     expect(assistant.outputTokens).toBe(10);
     expect(assistant.stepMs).toBe(5);
+    expect(assistant.ttftMs).toBe(3);
+    expect(assistant.decodeMs).toBe(2);
+    expect(assistant.requestStartedAt).toBe(1006);
   });
 
   test("压缩、失败尝试、回退都留在同一张表", () => {

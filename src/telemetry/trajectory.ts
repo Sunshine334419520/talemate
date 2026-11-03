@@ -33,6 +33,11 @@ export interface TrajectoryRecord {
   outputTokens?: number;
   /** 这一步模型请求的总耗时（来自 step/end） */
   stepMs?: number;
+  /** 首 token 延迟与解码耗时（来自 step/end） */
+  ttftMs?: number;
+  decodeMs?: number;
+  /** 请求开始时间（step/start），不是消息落盘时间 */
+  requestStartedAt?: number;
   model?: string;
   targetSeq?: number;
   requestSeq?: number;
@@ -84,7 +89,8 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
   let serial = 0;
   const tools = new Map<string, TrajectoryRecord>();
   const requestSeqs = new Map<number, number>();
-  const stepResults = new Map<number, { input?: number; output?: number; ms?: number }>();
+  const stepResults = new Map<number, { input?: number; output?: number; ms?: number; ttftMs?: number; decodeMs?: number }>();
+  const stepStarts = new Map<number, number>();
   const attachRequestSeq = (record: TrajectoryRecord | undefined): void => {
     if (record !== undefined && record.step !== undefined && record.requestSeq === undefined) {
       record.requestSeq = requestSeqs.get(record.step);
@@ -135,12 +141,15 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
 
       case "step/start":
         step = event.data.step;
+        stepStarts.set(event.data.step, event.time);
         break;
 
       case "step/end": {
         const result = {
           ...(event.data.usage === undefined ? {} : { input: event.data.usage.input, output: event.data.usage.output }),
           ms: event.data.durationMs,
+          ...(event.data.ttftMs === undefined ? {} : { ttftMs: event.data.ttftMs }),
+          ...(event.data.decodeMs === undefined ? {} : { decodeMs: event.data.decodeMs }),
         };
         stepResults.set(event.data.step, result);
         // 消息可能在 step/end 之后才落盘；先把已经存在的 assistant 记录补上
@@ -149,6 +158,10 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
           if (result.input !== undefined) record.inputTokens = result.input;
           if (result.output !== undefined) record.outputTokens = result.output;
           record.stepMs = result.ms;
+          if (result.ttftMs !== undefined) record.ttftMs = result.ttftMs;
+          if (result.decodeMs !== undefined) record.decodeMs = result.decodeMs;
+          const startedAt = stepStarts.get(event.data.step);
+          if (startedAt !== undefined) record.requestStartedAt = startedAt;
         }
         break;
       }
@@ -185,6 +198,10 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
           if (result.input !== undefined) record.inputTokens = result.input;
           if (result.output !== undefined) record.outputTokens = result.output;
           if (result.ms !== undefined) record.stepMs = result.ms;
+          if (result.ttftMs !== undefined) record.ttftMs = result.ttftMs;
+          if (result.decodeMs !== undefined) record.decodeMs = result.decodeMs;
+          const startedAt = step === undefined ? undefined : stepStarts.get(step);
+          if (startedAt !== undefined) record.requestStartedAt = startedAt;
         }
         for (const part of message.parts ?? []) {
           if (part.type !== "tool") continue;
