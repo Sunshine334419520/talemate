@@ -89,6 +89,19 @@
 - `events.ts` 的 `EVENT_TYPES` 是穷尽的 `Record<TraceEventType, true>`，加事件不更新它会编译失败；
 - `tests/telemetry_schema.test.ts` 用穷尽的 `SAMPLES` 保证每种事件都有可读样例。
 
+## 轨迹表：事件 → 记录
+
+`src/telemetry/trajectory.ts` 的 `buildTrajectory(events)` 把日志折成一张人看的表：
+
+```text
+turn
+└─ system / user / assistant / tool / compaction / attempt / rewind
+```
+
+每条记录带内容（text / reasoning / tool input / output / error / change / system prompt）和元数据
+（seq / 时间 / 耗时 / 状态 / step / requestSeq）。消息不再是一种独立模式——它只是 `user` /
+`assistant` 记录；原始事件仍在 `/trace`，不在这张表里重复。
+
 ## 请求详情：由日志折叠
 
 `src/telemetry/request_detail.ts` 的 `buildRequestDetail(events, headerSeq)` 返回某一步的：
