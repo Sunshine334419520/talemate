@@ -50,7 +50,7 @@ describe("轨迹记录 · 一张表", () => {
           ],
         },
       }),
-      ev(10, "step/end", { step: 0, finish: "stop", durationMs: 5 }),
+      ev(10, "step/end", { step: 0, finish: "stop", durationMs: 5, usage: { input: 100, output: 10 } }),
       ev(11, "turn/end", { status: "completed", durationMs: 6 }),
     ]);
 
@@ -65,6 +65,9 @@ describe("轨迹记录 · 一张表", () => {
     const assistant = turn.records.find((r) => r.kind === "assistant")!;
     expect(assistant.text).toBe("看过了");
     expect(assistant.requestSeq).toBe(4);
+    expect(assistant.inputTokens).toBe(100);
+    expect(assistant.outputTokens).toBe(10);
+    expect(assistant.stepMs).toBe(5);
   });
 
   test("压缩、失败尝试、回退都留在同一张表", () => {

@@ -28,6 +28,11 @@ export interface TrajectoryRecord {
   error?: string;
   change?: { path: string; kind: string };
   durationMs?: number;
+  /** 这一步模型请求的 usage（来自 step/end；只有 assistant 记录带） */
+  inputTokens?: number;
+  outputTokens?: number;
+  /** 这一步模型请求的总耗时（来自 step/end） */
+  stepMs?: number;
   model?: string;
   targetSeq?: number;
   requestSeq?: number;
@@ -79,6 +84,7 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
   let serial = 0;
   const tools = new Map<string, TrajectoryRecord>();
   const requestSeqs = new Map<number, number>();
+  const stepResults = new Map<number, { input?: number; output?: number; ms?: number }>();
   const attachRequestSeq = (record: TrajectoryRecord | undefined): void => {
     if (record !== undefined && record.step !== undefined && record.requestSeq === undefined) {
       record.requestSeq = requestSeqs.get(record.step);
@@ -131,6 +137,22 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
         step = event.data.step;
         break;
 
+      case "step/end": {
+        const result = {
+          ...(event.data.usage === undefined ? {} : { input: event.data.usage.input, output: event.data.usage.output }),
+          ms: event.data.durationMs,
+        };
+        stepResults.set(event.data.step, result);
+        // 消息可能在 step/end 之后才落盘；先把已经存在的 assistant 记录补上
+        for (const record of turn?.records ?? []) {
+          if (record.kind !== "assistant" || record.step !== event.data.step) continue;
+          if (result.input !== undefined) record.inputTokens = result.input;
+          if (result.output !== undefined) record.outputTokens = result.output;
+          record.stepMs = result.ms;
+        }
+        break;
+      }
+
       case "request/header":
         requestSeqs.set(event.data.step, event.seq);
         for (const record of turn?.records ?? []) {
@@ -158,6 +180,12 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
           text: textOfMessage(message) || undefined,
           reasoning: reasoningOfMessage(message) || undefined,
         });
+        const result = step === undefined ? undefined : stepResults.get(step);
+        if (record !== undefined && result !== undefined) {
+          if (result.input !== undefined) record.inputTokens = result.input;
+          if (result.output !== undefined) record.outputTokens = result.output;
+          if (result.ms !== undefined) record.stepMs = result.ms;
+        }
         for (const part of message.parts ?? []) {
           if (part.type !== "tool") continue;
           let tool = tools.get(part.id);
