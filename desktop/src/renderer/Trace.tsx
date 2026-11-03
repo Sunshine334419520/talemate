@@ -313,6 +313,9 @@ function EventTrace({ model }: { model: TraceModel | null }) {
                   {step.status}
                 </span>
                 {step.finish !== undefined && <span className="trace-sub">{step.finish}</span>}
+                {step.request?.reason !== undefined && (
+                  <span className="trace-sub">header {step.request.reason}</span>
+                )}
                 {step.usage !== undefined && (
                   <span className="trace-sub">
                     in {step.usage.input} · out {step.usage.output}
