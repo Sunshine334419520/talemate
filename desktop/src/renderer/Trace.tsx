@@ -321,6 +321,26 @@ export function Trace({
 
   const count = turns.reduce((n, turn) => n + turn.records.length, 0);
 
+  const timeline = useMemo(() => {
+    const records = (trajectory?.turns ?? []).flatMap((turn) => turn.records);
+    const timed = records.filter((record): record is TrajectoryRecord & { at: number } => record.at !== undefined);
+    if (timed.length === 0) return null;
+    const start = Math.min(...timed.map((record) => record.at));
+    const end = Math.max(...timed.map((record) => record.at + (record.durationMs ?? 0)), start + 1);
+    const span = end - start;
+    return {
+      start,
+      end,
+      segments: timed.map((record) => ({
+        id: record.id,
+        kind: record.kind,
+        label: `${KIND_LABEL[record.kind]}${record.toolName === undefined ? "" : ` ${record.toolName}`} · ${shortTime(record.at)}`,
+        left: ((record.at - start) / span) * 100,
+        width: Math.max(0.6, ((record.durationMs ?? 0) / span) * 100),
+      })),
+    };
+  }, [trajectory]);
+
   async function openRequest(seq: number): Promise<void> {
     if (seq in requestDetails) return;
     const detail = await window.tm.sessionRequestDetail(seq).catch(() => null);
@@ -372,6 +392,19 @@ export function Trace({
           </button>
         )}
       </div>
+
+      {timeline !== null && (
+        <div className="trace-timeline" aria-hidden="true">
+          {timeline.segments.map((segment) => (
+            <span
+              key={segment.id}
+              className={`trace-timeline-seg ${KIND_CLASS[segment.kind]}`}
+              style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
+              title={segment.label}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="trace-body">
         <div className="trace-table-wrap">
@@ -451,13 +484,15 @@ export function Trace({
                 ×
               </button>
             </div>
-            <RecordDetail
-              record={selected}
-              requestDetail={selected.requestSeq === undefined ? undefined : requestDetails[selected.requestSeq]}
-              onRequest={() => {
-                if (selected.requestSeq !== undefined) void openRequest(selected.requestSeq);
-              }}
-            />
+            <div className="trace-details-body">
+              <RecordDetail
+                record={selected}
+                requestDetail={selected.requestSeq === undefined ? undefined : requestDetails[selected.requestSeq]}
+                onRequest={() => {
+                  if (selected.requestSeq !== undefined) void openRequest(selected.requestSeq);
+                }}
+              />
+            </div>
           </aside>
         )}
       </div>

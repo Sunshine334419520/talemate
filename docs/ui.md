@@ -160,9 +160,9 @@
   当前页用下划线标出（同 DSH 的视图切换）。标签独占一行，不和标题挤在同一排。
 - **轨迹是「左表 + 右检查器」，不再是卡片堆**：左侧两列（类型 / 一行摘要），`system / user /
   assistant / tool / compaction / attempt / rewind` 都是表里的记录；选中一行才在右侧展开完整内容
-  （正文/思考/工具输入输出/system prompt），请求详情也在右侧。上方有搜索、类型筛选与事件日志路径，
-  原始事件仍走 `/trace` 的摘要/导出（`Trace.tsx` + `src/telemetry/trajectory.ts` +
-  `src/telemetry/request_detail.ts`）。
+  （正文/思考/工具输入输出/system prompt），请求详情也在右侧。右侧检查器占满可用高度、内容自己滚，
+  不再被某一轮/某一行的高度卡住。上方有搜索、类型筛选、静态时间概览与事件日志路径；原始事件仍走
+  `/trace` 的摘要/导出（`Trace.tsx` + `src/telemetry/trajectory.ts` + `src/telemetry/request_detail.ts`）。
 - **左栏有「轨迹」段**：跨会话列表，显示状态 / 轮 / 步 / 失败数；点一条会切到那份会话并打开「轨迹」的**事件面**。
   它读的是 `buildTraceIndex` 的读侧投影，不另存索引。
 - **委派子代理是对话里的一张嵌套卡**（谁、交代了什么、返回了什么），**不是左栏的另一次会话**。

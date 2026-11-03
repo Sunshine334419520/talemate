@@ -1642,3 +1642,46 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
   font-weight: 500;
   text-align: left;
 }
+
+/* 轨迹的整页高度：外层不再滚，表格与右侧检查器各自滚 */
+.scroll.trace-scroll { overflow: hidden; }
+.trace { height: 100%; }
+.trace-body { flex: 1; min-height: 0; align-items: stretch; }
+.trace-table-wrap { height: 100%; min-height: 0; }
+.trace-details {
+  flex: 0 0 clamp(320px, 36%, 440px);
+  height: 100%;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.trace-details-head { flex: none; height: 38px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.trace-details-body { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+
+.trace-timeline {
+  position: relative;
+  flex: none;
+  height: 28px;
+  margin: 2px 0 4px;
+  overflow: hidden;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.trace-timeline-seg {
+  position: absolute;
+  bottom: 6px;
+  height: 6px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--faint);
+  opacity: 0.85;
+}
+.trace-timeline-seg.user { background: var(--accent); }
+.trace-timeline-seg.assistant { background: #9b7bd4; }
+.trace-timeline-seg.tool { bottom: 3px; height: 10px; background: #c59a4a; }
+.trace-timeline-seg.attempt { background: var(--zhu); }
+.trace-timeline-seg.compaction { background: #7f8c8d; }
+.trace-timeline-seg.rewind { background: #7f8c8d; }
