@@ -106,7 +106,7 @@
 - `/trace` 看摘要、`/trace export` 导出脱敏副本，`/debug` 报事件路径与统计；
 - 每个请求落 `request/header`（模型参数 + hash；首个/变化时带完整 tools 快照）、`system/prompt`、`request/context`，eval manifest 优先用它；
 - 请求详情由 `buildRequestDetail` 从日志折叠（system + tools + messages），不存请求体；
-- 轨迹表 `src/telemetry/trajectory.ts`（system/user/assistant/tool/compaction/attempt/rewind，一条记录同时带内容与元数据）已落地，桌面合并为一张表；
+- 轨迹表 `src/telemetry/trajectory.ts`（system/user/assistant/tool/compaction/attempt/rewind，一条记录同时带内容与元数据）已落地；桌面是「左表 + 右检查器」，不再分事件/消息；
 - OTel 仍未接——先保证事件完整，再谈查询视图。
 
 已拍板的 ADR（细节见 `telemetry.md`）：
