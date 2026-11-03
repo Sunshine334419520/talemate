@@ -2,7 +2,7 @@
 
 > **职责**：回答"会话事件是什么形状、谁在什么时候发、messages/span/统计怎么从它折出来、导出时怎么脱敏"。
 > **读者**：要加一类事件、加一个投影、接一个观测消费者（eval reader / OTel）的人。
-> **对齐代码**：2026-11-02 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
+> **对齐代码**：2026-11-03 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
 
 ## 一句话
 
@@ -44,7 +44,9 @@
 | `session/rewind` | 就地回退；投影据此遮住 `seq >= targetSeq` 的消息 | `truncateMessagesBefore` |
 | `turn/start` / `turn/end` | 一次用户输入到模型停下 | `Session.runTurn` |
 | `step/start` / `step/end` | 一次模型请求（`step` 从 0 起） | `Session.runTurn` 的 `generate` |
-| `request/header` | 每次请求前：模型参数 + system/tools/messages/prompt 的 hash 与字符数，**不含正文** | 同上 |
+| `system/prompt` | 渲染后的 system prompt；**按变化才写**，不是 messages 投影 | 同上 |
+| `request/header` | 每步的轻量 hash；首个请求/配置或工具变化时带 `reason` 与完整 `tools` 快照 | 同上 |
+| `request/context` | 路由的 provider/model/contextWindow；变化才写 | 同上 |
 | `assistant/attempt` | 这次请求失败或被中止（**没有产出消息**） | 同上 |
 | `user/message` / `assistant/message` / `compaction/summary` | 一条消息提交进事件日志 | `appendMessage` |
 | `tool/call` / `tool/result` | 每次工具执行前后（含被 `planGatePart` 拦下的） | `Session` 的 `executeTool` / `applyApprovedDesign` |
@@ -53,6 +55,10 @@
 为什么 `assistant/attempt` 必须存在：上面那三种消息事件只记得成功落盘的消息。一次网络失败、一次用户中止、一次被截断的流，在任何消息投影里都不存在——不单独记，它们就永远查不到。
 
 `request/header` 与 eval 的 manifest 用同一份 `core/hash.ts`：在线 trace 与 cassette 的 promptHash/toolsHash 能互相指认；manifest 优先读它，不再依赖 cassette 第一条。
+
+`request/header` 的完整快照只在首个请求（`reason: "initial"`）或配置/工具变化（`reason: "change"`）时携带
+`tools`；普通 step 只写 hash。`system/prompt` 只在 system 变化时写全文。这样请求可以被**重建**，
+而不是把同一份 system/messages 复制进 header。
 
 为什么工具正文不复制进事件：入参与输出已经在 `assistant/message` 的 parts 里。事件只记边界上才拿得到的事实（`state` / `durationMs` / `outputChars` / `error`），再存一份正文就是第二份真源。
 
@@ -77,10 +83,24 @@
 
 `src/telemetry/schema.ts` 是所有读日志的入口：
 
-- `TRACE_SCHEMA_VERSION` 当前是 1；`MIGRATIONS` 是版本 n → n+1 的迁移表；
+- `TRACE_SCHEMA_VERSION` 当前是 2；`MIGRATIONS` 是版本 n → n+1 的迁移表（v1→v2 只做版本升级，旧事件仍是合法输入）；
 - `upgradeEvent(raw)` 只接受已知版本/已知类型/完整字段，未知未来版本或未知类型返回 `null`（跳过，不猜）；
 - `events.ts` 的 `EVENT_TYPES` 是穷尽的 `Record<TraceEventType, true>`，加事件不更新它会编译失败；
 - `tests/telemetry_schema.test.ts` 用穷尽的 `SAMPLES` 保证每种事件都有可读样例。
+
+## 请求详情：由日志折叠
+
+`src/telemetry/request_detail.ts` 的 `buildRequestDetail(events, headerSeq)` 返回某一步的：
+
+- `config`：provider / model / temperature / maxTokens / reasoning；
+- `tools`：最近一次完整 header 快照的工具 schema；
+- `system`：最近一次 `system/prompt` 的全文；
+- `context`：最近一次 `request/context`；
+- `messages`：该 header 之前的事件投影，再按最后一次 compaction 截窗。
+
+它**不存请求体**，也不读 cassette；这是 DSH 的“模型可见 ⟺ 已持久引用”：
+请求 = `header.config + deriveMessages() + header.tools`。旧日志缺 `system/prompt` 或 tools 快照时，
+字段就是缺失，UI 明确显示“未记录”，不猜。
 
 ## 事件视图模型
 

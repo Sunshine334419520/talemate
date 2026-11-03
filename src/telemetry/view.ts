@@ -44,7 +44,10 @@ export interface TraceStepView {
   durationMs?: number;
   finish?: TraceEventData["step/end"]["finish"];
   usage?: TraceUsage;
-  request?: TraceEventData["request/header"];
+  /** 轻量 header：不把完整 tools schema 复制进过程树；请求详情按需从事件折叠 */
+  request?: Omit<TraceEventData["request/header"], "tools">;
+  /** 该步 request/header 事件的 seq，供请求详情按需折叠 */
+  requestSeq?: number;
   attempts: TraceAttemptView[];
   tools: TraceToolView[];
 }
@@ -165,7 +168,21 @@ export function buildTraceModel(events: readonly AnyTraceEvent[]): TraceModel {
 
       case "request/header":
         step = ensureStep(event.data.step);
-        if (step !== undefined) step.request = event.data;
+        if (step !== undefined) {
+          const { tools: _tools, ...header } = event.data;
+          void _tools;
+          step.request = header;
+          step.requestSeq = event.seq;
+        }
+        break;
+
+      case "system/prompt":
+        // system 正文由请求详情按需读；过程树只保留 step 结构
+        step = ensureStep(event.data.step);
+        break;
+
+      case "request/context":
+        // 路由元数据由请求详情按需读事件，不塞进过程树
         break;
 
       case "step/end":
