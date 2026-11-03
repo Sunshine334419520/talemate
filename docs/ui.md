@@ -158,11 +158,11 @@
   没有回答方时按拒绝处理。两者共享视觉，不共享契约（见 `ask-user.md` 的「为什么不合 `confirm`」）。
 - 顶部两行：第一行是当前作品 / 会话、模式、待拍板、角色与模型；第二行是**左对齐的「对话 / 轨迹」标签栏**，
   当前页用下划线标出（同 DSH 的视图切换）。标签独占一行，不和标题挤在同一排。
-- **轨迹默认是「事件」面**：从 canonical events 折 turn → step → attempt / tool / compaction / rewind，
-  看每一步的请求 hash、耗时、token、失败与工具状态；点「请求详情」按需折叠出 system / tools /
-  messages（纯读日志，没有请求体文件）。**「消息」面**保留思考全文、工具入参/输出、halt、`task`
-  子会话与「全部 / 工具 / 思考 / 错误」筛选。事件面是结构，消息面是正文，两者共用同一份底层日志
-  （`Trace.tsx` + `src/telemetry/view.ts` + `src/telemetry/request_detail.ts` + `desktop/src/shared/trace.ts`）。
+- **轨迹是一张记录表，不再分「事件 / 消息」**：`system / user / assistant / tool / compaction / attempt / rewind`
+  都是同一张表里的记录，内容（正文、思考、工具入参输出、system prompt）与耗时/token/状态在同一行；
+  可按类型筛选、搜索，点「请求详情」按需折叠出 system / tools / messages（纯读日志，没有请求体文件）。
+  原始事件日志仍走 `/trace` 的摘要/导出，不在轨迹里重复（`Trace.tsx` + `src/telemetry/trajectory.ts`
+  + `src/telemetry/request_detail.ts`）。
 - **左栏有「轨迹」段**：跨会话列表，显示状态 / 轮 / 步 / 失败数；点一条会切到那份会话并打开「轨迹」的**事件面**。
   它读的是 `buildTraceIndex` 的读侧投影，不另存索引。
 - **委派子代理是对话里的一张嵌套卡**（谁、交代了什么、返回了什么），**不是左栏的另一次会话**。

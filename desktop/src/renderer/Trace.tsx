@@ -1,29 +1,32 @@
 /**
- * 轨迹：和对话同一份消息，但不折叠过程。
+ * 轨迹：一张从 canonical 事件折出来的记录表。
  *
- * 对话视图把"用了 N 步"收成一行——那是给读者看的；排查时要看的是每一步本身：思考全文、
- * 工具入参、工具输出、耗时、错误、halt，以及 `task` 委派到的子会话。
- *
- * 它只读，不改任何状态；路径那格是给"去文件系统里看完整 jsonl"用的。
+ * 不再分「事件 / 消息」两个模式——system、user、assistant、tool、compaction、attempt、rewind 都是
+ * 同一张表里的记录；内容与耗时/token 在同一行。原始事件日志走 `/trace`，不在这里重复。
  */
 import { useMemo, useState } from "react";
-import type { AskRecord, OpenInfo, RequestDetail, StoredMessage, TraceModel } from "../shared/api";
-import { filterTraceRows, traceRows, type TraceFilter, type TraceRow } from "../shared/trace";
+import type { AskRecord, OpenInfo, RequestDetail, StoredMessage, TrajectoryRecord, TrajectoryView } from "../shared/api";
 import type { LiveItem } from "./Thread";
 
-const FILTERS: { value: TraceFilter; label: string }[] = [
-  { value: "all", label: "全部" },
-  { value: "tools", label: "工具" },
-  { value: "thinking", label: "思考" },
-  { value: "errors", label: "错误" },
-];
-
-const STATE_LABEL: Record<string, string> = {
-  pending: "等待",
-  running: "执行中",
-  completed: "完成",
-  error: "错误",
+const KIND_LABEL: Record<string, string> = {
+  system: "系统",
+  user: "用户",
+  assistant: "正文",
+  tool: "工具",
+  compaction: "压缩",
+  attempt: "失败",
+  rewind: "回退",
 };
+
+const FILTERS: { value: "all" | TrajectoryRecord["kind"] | "error"; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "system", label: "系统" },
+  { value: "user", label: "用户" },
+  { value: "assistant", label: "正文" },
+  { value: "tool", label: "工具" },
+  { value: "compaction", label: "压缩" },
+  { value: "error", label: "错误" },
+];
 
 function shortTime(ts?: number): string {
   if (ts === undefined) return "";
@@ -35,183 +38,6 @@ function preview(text: string, max = 180): string {
   return one.length <= max ? one : `${one.slice(0, max)}…`;
 }
 
-/** 工具入参里能认出"派给谁"的，单独提出来——轨迹里最常看的就是这一格。 */
-function taskAgentOf(input?: string): string | undefined {
-  if (input === undefined) return undefined;
-  try {
-    const args = JSON.parse(input) as { agent?: unknown };
-    return typeof args.agent === "string" ? args.agent : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** `task` 的输出里带着子会话 id；抓出来给排查用（子会话不在左栏列表里）。 */
-function taskSessionOf(output?: string): string | undefined {
-  if (output === undefined) return undefined;
-  return /<task\b[^>]*\bsession="([^"]+)"/.exec(output)?.[1];
-}
-
-function ToolRow({ row }: { row: TraceRow }) {
-  const agent = taskAgentOf(row.input);
-  const session = taskSessionOf(row.output);
-  return (
-    <details className={`trace-row trace-tool${row.state === "error" ? " trace-error" : ""}`}>
-      <summary className="trace-summary">
-        <span className="trace-tag">工具</span>
-        <b className="trace-name">{row.toolName ?? "(未知)"}</b>
-        <span className={`trace-state${row.state === "error" ? " bad" : ""}`}>
-          {STATE_LABEL[row.state ?? ""] ?? row.state ?? ""}
-        </span>
-        {row.halt === true && <span className="trace-state halt">halt</span>}
-        {agent !== undefined && <span className="trace-sub">子代理 · {agent}</span>}
-        <span className="trace-meta">
-          seq {row.seq ?? "—"}
-          {row.ms === undefined ? "" : ` · ${row.ms} ms`}
-          {row.at === undefined ? "" : ` · ${shortTime(row.at)}`}
-        </span>
-        {row.output !== undefined && <span className="trace-preview">{preview(row.output)}</span>}
-      </summary>
-      {session !== undefined && (
-        <div className="trace-line">
-          子会话：<code>{session}</code>
-        </div>
-      )}
-      {row.input !== undefined && (
-        <div className="trace-block">
-          <div className="trace-label">入参</div>
-          <pre className="trace-pre">{row.input}</pre>
-        </div>
-      )}
-      {row.output !== undefined && (
-        <div className="trace-block">
-          <div className="trace-label">输出</div>
-          <pre className="trace-pre">{row.output}</pre>
-        </div>
-      )}
-      {row.error !== undefined && (
-        <div className="trace-block">
-          <div className="trace-label bad">错误</div>
-          <pre className="trace-pre">{row.error}</pre>
-        </div>
-      )}
-      {row.change !== undefined && (
-        <div className="trace-line">
-          落盘：<code>{row.change.path}</code>（{row.change.kind} · +{row.change.additions} / -{row.change.deletions}）
-        </div>
-      )}
-      {row.ask !== undefined && (
-        <div className="trace-line">
-          提问：{row.ask.outcome} · {row.ask.questions.length} 题
-          {row.ask.answers === undefined ? "" : ` · 已答 ${row.ask.answers.length}`}
-        </div>
-      )}
-    </details>
-  );
-}
-
-function TextRow({ row }: { row: TraceRow }) {
-  const label =
-    row.kind === "user" ? "用户" : row.kind === "reasoning" ? "思考" : row.kind === "compaction" ? "压缩" : "正文";
-  const text = row.text ?? "";
-  return (
-    <details className={`trace-row trace-${row.kind}`} open={row.kind === "compaction"}>
-      <summary className="trace-summary">
-        <span className={`trace-tag ${row.kind}`}>{label}</span>
-        <span className="trace-meta">
-          seq {row.seq ?? "—"}
-          {row.at === undefined ? "" : ` · ${shortTime(row.at)}`}
-          {row.finish === undefined ? "" : ` · ${row.finish}`}
-        </span>
-        <span className="trace-preview">{preview(text)}</span>
-      </summary>
-      <pre className="trace-pre">{text}</pre>
-    </details>
-  );
-}
-
-function Row({ row }: { row: TraceRow }) {
-  return row.kind === "tool" ? <ToolRow row={row} /> : <TextRow row={row} />;
-}
-
-/** 实时那一轮：`live` 里的东西还没落盘，轨照样把它按原样铺出来。 */
-function LiveRow({ item }: { item: LiveItem }) {
-  if (item.kind === "tool") {
-    return (
-      <div className="trace-row trace-tool trace-live-row">
-        <div className="trace-summary">
-          <span className="trace-tag">工具</span>
-          <b className="trace-name">{item.name}</b>
-          {item.preparing === true ? <span className="trace-state">准备中</span> : <span className="trace-state">实时</span>}
-          {item.subject !== undefined && <span className="trace-sub">{preview(item.subject, 100)}</span>}
-        </div>
-        {item.input !== undefined && <pre className="trace-pre">{item.input}</pre>}
-        {item.output !== undefined && <pre className="trace-pre">{item.output}</pre>}
-      </div>
-    );
-  }
-  if (item.kind === "think") {
-    return (
-      <div className="trace-row trace-reasoning trace-live-row">
-        <div className="trace-summary">
-          <span className="trace-tag reasoning">思考</span>
-          <span className="trace-state">实时</span>
-          <span className="trace-preview">{preview(item.text)}</span>
-        </div>
-        <pre className="trace-pre">{item.text}</pre>
-      </div>
-    );
-  }
-  if (item.kind === "text") {
-    return (
-      <div className="trace-row trace-text trace-live-row">
-        <div className="trace-summary">
-          <span className="trace-tag">正文</span>
-          <span className="trace-state">实时</span>
-        </div>
-        <pre className="trace-pre">{item.text}</pre>
-      </div>
-    );
-  }
-  if (item.kind === "me") {
-    return (
-      <div className="trace-row trace-user trace-live-row">
-        <div className="trace-summary">
-          <span className="trace-tag user">用户</span>
-        </div>
-        <pre className="trace-pre">{item.text}</pre>
-      </div>
-    );
-  }
-  if (item.kind === "note") {
-    return <div className="trace-row trace-live-row">{item.text}</div>;
-  }
-  if (item.kind === "ask") {
-    return <AskLine record={item.record} live />;
-  }
-  if (item.kind === "chapter") {
-    return (
-      <div className="trace-row trace-live-row">
-        稿子：<code>{item.path}</code>（{item.words.toLocaleString()} 字）
-      </div>
-    );
-  }
-  return null;
-}
-
-function AskLine({ record, live }: { record: AskRecord; live?: boolean }) {
-  return (
-    <div className="trace-row trace-live-row">
-      <span className="trace-tag">提问</span> {record.outcome} · {record.questions.length} 题
-      {live === true ? " · 实时" : ""}
-    </div>
-  );
-}
-
-function shortHash(hash: string): string {
-  return hash.slice(0, 12);
-}
-
 function messageText(message: StoredMessage): string {
   if (message.role === "compaction") return [message.summary, message.recent].filter(Boolean).join("\n\n");
   if (message.role === "assistant") {
@@ -219,10 +45,7 @@ function messageText(message: StoredMessage): string {
       .map((part) => {
         if (part.type === "text" || part.type === "reasoning") return part.text;
         if (part.type === "tool") {
-          return [
-            `[tool ${part.name}] ${part.input ?? ""}`,
-            part.output === undefined ? "" : `→ ${part.output}`,
-          ]
+          return [`[tool ${part.name}] ${part.input ?? ""}`, part.output === undefined ? "" : `→ ${part.output}`]
             .filter(Boolean)
             .join("\n");
         }
@@ -272,129 +95,200 @@ function RequestDetailView({ detail }: { detail: RequestDetail | null }) {
   );
 }
 
-/** 事件面：turn → step → attempt / tool。正文仍在「消息」面；这里看结构、状态、耗时与 hash。 */
-function EventTrace({ model }: { model: TraceModel | null }) {
-  const [details, setDetails] = useState<Record<number, RequestDetail | null>>({});
+function RecordRow({
+  record,
+  requestDetail,
+  onOpenRequest,
+}: {
+  record: TrajectoryRecord;
+  requestDetail: RequestDetail | null | undefined;
+  onOpenRequest: (seq: number) => void;
+}) {
+  const label = KIND_LABEL[record.kind] ?? record.kind;
+  const bodyText = record.text ?? record.reasoning ?? "";
+  const summary = [record.toolName, record.error, record.text, record.reasoning].filter(Boolean).join(" · ");
+  const failed = record.error !== undefined || record.status === "error" || record.status === "interrupted";
 
-  async function openDetail(seq: number): Promise<void> {
-    if (seq in details) return;
-    const detail = await window.tm.sessionRequestDetail(seq).catch(() => null);
-    setDetails((prev) => ({ ...prev, [seq]: detail }));
-  }
-
-  if (model === null) return <p className="note">事件模型读取中…</p>;
-  if (model.turns.length === 0) return <p className="note">还没有可看的事件。</p>;
   return (
-    <div className="trace-events">
-      {model.turns.map((turn) => (
-        <details className="trace-row trace-turn" key={turn.index} open>
-          <summary className="trace-summary">
-            <span className="trace-tag">轮</span>
-            <b className="trace-name">#{turn.index + 1}</b>
-            <span className={`trace-state${turn.status === "error" || turn.status === "aborted" ? " bad" : ""}`}>
-              {turn.status}
-            </span>
-            <span className="trace-sub">{turn.agent}</span>
-            <span className="trace-meta">
-              {turn.endedAt === undefined ? "进行中" : `${turn.endedAt - turn.startedAt} ms`}
-            </span>
-          </summary>
-          {turn.error !== undefined && (
-            <div className="trace-line">
-              <span className="trace-state bad">{turn.error.name}</span>：{turn.error.message}
+    <details className={`trace-row trace-${record.kind}${failed ? " trace-error" : ""}`} open={record.kind === "attempt"}>
+      <summary className="trace-summary">
+        <span className={`trace-tag ${record.kind}`}>{label}</span>
+        {record.toolName !== undefined && <b className="trace-name">{record.toolName}</b>}
+        {record.status !== undefined && (
+          <span className={`trace-state${failed ? " bad" : ""}`}>{record.status}</span>
+        )}
+        {record.step !== undefined && <span className="trace-sub">step {record.step}</span>}
+        <span className="trace-meta">
+          {record.at === undefined ? "" : shortTime(record.at)}
+          {record.durationMs === undefined ? "" : ` · ${record.durationMs} ms`}
+          {record.seq === undefined ? "" : ` · seq ${record.seq}`}
+        </span>
+        {summary !== "" && <span className="trace-preview">{preview(summary)}</span>}
+      </summary>
+
+      {record.kind === "system" && record.text !== undefined && <pre className="trace-pre">{record.text}</pre>}
+      {(record.kind === "user" || record.kind === "assistant") && bodyText !== "" && (
+        <pre className="trace-pre">{record.kind === "assistant" && record.reasoning !== undefined && record.text === undefined ? record.reasoning : bodyText}</pre>
+      )}
+      {record.kind === "assistant" && record.text !== undefined && record.reasoning !== undefined && (
+        <details>
+          <summary className="trace-line">思考 · {record.reasoning.length} 字</summary>
+          <pre className="trace-pre">{record.reasoning}</pre>
+        </details>
+      )}
+      {record.kind === "tool" && (
+        <>
+          {record.input !== undefined && (
+            <div className="trace-block">
+              <div className="trace-label">入参</div>
+              <pre className="trace-pre">{record.input}</pre>
             </div>
           )}
-          {turn.steps.map((step) => (
-            <details className="trace-step" key={step.index} open>
-              <summary className="trace-summary">
-                <span className="trace-tag">步</span>
-                <b className="trace-name">{step.index}</b>
-                <span className={`trace-state${step.status === "error" || step.status === "interrupted" ? " bad" : ""}`}>
-                  {step.status}
-                </span>
-                {step.finish !== undefined && <span className="trace-sub">{step.finish}</span>}
-                {step.request?.reason !== undefined && (
-                  <span className="trace-sub">header {step.request.reason}</span>
-                )}
-                {step.usage !== undefined && (
-                  <span className="trace-sub">
-                    in {step.usage.input} · out {step.usage.output}
-                  </span>
-                )}
-                <span className="trace-meta">{step.durationMs === undefined ? "—" : `${step.durationMs} ms`}</span>
-              </summary>
-              {step.request !== undefined && (
-                <div className="trace-line">
-                  prompt <code>{shortHash(step.request.promptHash)}</code> · system{" "}
-                  {step.request.systemChars} · tools {step.request.toolsChars} · messages{" "}
-                  {step.request.messagesChars} · {step.request.model}
-                  {step.requestSeq !== undefined && (
-                    <button type="button" className="trace-path" onClick={() => void openDetail(step.requestSeq!)}>
-                      请求详情
-                    </button>
-                  )}
-                </div>
-              )}
-              {step.requestSeq !== undefined && details[step.requestSeq] !== undefined && (
-                <RequestDetailView detail={details[step.requestSeq] ?? null} />
-              )}
-              {step.attempts.map((attempt, i) => (
-                <div className="trace-line" key={`a-${i}`}>
-                  <span className="trace-state bad">{attempt.outcome}</span> · {attempt.error.message} ·{" "}
-                  {attempt.durationMs} ms · 流出 {attempt.streamedChars} 字
-                </div>
-              ))}
-              {step.tools.map((tool) => (
-                <div className="trace-line" key={tool.callId}>
-                  <b className="trace-name">{tool.name}</b>{" "}
-                  <span className={`trace-state${tool.state === "error" ? " bad" : ""}`}>{tool.state}</span> ·
-                  in {tool.inputChars} / out {tool.outputChars ?? "—"} · {tool.durationMs ?? "—"} ms
-                  {tool.error !== undefined && <span className="trace-state bad"> · {tool.error}</span>}
-                  {tool.change !== undefined && <span> · {tool.change.path}</span>}
-                </div>
-              ))}
-            </details>
-          ))}
-          {turn.tools.map((tool) => (
-            <div className="trace-line" key={tool.callId}>
-              <b className="trace-name">{tool.name}</b>{" "}
-              <span className={`trace-state${tool.state === "error" ? " bad" : ""}`}>{tool.state}</span> ·
-              harness 直调 · {tool.durationMs ?? "—"} ms
+          {record.output !== undefined && (
+            <div className="trace-block">
+              <div className="trace-label">输出</div>
+              <pre className="trace-pre">{record.output}</pre>
             </div>
-          ))}
-          {turn.compactions.map((compaction, i) => (
-            <div className="trace-line" key={`c-${i}`}>
-              压缩 · {compaction.model ?? "?"} · {compaction.ok === false ? "失败" : "完成"} ·{" "}
-              {compaction.durationMs ?? "—"} ms
+          )}
+          {record.error !== undefined && (
+            <div className="trace-block">
+              <div className="trace-label bad">错误</div>
+              <pre className="trace-pre">{record.error}</pre>
             </div>
-          ))}
-        </details>
-      ))}
-      {model.rewinds.map((rewind, i) => (
-        <div className="trace-line" key={`r-${i}`}>
-          回退到 seq {rewind.targetSeq}
+          )}
+          {record.change !== undefined && (
+            <div className="trace-line">
+              落盘：<code>{record.change.path}</code>（{record.change.kind}）
+            </div>
+          )}
+        </>
+      )}
+      {record.kind === "compaction" && (
+        <div className="trace-line">
+          {record.model ?? ""} · {record.durationMs ?? "—"} ms
+          {record.text !== undefined && <pre className="trace-pre">{record.text}</pre>}
         </div>
-      ))}
+      )}
+      {record.kind === "attempt" && record.error !== undefined && (
+        <div className="trace-block">
+          <div className="trace-label bad">错误</div>
+          <pre className="trace-pre">{record.error}</pre>
+        </div>
+      )}
+      {record.kind === "rewind" && <div className="trace-line">回退到 seq {record.targetSeq ?? "?"}</div>}
+      {record.requestSeq !== undefined && (
+        <>
+          <button type="button" className="trace-path" onClick={() => onOpenRequest(record.requestSeq!)}>
+            请求详情
+          </button>
+          {requestDetail !== undefined && <RequestDetailView detail={requestDetail} />}
+        </>
+      )}
+    </details>
+  );
+}
+
+function LiveRow({ item }: { item: LiveItem }) {
+  if (item.kind === "tool") {
+    return (
+      <div className="trace-row trace-tool trace-live-row">
+        <div className="trace-summary">
+          <span className="trace-tag">工具</span>
+          <b className="trace-name">{item.name}</b>
+          <span className="trace-state">{item.preparing === true ? "准备中" : "实时"}</span>
+          {item.subject !== undefined && <span className="trace-sub">{preview(item.subject, 100)}</span>}
+        </div>
+        {item.input !== undefined && <pre className="trace-pre">{item.input}</pre>}
+        {item.output !== undefined && <pre className="trace-pre">{item.output}</pre>}
+      </div>
+    );
+  }
+  if (item.kind === "think" || item.kind === "text") {
+    return (
+      <div className={`trace-row trace-${item.kind === "think" ? "reasoning" : "text"} trace-live-row`}>
+        <div className="trace-summary">
+          <span className="trace-tag">{item.kind === "think" ? "思考" : "正文"}</span>
+          <span className="trace-state">实时</span>
+        </div>
+        <pre className="trace-pre">{item.text}</pre>
+      </div>
+    );
+  }
+  if (item.kind === "me") {
+    return (
+      <div className="trace-row trace-user trace-live-row">
+        <div className="trace-summary">
+          <span className="trace-tag user">用户</span>
+        </div>
+        <pre className="trace-pre">{item.text}</pre>
+      </div>
+    );
+  }
+  if (item.kind === "ask") return <AskLine record={item.record} live />;
+  if (item.kind === "chapter") {
+    return (
+      <div className="trace-row trace-live-row">
+        稿子：<code>{item.path}</code>（{item.words.toLocaleString()} 字）
+      </div>
+    );
+  }
+  if (item.kind === "changes") {
+    return <div className="trace-row trace-live-row">本轮改动 {item.changes.length} 个文件</div>;
+  }
+  if (item.kind === "proposal-done") {
+    return (
+      <div className="trace-row trace-live-row">
+        提案 · {item.title} · {item.verdict}
+      </div>
+    );
+  }
+  return <div className="trace-row trace-live-row">{item.text}</div>;
+}
+
+function AskLine({ record, live }: { record: AskRecord; live?: boolean }) {
+  return (
+    <div className="trace-row trace-live-row">
+      <span className="trace-tag">提问</span> {record.outcome} · {record.questions.length} 题
+      {live === true ? " · 实时" : ""}
     </div>
   );
 }
 
 export function Trace({
-  history,
   live,
   info,
-  model,
+  trajectory,
 }: {
-  history: StoredMessage[];
   live: LiveItem[];
   info: OpenInfo | null;
-  model: TraceModel | null;
+  trajectory: TrajectoryView | null;
 }) {
-  const [mode, setMode] = useState<"events" | "messages">("events");
-  const [filter, setFilter] = useState<TraceFilter>("all");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["value"]>("all");
+  const [details, setDetails] = useState<Record<number, RequestDetail | null>>({});
   const [copied, setCopied] = useState(false);
-  const rows = useMemo(() => traceRows(history), [history]);
-  const visible = useMemo(() => filterTraceRows(rows, filter), [rows, filter]);
+
+  const turns = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (trajectory?.turns ?? [])
+      .map((turn) => ({
+        ...turn,
+        records: turn.records.filter((record) => {
+          if (filter === "error") {
+            if (record.error === undefined && record.status !== "error" && record.status !== "interrupted") return false;
+          } else if (filter !== "all" && record.kind !== filter) {
+            return false;
+          }
+          if (q === "") return true;
+          return [record.text, record.reasoning, record.toolName, record.input, record.output, record.error]
+            .filter((value): value is string => typeof value === "string")
+            .some((value) => value.toLowerCase().includes(q));
+        }),
+      }))
+      .filter((turn) => turn.records.length > 0);
+  }, [filter, query, trajectory]);
+
+  const count = turns.reduce((n, turn) => n + turn.records.length, 0);
 
   async function copyPath(): Promise<void> {
     if (info?.eventsPath === undefined) return;
@@ -407,49 +301,35 @@ export function Trace({
     }
   }
 
+  async function openRequest(seq: number): Promise<void> {
+    if (seq in details) return;
+    const detail = await window.tm.sessionRequestDetail(seq).catch(() => null);
+    setDetails((prev) => ({ ...prev, [seq]: detail }));
+  }
+
   return (
     <div className="trace">
       <div className="trace-bar">
+        <input
+          className="trace-search"
+          value={query}
+          placeholder="搜索轨迹"
+          onChange={(event) => setQuery(event.target.value)}
+        />
         <div className="trace-filters">
-          <button
-            type="button"
-            className="trace-chip"
-            aria-current={mode === "events"}
-            onClick={() => setMode("events")}
-          >
-            事件
-          </button>
-          <button
-            type="button"
-            className="trace-chip"
-            aria-current={mode === "messages"}
-            onClick={() => setMode("messages")}
-          >
-            消息
-          </button>
-        </div>
-        {mode === "messages" && (
-        <div className="trace-filters">
-          {FILTERS.map((f) => (
+          {FILTERS.map((entry) => (
             <button
-              key={f.value}
+              key={entry.value}
               type="button"
               className="trace-chip"
-              aria-current={filter === f.value}
-              onClick={() => setFilter(f.value)}
+              aria-current={filter === entry.value}
+              onClick={() => setFilter(entry.value)}
             >
-              {f.label}
+              {entry.label}
             </button>
           ))}
         </div>
-        )}
-        <span className="trace-count">
-          {mode === "events"
-            ? model === null
-              ? "读取中"
-              : `${model.turns.length} 轮 · ${model.turns.reduce((n, t) => n + t.steps.length, 0)} 步`
-            : `${visible.length} / ${rows.length} 条`}
-        </span>
+        <span className="trace-count">{count} 条</span>
         {info?.eventsPath !== undefined && (
           <button type="button" className="trace-path" title={info.eventsPath} onClick={() => void copyPath()}>
             {copied ? "已复制路径" : "复制事件日志路径"}
@@ -457,30 +337,36 @@ export function Trace({
         )}
       </div>
 
-      {mode === "events" ? (
-        <EventTrace model={model} />
-      ) : (
-        <>
-          {visible.length === 0 && live.length === 0 && (
-            <p className="note">还没有可看的轨迹。发一句话，或切到「对话」。</p>
-          )}
+      {trajectory === null && <p className="note">轨迹读取中…</p>}
+      {trajectory !== null && turns.length === 0 && live.length === 0 && <p className="note">还没有可看的轨迹。</p>}
 
-          {visible.map((row) => (
-            <Row key={row.key} row={row} />
+      {turns.map((turn) => (
+        <section className="trace-turn" key={turn.index}>
+          <div className="trace-turn-head">
+            第 {turn.index + 1} 轮 · {turn.agent} · {turn.status}
+            {turn.endedAt === undefined ? "" : ` · ${turn.endedAt - turn.startedAt} ms`}
+          </div>
+          {turn.records.map((record) => (
+            <RecordRow
+              key={record.id}
+              record={record}
+              requestDetail={record.requestSeq === undefined ? undefined : details[record.requestSeq]}
+              onOpenRequest={(seq) => void openRequest(seq)}
+            />
           ))}
+        </section>
+      ))}
 
-          {live.length > 0 && (
-            <div className="trace-live">
-              <div className="trace-live-head">
-                <span className="pulse" />
-                本轮（实时，尚未落盘）
-              </div>
-              {live.map((item, i) => (
-                <LiveRow key={`live-${i}`} item={item} />
-              ))}
-            </div>
-          )}
-        </>
+      {live.length > 0 && (
+        <div className="trace-live">
+          <div className="trace-live-head">
+            <span className="pulse" />
+            本轮（实时，尚未落盘）
+          </div>
+          {live.map((item, i) => (
+            <LiveRow key={`live-${i}`} item={item} />
+          ))}
+        </div>
       )}
     </div>
   );

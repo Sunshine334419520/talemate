@@ -11,6 +11,7 @@ import type { TraceExportResult, TraceView } from "../../../src/session/trace_vi
 import type { TraceModel } from "../../../src/telemetry/view";
 import type { TraceIndex } from "../../../src/session/trace_index";
 import type { RequestDetail } from "../../../src/telemetry/request_detail";
+import type { TrajectoryRecord, TrajectoryView } from "../../../src/telemetry/trajectory";
 import type {
   AskAnswer,
   AskQuestion,
@@ -34,6 +35,8 @@ export type {
   StyleCatalog,
   TraceExportResult,
   RequestDetail,
+  TrajectoryRecord,
+  TrajectoryView,
   TraceIndex,
   TraceModel,
   TraceView,
@@ -308,6 +311,8 @@ export interface TmApi {
   traceIndex(options?: { projectId?: string; query?: string; limit?: number }): Promise<TraceIndex>;
   /** 某一步请求详情：header 配置/工具 + system prompt + 消息窗口，由日志折叠。 */
   sessionRequestDetail(seq: number): Promise<RequestDetail | null>;
+  /** 轨迹表：事件 → system/user/assistant/tool/compaction/attempt/rewind 记录。 */
+  sessionTrajectory(): Promise<TrajectoryView | null>;
   /**
    * 把当前会话的轨迹导出成**脱敏副本**（落会话目录的 `trace-export.jsonl`）。
    *

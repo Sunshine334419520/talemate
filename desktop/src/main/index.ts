@@ -32,6 +32,7 @@ import { buildSessionDebug, renderSessionDebug } from "../../../src/session/debu
 import { buildTraceView, exportTrace } from "../../../src/session/trace_view";
 import { buildTraceModel } from "../../../src/telemetry/view";
 import { buildRequestDetail } from "../../../src/telemetry/request_detail";
+import { buildTrajectory } from "../../../src/telemetry/trajectory";
 import { eventLogFor } from "../../../src/telemetry/log";
 import { buildTraceIndex } from "../../../src/session/trace_index";
 import { readChangeDiff } from "../../../src/session/change_history";
@@ -424,6 +425,12 @@ function registerHandlers(): void {
   ipcMain.handle("session:request-detail", async (_e, seq: number) => {
     if (session === undefined) return null;
     return buildRequestDetail(await eventLogFor(session.projectId, session.sessionId).read(), seq);
+  });
+
+  /** 轨迹表：同一份事件折成一张记录表，不再分“事件 / 消息”。 */
+  ipcMain.handle("session:trajectory", async () => {
+    if (session === undefined) return null;
+    return buildTrajectory(await eventLogFor(session.projectId, session.sessionId).read());
   });
 
   /**

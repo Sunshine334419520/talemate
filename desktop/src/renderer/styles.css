@@ -1500,3 +1500,24 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
   border-radius: 6px;
   padding: 7px;
 }
+
+.trace-search {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  outline: none;
+}
+.trace-search:focus { border-color: var(--accent); }
+.trace-turn-head {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 4px 2px 7px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.trace-tag.system { color: var(--accent); }
