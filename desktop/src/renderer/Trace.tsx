@@ -180,6 +180,23 @@ function Overview({ record, turn }: { record: TrajectoryRecord; turn: number }) 
           <dt>耗时</dt>
           <dd>{record.durationMs === undefined ? "—" : `${record.durationMs} ms`}</dd>
         </div>
+        {(record.inputTokens !== undefined || record.outputTokens !== undefined) && (
+          <div>
+            <dt>Token</dt>
+            <dd>
+              {(record.inputTokens ?? 0) + (record.outputTokens ?? 0)} tok
+              <span className="trace-muted">
+                （in {record.inputTokens ?? "—"} / out {record.outputTokens ?? "—"}）
+              </span>
+            </dd>
+          </div>
+        )}
+        {record.stepMs !== undefined && (
+          <div>
+            <dt>请求耗时</dt>
+            <dd>{record.stepMs} ms</dd>
+          </div>
+        )}
         {record.seq !== undefined && (
           <div>
             <dt>seq</dt>
