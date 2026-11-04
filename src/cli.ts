@@ -359,7 +359,7 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /open <n>      恢复当前空间第 n 个历史会话",
           "  /permissions   当前生效的规则表：每类动作是什么、是哪一层定的、各层都贡献了什么",
           "  /debug         当前会话的调试信息：模型、模式、待批，以及会话目录与事件/改动索引路径",
-          "  /trace         会话轨迹摘要（事件/span/耗时）；/trace export [路径] 导出脱敏副本；/trace list [查询] 跨会话列表",
+          "  /trace         会话轨迹摘要（事件/span/耗时）；/trace export [路径] 导出脱敏副本；/trace list [查询] 跨会话列表；/trace prune --days N [--dry-run] 归档旧会话",
           "  /design <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
@@ -398,6 +398,33 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
       }
       const { exportTrace, readTraceSummary } = await import("./session/trace_view");
       const sub = arg.trim();
+      if (sub === "prune" || sub.startsWith("prune ")) {
+        const days = /(?:^|\s)--days\s+(\d+(?:\.\d+)?)/.exec(sub)?.[1];
+        if (days === undefined) {
+          console.log("用法：/trace prune --days <N> [--dry-run]（只归档当前项目里最后活动早于 N 天的会话）");
+          return "continue";
+        }
+        const { archiveTraces } = await import("./session/trace_index");
+        const result = await archiveTraces({
+          olderThanDays: Number(days),
+          dryRun: /--dry-run/.test(sub),
+          ...(curSpaceId === undefined ? {} : { projectId: curSpaceId }),
+          excludeSessionIds: [curSession.sessionId],
+        });
+        if (result.archived.length === 0) {
+          console.log(`没有需要归档的会话（早于 ${new Date(result.cutoff).toISOString()}）。`);
+        } else {
+          console.log(
+            `${result.dryRun ? "将归档" : "已归档"} ${result.archived.length} 个会话（早于 ${new Date(result.cutoff).toISOString()}）：`,
+          );
+          for (const item of result.archived) console.log(`  ${item.projectId}/${item.sessionId} → ${item.to}`);
+        }
+        if (result.skipped.length > 0) {
+          console.log("跳过：");
+          for (const item of result.skipped) console.log(`  ${item.projectId}/${item.sessionId}：${item.reason}`);
+        }
+        return "continue";
+      }
       if (sub === "list" || sub.startsWith("list ")) {
         const { buildTraceIndex } = await import("./session/trace_index");
         const index = await buildTraceIndex({ query: sub.slice("list".length).trim() || undefined });

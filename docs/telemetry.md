@@ -79,8 +79,13 @@
 - `failures`：turn / request / tool 的失败按 (name, message) 聚合，带会话 id；
 - `retention`：当前索引里最早/最晚事件时间。
 
-它是**读侧投影**：不删日志、不建第二份可写索引。保留/轮转是运维策略；这里的 since/until 只是
-读侧过滤。消费者：CLI `/trace list [查询]` 与桌面左栏「轨迹」段（点一条切到该会话的事件面）。
+它是**读侧投影**：缓存写在 `<talemateHome>/trace-index.json`，以 `events.jsonl` 的 size/mtime
+判定是否复用；事件追加只重扫变化的那一个会话，meta 改动则覆盖标题/agent/model。删掉缓存、重建，
+结果一样。消费者：CLI `/trace list [查询]` 与桌面左栏「轨迹」段。
+
+保留/轮转不偷偷删日志：`archiveTraces`（CLI `/trace prune --days N [--dry-run]`）把超过阈值的
+**整份会话目录**移到 `<talemateHome>/archive/<projectId>/`，events.jsonl 在归档里仍可回放；
+当前打开的会话会被排除，活跃会话不做裁剪。
 
 ## schema 版本与契约
 

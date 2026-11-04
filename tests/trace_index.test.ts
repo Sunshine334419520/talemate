@@ -2,14 +2,14 @@
  * 跨会话索引的守卫：它会读很多日志，所以只做读侧投影——不删文件、不读 messages、不触发模型。
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelConfig } from "../src/core/types";
 import { createProject } from "../src/storage/project";
 import { createSession } from "../src/storage/session-store";
 import { eventLogFor, resetEventLogs } from "../src/telemetry/log";
-import { buildTraceIndex } from "../src/session/trace_index";
+import { archiveTraces, buildTraceIndex } from "../src/session/trace_index";
 
 let home: string;
 let prevHome: string | undefined;
@@ -110,5 +110,46 @@ describe("跨会话索引", () => {
     const all = await buildTraceIndex({ includeSubagents: true });
     expect(all.entries.map((e) => e.sessionId)).toContain("sub");
     expect(all.total).toBe(4);
+  });
+
+  test("索引缓存命中，事件追加后只重扫变化的那一个", async () => {
+    const first = await buildTraceIndex();
+    expect((first.cache?.hit ?? 0) + (first.cache?.miss ?? 0)).toBe(4);
+    const cached = await readFile(join(home, "trace-index.json"), "utf-8");
+    expect(cached).toContain('"sessions"');
+
+    const second = await buildTraceIndex();
+    expect(second.cache).toEqual({ hit: 4, miss: 0 });
+
+    await eventLogFor(p1, "ok").append("turn/start", { agent: "mate", resumed: false }, 5000);
+    await eventLogFor(p1, "ok").append("turn/end", { status: "completed", durationMs: 1 }, 5010);
+    const third = await buildTraceIndex();
+    expect(third.cache).toEqual({ hit: 3, miss: 1 });
+    expect(third.entries.find((e) => e.sessionId === "ok")?.lastAt).toBe(5010);
+  });
+
+  test("归档只移动超过阈值的整份会话目录，不删事件", async () => {
+    const now = 30 * 86_400_000 + 3000;
+    const dry = await archiveTraces({ olderThanDays: 30, now, dryRun: true });
+    expect(dry.archived.map((a) => a.sessionId).sort()).toEqual(["bad"]);
+    expect(dry.skipped).toEqual([]);
+
+    const excluded = await archiveTraces({
+      olderThanDays: 30,
+      now,
+      dryRun: true,
+      excludeSessionIds: ["bad"],
+    });
+    expect(excluded.archived).toEqual([]);
+
+    const real = await archiveTraces({ olderThanDays: 30, now });
+    expect(real.archived.map((a) => a.sessionId).sort()).toEqual(["bad"]);
+    const archiveDir = join(home, "archive", p1);
+    expect((await stat(archiveDir)).isDirectory()).toBe(true);
+    const after = await buildTraceIndex();
+    expect(after.entries.map((e) => e.sessionId)).not.toContain("bad");
+    const oldDirMissing = await stat(join(home, "novels", p1, ".talemate", "sessions", "bad"))
+      .then(() => false, () => true);
+    expect(oldDirMissing).toBe(true);
   });
 });
