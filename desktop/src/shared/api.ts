@@ -322,12 +322,21 @@ export interface TmApi {
   listSessions(projectId: string): Promise<SessionRow[]>;
   docsTree(projectId: string): Promise<DocNode[]>;
   /**
-   * 保存一份文档（用户在右栏手改）。
+   * 保存一份文档（用户在右栏手改，含自动保存）。
+   *
+   * `expected` 是界面**读到的那一份**——每存成功一次就把它推进到新文本。harness 拿它做 CAS：
+   * 打开之后文件被 mate 改过就回 `stale`。不传 `expected` 只剩原子写（旧调用的行为）。
+   * `force` 是用户明确点了「用我的覆盖」：此时不比对，只保留原子写。
    *
    * 回 `stale` = 这份文件在打开之后被别处改过（mate 落了新稿），不能盖掉，让用户先看一眼新的。
    * 判据在 harness 的 `storage/atomic.ts`（CAS），界面只是把它翻译成人话。
    */
-  saveDoc(projectId: string, path: string, text: string): Promise<"ok" | "stale">;
+  saveDoc(
+    projectId: string,
+    path: string,
+    text: string,
+    opts?: { expected?: string | null; force?: boolean },
+  ): Promise<"ok" | "stale">;
   /** 当前这本书用的文风，以及库里可选的文风卡 */
   styleCatalog(projectId: string): Promise<StyleCatalog>;
   /**

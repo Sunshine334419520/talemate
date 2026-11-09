@@ -467,20 +467,29 @@ function registerHandlers(): void {
   );
 
   /**
-   * 用户在右栏手改之后落盘。
+   * 用户在右栏手改之后落盘（含自动保存）。
    *
    * 不走 `write_ops`：那条路上的 diff 与"问用户"是为模型改稿准备的——由谁改、谁点头是同一件事的
-   * 两半，而这里用户自己就是那个点头的人。所以只保留它在意的两样：原子写，以及 CAS（打开之后文件
-   * 被别处改过就拒，别把 mate 刚落的稿子盖掉）。
+   * 两半，而这里用户自己就是那个点头的人。所以只保留它在意的两样：原子写，以及 CAS。
+   *
+   * CAS 的 `expected` 由界面带回来（它读到的那一份）。不在这里重读一遍再拿它自己比对——那样永远
+   * 相等，等于没有比对。自动保存靠它才敢停手：mate 落了新稿，用户的草稿就停在"未保存"，等人拍板。
    */
   ipcMain.handle(
     "docs:save",
-    async (_e, p: { projectId: string; path: string; text: string }): Promise<"ok" | "stale"> => {
+    async (
+      _e,
+      p: { projectId: string; path: string; text: string; expected?: string | null; force?: boolean },
+    ): Promise<"ok" | "stale"> => {
       const abs = docAbs(p.projectId, p.path);
       if (abs === undefined) return "stale"; // 路径不合法：当作"变了"，让界面重来一次
-      const before = await readDoc(p.projectId, p.path);
+      // force 是用户明确点了"用我的覆盖"；不带 expected 的是旧调用——两种都退回只保留原子写
+      const expected =
+        p.expected !== undefined && p.force !== true
+          ? p.expected
+          : ((await readDoc(p.projectId, p.path)) ?? null);
       try {
-        await writeIfUnchanged({ abs, expected: before ?? null, content: p.text });
+        await writeIfUnchanged({ abs, expected, content: p.text });
         return "ok";
       } catch {
         return "stale";

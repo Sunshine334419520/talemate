@@ -15,7 +15,7 @@ import { ProposalCard, type ProposalVerdict } from "./ProposalCard";
 import { DocTree } from "./DocTree";
 import { ChevronIcon, DropdownIcon, HistoryIcon, PanelIcon, PlusIcon, ShieldIcon, SlidersIcon } from "./icons";
 import { applyReadingSize, DEFAULT_READING_SIZE } from "./reading";
-import { SidePane, type Pane } from "./SidePane";
+import { SidePane, type DraftApi, type Pane } from "./SidePane";
 import { Thread, classifyStep, subjectOf, type LiveItem } from "./Thread";
 import { Trace } from "./Trace";
 import type { ChangeScope } from "./TurnChanges";
@@ -127,11 +127,35 @@ export function Workspace({
   const [stale, setStale] = useState(false);
   const [state, setState] = useState<SessionState>({});
   const [paneWidth, setPaneWidth] = useState(460);
-  /** 正常的打开动作会把"返回改动记录"清掉；从记录里点开的详情单独走 setBackPane */
-  const openPane = useCallback((next: Pane | null): void => {
-    setBackPane(null);
-    setPane(next);
+  /**
+   * 右栏的草稿口，编辑态由 SidePane 注册进来。换屏、关栏、回上一屏之前都先过它——
+   * "点开 B 就把 A 的改动丢了"是最不该发生的事，尤其现在自动保存已经在跑，剩下的只是最后几笔。
+   */
+  const draftApiRef = useRef<DraftApi | null>(null);
+  /** 我们自己刚写下去的那一份：watchDocs 会为它响一声，别把回声当成"别处改了" */
+  const selfSavedRef = useRef(new Map<string, string>());
+  /** 草稿存不上（CAS 冲突）时挡在这里；`apply` 是用户点头之后真正要走的那一步 */
+  const [leaveAsk, setLeaveAsk] = useState<{ apply: () => void } | null>(null);
+
+  const withLeaveGuard = useCallback(async (apply: () => void): Promise<void> => {
+    const api = draftApiRef.current;
+    if (api === null || (await api.flush())) {
+      apply();
+      return;
+    }
+    setLeaveAsk({ apply });
   }, []);
+
+  /** 正常的打开动作会把"返回改动记录"清掉；从记录里点开的详情单独走 setBackPane */
+  const openPane = useCallback(
+    (next: Pane | null): void => {
+      void withLeaveGuard(() => {
+        setBackPane(null);
+        setPane(next);
+      });
+    },
+    [withLeaveGuard],
+  );
   /** 目录树的显示名与先后：改动清单按它排序、取名，不另写一份文档清单 */
   const docIndex = useMemo(() => {
     const map = new Map<string, { label: string; rank: number }>();
@@ -482,6 +506,19 @@ export function Workspace({
     paneRef.current = pane;
   }, [pane]);
 
+  // 换一样东西看，就是换一个判断对象：上一条"已在别处更新"不能跟着走进下一屏
+  useEffect(() => {
+    setStale(false);
+  }, [pane?.kind, pane !== null && pane.kind === "doc" ? pane.path : ""]);
+
+  // 这两只进 SidePane 的依赖：包一层 useCallback，别让它每渲染一次就重注册一遍草稿口
+  const onEditingChange = useCallback((v: boolean): void => {
+    editingRef.current = v;
+  }, []);
+  const registerDraft = useCallback((api: DraftApi | null): void => {
+    draftApiRef.current = api;
+  }, []);
+
   useEffect(() => {
     window.tm.onDocsChanged(() => {
       // 盘上变的不只是文档：会话的名字也会变（第一句话发出去之后按它命名），所以列表也跟着刷
@@ -491,13 +528,19 @@ export function Workspace({
       void loadStyle();
       const open = paneRef.current;
       if (open === null || open.kind !== "doc") return;
-      if (editingRef.current) {
-        setStale(true);
-        return;
-      }
-      // 没在编辑就静默换成新版：mate 刚落的稿子，用户开着的那一栏本来就该跟着变
+      // 先读回来再判：自己刚存的那一笔也会触发 watcher，别把回声当成"别处改了"——
+      // 自动保存一停手就写一次，认错的话每打一句话都会亮一次"已在别处更新"
       void window.tm.docText(project.id, open.path).then((text) => {
-        if (text !== undefined) setPane({ ...open, text });
+        if (text === undefined) return;
+        const now = paneRef.current;
+        if (now === null || now.kind !== "doc" || now.path !== open.path) return;
+        if (selfSavedRef.current.get(open.path) === text) return;
+        if (editingRef.current) {
+          setStale(true);
+          return;
+        }
+        // 没在编辑就静默换成新版：mate 刚落的稿子，用户开着的那一栏本来就该跟着变
+        setPane({ ...open, text });
       });
     });
   }, [project.id, refreshTree, loadSessions, loadStyle]);
@@ -608,18 +651,24 @@ export function Workspace({
     async (path: string): Promise<void> => {
       const text = await window.tm.docText(project.id, path);
       if (text === undefined) return;
-      setBackPane(pane);
-      setPane({ kind: "doc", name: labelOf(path), path, text });
+      const from = pane;
+      await withLeaveGuard(() => {
+        setBackPane(from);
+        setPane({ kind: "doc", name: labelOf(path), path, text });
+      });
     },
-    [project.id, pane, labelOf],
+    [project.id, pane, labelOf, withLeaveGuard],
   );
 
   const openHistoryDiff = useCallback(
     (name: string, text: string, path: string): void => {
-      setBackPane(pane);
-      setPane({ kind: "diff", name, text, path });
+      const from = pane;
+      void withLeaveGuard(() => {
+        setBackPane(from);
+        setPane({ kind: "diff", name, text, path });
+      });
     },
-    [pane],
+    [pane, withLeaveGuard],
   );
 
   /**
@@ -639,20 +688,46 @@ export function Workspace({
           await openHistoryDoc(row.path);
           return;
         }
-        setBackPane(pane);
-        setPane({ kind: "diff", name: row.label, text, path: row.path });
+        const from = pane;
+        await withLeaveGuard(() => {
+          setBackPane(from);
+          setPane({ kind: "diff", name: row.label, text, path: row.path });
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [project.id, pane, openHistoryDoc],
+    [project.id, pane, openHistoryDoc, withLeaveGuard],
   );
 
   const goBack = useCallback((): void => {
     if (backPane === null) return;
-    setPane(backPane);
-    setBackPane(null);
-  }, [backPane]);
+    const back = backPane;
+    void withLeaveGuard(() => {
+      setPane(back);
+      setBackPane(null);
+    });
+  }, [backPane, withLeaveGuard]);
+
+  /**
+   * 草稿没存上时的那两下。覆盖必须先真的存下来才放行——覆盖失败还把人送走，
+   * 等于换一种方式悄悄丢稿。
+   */
+  const leaveDiscard = useCallback((): void => {
+    const ask = leaveAsk;
+    if (ask === null) return;
+    draftApiRef.current?.discard();
+    setLeaveAsk(null);
+    ask.apply();
+  }, [leaveAsk]);
+
+  const leaveOverwrite = useCallback(async (): Promise<void> => {
+    const ask = leaveAsk;
+    if (ask === null) return;
+    if (!((await draftApiRef.current?.flush(true)) ?? true)) return;
+    setLeaveAsk(null);
+    ask.apply();
+  }, [leaveAsk]);
 
   /**
    * 发一句话。`shown` 是气泡里显示的，`sent` 是真正发给 harness 的——两者可以不同：`@世界观`
@@ -1014,7 +1089,7 @@ export function Workspace({
         <div className="brand">
           <span className="mark">t</span>
           <b>Talemate</b>
-          <button className="book-exit" onClick={onExit}>所有作品</button>
+          <button className="book-exit" onClick={() => void withLeaveGuard(onExit)}>所有作品</button>
         </div>
         <button className="newbtn" onClick={() => void enter()}>
           <PlusIcon /> 新会话
@@ -1441,23 +1516,54 @@ export function Workspace({
             const label = flatDocs(tree).find((d) => d.path === pane.path)?.name ?? pane.name;
             submitAnnotations(pane.path, label, notes);
           }}
-          onEditingChange={(v) => {
-            editingRef.current = v;
-          }}
+          onEditingChange={onEditingChange}
+          onRegisterDraft={registerDraft}
           onClose={() => {
             openPane(null);
             setStale(false);
           }}
-          onSave={async (text) => {
+          onSave={async (text, opts) => {
             if (pane.kind !== "doc") return "ok";
-            const verdict = await window.tm.saveDoc(project.id, pane.path, text);
+            const path = pane.path;
+            const verdict = await window.tm.saveDoc(project.id, path, text, opts);
             if (verdict === "ok") {
-              setPane({ ...pane, text });
+              // 只改同一份：存的过程中要是已经切走了，别把新那一屏的正文换回旧文本
+              setPane((prev) =>
+                prev !== null && prev.kind === "doc" && prev.path === path ? { ...prev, text } : prev,
+              );
+              // watcher 会为这笔写盘响一声，记下来：那是回声，不是 mate 又改了一遍
+              selfSavedRef.current.set(path, text);
               setStale(false);
             }
             return verdict;
           }}
         />
+      )}
+      {leaveAsk !== null && (
+        <div className="rewind-mask" onClick={() => setLeaveAsk(null)}>
+          <div
+            className="rewind-dialog"
+            role="dialog"
+            aria-label="改动还没存上"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>这次的改动还没存上</h3>
+            <p>
+              这份文件刚在别处被改过（mate 可能落了新稿）。自动保存停下来，是为了不拿你的稿子盖掉它的。
+            </p>
+            <div className="rewind-actions">
+              <button className="btn" type="button" onClick={() => setLeaveAsk(null)}>
+                留下继续改
+              </button>
+              <button className="btn" type="button" onClick={leaveDiscard}>
+                丢掉改动离开
+              </button>
+              <button className="btn primary" type="button" onClick={() => void leaveOverwrite()}>
+                用我的覆盖并离开
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       </div>
 

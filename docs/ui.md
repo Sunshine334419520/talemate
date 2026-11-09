@@ -2,7 +2,7 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：2026-11-04 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`
+> **对齐代码**：2026-11-09 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`；右栏编辑的自动保存与离开拦截在 `desktop/src/renderer/SidePane.tsx` / `Workspace.tsx`，CAS 在 `src/storage/atomic.ts`，IPC 在 `desktop/src/main/index.ts` 的 `docs:save`
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `ask-user.md`（提问与 pending）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
@@ -235,8 +235,10 @@
 - **本轮改动**：每轮结束在搭档最后一句话下面汇总所有落盘的文件；同一个文件被 edit 三次仍是一行。点一行，右栏看这一轮的合并 diff；新建文件打开全文。
 - **改动记录**：会话标题栏的常驻入口。右栏按轮分组，可切「本次会话 / 本书」；数据来自消息里 tool part 上的 `change`，重启后仍在。
 - 角色卡按格渲染（五格 + 自由长尾），卷纲按格，序列纲整篇散文。
+- **编辑即自动保存**：进入编辑后停手 700ms 自动落盘，标题栏显示「保存中…／已保存 hh:mm」；「完成」存下最后一笔再退出。切文档、关栏、回上一屏之前都先把草稿存掉——"点开 B 就把 A 的改动丢了"不该发生。
+- 存不上就不放人走：打开之后 mate 落了新稿，CAS 会拒掉自动保存（不拿用户的草稿盖它的），这时停下自动保存，离开时弹一句问「用我的覆盖并离开／丢掉改动离开／留下继续改」。覆盖也必须先真的写成功才放行。
 - **保存 = 写文件**：这一版就是文件编辑器语义；批注提交不直接改文件，它只是一条用户消息（见下）。
-- 这一份开着而别处把它改了（mate 落了新稿）：没在编辑就重载，正在编辑就**不抢**，只在标题旁标一句"文件已更新"。
+- 这一份开着而别处把它改了（mate 落了新稿）：没在编辑就重载，正在编辑就**不抢**，只在标题旁标一句"文件已更新"；自动保存自己的写盘不算"别处"。
 
 ## 七、界面与 harness 之间的缝
 
