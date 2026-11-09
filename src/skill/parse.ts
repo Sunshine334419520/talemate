@@ -33,7 +33,9 @@ export interface Skill {
  * 看着是满的、`discoverSkills` 却返回空数组，一个 skill 都不报错地消失。
  */
 export function parseSkillFile(raw: string, location: string): Skill {
-  const text = raw.replace(/\r\n/g, "\n");
+  // BOM 也要剥：Windows 记事本存成“UTF-8 带 BOM”时头一个字符是 \uFEFF，`^---` 同样匹配不上，
+  // 同样被 scanDir 的 catch 吞掉——用户把卡片丢进 ~/.talemate/skills/ 却一个都选不到。
+  const text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
   const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   const body = m ? m[2].trimStart() : text;
   const front = m ? m[1] : "";

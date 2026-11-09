@@ -1,6 +1,6 @@
 /**
- * SKILL.md 解析的边界。重点是**行尾**：CRLF 检出曾经让整份 skill 静默消失（见 parse.ts 的注释），
- * 而那种失败不报错、不改签名，只有一条测试钉得住。
+ * SKILL.md 解析的边界。重点是**文件开头和行尾**：CRLF 检出、Windows 记事本的 BOM，都曾让整份
+ * skill 静默消失（见 parse.ts 的注释），而那种失败不报错、不改签名，只有一条测试钉得住。
  */
 import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
@@ -25,6 +25,13 @@ describe("skill · SKILL.md 解析", () => {
 
   test("frontmatter 之后才是正文，前导空行不留", () => {
     expect(parseSkillFile(CRLF, "x/SKILL.md").body.startsWith("# 正文文风纪律")).toBe(true);
+  });
+
+  test("带 BOM 的文件也能解析——Windows 记事本存出来就是这个样子，不能因此静默少一张卡", () => {
+    const a = parseSkillFile(`\uFEFF${LF}`, "bom/SKILL.md");
+    const b = parseSkillFile(LF, "lf/SKILL.md");
+    const same = [a.name === "storytelling", a.description === b.description, a.body === b.body];
+    expect(same).toEqual([true, true, true]);
   });
 
   test("缺 name 抛错——宁可让 scanDir 记一笔，也不要一个没有名字的 skill", () => {
