@@ -26,11 +26,16 @@ git status --short
 bun install --frozen-lockfile
 bun run typecheck
 bun test
+bun run eval:check
+bun run eval/run.ts --replay --repeat 1 --report /tmp/talemate-release-eval.md
 ```
 
 - Working tree must be clean. If not, stop and ask the user to commit or stash; do not release
   uncommitted code.
 - All checks must pass. Never tag on a red test.
+- The eval replay gate is free (no model calls) and catches stale cassettes: a `replay miss` means
+  prompts / skills / tool schemas changed since recording. Re-record deliberately with `--record`
+  (costs tokens), commit the cassettes, then re-run. Do not tag with a red gate.
 - Optional desktop smoke build: `bun run desktop:build`.
 - `bun run desktop:package -- --dir` is a local packaging smoke test; it is not required before a
   release because CI builds the real artifacts.

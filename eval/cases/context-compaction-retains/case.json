@@ -12,6 +12,6 @@
     { "kind": "assistant-text-contains", "text": "离开老城区" }
   ],
   "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
-  "budget": { "maxTurns": 5, "maxSteps": 12, "maxTokens": 120000 },
+  "budget": { "maxTurns": 5, "maxSteps": 20, "maxTokens": 200000 },
   "tags": ["context", "compaction"]
 }

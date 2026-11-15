@@ -14,6 +14,6 @@
     { "kind": "file-contains", "path": "design/core.md", "text": "老城区内可见", "afterTurn": 1 }
   ],
   "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
-  "budget": { "maxTurns": 2, "maxSteps": 12, "maxTokens": 50000 },
+  "budget": { "maxTurns": 2, "maxSteps": 12, "maxTokens": 65000 },
   "tags": ["design", "approval"]
 }

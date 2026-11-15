@@ -33,7 +33,7 @@ import { clearPromptOverrides } from "../src/prompts";
 import type { Variant } from "../src/probe/patches";
 import { runChecks } from "./checks";
 import type { TurnSnapshot } from "./checks";
-import { renderBaselineReport, renderComparisonReport } from "./report";
+import { defaultReportName, renderBaselineReport, renderComparisonReport } from "./report";
 import type { EvalCase, FailureBucket, Manifest, RunResult } from "./types";
 import { validateAll } from "./validate";
 
@@ -405,9 +405,15 @@ async function runOnce(
       throw new Error(`case 有 ${prompts.length} 轮，超过 budget.maxTurns=${evalCase.budget.maxTurns}`);
     }
 
-    for (const prompt of prompts) {
+    for (const [index, prompt] of prompts.entries()) {
+      // 预置的规划是“已经批准”的前置状态，第一轮的话是执行指令，不是对提案的裁决（见 Session.post）
+      const seeded = index === 0 && evalCase.prosePlanChapter !== undefined;
       try {
-        await withTimeout(session.post(prompt), options.timeoutMs, () => session.abortCurrent());
+        await withTimeout(
+          session.post(prompt, seeded ? { keepApprovedPlan: true } : undefined),
+          options.timeoutMs,
+          () => session.abortCurrent(),
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (message.includes("超时")) timedOut = true;
@@ -578,8 +584,9 @@ async function main(): Promise<void> {
     if (options.record && spent > options.maxTokens) break;
   }
 
+  const taken = await readdir(join(REPO_ROOT, "reports")).catch((): string[] => []);
   const reportPath = options.report === undefined
-    ? join(REPO_ROOT, "reports", `${options.clock}-${variantId}.md`)
+    ? join(REPO_ROOT, "reports", defaultReportName(new Date(), variantId, taken))
     : resolve(options.report);
   await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(

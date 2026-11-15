@@ -730,11 +730,16 @@ export class Session {
     this.exitProseMode();
   }
 
-  /** 跑完一轮：输入 → runLoop（agent 循环）→ 返回最终 assistant 正文 */
-  async post(input: string, opts?: { agentId?: string }): Promise<string> {
+  /**
+   * 跑完一轮：输入 → runLoop（agent 循环）→ 返回最终 assistant 正文。
+   *
+   * `keepApprovedPlan` 只给评测：预置的规划已经处在“用户已批准”的状态，这一条输入是执行指令，
+   * 不是对它的新裁决。默认规则会把任何非同意回话判成“改主意”，于是预置状态在第一次 post 就被冲掉。
+   */
+  async post(input: string, opts?: { agentId?: string; keepApprovedPlan?: boolean }): Promise<string> {
     const agent = this.agents.get(opts?.agentId ?? this.agentId);
     // 三向裁决只认用户这轮的话；迟到回答不是对提案的裁决，绝不能在这里被当成“同意”
-    this.markPendingApproval(input);
+    if (opts?.keepApprovedPlan !== true) this.markPendingApproval(input);
     return this.runTurn(agent, input, (text, agId) => this.persistUser(text, agId));
   }
 

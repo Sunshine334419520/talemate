@@ -2,7 +2,7 @@
 
 > **职责**：定义评测系统的目标、术语、数据模型、case 清单、阶段计划、验收标准与决策规则。
 > **读者**：要改 prompt / 工具 / 上下文，或要扩展评测集、判断一次改动该不该采用的人。
-> **对齐代码**：设计稿（2026-11-02，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
+> **对齐代码**：设计稿（2026-11-15，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
 
 ---
 
@@ -520,7 +520,7 @@ bun run eval:check   ✔ 1 个 case 通过校验（base 1 · holdout 0）
   3. **UUID 归一化**：键里把子会话 id / provider 回调 id 换成 `<uuid>`，否则父会话的 `task` 结果每次都不同。
 - **runner**：`eval/run.ts`，每个 run 一个临时 HOME、复制 fixtures、按 `answerer` 决定是否回答提问；快照每轮的文件/消息/事件/改动索引；结果与现场落到 `traces/<runId>/`（含 `files/`）。
 - **判据**：`eval/checks.ts`，支持 file-exists / absent / unchanged / contains / matches、tool-called / not / order / halted、change-recorded、max-steps / tokens、event 计数。
-- **报告**：`eval/report.ts` + `reports/2026-11-01-baseline.md`；一页纸，含主表、失败、成本、manifest。
+- **报告**：`eval/report.ts` + `reports/<运行日>-<变体>.md`（重名追加序号；`--today` 只冻结 prompt 日期，不决定文件名）；一页纸，含主表、失败、成本、manifest。
 - **4 个 case**：`workflow-proposal-gate`、`workflow-plan-gate`、`workflow-draft-deny`、`prose-chapter-basic`；3 次重复全部通过，重复结果一致。
 - **代价**：录制累计约 669k token（含试错重录；最终基线 204k），超过最初 500k 的预算。M2 起先固定 case 再录，不再边改边录。
 

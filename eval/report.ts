@@ -6,6 +6,25 @@
  */
 import type { RunResult } from "./types";
 
+/**
+ * 报告默认文件名：按运行日归档，不按 `--today`。
+ *
+ * `--today` 冻结的是 system prompt 里的日期；拿它给报告命名会让每次 gate 都覆盖同一份
+ * 已提交的基线。重名时追加序号，历史不被静默替换。
+ */
+export function defaultReportName(runDate: Date, variantId: string, taken: Iterable<string>): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  const stamp = `${runDate.getFullYear()}-${pad(runDate.getMonth() + 1)}-${pad(runDate.getDate())}`;
+  const used = new Set(taken);
+  let name = `${stamp}-${variantId}.md`;
+  let n = 2;
+  while (used.has(name)) {
+    name = `${stamp}-${variantId}-${n}.md`;
+    n++;
+  }
+  return name;
+}
+
 function sameOutcome(runs: readonly RunResult[]): boolean {
   const first = runs[0];
   if (first === undefined) return true;
