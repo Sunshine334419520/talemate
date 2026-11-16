@@ -1,0 +1,17 @@
+{
+  "id": "context-resident-design",
+  "family": "context",
+  "base": false,
+  "brief": "读 design/core.md，记住金手指的触发条件。接下来我问几件别的，最后考你这一条。",
+  "followUps": ["今天天气怎么样？", "旧书店的房租多少？", "贺守一收租时催不催？", "金手指什么时候显形？"],
+  "fixtures": true,
+  "answerer": true,
+  "checks": [
+    { "kind": "tool-called", "name": "read" },
+    { "kind": "assistant-text-contains", "text": "雨天" },
+    { "kind": "event-count-at-most", "type": "compaction/start", "n": 0 }
+  ],
+  "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
+  "budget": { "maxTurns": 5, "maxSteps": 12, "maxTokens": 60000 },
+  "tags": ["context", "design", "m3"]
+}

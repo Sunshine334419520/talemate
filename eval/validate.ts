@@ -55,6 +55,10 @@ function isPositiveInt(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+function isNonNegativeInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
 function validateCheck(value: unknown, at: string): Issue[] {
   const issues: Issue[] = [];
   if (!isRecord(value)) return [{ where: at, message: "判据必须是一个对象" }];
@@ -81,7 +85,13 @@ function validateCheck(value: unknown, at: string): Issue[] {
   if (fields.includes("type") && !isText(value.type)) issues.push({ where: at, message: "type 必须是非空字符串" });
   if (fields.includes("afterTool") && !isText(value.afterTool)) issues.push({ where: at, message: "afterTool 必须是非空字符串" });
 
-  if (fields.includes("n") && !isPositiveInt(value.n)) issues.push({ where: at, message: "n 必须是正整数" });
+  // event-count-at-most 的 0 是"一次也不许发生"，不是缺省值；预算类 n 仍必须是正的
+  if (fields.includes("n")) {
+    const valid = kind === "event-count-at-most" ? isNonNegativeInt(value.n) : isPositiveInt(value.n);
+    if (!valid) {
+      issues.push({ where: at, message: kind === "event-count-at-most" ? "n 必须是非负整数" : "n 必须是正整数" });
+    }
+  }
 
   if (kind === "file-unchanged" && value.against !== "fixture" && value.against !== "before") {
     issues.push({ where: at, message: 'against 只能是 "fixture" 或 "before"' });

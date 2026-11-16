@@ -127,7 +127,7 @@
 已完成（2026-11-16）：`request/header`、事件视图模型、`buildTraceIndex` + `/trace list` + `/trace prune`、桌面轨迹表与检查器、18 个 eval case（含 2 个 holdout）与 replay 门禁。
 
 实现细节：[telemetry.md](telemetry.md)
-评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0–M2、M2D、M3 部分已落地**（18 个 case / 2 个 holdout / 本地门禁 / 变体对比 / judge + κ 工具 / 3 个确定性 M3 case / 一次 pairwise）；人工校准、M3 剩余 3 个 case 与 1M 压缩压测待办。
+评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0–M2、M2D、M3 部分已落地**（19 个 case / 2 个 holdout / 本地门禁 / 变体对比 / judge + κ 工具 / 3 个确定性 M3 case / 一次 pairwise）；人工校准、M3 剩余 3 个 case 与 1M 压缩压测待办。
 评审背景：[learning/evals-observability/architecture-review-dsh.md](learning/evals-observability/architecture-review-dsh.md)
 
 ---

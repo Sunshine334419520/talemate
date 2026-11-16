@@ -108,6 +108,20 @@ describe("case 契约 · 校验器", () => {
     expect(text).toContain("afterTurn 必须是非负整数");
   });
 
+  test("event-count-at-most 允许 0：一次也不许发生", () => {
+    expect(
+      validateCase({
+        ...MINIMAL,
+        checks: [{ kind: "event-count-at-most", type: "compaction/start", n: 0 }],
+      }),
+    ).toEqual([]);
+    const issues = validateCase({
+      ...MINIMAL,
+      checks: [{ kind: "event-count-at-most", type: "compaction/start", n: -1 }],
+    });
+    expect(issues.map((i) => i.message).join("\n")).toContain("n 必须是非负整数");
+  });
+
   test("change-recorded 的 changeKind 可选，但值必须合法", () => {
     expect(
       validateCase({
