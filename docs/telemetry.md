@@ -174,7 +174,7 @@ rewinds
 **CLI**：
 
 ```bash
-# 摘要（轮/步/工具/失败/耗时/token/span 计数）
+# 摘要（轮/步/工具/失败/耗时/token/span 计数 + 上下文水位与压缩降幅）
 /trace
 
 # 导出脱敏副本（缺省落到会话目录的 trace-export.jsonl）
@@ -193,7 +193,7 @@ cat <session>/events.jsonl | jq -c 'select(.type=="tool/result")'
 ## 还没做
 
 - OTLP logs 导出（`TraceSink` 已经留好座位）；
-- 轨迹 UI 的搜索、分组与水位视图（表格、检查器、时间概览、跨会话查询已落地）；
+- 轨迹 UI 的搜索、分组与上下文水位面板（`/trace` 摘要已有水位行与压缩前后 messages 降幅；表格、检查器、时间概览、跨会话查询已落地）；
 - 两个进程同时写同一会话的互斥（现状是单进程写）。
 
 eval case / rubric / pairwise / replay provider 已落地，见 [eval-system.md](eval-system.md)；

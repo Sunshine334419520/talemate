@@ -24,6 +24,51 @@ function spanLabel(span: Span): string {
   return `${name}${error}${parent}`;
 }
 
+interface ContextWatermark {
+  latest: { system: number; tools: number; messages: number; total: number };
+  peak: number;
+  compactions: { before: number; after: number }[];
+}
+
+/**
+ * 上下文水位只从 `request/header` 的三段字符数折，不另记事件。
+ *
+ * 压缩效果靠"压缩前最后一个请求"与"压缩后第一个请求"的 messages 对比：中间没有请求就不算，
+ * 免得把没发出去的窗口当成已发生的下降。
+ */
+function contextWatermark(events: AnyTraceEvent[]): ContextWatermark | undefined {
+  let latest: ContextWatermark["latest"] | undefined;
+  let peak = 0;
+  let before: number | undefined;
+  let pending: number | undefined;
+  const compactions: ContextWatermark["compactions"] = [];
+  for (const event of events) {
+    if (event.type === "request/header") {
+      const data = event.data;
+      latest = {
+        system: data.systemChars,
+        tools: data.toolsChars,
+        messages: data.messagesChars,
+        total: data.systemChars + data.toolsChars + data.messagesChars,
+      };
+      peak = Math.max(peak, latest.total);
+      if (pending !== undefined) {
+        compactions.push({ before: pending, after: data.messagesChars });
+        pending = undefined;
+      }
+      continue;
+    }
+    if (event.type === "compaction/start") {
+      before = latest?.messages;
+      continue;
+    }
+    if (event.type === "compaction/end" && event.data.ok && event.data.compacted) {
+      pending = before;
+    }
+  }
+  return latest === undefined ? undefined : { latest, peak, compactions };
+}
+
 /** 一页摘要：发生了什么、花了多少、哪几段失败了。失败只列最近 5 条，全部可从事件里查。 */
 export function renderTraceSummary(events: AnyTraceEvent[]): string {
   if (events.length === 0) return "（还没有事件：这个会话还没跑过一轮）";
@@ -42,6 +87,17 @@ export function renderTraceSummary(events: AnyTraceEvent[]): string {
     `- 耗时：模型 ${stats.llmMs}ms / 工具 ${stats.toolMs}ms · token input ${stats.inputTokens} / output ${stats.outputTokens}`,
     `- span：${[...counts].map(([name, n]) => `${name} ${n}`).join(" · ") || "无"}`,
   ];
+  const context = contextWatermark(events);
+  if (context !== undefined) {
+    const { latest, peak, compactions } = context;
+    const last = compactions.at(-1);
+    const drop = last === undefined || last.before === 0
+      ? ""
+      : `，最近 messages ${last.before} → ${last.after}（${Math.round(((last.after - last.before) / last.before) * 100)}%）`;
+    lines.push(
+      `- 上下文：最新 ${latest.total} 字（system ${latest.system} + tools ${latest.tools} + messages ${latest.messages}） · 峰值 ${peak}${compactions.length > 0 ? ` · 已压缩 ${compactions.length} 次${drop}` : ""}`,
+    );
+  }
   if (failed.length) {
     lines.push("", "失败的段（最近 5 条）：");
     for (const span of failed) lines.push(`  · ${spanLabel(span)}`);
