@@ -9,7 +9,15 @@ function run(
   caseId: string,
   variantId: string,
   verdict: RunResult["verdict"],
-  options: { family?: Family; base?: boolean; holdout?: boolean; tokens?: number; steps?: number; repeat?: number } = {},
+  options: {
+    family?: Family;
+    base?: boolean;
+    holdout?: boolean;
+    tokens?: number;
+    steps?: number;
+    repeat?: number;
+    rubricScore?: number;
+  } = {},
 ): RunResult {
   return {
     runId: `${caseId}-${variantId}`,
@@ -17,6 +25,7 @@ function run(
     family: options.family ?? "design",
     base: options.base ?? true,
     holdout: options.holdout ?? false,
+    ...(options.rubricScore === undefined ? {} : { rubricScore: options.rubricScore }),
     variantId,
     repeat: options.repeat ?? 0,
     manifest: {
@@ -44,11 +53,29 @@ function run(
 function pair(
   caseId: string,
   variant: RunResult["verdict"],
-  options: { family?: Family; base?: boolean; holdout?: boolean; tokens?: number; steps?: number } = {},
+  options: {
+    family?: Family;
+    base?: boolean;
+    holdout?: boolean;
+    tokens?: number;
+    steps?: number;
+    scores?: { baseline: number; variant: number };
+  } = {},
 ): RunResult[] {
   const runs: RunResult[] = [];
   for (let repeat = 0; repeat < 3; repeat++) {
-    runs.push(run(caseId, "baseline", "pass", { ...options, repeat }), run(caseId, "trial", variant, { ...options, repeat }));
+    runs.push(
+      run(caseId, "baseline", "pass", {
+        ...options,
+        repeat,
+        ...(options.scores === undefined ? {} : { rubricScore: options.scores.baseline }),
+      }),
+      run(caseId, "trial", variant, {
+        ...options,
+        repeat,
+        ...(options.scores === undefined ? {} : { rubricScore: options.scores.variant }),
+      }),
+    );
   }
   return runs;
 }
@@ -56,13 +83,35 @@ function pair(
 describe("decideComparison · 五条规则", () => {
   test("全套证据齐全时采用", () => {
     const results = [
-      ...pair("design-core", "pass", { family: "design", base: true }),
+      ...pair("design-core", "pass", { family: "design", base: true, scores: { baseline: 3.4, variant: 4.2 } }),
       ...pair("prose-chapter", "pass", { family: "prose", base: false }),
       ...pair("design-holdout", "pass", { family: "design", base: false, holdout: true }),
     ];
     const decision = decideComparison(results, { targetFamily: "design" });
     expect(decision.verdict).toBe("adopt");
     expect(decision.rules.every((rule) => rule.status === "pass")).toBe(true);
+  });
+
+  test("目标 family 的 rubric 涨幅不到 +0.5 即不采用", () => {
+    const results = [
+      ...pair("design-core", "pass", { family: "design", base: true, scores: { baseline: 3.8, variant: 4.1 } }),
+      ...pair("prose-chapter", "pass", { family: "prose", base: false }),
+      ...pair("design-holdout", "pass", { family: "design", base: false, holdout: true }),
+    ];
+    const decision = decideComparison(results, { targetFamily: "design" });
+    expect(decision.verdict).toBe("reject");
+    expect(decision.rules.find((rule) => rule.id === "target")?.status).toBe("fail");
+  });
+
+  test("没有 rubric 分时目标 family 记未验证", () => {
+    const results = [
+      ...pair("design-core", "pass", { family: "design", base: true }),
+      ...pair("prose-chapter", "pass", { family: "prose", base: false }),
+      ...pair("design-holdout", "pass", { family: "design", base: false, holdout: true }),
+    ];
+    const decision = decideComparison(results, { targetFamily: "design" });
+    expect(decision.verdict).toBe("insufficient");
+    expect(decision.rules.find((rule) => rule.id === "target")?.status).toBe("unverified");
   });
 
   test("其他 family 回退即不采用", () => {
@@ -105,7 +154,7 @@ describe("decideComparison · 五条规则", () => {
 
   test("没有 holdout 是证据不足，不是采用", () => {
     const results = [
-      ...pair("design-core", "pass", { family: "design", base: true }),
+      ...pair("design-core", "pass", { family: "design", base: true, scores: { baseline: 3.4, variant: 4.2 } }),
       ...pair("prose-chapter", "pass", { family: "prose", base: false }),
     ];
     const decision = decideComparison(results, { targetFamily: "design" });

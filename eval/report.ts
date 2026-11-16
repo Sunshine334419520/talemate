@@ -53,6 +53,14 @@ function tokensOf(run: RunResult | undefined): number {
   return run === undefined ? 0 : run.usage.input + run.usage.output;
 }
 
+function rubricCell(baseline: readonly RunResult[], variant: readonly RunResult[]): string {
+  const before = firstRun(baseline)?.rubricScore;
+  const after = firstRun(variant)?.rubricScore;
+  if (before === undefined && after === undefined) return "—";
+  const render = (value: number | undefined): string => (value === undefined ? "—" : value.toFixed(1));
+  return `${render(before)}→${render(after)}`;
+}
+
 function percentDelta(baseline: number, variant: number): string {
   if (baseline === 0) return "—";
   const value = ((variant - baseline) / baseline) * 100;
@@ -151,6 +159,12 @@ export function renderBaselineReport(results: readonly RunResult[], clock: strin
     `- 步数合计（每组第一次重复）：${cases.reduce((n, [, runs]) => n + (firstRun(runs)?.steps ?? 0), 0)}`,
     `- 失败桶：${failures.length === 0 ? "无" : [...new Set(failures.map((f) => f.failureBucket ?? "other"))].join("、")}`,
     "- 人民币：未接价目表（costYuan 固定为 0）；决策按 token/步数",
+    ...(() => {
+      const scores = results.map((result) => result.rubricScore).filter((score): score is number => score !== undefined);
+      if (scores.length === 0) return [];
+      const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+      return [`- rubric 均分：${mean.toFixed(1)}/5（${scores.length} 份打分）`];
+    })(),
     "- 现场：`traces/<runId>/`（events.jsonl / changes.jsonl / files/）",
     `- 待人工评分（rubric）：${[...new Set(results.map((r) => r.rubric).filter((r): r is string => r !== undefined))].join("、") || "无"}`,
     "",
@@ -218,8 +232,8 @@ export function renderComparisonReport(
     "",
     "## 主表",
     "",
-    "| case | family | baseline | variant | 判据变化 | token Δ |",
-    "|---|---|---|---|---|---:|",
+    "| case | family | baseline | variant | rubric | 判据变化 | token Δ |",
+    "|---|---|---|---|---|---|---:|",
   ];
 
   for (const [caseId, pair] of cases) {
@@ -236,7 +250,7 @@ export function renderComparisonReport(
     lines.push(
       `| ${caseId} | ${pair.baseline[0]?.family ?? pair.variant[0]?.family ?? "?"} | ${
         pair.baseline.length === 0 ? "—" : bPass ? "✅" : "❌"
-      } | ${pair.variant.length === 0 ? "—" : vPass ? "✅" : "❌"} | ${delta} | ${percentDelta(bTokens, vTokens)} |`,
+      } | ${pair.variant.length === 0 ? "—" : vPass ? "✅" : "❌"} | ${rubricCell(pair.baseline, pair.variant)} | ${delta} | ${percentDelta(bTokens, vTokens)} |`,
     );
   }
 
@@ -309,6 +323,12 @@ export function renderComparisonReport(
     )}）`,
     `- 失败桶：${failures.length === 0 ? "无" : [...new Set(failures.map((f) => f.failureBucket ?? "other"))].join("、")}`,
     "- 人民币：未接价目表（costYuan 固定为 0）；决策按 token/步数",
+    ...(() => {
+      const scores = results.map((result) => result.rubricScore).filter((score): score is number => score !== undefined);
+      if (scores.length === 0) return [];
+      const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+      return [`- rubric 均分：${mean.toFixed(1)}/5（${scores.length} 份打分）`];
+    })(),
     `- 待人工评分（rubric）：${[...new Set(results.map((r) => r.rubric).filter((r): r is string => r !== undefined))].join("、") || "无"}`,
     "",
     "## 判断",

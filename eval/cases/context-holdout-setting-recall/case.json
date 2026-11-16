@@ -1,0 +1,18 @@
+{
+  "id": "context-holdout-setting-recall",
+  "family": "context",
+  "base": false,
+  "holdout": true,
+  "brief": "记住一条硬设定：沈越的怀表停在三点十七分，他从不修。接下来我们聊几轮别的，最后我会让你复述。",
+  "followUps": ["今天天气怎么样？", "旧书店的房租多少？", "贺守一收租时催不催？", "再说一次那块怀表的设定。"],
+  "fixtures": true,
+  "answerer": true,
+  "env": { "TALEMATE_COMPACT_TOKENS": "800" },
+  "checks": [
+    { "kind": "event-exists", "type": "compaction/start" },
+    { "kind": "assistant-text-contains", "text": "三点十七分" }
+  ],
+  "model": { "reasoning": "low", "temperature": 0.8, "maxTokens": 32000 },
+  "budget": { "maxTurns": 5, "maxSteps": 20, "maxTokens": 200000 },
+  "tags": ["context", "compaction", "holdout"]
+}

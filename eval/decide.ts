@@ -4,6 +4,7 @@
  * 规则写死在这里，跑之前就定好；报告只把 pass/fail/unverified 打出来，
  * 不根据结果临时挑一条好看的规则。unverified 不是 pass——缺证据时结论是"证据不足"。
  */
+import { bootstrapMeanCI } from "./stats";
 import type { Family, RunResult } from "./types";
 
 export interface DecisionRule {
@@ -51,6 +52,13 @@ function percentDelta(baseline: number, variant: number): number {
 function formatPercent(delta: number): string {
   const value = delta * 100;
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+/** 同一侧所有带分的 run 取均值；没有分返回 undefined。 */
+function meanScore(runs: readonly RunResult[]): number | undefined {
+  const scores = runs.map((run) => run.rubricScore).filter((score): score is number => score !== undefined);
+  if (scores.length === 0) return undefined;
+  return scores.reduce((sum, score) => sum + score, 0) / scores.length;
 }
 
 function names(runs: readonly CasePair[]): string {
@@ -118,16 +126,36 @@ export function decideComparison(
         detail: "本轮没有这个 family 的 case",
       });
     } else {
-      const failed = targetPairs.filter((pair) => !allPass(pair.variant));
-      rules.push({
-        id: "target",
-        rule: `目标 family「${target}」达阈值（确定性口径：全过）`,
-        status: failed.length === 0 ? "pass" : "fail",
-        detail:
-          failed.length === 0
-            ? `${targetPairs.length} 个 case 全过（rubric 阈值尚未接进报告，这里用判据代理）`
-            : `variant 未通过：${names(failed)}`,
+      const scored = targetPairs.flatMap((pair) => {
+        const baseline = meanScore(pair.baseline);
+        const variant = meanScore(pair.variant);
+        return baseline === undefined || variant === undefined
+          ? []
+          : [{ caseId: pair.caseId, delta: variant - baseline }];
       });
+      if (scored.length === 0) {
+        rules.push({
+          id: "target",
+          rule: `目标 family「${target}」达阈值`,
+          status: "unverified",
+          detail: "没有 rubric 分；用 --judge 打分，或把人工分填进结果",
+        });
+      } else {
+        const deltas = scored.map((item) => item.delta);
+        const mean = deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
+        const ci = bootstrapMeanCI(deltas);
+        const reached = mean >= 0.5 && (ci === undefined || ci.low > 0);
+        const interval =
+          ci === undefined
+            ? "样本不足，无区间"
+            : `95% CI ${ci.low >= 0 ? "+" : ""}${ci.low.toFixed(1)}–${ci.high >= 0 ? "+" : ""}${ci.high.toFixed(1)}`;
+        rules.push({
+          id: "target",
+          rule: `目标 family「${target}」rubric Δ ≥ +0.5`,
+          status: reached ? "pass" : "fail",
+          detail: `rubric Δ=${mean >= 0 ? "+" : ""}${mean.toFixed(1)}（${interval}，${scored.length} 个 case）；阈值 +0.5`,
+        });
+      }
     }
   }
 

@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-10-31 · 本文与代码冲突时**以代码为准** · 2026-10-31 落地 canonical 事件日志与投影（阶段 1，见 `telemetry.md`）
+> **对齐代码**：2026-11-16 · 本文与代码冲突时**以代码为准** · 2026-10-31 落地 canonical 事件日志与投影（阶段 1，见 `telemetry.md`）
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -213,7 +213,7 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 - **脱敏只作用于导出副本**（`redact.ts`，fail-closed）：本地账本保留原文，导出副本洗密钥与家目录。`/trace` 看摘要；导出走 CLI 的 `/trace export [路径]` 或桌面右栏的「导出脱敏副本」。
 - **OTel 仍未接**：先把本地事件与投影做对；将来只换 backend，不换事件。
 
-还没做：eval case / rubric / pairwise / replay provider；跨会话的 span 查询与可视化；OTLP logs 导出。
+还没做：OTLP logs 导出、轨迹 UI 的搜索/分组/水位、多进程同写互斥。eval 与跨会话查询已落地，分别见 [eval-system.md](eval-system.md) 与 [telemetry.md](telemetry.md)。
 
 细节（ADR、事件词汇、怎么加一类事件、怎么读）见 [telemetry.md](telemetry.md)；为什么这么改见 [learning/evals-observability/architecture-review-dsh.md](learning/evals-observability/architecture-review-dsh.md)。
 

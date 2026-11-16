@@ -147,6 +147,8 @@ export interface RunResult {
   holdout: boolean;
   /** 附带的 L4 评分表；M1 只记录，不自动打分 */
   rubric?: string;
+  /** `--judge` 打出的四维均分（1–5）；没有打分时缺省 */
+  rubricScore?: number;
   /** baseline | 变体名 */
   variantId: string;
   repeat: number;

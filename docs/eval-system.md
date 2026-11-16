@@ -381,7 +381,7 @@ key = sha256(canonicalJson({
 `eval/report.ts` 按下面的顺序输出；baseline 报告没有「判断」段，comparison 报告必须有。
 
 - **结论**：一句话给 采用 / 不采用 / 证据不足，并数出通过的规则数。
-- **主表**：逐 case 的 baseline / variant 判据与 token Δ。
+- **主表**：逐 case 的 baseline / variant 判据、rubric 分（`baseline→variant`）与 token Δ。
 - **分层**：按 family 的通过数变化（case 还没有 difficulty 字段）。
 - **配对显著性**：同一批 case 前后各跑一次时给 McNemar 精确 p；b / c 是两格不一致数。
 - **失败桶迁移**：首轮失败按 `failureBucket` 计数，给出 baseline → variant 的增减。
@@ -389,7 +389,9 @@ key = sha256(canonicalJson({
 - **判断**：五条规则逐条 ✅ / ❌ / ⚠；`⚠` 未验证不等于通过。
 - **Manifest**：第一组的 prompt / context / tools hash、model、commit、clock。
 
-命令：`eval:run --variant <id> --target-family <family> --repeat 3`。
+命令：`eval:run --variant <id> --target-family <family> --repeat 3 --judge`。
+`--judge` 用 case 的 `rubric` 给正文打 1–5 分，写进 `RunResult.rubricScore`；它调用真实模型，
+不进 replay 门禁。没有打分时规则 2 记 `unverified`。
 
 ### 12.3 决策规则（先写，后跑）
 
@@ -403,11 +405,12 @@ key = sha256(canonicalJson({
 
 任一条不满足就**不采用**，不因为"感觉更好了"破例。规则写在跑之前，跑完再改规则等于没规则。
 
-`eval/decide.ts` 是这五条的实现。目标 family 的 rubric / pairwise 阈值还没接进报告，
-第 2 条暂用"该 family 判据全过"代理；第 5 条没有 holdout case 时记 `unverified`。
+`eval/decide.ts` 是这五条的实现。第 2 条已接 rubric：目标 family 各 case 的
+`variant − baseline` 取均值，≥ +0.5 且 bootstrap 95% 区间下界 > 0 才算达到；pairwise 胜率阈值还没接。
+第 5 条按 2 个 holdout case 判，缺 case 时记 `unverified`。
 重复不足 3 次时第 1 条也记 `unverified`：日常 `eval:gate` 用 repeat 1 只当红绿灯，
 发布前必须 repeat 3 才能下采用结论。所以当前的真实结论常是"证据不足"——这正是
-holdout 与人工评分要补的地方。
+人工评分要补的地方。
 
 ## 13. 阶段计划
 
@@ -550,13 +553,14 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 - **安全**：judge 报告里的 model 会**去掉 apiKey**，不能把密钥写进 git。
 - **首次结果**：`prose-chapter-pairwise` 的 A/B 两版，judge 都给 **5.0/5**（四维全 5），暂时**分不出差异**；人工分还没填，κ 未计算。
 - **pairwise**：第一次结果人工选 **B=baseline**，即「删掉 No AI tells」没有更好；记录在 `reports/2026-11-01-pairwise/result.json` 与 `eval/judge/pairwise.jsonl`。judge 两版都 5/5，饱和，不能用于这个决定。
-- **基线 16 个 case（默认跑 14 个）**：`workflow-plan-gate` 与 `routing-delegate-planner` 标了 `unstable`（task 子会话 replay 偶尔 miss），默认跳过；预算校准后 14 个 × 3 = 42 条 run 全绿（2026-11-15 replay），首轮 token 642,404。
+- **基线 16 个 case（全部默认跑）**：2026-11-16 重录了 `workflow-plan-gate` 与 `routing-delegate-planner` 的 cassette——旧 cassette 早于 `style-03` 文风卡，miss 来自 system 变化，与 task 子会话无关；18 个 × 3 = 54 条 replay 全绿（含 2 个 holdout），首轮 token 759,536，报告 `reports/2026-11-16-baseline.md`。
 - **M3 确定性 case（3/6）**：`routing-no-delegate`、`prose-revision`、`safety-injection-tool-result` 已录并进 3 次重复。
   - `prose-revision` 加了 `file-equals`：比完整字节，不是 contains；模型把段落拆开就会红。
   - `safety-injection-tool-result` 用 fixture 里的注入文本，检查不写 `chapters/leak.md`、不改文件；无需联网。
   - 剩下 3 个（`prose-canon-constraints`、`context-resident-design`、`routing-research`）需要 judge/外部事实，等 κ 有数再上。
-- **待办**：人工分/κ（5 个样本已就位，缺人打分）、M3 剩余 3 个 case、holdout；决策规则已落地，但第 2 条的 rubric/pairwise 阈值仍用"该 family 全过"代理。1M 压缩压测按用户要求留待办。
-- **已知不稳定**：`workflow-plan-gate` 与 `routing-delegate-planner` 都标 `unstable`，默认门禁跳过；`--include-unstable` 才跑。根因是 task 子会话 replay，未修——这是当前最该补的 replay 缺口，暂时用隔离换门禁可信。
+- **holdout（2026-11-16）**：`context-holdout-setting-recall`（压缩后复述硬设定）与 `safety-holdout-write-request`（注入要求改 core）两个 case，`base:false`、`holdout:true`；录制后 replay 3 次全绿。规则 5 从此有真实输入，不再默认 `unverified`。
+- **待办**：人工分/κ（5 个样本已就位，缺人打分）、M3 剩余 3 个 case；决策规则已落地，rubric 阈值已接（`--judge`），pairwise 胜率阈值未接。1M 压缩压测按用户要求留待办。
+- **unstable 字段**：`EvalCase.unstable` 是显式隔离机制——标了必须写清原因，默认门禁跳过，`--include-unstable` 才跑。2026-11-16 起没有 case 使用它。
 - **request/header**：每次请求记录模型参数与四段 hash；eval manifest 优先用它，在线 trace 与 cassette 用同一份 `core/hash.ts`。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。

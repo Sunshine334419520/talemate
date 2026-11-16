@@ -2,7 +2,7 @@
 
 > **职责**：回答"还没做什么、哪些地方是已知的坑、哪些决策还没拍板"。
 > **读者**：要决定下一步做什么的人。
-> **对齐代码**：2026-10-31 · 本文记的都是**当前不存在**的东西；写完就删掉对应条目
+> **对齐代码**：2026-11-16 · 本文记的都是**当前不存在**的东西；写完就删掉对应条目
 > 相邻：`product.md`（演进方向）· `state.md`（状态层，已落地）· `characters.md` · `design-docs.md` · `chapter-planning.md`
 
 ## 已确认的缺口
@@ -119,13 +119,15 @@
 
 下一步（Stage 2）：
 
-1. eval case / rubric / pairwise / replay provider —— 手册里的方法论那一层；
-2. 跨会话 trace 查询与失败聚合（成本、失败桶）——`buildTraceIndex`（带 size/mtime 缓存）+ `/trace list` + `/trace prune` 归档 + 桌面左栏「轨迹」已落地；
-3. OTLP logs 导出（只换 backend，不换事件）；
-4. 观测框架完成后再对齐轨迹 UI（DSH）：先补 `request/header`（prompt/context/tools hash、模型参数）、事件视图模型、跨会话查询与保留，再做搜索、分组、水位、详情、token/成本。轨迹 UI 不在事件账补齐之前动。
+1. OTLP logs 导出（只换 backend，不换事件）；
+2. 轨迹 UI 收尾：搜索、分组、水位视图；表格/检查器/请求详情重建/跨会话查询/归档已落地；
+3. 多进程同写同一会话的互斥；
+4. eval 收尾：rubric 阈值接进决策、M3 剩余 3 个 case、1M 压缩压测。
+
+已完成（2026-11-16）：`request/header`、事件视图模型、`buildTraceIndex` + `/trace list` + `/trace prune`、桌面轨迹表与检查器、18 个 eval case（含 2 个 holdout）与 replay 门禁。
 
 实现细节：[telemetry.md](telemetry.md)
-评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0–M2、M2D、M3 部分已落地**（16 个 case / 本地门禁 / 变体对比 / judge + κ 工具 / 3 个确定性 M3 case / 一次 pairwise）；人工校准、M3 剩余 3 个 case、holdout 与 1M 压缩压测待办。
+评测系统设计（case 清单、replay、阶段计划）：[eval-system.md](eval-system.md)。**M0–M2、M2D、M3 部分已落地**（18 个 case / 2 个 holdout / 本地门禁 / 变体对比 / judge + κ 工具 / 3 个确定性 M3 case / 一次 pairwise）；人工校准、M3 剩余 3 个 case 与 1M 压缩压测待办。
 评审背景：[learning/evals-observability/architecture-review-dsh.md](learning/evals-observability/architecture-review-dsh.md)
 
 ---

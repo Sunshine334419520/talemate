@@ -31,6 +31,5 @@
   "tags": [
     "routing",
     "planner"
-  ],
-  "unstable": "与 workflow-plan-gate 重叠；task 子会话 replay 偶尔 miss，会误报门禁"
+  ]
 }

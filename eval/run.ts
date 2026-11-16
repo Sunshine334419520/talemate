@@ -34,6 +34,7 @@ import type { Variant } from "../src/probe/patches";
 import { runChecks } from "./checks";
 import type { TurnSnapshot } from "./checks";
 import { defaultReportName, renderBaselineReport, renderComparisonReport } from "./report";
+import { judgeSample } from "./judge";
 import { FAMILIES, type EvalCase, type FailureBucket, type Family, type Manifest, type RunResult } from "./types";
 import { validateAll } from "./validate";
 
@@ -51,6 +52,7 @@ interface Options {
   variant?: string;
   targetFamily?: Family;
   includeUnstable: boolean;
+  judge: boolean;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -62,6 +64,7 @@ function parseArgs(argv: string[]): Options {
     timeoutMs: 180_000,
     maxTokens: 500_000,
     includeUnstable: false,
+    judge: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -110,6 +113,9 @@ function parseArgs(argv: string[]): Options {
       case "--include-unstable":
         options.includeUnstable = true;
         break;
+      case "--judge":
+        options.judge = true;
+        break;
       case "--help":
       case "-h":
         console.log(
@@ -126,6 +132,7 @@ function parseArgs(argv: string[]): Options {
             "  --variant <id>      跑 baseline 与 eval/variants/<id>.json 的对比",
             "  --target-family <f> 本轮要改进的 family；判断段据此区分目标与回退",
             "  --include-unstable  连同 unstable case 一起跑（默认跳过）",
+            "  --judge             跑完后按 case 的 rubric 给正文打分（真实模型调用，不进 replay 门禁）",
           ].join("\n"),
         );
         process.exit(0);
@@ -505,6 +512,24 @@ async function runOnce(
   const steps = last?.events.filter((event) => event.type === "step/start").length ?? 0;
   const wallMs = Date.now() - startedAt;
 
+  let rubricScore: number | undefined;
+  if (options.judge && evalCase.rubric !== undefined && last !== undefined) {
+    const chapter = Object.keys(last.files)
+      .filter((path) => path.startsWith("chapters/") && path.endsWith(".md"))
+      .sort()
+      .at(-1);
+    if (chapter !== undefined) {
+      try {
+        const rubric = await readFile(join(EVAL_ROOT, "rubric", `${evalCase.rubric}.md`), "utf-8");
+        const score = await judgeSample({ sample: last.files[chapter]!, rubric, model: loadModelConfig() });
+        rubricScore = score.total;
+        console.log(`   judge ${rubricScore.toFixed(1)}/5`);
+      } catch (err) {
+        console.error(`   judge 失败：${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
   const result: RunResult = {
     runId,
     caseId: evalCase.id,
@@ -512,6 +537,7 @@ async function runOnce(
     base: evalCase.base,
     holdout: evalCase.holdout === true,
     ...(evalCase.rubric === undefined ? {} : { rubric: evalCase.rubric }),
+    ...(rubricScore === undefined ? {} : { rubricScore }),
     variantId,
     repeat,
     manifest: await manifestOf(

@@ -10,9 +10,9 @@
 
 ## 主表
 
-| case | family | baseline | variant | 判据变化 | token Δ |
-|---|---|---|---|---|---:|
-| `<case-id>` | `<family>` | ✅ | ❌ | `+tool-called` | +12% |
+| case | family | baseline | variant | rubric | 判据变化 | token Δ |
+|---|---|---|---|---|---|---:|
+| `<case-id>` | `<family>` | ✅ | ❌ | `3.4→4.2` | `+tool-called` | +12% |
 
 ## 分层
 

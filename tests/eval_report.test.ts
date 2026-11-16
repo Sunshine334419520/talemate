@@ -33,7 +33,14 @@ function makeRun(
   caseId: string,
   variantId: string,
   verdict: RunResult["verdict"],
-  options: { family?: Family; base?: boolean; holdout?: boolean; repeat?: number; bucket?: RunResult["failureBucket"] } = {},
+  options: {
+    family?: Family;
+    base?: boolean;
+    holdout?: boolean;
+    repeat?: number;
+    bucket?: RunResult["failureBucket"];
+    rubricScore?: number;
+  } = {},
 ): RunResult {
   return {
     runId: `${caseId}-${variantId}-${options.repeat ?? 0}`,
@@ -41,6 +48,7 @@ function makeRun(
     family: options.family ?? "design",
     base: options.base ?? true,
     holdout: options.holdout ?? false,
+    ...(options.rubricScore === undefined ? {} : { rubricScore: options.rubricScore }),
     variantId,
     repeat: options.repeat ?? 0,
     manifest: {
@@ -78,8 +86,8 @@ describe("报告 · pass@k 与判断段", () => {
 
   test("证据齐全时判断段给出采用", () => {
     const baseRuns = [0, 1, 2].flatMap((repeat) => [
-      makeRun("design-core", "baseline", "pass", { family: "design", base: true, repeat }),
-      makeRun("design-core", "trial", "pass", { family: "design", base: true, repeat }),
+      makeRun("design-core", "baseline", "pass", { family: "design", base: true, repeat, rubricScore: 3.4 }),
+      makeRun("design-core", "trial", "pass", { family: "design", base: true, repeat, rubricScore: 4.2 }),
     ]);
     const results = [
       ...baseRuns,
@@ -91,13 +99,15 @@ describe("报告 · pass@k 与判断段", () => {
     const report = renderComparisonReport(results, "2026-11-01", "trial", "note", { targetFamily: "design" });
     expect(report).toContain("## 判断");
     expect(report).toContain("**采用**");
+    expect(report).toContain("| rubric |");
+    expect(report).toContain("3.4→4.2");
     expect(report).toContain("## 失败桶迁移");
   });
 
   test("variant 失败进失败桶迁移表", () => {
     const results = [
-      makeRun("design-core", "baseline", "pass", { family: "design", base: true }),
-      makeRun("design-core", "trial", "fail", { family: "design", base: true, bucket: "no-tool" }),
+      makeRun("design-core", "baseline", "pass", { family: "design", base: true, rubricScore: 4.0 }),
+      makeRun("design-core", "trial", "fail", { family: "design", base: true, bucket: "no-tool", rubricScore: 2.0 }),
     ];
     const report = renderComparisonReport(results, "2026-11-01", "trial", "note", { targetFamily: "design" });
     expect(report).toContain("| no-tool | 0 | 1 | +1 |");

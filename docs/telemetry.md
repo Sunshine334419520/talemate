@@ -2,7 +2,7 @@
 
 > **职责**：回答"会话事件是什么形状、谁在什么时候发、messages/span/统计怎么从它折出来、导出时怎么脱敏"。
 > **读者**：要加一类事件、加一个投影、接一个观测消费者（eval reader / OTel）的人。
-> **对齐代码**：2026-11-04 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
+> **对齐代码**：2026-11-16 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
 
 ## 一句话
 
@@ -192,9 +192,11 @@ cat <session>/events.jsonl | jq -c 'select(.type=="tool/result")'
 
 ## 还没做
 
-- eval case / rubric / pairwise / replay provider —— 手册里的方法论那一层；
-- 跨会话 trace 查询与 span 可视化；
 - OTLP logs 导出（`TraceSink` 已经留好座位）；
+- 轨迹 UI 的搜索、分组与水位视图（表格、检查器、时间概览、跨会话查询已落地）；
 - 两个进程同时写同一会话的互斥（现状是单进程写）。
+
+eval case / rubric / pairwise / replay provider 已落地，见 [eval-system.md](eval-system.md)；
+跨会话查询走 `buildTraceIndex` + `/trace list`，归档走 `/trace prune`。
 
 > 判据：先保证事件完整，再谈查询视图。反过来会得到一个"看起来有 span、但重放不出来"的底座。
