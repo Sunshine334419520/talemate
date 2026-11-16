@@ -25,3 +25,82 @@ describe("报告命名 · 按运行日", () => {
     expect(defaultReportName(new Date(2026, 0, 3), "no-edit-tool", [])).toBe("2026-01-03-no-edit-tool.md");
   });
 });
+
+import type { Family, RunResult } from "../eval/types";
+import { renderBaselineReport, renderComparisonReport } from "../eval/report";
+
+function makeRun(
+  caseId: string,
+  variantId: string,
+  verdict: RunResult["verdict"],
+  options: { family?: Family; base?: boolean; holdout?: boolean; repeat?: number; bucket?: RunResult["failureBucket"] } = {},
+): RunResult {
+  return {
+    runId: `${caseId}-${variantId}-${options.repeat ?? 0}`,
+    caseId,
+    family: options.family ?? "design",
+    base: options.base ?? true,
+    holdout: options.holdout ?? false,
+    variantId,
+    repeat: options.repeat ?? 0,
+    manifest: {
+      runId: "x",
+      caseHash: "case",
+      promptHash: "prompt",
+      promptParts: {},
+      contextHash: "context",
+      toolsHash: "tools",
+      model: { provider: "test", model: "test", maxTokens: 100 },
+      codeCommit: "test",
+      bun: "test",
+      clock: "2026-11-01",
+    },
+    checks: [],
+    verdict,
+    ...(options.bucket === undefined ? {} : { failureBucket: options.bucket }),
+    steps: 5,
+    usage: { input: 100, output: 0 },
+    costYuan: 0,
+    wallMs: 10,
+    tracePath: "traces/x",
+  };
+}
+
+describe("报告 · pass@k 与判断段", () => {
+  test("重复里一次过、一次没过：pass@k 成立，pass^k 不成立", () => {
+    const report = renderBaselineReport(
+      [makeRun("design-core", "baseline", "pass", { repeat: 0 }), makeRun("design-core", "baseline", "fail", { repeat: 1 })],
+      "2026-11-01",
+    );
+    expect(report).toContain("| pass@k | pass^k |");
+    expect(report).toContain("单次通过率 50.0%");
+  });
+
+  test("证据齐全时判断段给出采用", () => {
+    const baseRuns = [0, 1, 2].flatMap((repeat) => [
+      makeRun("design-core", "baseline", "pass", { family: "design", base: true, repeat }),
+      makeRun("design-core", "trial", "pass", { family: "design", base: true, repeat }),
+    ]);
+    const results = [
+      ...baseRuns,
+      makeRun("prose-chapter", "baseline", "pass", { family: "prose", base: false }),
+      makeRun("prose-chapter", "trial", "pass", { family: "prose", base: false }),
+      makeRun("design-holdout", "baseline", "pass", { family: "design", base: false, holdout: true }),
+      makeRun("design-holdout", "trial", "pass", { family: "design", base: false, holdout: true }),
+    ];
+    const report = renderComparisonReport(results, "2026-11-01", "trial", "note", { targetFamily: "design" });
+    expect(report).toContain("## 判断");
+    expect(report).toContain("**采用**");
+    expect(report).toContain("## 失败桶迁移");
+  });
+
+  test("variant 失败进失败桶迁移表", () => {
+    const results = [
+      makeRun("design-core", "baseline", "pass", { family: "design", base: true }),
+      makeRun("design-core", "trial", "fail", { family: "design", base: true, bucket: "no-tool" }),
+    ];
+    const report = renderComparisonReport(results, "2026-11-01", "trial", "note", { targetFamily: "design" });
+    expect(report).toContain("| no-tool | 0 | 1 | +1 |");
+    expect(report).toContain("**不采用**");
+  });
+});

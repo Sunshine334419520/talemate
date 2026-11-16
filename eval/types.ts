@@ -123,16 +123,19 @@ export interface Manifest {
   clock: string;
 }
 
-export type FailureBucket =
-  | "no-tool"
-  | "wrong-tool"
-  | "approval-skipped"
-  | "file-wrong"
-  | "constraint-lost"
-  | "timeout"
-  | "provider-error"
-  | "budget-exceeded"
-  | "other";
+export const FAILURE_BUCKETS = [
+  "no-tool",
+  "wrong-tool",
+  "approval-skipped",
+  "file-wrong",
+  "constraint-lost",
+  "timeout",
+  "provider-error",
+  "budget-exceeded",
+  "other",
+] as const;
+
+export type FailureBucket = (typeof FAILURE_BUCKETS)[number];
 
 export interface RunResult {
   runId: string;
@@ -140,6 +143,8 @@ export interface RunResult {
   family: Family;
   /** 这条 case 是否是回归门 */
   base: boolean;
+  /** 验收专用：不参与调参，决策规则第 5 条看它 */
+  holdout: boolean;
   /** 附带的 L4 评分表；M1 只记录，不自动打分 */
   rubric?: string;
   /** baseline | 变体名 */

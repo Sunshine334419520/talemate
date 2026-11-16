@@ -34,7 +34,7 @@ import type { Variant } from "../src/probe/patches";
 import { runChecks } from "./checks";
 import type { TurnSnapshot } from "./checks";
 import { defaultReportName, renderBaselineReport, renderComparisonReport } from "./report";
-import type { EvalCase, FailureBucket, Manifest, RunResult } from "./types";
+import { FAMILIES, type EvalCase, type FailureBucket, type Family, type Manifest, type RunResult } from "./types";
 import { validateAll } from "./validate";
 
 const EVAL_ROOT = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +49,7 @@ interface Options {
   maxTokens: number;
   report?: string;
   variant?: string;
+  targetFamily?: Family;
   includeUnstable: boolean;
 }
 
@@ -98,6 +99,14 @@ function parseArgs(argv: string[]): Options {
       case "--variant":
         options.variant = next();
         break;
+      case "--target-family": {
+        const value = next();
+        if (!(FAMILIES as readonly string[]).includes(value)) {
+          throw new Error(`--target-family 只接受 ${FAMILIES.join("、")}`);
+        }
+        options.targetFamily = value as Family;
+        break;
+      }
       case "--include-unstable":
         options.includeUnstable = true;
         break;
@@ -115,6 +124,7 @@ function parseArgs(argv: string[]): Options {
             "  --max-tokens <n>    录制模式的总 token 上限（默认 500000）",
             "  --report <path>     报告落点",
             "  --variant <id>      跑 baseline 与 eval/variants/<id>.json 的对比",
+            "  --target-family <f> 本轮要改进的 family；判断段据此区分目标与回退",
             "  --include-unstable  连同 unstable case 一起跑（默认跳过）",
           ].join("\n"),
         );
@@ -500,6 +510,7 @@ async function runOnce(
     caseId: evalCase.id,
     family: evalCase.family,
     base: evalCase.base,
+    holdout: evalCase.holdout === true,
     ...(evalCase.rubric === undefined ? {} : { rubric: evalCase.rubric }),
     variantId,
     repeat,
@@ -593,7 +604,9 @@ async function main(): Promise<void> {
     reportPath,
     variant === undefined
       ? renderBaselineReport(results, options.clock)
-      : renderComparisonReport(results, options.clock, variant.id, variant.note),
+      : renderComparisonReport(results, options.clock, variant.id, variant.note, {
+          ...(options.targetFamily === undefined ? {} : { targetFamily: options.targetFamily }),
+        }),
     "utf-8",
   );
 

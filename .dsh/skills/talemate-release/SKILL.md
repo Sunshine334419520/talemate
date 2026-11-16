@@ -27,7 +27,7 @@ bun install --frozen-lockfile
 bun run typecheck
 bun test
 bun run eval:check
-bun run eval/run.ts --replay --repeat 1 --report /tmp/talemate-release-eval.md
+bun run eval/run.ts --replay --repeat 3 --report /tmp/talemate-release-eval.md
 ```
 
 - Working tree must be clean. If not, stop and ask the user to commit or stash; do not release

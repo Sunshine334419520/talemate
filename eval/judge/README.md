@@ -22,6 +22,10 @@ bun run eval:judge --calibration eval/judge/calibration.jsonl --rubric prose-cha
 
 ## 当前样本
 
-- `samples/A.md`、`samples/B.md`：同一道题的两个版本，盲评对在 `reports/2026-11-01-pairwise/`。
-- 两版只差一处：`prose.rules` 的「No AI tells」是否删除。
-- 人工分还没填，所以还没有 κ；judge 给两版都是 5.0，暂时分不出差异。
+- `samples/A.md`、`samples/B.md`：同一道题的两个版本，盲评对在 `reports/2026-11-01-pairwise/`；
+  两版只差一处——`prose.rules` 的「No AI tells」是否删除。
+- `samples/C.md`、`samples/D.md`：`prose-chapter-basic` 两次复跑的正文（同题，取自 `traces/`）。
+- `samples/E.md`：`prose-chapter-pairwise` 另一次复跑的正文。
+- 五份样本的 `human` 仍全为 null，所以还没有 κ；judge 给 A/B 都是 5.0，暂时分不出差异。
+
+A/B 同题、C/D 同题，样本间不完全独立；κ 只当方向指标，不要拿它当精确的评分器质检。

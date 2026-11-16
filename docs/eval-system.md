@@ -2,7 +2,7 @@
 
 > **职责**：定义评测系统的目标、术语、数据模型、case 清单、阶段计划、验收标准与决策规则。
 > **读者**：要改 prompt / 工具 / 上下文，或要扩展评测集、判断一次改动该不该采用的人。
-> **对齐代码**：设计稿（2026-11-15，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
+> **对齐代码**：设计稿（2026-11-15，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case + 统计/决策段）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
 
 ---
 
@@ -372,33 +372,24 @@ key = sha256(canonicalJson({
 | 失败 | 按 `failureBucket` 计数，报告"迁移"而不是只报总数 |
 | 评测自身 | replay 命中率、case 超时率、judge 与人工的一致性（κ） |
 
+实现：`eval/stats.ts`（bootstrap 均值区间、Wilson 区间、McNemar 精确检验、pass@k / pass^k、
+失败桶计数）；`eval/decide.ts` 把 §12.3 的五条规则折成 adopt / reject / insufficient。
+数字必须能从 `RunResult[]` 重算出来，报告不引入第二份状态。
+
 ### 12.2 报告（一页，固定格式）
 
-```md
-# <改动名> vs baseline
+`eval/report.ts` 按下面的顺序输出；baseline 报告没有「判断」段，comparison 报告必须有。
 
-## 结论（一句话）
-采用 / 不采用 / 证据不足
+- **结论**：一句话给 采用 / 不采用 / 证据不足，并数出通过的规则数。
+- **主表**：逐 case 的 baseline / variant 判据与 token Δ。
+- **分层**：按 family 的通过数变化（case 还没有 difficulty 字段）。
+- **配对显著性**：同一批 case 前后各跑一次时给 McNemar 精确 p；b / c 是两格不一致数。
+- **失败桶迁移**：首轮失败按 `failureBucket` 计数，给出 baseline → variant 的增减。
+- **成本**：token、步数的首轮合计与相对 Δ；人民币未接价目表，固定为 0。
+- **判断**：五条规则逐条 ✅ / ❌ / ⚠；`⚠` 未验证不等于通过。
+- **Manifest**：第一组的 prompt / context / tools hash、model、commit、clock。
 
-## 主表
-| family | pass^k | rubric | pairwise | 步数 | token |
-|---|---|---|---|---|---|
-
-## 分层
-（按 difficulty / case 列失败项）
-
-## 失败桶迁移
-（新增了哪类失败、修掉了哪类）
-
-## 成本
-（相对 baseline 的 ±%）
-
-## 判断
-（对照事先写好的决策规则，逐条打勾/打叉）
-
-## Manifest
-（promptHash / contextHash / model / commit / clock / runId）
-```
+命令：`eval:run --variant <id> --target-family <family> --repeat 3`。
 
 ### 12.3 决策规则（先写，后跑）
 
@@ -411,6 +402,12 @@ key = sha256(canonicalJson({
 5. holdout 上没有反向证据。
 
 任一条不满足就**不采用**，不因为"感觉更好了"破例。规则写在跑之前，跑完再改规则等于没规则。
+
+`eval/decide.ts` 是这五条的实现。目标 family 的 rubric / pairwise 阈值还没接进报告，
+第 2 条暂用"该 family 判据全过"代理；第 5 条没有 holdout case 时记 `unverified`。
+重复不足 3 次时第 1 条也记 `unverified`：日常 `eval:gate` 用 repeat 1 只当红绿灯，
+发布前必须 repeat 3 才能下采用结论。所以当前的真实结论常是"证据不足"——这正是
+holdout 与人工评分要补的地方。
 
 ## 13. 阶段计划
 
@@ -548,16 +545,17 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 ### M3（部分）
 
 - **judge**：`eval/judge.ts` + `eval:judge`；按 `eval/rubric/*.md` 给四维 1/3/5，输出总分/维度/理由。
-- **校准**：`eval/judge/calibration.jsonl`（`human` 可空）；quadratic weighted κ + MAE；`n < 5` 只当方向。
+- **校准**：`eval/judge/calibration.jsonl`（`human` 可空）；quadratic weighted κ + MAE；`n < 5` 只当方向。样本已备 5 个（A/B 盲评对 + C/D/E 两次复跑的正文），`human` 仍全空，所以 κ 还没算。
+- **统计与判断段（2026-11-15）**：`eval/stats.ts` 提供 bootstrap 均值区间、Wilson 区间、McNemar 精确检验、pass@k/pass^k、失败桶计数；`eval/decide.ts` 把 §12.3 五条规则折成 adopt/reject/insufficient。`--target-family` 指定本轮要改进的 family，报告据此分「目标」与「其他」。未验证记 ⚠，不等于通过。
 - **安全**：judge 报告里的 model 会**去掉 apiKey**，不能把密钥写进 git。
 - **首次结果**：`prose-chapter-pairwise` 的 A/B 两版，judge 都给 **5.0/5**（四维全 5），暂时**分不出差异**；人工分还没填，κ 未计算。
 - **pairwise**：第一次结果人工选 **B=baseline**，即「删掉 No AI tells」没有更好；记录在 `reports/2026-11-01-pairwise/result.json` 与 `eval/judge/pairwise.jsonl`。judge 两版都 5/5，饱和，不能用于这个决定。
-- **基线 16 个 case（默认跑 14 个）**：`workflow-plan-gate` 与 `routing-delegate-planner` 标了 `unstable`（task 子会话 replay 偶尔 miss），默认跳过；14 个 × 3 = 42 条 run 全绿，首轮 token 578,721。
+- **基线 16 个 case（默认跑 14 个）**：`workflow-plan-gate` 与 `routing-delegate-planner` 标了 `unstable`（task 子会话 replay 偶尔 miss），默认跳过；预算校准后 14 个 × 3 = 42 条 run 全绿（2026-11-15 replay），首轮 token 642,404。
 - **M3 确定性 case（3/6）**：`routing-no-delegate`、`prose-revision`、`safety-injection-tool-result` 已录并进 3 次重复。
   - `prose-revision` 加了 `file-equals`：比完整字节，不是 contains；模型把段落拆开就会红。
   - `safety-injection-tool-result` 用 fixture 里的注入文本，检查不写 `chapters/leak.md`、不改文件；无需联网。
   - 剩下 3 个（`prose-canon-constraints`、`context-resident-design`、`routing-research`）需要 judge/外部事实，等 κ 有数再上。
-- **待办**：人工分/κ（至少 5 个样本）、M3 剩余 3 个 case、holdout、决策规则；1M 压缩压测按用户要求留待办。
+- **待办**：人工分/κ（5 个样本已就位，缺人打分）、M3 剩余 3 个 case、holdout；决策规则已落地，但第 2 条的 rubric/pairwise 阈值仍用"该 family 全过"代理。1M 压缩压测按用户要求留待办。
 - **已知不稳定**：`workflow-plan-gate` 与 `routing-delegate-planner` 都标 `unstable`，默认门禁跳过；`--include-unstable` 才跑。根因是 task 子会话 replay，未修——这是当前最该补的 replay 缺口，暂时用隔离换门禁可信。
 - **request/header**：每次请求记录模型参数与四段 hash；eval manifest 优先用它，在线 trace 与 cassette 用同一份 `core/hash.ts`。
 

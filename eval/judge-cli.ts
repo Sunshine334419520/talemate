@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadModelConfig } from "../src/core/config";
 import { judgeSample, meanAbsoluteError, publicModel, quadraticWeightedKappa, type JudgeScore } from "./judge";
+import { bootstrapMeanCI } from "./stats";
 
 const EVAL_ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(EVAL_ROOT, "..");
@@ -114,10 +115,41 @@ async function main(): Promise<void> {
     console.log("\n校准：没有人工分（human 全为 null），本次只产出 judge 分。");
   }
 
+  const scores = results.map((row) => row.score.total);
+  const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const interval = bootstrapMeanCI(scores);
+  console.log(
+    interval === undefined
+      ? `\njudge 均分：${mean.toFixed(2)}（单样本，不给区间）`
+      : `\njudge 均分：${mean.toFixed(2)}（95% CI ${interval.low.toFixed(2)}–${interval.high.toFixed(2)}）`,
+  );
+
   const out = resolve(args.out ?? join(REPO_ROOT, "reports", `judge-${new Date().toISOString().slice(0, 10)}.json`));
   const { writeFile, mkdir } = await import("node:fs/promises");
   await mkdir(dirname(out), { recursive: true });
-  await writeFile(out, `${JSON.stringify({ rubric: args.rubric, model: publicModel(model), results }, null, 2)}\n`, "utf-8");
+  const summary = {
+    n: results.length,
+    mean,
+    ...(interval === undefined ? {} : { ci: interval }),
+    labeled: labeled.length,
+    ...(labeled.length >= 2
+      ? {
+          kappa: quadraticWeightedKappa(
+            labeled.map((row) => row.human),
+            labeled.map((row) => row.score.total),
+          ),
+          mae: meanAbsoluteError(
+            labeled.map((row) => row.human),
+            labeled.map((row) => row.score.total),
+          ),
+        }
+      : {}),
+  };
+  await writeFile(
+    out,
+    `${JSON.stringify({ rubric: args.rubric, model: publicModel(model), summary, results }, null, 2)}\n`,
+    "utf-8",
+  );
   console.log(`\n写到：${out}`);
 }
 
