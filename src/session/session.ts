@@ -31,18 +31,24 @@ import type {
   AskRequest,
   AssistantPart,
   ConfirmReply,
+  DecisionEntry,
   LLMEvent,
   ModelConfig,
   PendingAskRecord,
   PendingProposal,
   ProjectMeta,
+  ProposalPresented,
   StoredMessage,
   ToolCall,
   ToolContext,
 } from "../core/types";
 import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
+import { budgetFor, estimateMessagesTokens, preflight } from "../context/budget";
+import { foldContext } from "../context/fold";
+import { decisionsFrom } from "../context/ledger";
+import { buildPinned } from "../context/project_state";
 import { buildResidentDesigns, buildIndex } from "../framework/anchor";
-import { isChapterFile, planRelPath } from "../framework/plan";
+import { isChapterFile, planRelPath, readPlan } from "../framework/plan";
 import { buildProseBrief } from "../framework/prose";
 import { labelOf } from "../framework/proposal";
 import { renderHits } from "../framework/search";
@@ -55,7 +61,10 @@ import { loadWebSettings } from "../storage/web_config";
 import { dropFileCheckpointsFrom } from "../storage/file-history";
 import { appendChanges, readChanges, writeChanges } from "../storage/change_index";
 import {
+  appendContextRecord,
   appendMessage,
+  appendProposalDecision,
+  appendProposalPresented,
   appendUsage,
   clearPendingAsk,
   createSession,
@@ -70,6 +79,7 @@ import { BUILTIN_TOOLS } from "../tool";
 import { ToolRegistry } from "../tool/registry";
 import { executeToolPart } from "../tool/runner";
 import { eventLogFor } from "../telemetry/log";
+import { projectMessages } from "../telemetry/projection";
 import type { AnyTraceEvent, TraceError, TraceEventData, TraceEventType, TurnStatus } from "../telemetry/events";
 import {
   mergeJournalAsk,
@@ -80,7 +90,6 @@ import {
   validateAnswers,
   type OpenAsk,
 } from "./asks";
-import { compact, isOverBudget } from "./compaction";
 import { changePointsOfMessage, changeRecordsOf, userLine } from "./change_history";
 import { runLoop } from "./loop";
 import { previewFileRewind, restoreFilesForRewind, type FileRewindOutcome, type FileRewindPreview } from "./rewind_files";
@@ -263,7 +272,7 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
       const state = p.approved
         ? "用户已表示同意 → 按「产物（按序）」执行：需要的新角色卡/世界事实先走 propose-design 给用户过目；前置都落地后先 enter-prose，再写正文；不要跳过任何前置产物"
         : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
-      open.push(`- ${what}：${state}`);
+      open.push(`- ${what}：${state}${p.stale === true ? "（规划工件与提案时不一致，可能被外部改过；以当前文件为准）" : ""}`);
       continue;
     }
     const state = p.approved
@@ -435,7 +444,7 @@ export class Session {
    */
   private forwardEvent(e: LLMEvent): void {
     if (e.type === "usage") {
-      this.lastInput = e.input; // 压缩的判据（见 compaction.isOverBudget）
+      this.lastInput = e.input; // 折叠的判据（见 context/budget.ts）
       void appendUsage(this.projectId, this.sessionId, { input: e.input, output: e.output }).catch(() => {});
     }
     this.io.onEvent(e);
@@ -542,13 +551,38 @@ export class Session {
   private markPendingApproval(input: string): void {
     const latest = this.latestOpenPending();
     if (!latest) return;
-    const effect = verdictEffect(draftVerdict(input));
+    const verdict = draftVerdict(input);
+    const effect = verdictEffect(verdict);
     latest.approved = effect.approved;
+    this.noteDecision(latest, verdict, verdict === "refine" ? input : undefined);
     if (!effect.leaveDraft) return;
 
     // 退出草稿要回到进入前的那一层；别的模式（accept-edits）底下不该有待审阅的提案。
     this.exitDraftMode();
     if (effect.dropProposal) this.pending.delete(latest.name);
+  }
+
+  /** 拍板进决定账。按钮不产生用户消息，原话只能靠这条事件活过压缩。 */
+  private noteDecision(p: PendingProposal, verdict: DecisionEntry["verdict"], note?: string): void {
+    const decision: DecisionEntry = {
+      at: Date.now(),
+      proposal: p.name,
+      verdict,
+      ...(p.chapter === undefined ? {} : { chapter: p.chapter }),
+      ...(note === undefined || note.trim() === "" ? {} : { note: note.trim() }),
+    };
+    void appendProposalDecision(this.projectId, this.sessionId, decision).catch(() => {});
+  }
+
+  /** 提案交给用户看了一眼。按版本记录，决策按 proposal 键与时间对回来。 */
+  private notePresented(p: PendingProposal): void {
+    void appendProposalPresented(this.projectId, this.sessionId, {
+      proposal: p.name,
+      at: Date.now(),
+      ...(p.chapter === undefined ? {} : { chapter: p.chapter }),
+      ...(p.name === PLAN_KEY && p.chapter !== undefined ? { path: planRelPath(p.chapter) } : {}),
+      hash: hashText(p.content).slice(0, 16),
+    }).catch(() => {});
   }
 
   /** 最近一份还没执行的提案。`done` 的规划留在表里当工作单，不是待拍板。 */
@@ -579,6 +613,7 @@ export class Session {
       this.pending.delete(latest.name);
       if (latest.name === PLAN_KEY) this.planChapter = undefined;
     }
+    this.noteDecision(latest, verdict);
     this.exitDraftMode();
   }
 
@@ -665,6 +700,7 @@ export class Session {
     if (note.trim() === "") throw new Error("提意见不能为空。");
 
     latest.approved = false;
+    this.noteDecision(latest, "refine", note);
     return this.runTurn(this.agent, note, (text, id) => this.persistUser(text, id));
   }
 
@@ -1011,6 +1047,46 @@ export class Session {
   }
 
   /**
+   * 从事件重建"已给用户看过"的规划（阶段 2）。文档提案不重建：正文只活在内存里，
+   * 事件里没有可落盘的字节——明确丢弃、让用户重新提案，比假装它还开着一份更安全。
+   *
+   * 判据全在事件与文件上：presented 给出坐标，decision 给出裁决，规划正文从
+   * `.talemate/plans/` 读回，章节文件是否落盘由 tool part 的 change 认。
+   */
+  async hydrateProposals(): Promise<void> {
+    const events = await eventLogFor(this.projectId, this.sessionId).read();
+    let shown: ProposalPresented | undefined;
+    for (const e of events) {
+      if (e.type === "proposal/presented" && e.data.proposal === PLAN_KEY) shown = e.data;
+    }
+    if (shown === undefined || shown.chapter === undefined) return;
+    const chapter = shown.chapter;
+    const last = decisionsFrom(events).filter((d) => d.proposal === PLAN_KEY && d.at >= (shown?.at ?? 0)).at(-1);
+    if (last?.verdict === "reject") return;
+
+    const raw = await readPlan(this.projectId, chapter);
+    if (raw === undefined) return;
+    // 工件 H1 由 write 时按章号生成；pending.content 存的是它之前的正文（propose-plan 已 trim）
+    const content = raw.replace(/^# 第 \d+ 章规划\n\n/, "").trim();
+    const messages = await this.ensureLoaded();
+    const done = messages.some((m) =>
+      (m.parts ?? []).some(
+        (p) => p.type === "tool" && p.change !== undefined && isChapterFile(p.change.path, chapter),
+      ),
+    );
+    this.pending.set(PLAN_KEY, {
+      name: PLAN_KEY,
+      content,
+      chapter,
+      approved: last?.verdict === "accept" || done,
+      done,
+      ...(shown.hash === undefined || shown.hash === hashText(content).slice(0, 16) ? {} : { stale: true }),
+      at: shown.at,
+    });
+    if (last?.verdict === "accept" && !done) this.planChapter = chapter;
+  }
+
+  /**
    * 仍然开着、可回答的提问：消息投影 + journal。顺序即提问先后。
    *
    * 扫**全部**消息而不是模型窗口：问题可能已经被压缩掉，但它仍然开着。压缩只影响模型上下文，
@@ -1245,7 +1321,17 @@ export class Session {
     if (agent.mode !== "primary" || agent.hidden) return undefined;
     const plan = this.pending.get(PLAN_KEY);
     if (!plan || !plan.approved || plan.done || plan.chapter === undefined) return undefined;
-    return buildProseBrief(this.projectId, plan.chapter);
+    const brief = await buildProseBrief(this.projectId, plan.chapter);
+    // 规划正文由 harness 读文件注入：`.talemate/` 不在 DOC_ROOTS，模型工具读不到它。
+    // 用户看过的计划字节必须指导正文，而且重启后仍要能注入（不再只活在内存 pending 里）。
+    const text = await readPlan(this.projectId, plan.chapter);
+    if (text === undefined) return brief;
+    return [
+      `<approved-plan chapter="${plan.chapter}" path="${planRelPath(plan.chapter)}" hash="${hashText(text).slice(0, 12)}">`,
+      text.trim(),
+      "</approved-plan>",
+      brief,
+    ].join("\n");
   }
 
   private makeContext(agent: AgentDef, callId: string): ToolContext {
@@ -1308,6 +1394,7 @@ export class Session {
       getProposal: (name) => this.pending.get(name),
       setProposal: (p) => {
         this.pending.set(p.name, p);
+        this.notePresented(p);
       },
       clearProposal: (name) => {
         this.pending.delete(name);
@@ -1316,7 +1403,8 @@ export class Session {
       // 都不预设管辖范围：`prefix` 由调用工具给。
       readDoc: (path) => readDoc(this.projectId, path),
       listIndex: (prefix) => buildIndex(this.projectId, prefix),
-      searchDocs: async (query, prefix) => renderHits(await scanDocs(this.projectId, query, prefix), query),
+      searchDocs: async (query, prefix, limit) =>
+        renderHits(await scanDocs(this.projectId, query, prefix), query, limit),
       // 把当前生效的规则集交给子会话去派生（父的 deny 继承、allow 不继承）
       runSubagent: (agentId, prompt) => this.runSubagent(agentId, prompt, this.rulesetFor(agent)),
       loadSkill: (name) => loadSkillByName(this.projectId, name).then((s) => s?.body),
@@ -1374,7 +1462,7 @@ export class Session {
 
   // ─── 消息缓存与持久化（唯一读写磁盘/内存的出口） ───
 
-  /** 取当前上下文窗口（最新 compaction 之后的 seq），从内存拿，不重读盘 */
+  /** 取当前上下文窗口（最新折叠记录之后的 seq），从内存拿，不重读盘 */
   private async messageWindow(): Promise<StoredMessage[]> {
     return loadModelWindow(await this.ensureLoaded());
   }
@@ -1382,9 +1470,10 @@ export class Session {
   private async ensureLoaded(): Promise<StoredMessage[]> {
     if (!this.cache) {
       this.cache = await loadMessages(this.projectId, this.sessionId);
-      // 续聊时把上一轮的用量读回来：它是压缩的判据，而进程重启之后内存里没有
+      // 续聊时把上一轮的用量读回来：它是折叠的判据，而进程重启之后内存里没有。
+      // 之后折过一轮的话，这个数是折叠前的窗口——拿它判会一打开就再折一次，改用估算。
       const meta = await loadSessionMeta(this.projectId, this.sessionId).catch(() => undefined);
-      this.lastInput = meta?.usage?.at(-1)?.input;
+      this.lastInput = this.cache.some((m) => m.role === "context") ? undefined : meta?.usage?.at(-1)?.input;
       // 恢复基线：不看上一份日志，第一请求会把“配置没变”误报成 resume，或重复写 system/tools
       const events = await eventLogFor(this.projectId, this.sessionId).read();
       for (const event of events) {
@@ -1445,34 +1534,96 @@ export class Session {
     }
   }
 
-  /** 压缩前检查：用内存消息判断是否超阈值，是则压缩并把 compaction 消息同步回缓存 */
+  /**
+   * 折叠前检查：量模型窗口（不是整份会话文件），越过高水位才折，一次折到低水位以下。
+   *
+   * 迟滞靠"折完清掉 lastInput"：上一次请求的真实用量指的是折叠前的窗口，折完继续拿它判断
+   * 会在同一步里连折好几次。循环最多三轮——换到小窗口模型、或一次淘汰不够时可能要多轮。
+   */
   private async maybeCompact(): Promise<void> {
-    const all = await this.ensureLoaded();
-    // 量窗口，不是文件：文件只增不减，量它等于过了阈值就永远超预算（见 isOverBudget 的注释）。
-    // 压缩本身也只能吃窗口：把整份历史（含已被上次压缩掉的段落）再喂一遍，会重复总结、
-    // 越压越大——1M 窗口跑到 80 万时这条路径最先坏。
-    const window = loadModelWindow(all);
-    if (!isOverBudget(this.model.model, this.lastInput, window)) return;
-    const summarizer = this.agents.get("summarizer");
-    const t0 = Date.now();
-    this.trace("compaction/start", { model: this.model.model });
-    try {
-      const m = await compact({
-        projectId: this.projectId,
-        sessionId: this.sessionId,
-        model: this.model,
-        system: summarizer.system,
-        messages: window,
-      });
-      if (m) {
-        await this.push(m);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const all = await this.ensureLoaded();
+      const window = loadModelWindow(all);
+      const budget = budgetFor(this.model.model, this.model.maxTokens);
+      const estimated = estimateMessagesTokens(window);
+      const over = estimated > budget.trigger || (this.lastInput !== undefined && this.lastInput > budget.trigger);
+      // 没有真数（全新会话 / 刚折完）时也要量一次常驻层：system 自己就超窗时，
+      // 消息再小也不该把请求发出去。有真数且没超水位才直接返回。
+      if (!over && this.lastInput !== undefined) return;
+
+      const sizes = await this.contextSizes(this.agent);
+      const pre = preflight(budget, sizes.system, sizes.tools);
+      // 常驻层太大时压缩无能为力：不发一个必超的请求，也不进入"每步压一次"的循环
+      if (!pre.ok) throw new Error(pre.message);
+      if (!over) return;
+
+      const decisions = decisionsFrom(await eventLogFor(this.projectId, this.sessionId).read());
+      const pinned = await buildPinned(this.projectId);
+      const plan = this.pinnedPlan();
+      const open = (await this.openAskViews()).flatMap((a) => a.questions.map((q) => q.question));
+      const summarizer = this.agents.get("summarizer");
+      // 摘要器可以单独配小模型；没配就继承本会话模型
+      const summarizerModel = summarizer.model ?? this.model;
+      const t0 = Date.now();
+      this.trace("compaction/start", { model: summarizerModel.model });
+      try {
+        const outcome = await foldContext({
+          projectId: this.projectId,
+          sessionId: this.sessionId,
+          model: summarizerModel,
+          messages: window,
+          budget,
+          system: summarizer.system,
+          pinned,
+          decisions,
+          open,
+          ...(plan === undefined ? {} : { plan }),
+        });
+        if (outcome.record === undefined) {
+          this.trace("compaction/end", { durationMs: Date.now() - t0, ok: true, compacted: false });
+          // 不可折不是"成功但什么都没做"：继续发请求会撞窗，给出数字比静默跳过好
+          if (outcome.refused !== undefined) throw new Error(outcome.refused);
+          return;
+        }
+        await appendContextRecord(this.projectId, this.sessionId, outcome.record);
+        // 窗口由投影重算：模型窗口从这条记录起，最近 turn 原样保留（原文仍在事件里）
+        this.cache = projectMessages(await eventLogFor(this.projectId, this.sessionId).read());
         this.seriesPending = true;
+        this.lastInput = undefined;
+        this.trace("compaction/end", { durationMs: Date.now() - t0, ok: true, compacted: true });
+      } catch (err) {
+        this.trace("compaction/end", { durationMs: Date.now() - t0, ok: false, compacted: false });
+        throw err;
       }
-      this.trace("compaction/end", { durationMs: Date.now() - t0, ok: true, compacted: m !== null });
-    } catch (err) {
-      this.trace("compaction/end", { durationMs: Date.now() - t0, ok: false, compacted: false });
-      throw err;
     }
+    // 三轮仍超水位：不再发一个注定撞窗的请求，把数字交给界面
+    const finalWindow = loadModelWindow(await this.ensureLoaded());
+    const finalBudget = budgetFor(this.model.model, this.model.maxTokens);
+    const finalTokens = estimateMessagesTokens(finalWindow);
+    if (finalTokens > finalBudget.trigger) {
+      throw new Error(
+        `折叠三轮后上下文仍约 ${finalTokens} token，超过水位 ${finalBudget.trigger}——` +
+          "当前轮或最近的工作集本身太大。请缩小这一轮，或换更大窗口的模型。",
+      );
+    }
+  }
+
+  /** system + 工具定义的字符数；只量，不组装请求（不消耗一次性 turnInstruction）。 */
+  private async contextSizes(agent: AgentDef): Promise<{ system: number; tools: number }> {
+    const system = await this.buildSystem(agent);
+    const ids = this.allowedTools(agent);
+    const schemas = this.tools.schemasFor(
+      ids,
+      ids.includes("task") ? { taskCatalog: this.agents.subagentCatalog() } : undefined,
+    );
+    return { system: system.length, tools: JSON.stringify(schemas).length };
+  }
+
+  /** 已批准、未执行完的规划——折叠的 pinned 只记坐标（路径 + hash），正文在正文窗口里注入。 */
+  private pinnedPlan(): { chapter: number; path: string; hash: string } | undefined {
+    const plan = this.pending.get(PLAN_KEY);
+    if (!plan || !plan.approved || plan.done || plan.chapter === undefined) return undefined;
+    return { chapter: plan.chapter, path: planRelPath(plan.chapter), hash: hashText(plan.content).slice(0, 12) };
   }
 }
 
@@ -1500,6 +1651,8 @@ export async function openSession(deps: SessionDeps): Promise<Session> {
   if (!deps.sessionId) await session.saveMeta(deps.title);
   // 续聊/重开：把“提问已开始、助手消息还没提交”的那条 journal 接回来
   await session.hydrate();
+  // 已批准/待执行的规划从事件与工件重建——重启后 enter-prose 不再因为 pending 清空而失效
+  await session.hydrateProposals();
   // 打开本来就折一次消息；顺手让改动索引追上（索引落后于事件时重写，见 syncChangeIndex）
   await session.syncChangeIndex().catch(() => {});
   return session;

@@ -36,7 +36,7 @@ export interface SessionDebugInfo {
   pending: { name: string; approved: boolean; done?: boolean; chapter?: number }[];
   messageCount: number;
   lastSeq: number;
-  /** 实际会进模型窗口的条数与起点（最近一次 compaction 之后；无压缩则从第一条起） */
+  /** 实际会进模型窗口的条数与起点（最近一次折叠之后；无折叠则从第一条起） */
   modelWindowCount: number;
   modelWindowFromSeq: number;
   compactionSeq?: number;
@@ -51,7 +51,7 @@ export async function buildSessionDebug(session: Session): Promise<SessionDebugI
   const messages = await loadMessages(session.projectId, session.sessionId);
   const events = await eventLogFor(session.projectId, session.sessionId).read();
   const window = loadModelWindow(messages);
-  const compaction = [...messages].reverse().find((m) => m.role === "compaction");
+  const compaction = [...messages].reverse().find((m) => m.role === "compaction" || m.role === "context");
   const meta = await loadSessionMeta(session.projectId, session.sessionId).catch(() => undefined);
   const pending: SessionDebugInfo["pending"] = [...session.pending.values()].map((p: PendingProposal) => ({
     name: p.name,
@@ -126,7 +126,7 @@ export function renderSessionDebug(info: SessionDebugInfo): string {
     `- 改动索引：${info.changesPath}`,
     `- 消息：${info.messageCount} 条（事件折出来的），最后 seq=${info.lastSeq}`,
     `- 模型窗口：${info.modelWindowCount} 条，从 seq=${info.modelWindowFromSeq} 起` +
-      `${info.compactionSeq === undefined ? "（无压缩）" : `（上次压缩 seq=${info.compactionSeq}）`}`,
+      `${info.compactionSeq === undefined ? "（无折叠）" : `（上次折叠 seq=${info.compactionSeq}）`}`,
     `- 未答提问记录：${info.pendingAskExists ? info.pendingAskPath : "无"}`,
     `- 模型：${model}`,
     ...(info.model.baseURL === undefined ? [] : [`- API 地址：${info.model.baseURL}`]),

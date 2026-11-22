@@ -45,6 +45,16 @@ export function traceRows(messages: StoredMessage[]): TraceRow[] {
       });
       continue;
     }
+    if (m.role === "context" && m.context !== undefined) {
+      rows.push({
+        key: `m${m.seq}-compaction`,
+        seq: m.seq,
+        at: m.ts,
+        kind: "compaction",
+        text: m.context.summary.session,
+      });
+      continue;
+    }
     if (m.role === "user") {
       rows.push({
         key: `m${m.seq}-user`,

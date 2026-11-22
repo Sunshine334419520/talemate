@@ -2,7 +2,7 @@
 
 > **职责**：回答"会话事件是什么形状、谁在什么时候发、messages/span/统计怎么从它折出来、导出时怎么脱敏"。
 > **读者**：要加一类事件、加一个投影、接一个观测消费者（eval reader / OTel）的人。
-> **对齐代码**：2026-11-16 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；评审背景见 `learning/evals-observability/architecture-review-dsh.md`
+> **对齐代码**：2026-11-22 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；压缩记录见 `compaction.md`
 
 ## 一句话
 
@@ -48,9 +48,12 @@
 | `request/header` | 每步的轻量 hash；首个请求/配置或工具变化时带 `reason` 与完整 `tools` 快照 | 同上 |
 | `request/context` | 路由的 provider/model/contextWindow；变化才写 | 同上 |
 | `assistant/attempt` | 这次请求失败或被中止（**没有产出消息**） | 同上 |
-| `user/message` / `assistant/message` / `compaction/summary` | 一条消息提交进事件日志 | `appendMessage` |
+| `user/message` / `assistant/message` | 一条消息提交进事件日志 | `appendMessage` |
+| `compaction/summary` | 旧格式的 compaction 消息（只读兼容，新代码不再产生） | — |
 | `tool/call` / `tool/result` | 每次工具执行前后（含被 `planGatePart` 拦下的） | `Session` 的 `executeTool` / `applyApprovedDesign` |
-| `compaction/start` / `compaction/end` | 上下文压缩 | `Session.maybeCompact` |
+| `compaction/start` / `compaction/end` | 一次折叠的开始/结束（观测用；不在失败时提交记录） | `Session.maybeCompact` |
+| `context/compaction` | 一次折叠的 canonical 记录：摘要 + pinned + 证据账 + 预算。窗口由它投影 | `appendContextRecord` |
+| `proposal/presented` / `proposal/decision` | 提案给用户看过的那一版 / 用户的拍板与原话 | `Session.notePresented` / `noteDecision` |
 
 为什么 `assistant/attempt` 必须存在：上面那三种消息事件只记得成功落盘的消息。一次网络失败、一次用户中止、一次被截断的流，在任何消息投影里都不存在——不单独记，它们就永远查不到。
 
@@ -117,7 +120,7 @@ turn
 - `tools`：最近一次完整 header 快照的工具 schema；
 - `system`：最近一次 `system/prompt` 的全文；
 - `context`：最近一次 `request/context`；
-- `messages`：该 header 之前的事件投影，再按最后一次 compaction 截窗。
+- `messages`：该 header 之前的事件投影，再按最后一次折叠（`context` 记录或旧 compaction）截窗。
 
 它**不存请求体**，也不读 cassette；这是 DSH 的“模型可见 ⟺ 已持久引用”：
 请求 = `header.config + deriveMessages() + header.tools`。旧日志缺 `system/prompt` 或 tools 快照时，
@@ -133,7 +136,7 @@ session
    ├─ step（request/header、finish、usage、attempts）
    │  └─ tool（callId / state / inputChars / outputChars / durationMs / change）
    ├─ tools（没有 step 的 harness 调用，例如 apply-design）
-   └─ compactions（start/end）
+   └─ compactions（start / record / end）
 rewinds
 ```
 

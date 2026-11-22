@@ -106,7 +106,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
   {
     id: "summarizer",
     name: "摘要器",
-    description: "Internal: generates a prior-state summary during context compaction. (hidden, never surfaced)",
+    description:
+      "Internal: folds an old stretch of dialogue into the four-part context record used after compaction. (hidden, never surfaced)",
     mode: "primary",
     hidden: true,
     tools: [],

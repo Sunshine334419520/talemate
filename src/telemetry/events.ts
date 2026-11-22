@@ -7,7 +7,13 @@
  *
  * 边界：只定义形状与版本号，不碰文件、不碰投影。写入在 `log.ts`，折叠在 `projection.ts`。
  */
-import type { StoredMessage, ToolState } from "../core/types";
+import type {
+  CompactionRecord,
+  DecisionEntry,
+  ProposalPresented,
+  StoredMessage,
+  ToolState,
+} from "../core/types";
 import type { ToolSchema } from "../llm/types";
 
 /** 日志格式版本。改字段含义就加一，消费方靠它决定怎么读旧记录。 */
@@ -120,6 +126,15 @@ export interface TraceEventData {
   "compaction/start": { model: string };
   "compaction/summary": { message: StoredMessage };
   "compaction/end": { durationMs: number; ok: boolean; compacted: boolean };
+  /**
+   * 一次折叠的 canonical 记录。它是原子提交：摘要失败时没有这条事件，旧窗口继续。
+   * 消息窗口由它投影出来（`projection.ts`），不再写 compaction 消息。
+   */
+  "context/compaction": CompactionRecord;
+  /** 提案给用户看过的那一版（每个版本一条；决策按 proposal 键对回来） */
+  "proposal/presented": ProposalPresented;
+  /** 用户拍板：接受 / 拒绝 / 提意见。按钮不产生用户消息，原话只能靠它留下来 */
+  "proposal/decision": DecisionEntry;
   /** `step` 缺省 = 不是某一轮模型请求发起的（例如 harness 代模型执行 apply-design） */
   "tool/call": { callId: string; name: string; inputChars: number; step?: number };
   "tool/result": {
@@ -154,6 +169,9 @@ const EVENT_TYPES: Record<TraceEventType, true> = {
   "compaction/start": true,
   "compaction/summary": true,
   "compaction/end": true,
+  "context/compaction": true,
+  "proposal/presented": true,
+  "proposal/decision": true,
   "tool/call": true,
   "tool/result": true,
 };

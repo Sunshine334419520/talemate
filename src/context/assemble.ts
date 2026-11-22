@@ -2,12 +2,15 @@
  * 上下文组装：buildSystemPrompt 拼 env 块 + 角色 system + 项目 AGENTS.md（常驻全量）+ skill 清单；
  * toNeutralMessages 把持久化消息窗口（loadModelWindow 之后）转成 provider 无关的 NeutralMsg[]。
  *
- * 存储 → LLM 不是 1:1：compaction 折成一条 <story-state> 前情摘要 user 消息；一条含工具 part 的 assistant
- * 展开成 assistant(toolCalls) + 每条 completed tool 一条 role:"tool" 结果。
+ * 存储 → LLM 不是 1:1：折叠记录（role:"context"）渲染成一条 <context-state> user 消息；旧
+ * compaction 消息渲染成 <story-state>；一条含工具 part 的 assistant 展开成 assistant(toolCalls)
+ * + 每条 completed tool 一条 role:"tool" 结果。
  */
 import { today } from "../core/config";
-import type { StoredMessage } from "../core/types";
+import type { CompactionRecord, StoredMessage } from "../core/types";
 import type { NeutralMsg } from "../llm/types";
+import { renderEvidenceLine } from "./ledger";
+import { renderPinned } from "./project_state";
 
 export function buildSystemPrompt(parts: {
   projectTitle: string;
@@ -33,10 +36,55 @@ export function buildSystemPrompt(parts: {
   return blocks.join("\n\n");
 }
 
+/**
+ * 折叠记录的渲染：`<context-state>` 是"对话投影 + 恢复坐标"，不是第二份 canon。
+ *
+ * 世界规则、人物卡、章节原文一个字都不进来；需要时按 `<evidence>` 的路径重读。
+ */
+export function renderContextState(record: CompactionRecord): string {
+  const lines: string[] = ["<context-state>"];
+  const pinned = renderPinned(record.pinned);
+  if (pinned !== "") lines.push(pinned);
+  const archive = record.summary.archive?.trim();
+  if (archive !== undefined && archive !== "") lines.push(`<archive>\n${archive}\n</archive>`);
+  const session = record.summary.session.trim();
+  if (session !== "") lines.push(`<session>\n${session}\n</session>`);
+  if (record.pinned.decisions.length) {
+    const decisions = record.pinned.decisions.map((d) => {
+      const what = d.chapter === undefined ? d.proposal : `${d.proposal}（第 ${d.chapter} 章）`;
+      return `- ${d.verdict} ${what}${d.note === undefined ? "" : ` — ${d.note}`}`;
+    });
+    lines.push(`<decisions>\n${decisions.join("\n")}\n</decisions>`);
+  }
+  if (record.evidence.length) {
+    lines.push(`<evidence>\n${record.evidence.map(renderEvidenceLine).join("\n")}\n</evidence>`);
+  }
+  if (record.summary.open.length) {
+    lines.push(
+      `<open>\n${record.summary.open.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n</open>`,
+    );
+  }
+  if (record.summary.pointers.length) {
+    lines.push(`<pointers>\n${record.summary.pointers.map((p) => `- ${p}`).join("\n")}\n</pointers>`);
+  }
+  if (record.degraded) {
+    lines.push("（这次折叠是确定性降级：只保留了对话原文与指针，没有生成叙事。）");
+  }
+  lines.push("</context-state>");
+  lines.push("（以上是上一段对话的投影。书的事实以项目文件为准；不确定时按上面的路径重读。）");
+  return lines.join("\n");
+}
+
 export function toNeutralMessages(messages: StoredMessage[]): NeutralMsg[] {
   const out: NeutralMsg[] = [];
   for (const m of messages) {
     switch (m.role) {
+      case "context": {
+        if (m.context !== undefined) {
+          out.push({ role: "user", text: renderContextState(m.context) });
+        }
+        break;
+      }
       case "compaction": {
         const recent = m.recent ? `\n<recent>\n${m.recent}\n</recent>` : "";
         out.push({

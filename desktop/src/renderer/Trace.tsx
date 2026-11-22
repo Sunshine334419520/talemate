@@ -69,6 +69,7 @@ function recordSummary(record: TrajectoryRecord): string {
 
 function messageText(message: StoredMessage): string {
   if (message.role === "compaction") return [message.summary, message.recent].filter(Boolean).join("\n\n");
+  if (message.role === "context" && message.context !== undefined) return message.context.summary.session;
   if (message.role === "assistant") {
     return (message.parts ?? [])
       .map((part) => {

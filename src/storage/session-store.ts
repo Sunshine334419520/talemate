@@ -8,11 +8,20 @@
  * 回退不改写事件日志（它只追加）：追加一条 `session/rewind`，投影据此丢掉目标之后的段落；
  * 改动索引也追加一条墓碑（见 `change_index.ts`）。
  *
- * 供模型上下文时用 loadModelWindow 取"最新 compaction 之后的 seq"。compaction 也是一条消息。
+ * 供模型上下文时用 loadModelWindow 取"最新折叠记录之后的 seq"。折叠记录是投影合成的
+ * role:"context" 消息，不单独落盘。
  */
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { talemateHome, projectPaths, sessionPaths } from "../core/config";
-import type { MessageRole, PendingAskRecord, SessionMeta, StoredMessage } from "../core/types";
+import type {
+  CompactionRecord,
+  DecisionEntry,
+  MessageRole,
+  PendingAskRecord,
+  ProposalPresented,
+  SessionMeta,
+  StoredMessage,
+} from "../core/types";
 import { readText, writeAtomic } from "./atomic";
 import { touch } from "./util";
 import { appendChangeRewind } from "./change_index";
@@ -20,7 +29,7 @@ import { eventLogFor } from "../telemetry/log";
 import { projectMessages } from "../telemetry/projection";
 import type { MessageEventType } from "../telemetry/events";
 
-/** 消息角色 → 事件类型。`system` 不在其中：它是每轮现拼的，从不落成会话消息。 */
+/** 消息角色 → 事件类型。`system` 与 `context` 不在其中：前者每轮现拼，后者由折叠事件投影。 */
 function messageEventType(role: MessageRole): Exclude<MessageEventType, "session/seed"> {
   switch (role) {
     case "user":
@@ -32,6 +41,9 @@ function messageEventType(role: MessageRole): Exclude<MessageEventType, "session
     case "system":
       // 它每轮由 buildSystem 现拼，从不落成会话消息；真写了说明有人绕过了那条边界
       throw new Error("system 消息不进会话日志");
+    case "context":
+      // 合成消息只由投影产生；落盘只走 context/compaction 事件
+      throw new Error("context 消息不进会话日志");
   }
 }
 
@@ -140,13 +152,52 @@ export async function loadMessages(projectId: string, sessionId: string): Promis
   return projectMessages(await eventLogFor(projectId, sessionId).read());
 }
 
-/** 供模型上下文：最新 compaction 消息 + 其后的全部消息。 */
+/**
+ * 供模型上下文：最新折叠（新格式 `context` 与旧格式 `compaction`）起，到会话末尾。
+ * 新格式的合成消息本身就是窗口起点，后面是原样保留的最近 turn。
+ */
 export function loadModelWindow(messages: StoredMessage[]): StoredMessage[] {
   let from = 0;
   for (let i = 0; i < messages.length; i++) {
-    if (messages[i].role === "compaction") from = i;
+    const role = messages[i].role;
+    if (role === "compaction" || role === "context") from = i;
   }
   return messages.slice(from);
+}
+
+/**
+ * 落一次折叠。这是原子提交：记录进日志，消息窗口由投影重算；
+ * 摘要失败时调用方不该走到这里。
+ *
+ * 幂等：同一条记录（id 由 previousId + 范围 + 摘要派生）重复执行不再追加。
+ */
+export async function appendContextRecord(
+  projectId: string,
+  sessionId: string,
+  record: CompactionRecord,
+): Promise<void> {
+  const log = eventLogFor(projectId, sessionId);
+  const last = (await log.read()).filter((e) => e.type === "context/compaction").at(-1);
+  if (last?.type === "context/compaction" && last.data.id === record.id) return;
+  await log.append("context/compaction", record);
+}
+
+/** 提案交给用户看了一眼——不是一个消息事件，界面回看与决定账按它配对。 */
+export async function appendProposalPresented(
+  projectId: string,
+  sessionId: string,
+  presented: ProposalPresented,
+): Promise<void> {
+  await eventLogFor(projectId, sessionId).append("proposal/presented", presented);
+}
+
+/** 用户拍板。按钮不产生用户消息，所以原话与裁决都落在这里。 */
+export async function appendProposalDecision(
+  projectId: string,
+  sessionId: string,
+  decision: DecisionEntry,
+): Promise<void> {
+  await eventLogFor(projectId, sessionId).append("proposal/decision", decision);
 }
 
 /**

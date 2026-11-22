@@ -10,8 +10,8 @@
  * | 题材 / 结构 | 半可判 | 每本 / 每卷 | 规划与序列纲，不在这里 |
  *
  * 由 harness 注入而不是让 mate 自己 `skill(prose)`：规范是不变量，"记得加载"不该是它的存活条件；
- * skill 正文活不过压缩（它是 tool 结果，`compaction` 只留 assistant 的 `text`，而 `<available_skills>`
- * 目录每轮从 `discoverSkills` 重建、条目还在，模型不知道自己丢了什么——system 每轮重建不受这条影响）；
+ * skill 正文活不过折叠（它是 tool 结果，折叠只留工具名与首段，而 `<available_skills>` 目录每轮从
+ * `discoverSkills` 重建、条目还在，模型不知道自己丢了什么——system 每轮重建不受这条影响）；
  * 规范也不抄进每张文风卡（五张各一份 = 改一次动五处）。
  *
  * 窗口开：用户拍过板、而这一章的正文还没落盘（`pending` 里那份 `approved` 且未 `done` 的规划）；

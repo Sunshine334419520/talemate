@@ -9,26 +9,57 @@
  *
  * 边界：纯函数，只吃事件、吐视图；不读文件、不认识 Session。
  */
-import type { StoredMessage } from "../core/types";
+import type { CompactionRecord, StoredMessage } from "../core/types";
 import { isMessageEvent } from "./events";
 import type { AnyTraceEvent } from "./events";
 
-/** 消息投影：旧会话种子、三种消息事件、回退。 */
+/**
+ * 消息投影：旧会话种子、消息事件、回退与折叠。
+ *
+ * 折叠记录不删原文：完整消息历史仍返回（提问、改动索引、回退要扫全部），记录以一条
+ * `role:"context"` 的合成消息插在 `consumed.toSeq` 之后；模型窗口由 `loadModelWindow`
+ * 从这条合成消息切。回退到折叠点之前时，该记录失效，原文照旧在。
+ */
 export function projectMessages(events: AnyTraceEvent[]): StoredMessage[] {
-  const messages: StoredMessage[] = [];
+  const history: StoredMessage[] = [];
+  const folds: CompactionRecord[] = [];
+
   for (const event of events) {
     if (event.type === "session/rewind") {
-      // 回退只遮住历史，不删除事件：目标及其之后的段落从投影里消失，日志仍然完整
-      const kept = messages.filter((m) => m.seq < event.data.targetSeq);
-      messages.length = 0;
-      messages.push(...kept);
+      // 回退只遮住它之前的段落；之后的追加（哪怕 seq 被复用）仍然可见
+      const kept = history.filter((m) => m.seq < event.data.targetSeq);
+      history.length = 0;
+      history.push(...kept);
+      // 折叠点落在回退目标之后 → 这条折叠失效；原文本来就没删，照旧从事件重折
+      for (let i = folds.length - 1; i >= 0; i--) {
+        if (folds[i].consumed.toSeq >= event.data.targetSeq) folds.splice(i, 1);
+      }
+      continue;
+    }
+    if (event.type === "context/compaction") {
+      folds.push(event.data);
       continue;
     }
     if (!isMessageEvent(event)) continue;
-    if (event.type === "session/seed") messages.push(...event.data.messages);
-    else messages.push(event.data.message);
+    if (event.type === "session/seed") history.push(...event.data.messages);
+    else history.push(event.data.message);
   }
-  return messages;
+
+  const fold = [...folds].at(-1);
+  if (fold === undefined) return history;
+  // 完整消息历史仍然保留：提问、改动索引与回退要扫全部，不只是窗口。
+  // 折叠只决定模型窗口从哪里开始（`loadModelWindow` 从这条合成消息切），不删任何原文。
+  const synthetic: StoredMessage = {
+    seq: fold.consumed.toSeq,
+    role: "context",
+    ts: fold.at,
+    context: fold,
+  };
+  return [
+    ...history.filter((m) => m.seq <= fold.consumed.toSeq),
+    synthetic,
+    ...history.filter((m) => m.seq > fold.consumed.toSeq),
+  ];
 }
 
 export type SpanName = "invoke_agent" | "chat" | "execute_tool" | "compaction";
@@ -184,6 +215,17 @@ export function projectSpans(events: AnyTraceEvent[]): Span[] {
           model: event.data.model,
         });
         break;
+      case "context/compaction": {
+        if (compaction === undefined) break;
+        const r = event.data;
+        compaction.span.attrs["compaction.turns"] = r.consumed.turns;
+        compaction.span.attrs["compaction.messages"] = r.dropped.messages;
+        compaction.span.attrs["compaction.before"] = r.budget.before;
+        compaction.span.attrs["compaction.after"] = r.budget.after;
+        compaction.span.attrs["compaction.degraded"] = r.degraded;
+        compaction.span.attrs["compaction.evidence"] = r.evidence.length;
+        break;
+      }
       case "compaction/end": {
         if (compaction === undefined) break;
         compaction.span.attrs["compaction.compacted"] = event.data.compacted;
@@ -251,6 +293,7 @@ export function projectStats(events: AnyTraceEvent[]): SessionStats {
     messages: 0,
   };
 
+  const hasContextRecords = events.some((e) => e.type === "context/compaction");
   for (const event of events) {
     stats.firstTime ??= event.time;
     stats.lastTime = event.time;
@@ -285,7 +328,12 @@ export function projectStats(events: AnyTraceEvent[]): SessionStats {
         stats.toolMs += event.data.durationMs;
         break;
       case "compaction/end":
-        if (event.data.compacted) stats.compactions++;
+        // 新日志同时有 context/compaction 记录与 start/end 观测事件：计数只认记录，
+        // 否则一次折叠会被数成两次。旧日志没有记录，才回落到 end.compacted。
+        if (!hasContextRecords && event.data.compacted) stats.compactions++;
+        break;
+      case "context/compaction":
+        stats.compactions++;
         break;
       default:
         break;

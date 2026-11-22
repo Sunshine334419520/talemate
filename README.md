@@ -67,6 +67,7 @@ talemate new 我的小说 悬疑
 |---|---|
 | 这个产品为什么存在、不做什么 | [`docs/product.md`](docs/product.md) |
 | 代码怎么组织、一次交互怎么走 | [`docs/architecture.md`](docs/architecture.md) |
+| 上下文怎么折叠、摘要承载什么 | [`docs/compaction.md`](docs/compaction.md) |
 | 评测系统怎么规划（设计稿） | [`docs/eval-system.md`](docs/eval-system.md) |
 | 会话事件、投影与导出 | [`docs/telemetry.md`](docs/telemetry.md) |
 | Agent / 工具 / Skill 怎么分类与触发 | [`docs/agents.md`](docs/agents.md) |

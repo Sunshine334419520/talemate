@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-11-06 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
+> **对齐代码**：2026-11-22 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -40,7 +40,7 @@
 | **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；**自己写正文**；当编排者，委派并拍板 | 用户每次输入 | 见下 |
 | **planner 规划者** | subagent | 把一个章节意图读成一份**场景简报**：前情、这场戏（谁要什么、谁挡谁）、必须发生、不能提前兑现、章末问题，以及按序的产物清单 | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit` / `notes` 是**类别拒**——落盘类工具整个不在 schema 里）+ `recall`（**只读**考据本，别重查） |
 | **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（同上，类别拒）+ `recall` `remember`（它自己的考据本） |
-| **summarizer** | primary + **hidden** | 上下文压缩时生成前情摘要；不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
+| **summarizer** | primary + **hidden** | 上下文折叠时只写对话叙事（意图 / 决定 / 未决 / 下一步）；pinned 与证据账由 harness 确定性生成。不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
 - mate **自己写正文**（规范与文风卡由 harness 在写作窗口注入 system，见下「Skill 系统」）；**正文不派子代理**——它没有比自身更短的结论（"中间材料不进主线"那条判据对它不成立），而 mate 没见过正文就识别不出写作中浮现的新点子。理由与取舍见 `chapter-planning.md`。
 - planner 与 researcher **不能直接对话**，只被 `task` 派生，且**都不能提问**（它们跑在隔离上下文里，用户不在场——见 `permissions.md`）。两者**不重叠**：阶段不同（章节级 vs 任意时刻）、粒度不同（一份工作单 vs 一个事实）、产出不同。
@@ -95,7 +95,7 @@
 | `recall` | 翻考据本：带 `query` 按词找（题目与正文都算命中面），不带就列已有题目。**未命中会回已有清单**——那是换措辞重试的路，不是错误 |
 | `remember` | 记一条（题目 + 结论，**必须带出处 URL**），同名即覆盖。只给 researcher（`notes` 权限），planner 只有 `recall` |
 
-考据本落在 `<novel>/.talemate/research/<题目>.md`——**引擎工作区，不是作品**：不进 `DOC_ROOTS`，`read` / `list` / `search` 一概够不着，读口只有 `recall` 一个（mate 读不到、用户也看不见，所以垃圾笔记的出路只有文件系统）。它解决的就一件事：**同一个问题不该被查第二遍**——查回来的结论本来活不过一次压缩（tool 结果不进摘要）。见 `framework/research.ts`。
+考据本落在 `<novel>/.talemate/research/<题目>.md`——**引擎工作区，不是作品**：不进 `DOC_ROOTS`，`read` / `list` / `search` 一概够不着，读口只有 `recall` 一个（mate 读不到、用户也看不见，所以垃圾笔记的出路只有文件系统）。它解决的就一件事：**同一个问题不该被查第二遍**——查回来的结论不靠上下文活过压缩（折叠只留路径与结论首行，细节要按证据账重读），所以要落在笔记里。见 `framework/research.ts`。
 
 **`design_tools`** — design/ 的三向提案
 
@@ -250,7 +250,7 @@ description: 网文 · 白话爽感文风（第三人称，快、顺、直给）
 **一处例外：正文规范与文风卡由 harness 注入（`framework/prose.ts`）。** 它们不按 description 触发、也不靠 mate 记得调 `skill`，理由三条，都不是口味问题：
 
 1. **规范是不变量**，"记得加载"不该是它的存活条件——同 `propose-plan` 的 `halt` 由 harness 执行。
-2. **skill 正文活不过压缩。** 它是 tool 结果，而 `compaction` 只留 assistant 的 `text` part、tool 结果不进摘要：书写到十几章，纪律会在某一次压缩之后**无声消失**；而 `<available_skills>` 目录每轮从 `discoverSkills` 重建、条目还在，模型不知道自己丢了什么。system 每轮重建，不受这一条影响。
+2. **skill 正文活不过压缩。** 它是 tool 结果，折叠时只留工具名与首段（证据账给的是路径，而 skill 没有可重读的路径）：书写到十几章，纪律会在某一次压缩之后**无声消失**；而 `<available_skills>` 目录每轮从 `discoverSkills` 重建、条目还在，模型不知道自己丢了什么。system 每轮重建，不受这一条影响。
 3. **规范不抄进每张文风卡**：五张各一份 = 改一次动五处。
 
 窗口的开与关都靠状态，不靠自觉：规划被用户拍板、而这一章的正文还没落盘 → 注入；正文一落盘（`chapters/chapter_ch<N>_v<M>.md` 出现）→ `PendingProposal.done` 置位，整块退出上下文。所以这份 token 只在写那一章的几轮里付。

@@ -6,9 +6,16 @@ chapters/chapter_ch2_v1.md, state/characters/沈越.md, state/progress.md. This 
 every other tool takes.
 section (optional): an exact heading title inside that doc, e.g. 一句话简介, 题材 · 频道, 角色：沈越,
 本卷在全局的位置, 本卷的承诺 (sequence outlines have no sections — read those whole).
+offset (optional): a character offset to continue from when the output said it was truncated. Read a
+large doc in slices instead of trying to pull it whole.
 
-Without section, returns the whole doc. Prefer a section read for a large doc. Run list first to see
-which docs and sections exist.
+Without section, returns the whole doc (up to a size limit). A truncated answer names the sections
+and the offset to continue from. Prefer a section read for a large doc. Run list first to see which
+docs and sections exist.
+
+design/core.md and design/wiki/world.md are already resident in the system prompt every turn; asking
+for them without a section returns a pointer instead of the text twice. Read a section when you need
+one.
 
 The design docs (design/) hold the novel's setting; the chapter prose is under chapters/ — read the
 previous chapter there when you need continuity.

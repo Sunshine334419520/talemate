@@ -27,7 +27,15 @@ function spanLabel(span: Span): string {
 interface ContextWatermark {
   latest: { system: number; tools: number; messages: number; total: number };
   peak: number;
-  compactions: { before: number; after: number }[];
+  compactions: {
+    before: number;
+    after: number;
+    turns?: number;
+    evidence?: number;
+    droppedMessages?: number;
+    toolResults?: number;
+    degraded?: boolean;
+  }[];
 }
 
 /**
@@ -41,6 +49,7 @@ function contextWatermark(events: AnyTraceEvent[]): ContextWatermark | undefined
   let peak = 0;
   let before: number | undefined;
   let pending: number | undefined;
+  let recorded = false;
   const compactions: ContextWatermark["compactions"] = [];
   for (const event of events) {
     if (event.type === "request/header") {
@@ -60,9 +69,24 @@ function contextWatermark(events: AnyTraceEvent[]): ContextWatermark | undefined
     }
     if (event.type === "compaction/start") {
       before = latest?.messages;
+      recorded = false;
       continue;
     }
-    if (event.type === "compaction/end" && event.data.ok && event.data.compacted) {
+    if (event.type === "context/compaction") {
+      // 记录自带进/出估算：比"压缩前后两次请求"更贴近这次折叠本身
+      compactions.push({
+        before: event.data.budget.before,
+        after: event.data.budget.after,
+        turns: event.data.consumed.turns,
+        evidence: event.data.evidence.length,
+        droppedMessages: event.data.dropped.messages,
+        toolResults: event.data.dropped.toolResults,
+        degraded: event.data.degraded,
+      });
+      recorded = true;
+      continue;
+    }
+    if (event.type === "compaction/end" && event.data.ok && event.data.compacted && !recorded) {
       pending = before;
     }
   }
@@ -91,11 +115,12 @@ export function renderTraceSummary(events: AnyTraceEvent[]): string {
   if (context !== undefined) {
     const { latest, peak, compactions } = context;
     const last = compactions.at(-1);
-    const drop = last === undefined || last.before === 0
-      ? ""
-      : `，最近 messages ${last.before} → ${last.after}（${Math.round(((last.after - last.before) / last.before) * 100)}%）`;
+    const drop =
+      last === undefined || last.before === 0
+        ? ""
+        : `，最近折叠 ${last.turns ?? "?"} turn（丢 ${last.droppedMessages ?? "?"} 条 / ${last.toolResults ?? 0} 个工具结果，保留 ${last.evidence ?? 0} 条证据${last.degraded === true ? "，降级" : ""}）· messages ${last.before} → ${last.after}（${Math.round(((last.after - last.before) / last.before) * 100)}%）`;
     lines.push(
-      `- 上下文：最新 ${latest.total} 字（system ${latest.system} + tools ${latest.tools} + messages ${latest.messages}） · 峰值 ${peak}${compactions.length > 0 ? ` · 已压缩 ${compactions.length} 次${drop}` : ""}`,
+      `- 上下文：最新 ${latest.total} 字（system ${latest.system} + tools ${latest.tools} + messages ${latest.messages}） · 峰值 ${peak}${compactions.length > 0 ? ` · 已折叠 ${compactions.length} 次${drop}` : ""}`,
     );
   }
   if (failed.length) {

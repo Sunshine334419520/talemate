@@ -59,6 +59,10 @@ export interface TraceCompactionView {
   durationMs?: number;
   ok?: boolean;
   compacted?: boolean;
+  degraded?: boolean;
+  /** 折叠吃掉 / 留下的 token 估算（来自 context/compaction 记录） */
+  before?: number;
+  after?: number;
 }
 
 export interface TraceTurnView {
@@ -257,6 +261,17 @@ export function buildTraceModel(events: readonly AnyTraceEvent[]): TraceModel {
           turn!.compactions.push({ at: event.time, model: event.data.model });
         }
         break;
+
+      case "context/compaction": {
+        const last = ensureTurn()?.compactions.at(-1);
+        if (last !== undefined) {
+          last.compacted = true;
+          last.degraded = event.data.degraded;
+          last.before = event.data.budget.before;
+          last.after = event.data.budget.after;
+        }
+        break;
+      }
 
       case "compaction/end": {
         const last = ensureTurn()?.compactions.at(-1);

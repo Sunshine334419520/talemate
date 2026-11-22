@@ -60,7 +60,7 @@ describe("/debug 渲染", () => {
     expect(text).toContain(info.changesPath);
     expect(text).toContain("消息：33 条");
     expect(text).toContain("最后 seq=33");
-    expect(text).toContain("模型窗口：33 条，从 seq=1 起（无压缩）");
+    expect(text).toContain("模型窗口：33 条，从 seq=1 起（无折叠）");
     expect(text).toContain("工作区内修改");
     expect(text).toContain("第 3 章");
     expect(text).toContain("input 12496 / output 3142");

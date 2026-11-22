@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-11-16 · 本文与代码冲突时**以代码为准** · 2026-10-31 落地 canonical 事件日志与投影（阶段 1，见 `telemetry.md`）
+> **对齐代码**：2026-11-22 · 本文与代码冲突时**以代码为准** · 2026-11-22 上下文压缩改为 `context/compaction` 记录（见 `compaction.md`）
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -99,10 +99,10 @@ sequenceDiagram
     participant T as tool / subagent
     S->>S: 落盘 user 消息
     S->>L: runLoop(agent, input, deps)
-    L->>L: maybeCompact: 超阈值? → summarizer 压一条 compaction
+    L->>L: maybeCompact: 越过高水位? → 折叠成 context/compaction 记录
     loop 每轮(上限 steps≈10)
         L->>C: buildRequest(agent)
-        C->>C: 截窗(最新 compaction 后) + buildSystem + schemasFor
+        C->>C: 截窗(最新 context 记录后) + buildSystem + schemasFor
         L->>LLM: chat({system, messages, tools})
         LLM->>LLM: 流式 → onText/onReasoning 吐 delta
         LLM-->>L: AssistantTurn{text, toolCalls, finish}
@@ -136,7 +136,7 @@ system = [
   项目规则（AGENTS.md 全文注入，来源标注 "Instructions from: …"）
   skills 目录清单（<available_skills>: name+description，无正文）
 ]
-messages = 按 compaction 截断后的历史 + 刚读的设定切片
+messages = [<context-state> 合成消息] + 最近 turn 原文 + 刚读的设定切片
           （切片拼进本条 user/task prompt，**不塞 system**）
 ```
 
@@ -153,19 +153,23 @@ messages = 按 compaction 截断后的历史 + 刚读的设定切片
 
 ## 上下文压缩
 
-长篇唯一的硬约束。
+长篇唯一的硬约束。完整设计见 `compaction.md`。
 
-- **触发**：**真实用量**超阈值。provider 每次报回 `usage.input`（那一次请求到底发了多少 token），
-  会话记进 `SessionMeta.usage`（`session.json`），拿最新那条跟 `compactTrigger(model)` 比。
-  从前是按**字符数估**的固定 20 万——那是个对所有模型一视同仁的猜。只有还没发过请求的会话退回估算。
-- **阈值由窗口定**：`core/windows.ts` 那**唯一一张表**（窗口的八成，见 `COMPACT_RATIO`）——
-  1M 窗口的模型就到 80 万才动手，而不是所有模型同一个数。界面显示占比也引这张表；
-  写在两处必然分叉：界面上写着"还剩 30%"，压缩却已经动手了。
+- **触发**：先看**真实用量**（provider 报回的 `usage.input`，会话记进 `SessionMeta.usage`），
+  没有真数时按字符→token 估算。触发点与低水位都由模型窗口算（`context/budget.ts`）：越过
+  高水位（窗口的 85%）才折，一次折到低水位（50%）以下——迟滞避免"每步压一次"的抖动。
+- **阈值由窗口定**：`core/windows.ts` 那**唯一一张表**——1M 窗口的模型到 85 万才动手，
+  而不是所有模型同一个数。界面显示占比也引这张表。
   > 已知值：`deepseek` 全系 **1M** · `claude-opus/sonnet/fable/mythos` 1M · `claude-haiku` 200K ·
   > 认不出的按 128K（保守：低估让人早点收拾上下文，高估让人撞墙）。
-- **产物 = 一条 compaction 消息**（`summary` + `recent`）：`summary` 是 LLM 按**小说向模板**生成的摘要（当前写到哪 / 已定设定 / 未回收伏笔 / 下一步），即 `<story-state>` 语义。
-- **上下文边界**：只取最新 compaction 之后的 seq；老消息留文件不喂模型。恢复时找到那条 compaction 即得"前情摘要 + 最近原文"。
-- 摘要由 hidden agent `summarizer` 生成，可单独配小模型。
+- **产物 = 一条 `context/compaction` 事件**（`CompactionRecord`）：累积摘要 + 由 harness 确定性
+  生成的 pinned（进度 / 未回收承诺 / 决定 / 规划坐标 / 常驻 rev）+ 证据账。它是原子提交；
+  摘要失败时写一条 `degraded` 记录（只把工具结果换成指针），或干脆不写。
+- **上下文边界**：窗口 = 记录渲染出的 `<context-state>` + `consumed.toSeq` 之后的原文。
+  最近 turn 的 tool part 原样保留，不拍平。旧 `role:"compaction"` 消息作为 legacy 继续累积。
+- **摘要只承载对话**（意图 / 决定 / 未决 / 下一步），不写世界规则、人物事实、章节事件；
+  书的事实从 `design/`、`chapters/`、`state/` 现取。摘要由 hidden agent `summarizer` 生成，
+  可单独配小模型。
 
 ## LLM 层
 
@@ -190,7 +194,7 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 - **文件回退检查点**：`<session>/rewind-files.json`——`write_ops` 成功落盘后记的写前内容，按发起这一轮的用户 `seq` 归组。回退到 seq N 时，取每条路径在 `seq >= N` 里最早的那份 `before` 还原；写前不存在则删除。它只服务回退，不是作品文档。
   - assistant 的 content = `[{ text, reasoning, tool: [{id, name, state, input, output, time}] }]`。
 - **规则：delta 仅 live 不落盘，ended/complete 才是落盘的全值**——文件里只有稳定态。
-- **compaction 消息必落**，它是恢复上下文的关键。
+- **折叠记录必落**（`context/compaction` 事件），它是恢复上下文的关键；摘要失败时不写记录，旧窗口继续。
 - 事件 `seq` 单调递增、永不复用；消息顺序 = 投影顺序 = 消息 `seq` 顺序（回退后新消息会复用被撤掉的序号）。
 - 全部 `fs/promises`，无数据库。
 

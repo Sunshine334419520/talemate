@@ -65,6 +65,9 @@ export interface TrajectoryView {
 
 function textOfMessage(message: StoredMessage): string {
   if (message.role === "compaction") return [message.summary, message.recent].filter(Boolean).join("\n\n");
+  if (message.role === "context" && message.context !== undefined) {
+    return message.context.summary.session;
+  }
   if (message.role === "assistant") {
     return (message.parts ?? [])
       .filter((part) => part.type === "text")
@@ -262,6 +265,13 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
         if (compaction !== undefined) compaction.text = textOfMessage(event.data.message);
         break;
 
+
+      case "context/compaction":
+        if (compaction !== undefined) {
+          compaction.text = event.data.summary.session;
+          compaction.status = event.data.degraded ? "degraded" : "completed";
+        }
+        break;
 
       case "compaction/end":
         if (compaction !== undefined) {

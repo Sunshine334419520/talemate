@@ -214,6 +214,11 @@ export interface PendingProposal {
    * 置位者是 harness（正文落盘那一刻），不由模型自述——同 `approved`。
    */
   done?: boolean;
+  /**
+   * 仅恢复的规划提案：工件 hash 与提案时记录的不一致（被外部改过）。
+   * 不是拒绝——用户看过的规划仍是那份意图；只是要明说它已经不是当初的字节。
+   */
+  stale?: boolean;
   at: number;
 }
 
@@ -287,8 +292,8 @@ export interface ToolContext {
   readDoc(path: string): Promise<string | undefined>;
   /** 某一段语料的目录（渲染好的文本，含每个文档的一级小节标题）。`prefix` 是项目相对前缀，如 `design/` */
   listIndex(prefix: string): Promise<string>;
-  /** 跨一段语料扫词（渲染好的命中表）：改/删前查引用、看影响面。`prefix` 同上 */
-  searchDocs(query: string, prefix: string): Promise<string>;
+  /** 跨一段语料扫词（渲染好的命中表）：改/删前查引用、看影响面。`prefix` 同上；`limit` 超出时截断 */
+  searchDocs(query: string, prefix: string, limit?: number): Promise<string>;
   /**
    * 把一个子 agent 当 subagent 跑（只传 prompt 文本，独立上下文），返回其正文与子会话 id。
    *
@@ -420,9 +425,94 @@ export type AssistantPart =
       time?: { ran?: number; completed?: number };
     };
 
-export type MessageRole = "user" | "assistant" | "system" | "compaction";
+/**
+ * 折叠时被压掉的工具调用的确定性记录。它不是"证明模型读过"，而是**重读坐标**：
+ * 下一次 `read` 返回新 rev 时，模型能看见这份材料已经变了。
+ */
+export interface EvidenceEntry {
+  kind: "read" | "search" | "task" | "recall" | "skill" | "web";
+  /** 项目相对路径；只有 read/search/web 这类按文档寻址的工具有 */
+  path?: string;
+  /** read 指定的小节 */
+  section?: string;
+  /** 读到时文档的短哈希；没有 rev 的旧数据缺省 */
+  rev?: string;
+  /** 工具名 / 子代理名 / skill 名 */
+  label: string;
+  chars: number;
+  /** 结论型输出的一行摘要；原始材料不存正文 */
+  digest?: string;
+}
 
-/** 持久化消息。role=compaction 时 summary+recent 承载前情摘要。 */
+/**
+ * 会话内用户拍板的确定性记录（D2：会话级，不跨书）。
+ *
+ * `note` 是用户原话——接受/拒绝是按钮，不产生用户消息，所以原话只能随事件带下来。
+ */
+export interface DecisionEntry {
+  at: number;
+  /** 提案的键：`design/core.md` 或 `PLAN_KEY` */
+  proposal: string;
+  verdict: "accept" | "reject" | "refine";
+  /** refine / reject 时用户的原话 */
+  note?: string;
+  chapter?: number;
+}
+
+/**
+ * 一次折叠的 canonical 记录（`context/compaction` 事件）。
+ *
+ * 它是消息窗口的唯一依据：窗口 = 本记录渲染出的 `<context-state>` + `consumed.toSeq` 之后的原文。
+ * 摘要只承载对话（D1）；书的规模由 `pinned` 里的文件引用承载。
+ */
+export interface CompactionRecord {
+  id: string;
+  at: number;
+  /** 上一次折叠的 id；累积的链 */
+  previousId?: string;
+  /** 旧 `role:"compaction"` 消息迁移而来（没有 pinned / evidence） */
+  legacy?: boolean;
+  consumed: { fromSeq: number; toSeq: number; turns: number; intraTurn?: boolean };
+  summarizer?: { model: string; promptHash: string; schema: number };
+  summary: {
+    /** 更早的累积叙事（超过上限时把最老的一半折进这里，≤300 token） */
+    archive?: string;
+    /** 累积的对话叙事（上次摘要 + 这段） */
+    session: string;
+    accomplished: string[];
+    intent: string[];
+    open: string[];
+    pointers: string[];
+  };
+  pinned: {
+    project?: string;
+    promises?: string;
+    decisions: DecisionEntry[];
+    plan?: { chapter: number; path: string; hash: string };
+    resident: Array<{ path: string; rev: string }>;
+  };
+  evidence: EvidenceEntry[];
+  budget: { usable: number; trigger: number; before: number; after: number };
+  dropped: { messages: number; toolResults: number; toolChars: number };
+  /** summarizer 不可用：只把工具结果换成指针，不生成叙事 */
+  degraded: boolean;
+}
+
+/** 提案给用户看过的那一版（界面回看、评测、将来项目级失败账都靠它）。 */
+export interface ProposalPresented {
+  proposal: string;
+  chapter?: number;
+  path?: string;
+  hash?: string;
+  at: number;
+}
+
+export type MessageRole = "user" | "assistant" | "system" | "compaction" | "context";
+
+/**
+ * 持久化消息。role=compaction 是旧格式（summary+recent，迁移期只读）；role=context 是由
+ * `context/compaction` 事件投影出来的合成消息，不落盘，`context` 里装完整记录。
+ */
 export interface StoredMessage {
   seq: number;
   role: MessageRole;
@@ -440,8 +530,12 @@ export interface StoredMessage {
    */
   answersTo?: { callId: string; questions: AskQuestion[]; answers: AskAnswer[] };
   finish?: "stop" | "tool_calls" | "error";
+  /** 旧格式 compaction：摘要正文 */
   summary?: string;
+  /** 旧格式 compaction：保留的最近原文（已拍平，迁移后不再产生） */
   recent?: string;
+  /** role=context：折叠记录（投影合成，不落盘） */
+  context?: CompactionRecord;
   model?: string;
 }
 
@@ -458,8 +552,8 @@ export interface SessionMeta {
   /**
    * 每一轮请求的真实用量（provider 报回来的，不是估算）。
    *
-   * 它是会话自己的账：界面靠它显示上下文占比与走势，压缩将来也该靠它——目前压缩按字符数估
-   * （`compaction.estimateChars`），那份估算在"离模型窗口还有多远"上永远是猜。
+   * 它是会话自己的账：界面靠它显示上下文占比与走势，折叠的触发也优先用这次真实用量
+   * （见 `context/budget.ts`）；没有真数时才退回字符估算。
    * 落在这里而不是壳那侧：会话元信息本来就归 harness，另存一份就是第二个真相源。
    */
   usage?: { input: number; output: number }[];

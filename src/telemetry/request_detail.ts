@@ -31,7 +31,10 @@ export interface RequestDetail {
 
 function windowMessages(messages: StoredMessage[]): StoredMessage[] {
   let start = 0;
-  for (let i = 0; i < messages.length; i++) if (messages[i]?.role === "compaction") start = i;
+  for (let i = 0; i < messages.length; i++) {
+    const role = messages[i]?.role;
+    if (role === "compaction" || role === "context") start = i;
+  }
   return messages.slice(start);
 }
 

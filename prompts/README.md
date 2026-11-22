@@ -10,7 +10,7 @@ prompts/
 ├── mate.system.txt           mate(搭档) persona
 ├── planner.system.txt        planner subagent persona
 ├── researcher.system.txt     researcher subagent persona
-├── summarizer.system.txt     内部 hidden summarizer（compaction）
+├── summarizer.system.txt     内部 hidden summarizer（上下文折叠：只写对话叙事）
 ├── prose.rules.txt           正文规范（跨文风恒定；**不是 persona**——由 harness 在写作窗口注入，见 src/framework/prose.ts）
 ├── modes/<mode_id>.txt       会话模式的纪律正文（见 docs/agents.md“会话模式”）
 └── tools/<tool_id>.txt       每个工具的 description

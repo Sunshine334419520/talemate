@@ -60,6 +60,9 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
   },
 });
 
+/** 子代理结论的正文上限（§11.3）。超了截断并标注，不静默丢。 */
+const TASK_RESULT_LIMIT = 12_000;
+
 /**
  * task 结果的回填文本。
  *
@@ -73,7 +76,9 @@ export function renderTaskResult(agent: string, result: string, sessionId?: stri
   const body =
     text === ""
       ? "（子代理没有返回任何结论——通常是用完了步数，或停在工具调用上没有收尾。缩小问题范围后重派，或自己查。）"
-      : result;
+      : text.length > TASK_RESULT_LIMIT
+        ? `${text.slice(0, TASK_RESULT_LIMIT)}\n…（结论已截断；需要细节重派一个更窄的问题，或自己查。）`
+        : result;
   const session = sessionId === undefined ? "" : ` session="${sessionId}"`;
   return `<task agent="${agent}" state="${state}"${session}>\n<task_result>\n${body}\n</task_result>\n</task>`;
 }

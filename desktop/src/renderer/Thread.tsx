@@ -387,6 +387,15 @@ function Stored({
     return <Me text={m.text ?? ""} seq={m.seq} onRewind={onRewind} canRewind={canRewind} />;
   }
   if (m.role === "compaction") return <p className="note">（前情摘要：{m.summary?.slice(0, 50) ?? ""}…）</p>;
+  if (m.role === "context") {
+    const record = m.context;
+    if (record === undefined) return null;
+    return (
+      <p className="note">
+        （上下文折叠：{record.summary.session.slice(0, 50)}… 证据 {record.evidence.length} 条）
+      </p>
+    );
+  }
   if (m.role !== "assistant") return null;
 
   const out: React.ReactNode[] = [];

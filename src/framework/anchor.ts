@@ -9,6 +9,7 @@
  * 住在 `framework/summaries.ts` 的注册表里。
  */
 import { DOC_ROOTS, enumerateDocs, readDoc } from "../storage/corpus";
+import { hashText } from "../core/hash";
 import { listHeadings } from "./markdown";
 import { summarize } from "./summaries";
 
@@ -173,6 +174,12 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
       const rel = relOf.get(f) ?? f;
       const label = g ? rel.slice(g.length + 1) : rel;
 
+      // 常驻文档超预算：在 list 里明说，不静默截断（§7.2）
+      const limit = residentLimitOf(f);
+      if (limit !== undefined && content !== undefined && content.length > limit) {
+        lines.push(`${fileIndent}${label}（${content.length} 字，超过建议上限 ${limit} 字；请拆分到 wiki 专题页）`);
+      }
+
       // ① 这个形状自己有一行（角色卡：一人一行，不铺必有格）→ 就用它，不再铺小节
       const one = summarize({ path: f, label, content });
       if (one !== undefined) {
@@ -196,13 +203,29 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
   return lines.join("\n");
 }
 
+/** 常驻文档的建议体积上限（字符）。超了提示，不静默截断——半条规则比没有规则更糟。 */
+const RESIDENT_LIMIT: Record<string, number> = {
+  "design/core.md": 8_000,
+  "design/wiki/world.md": 30_000,
+};
+
+/** 常驻文档的建议上限；不是常驻文档 → undefined。 */
+export function residentLimitOf(path: string): number | undefined {
+  return RESIDENT_LIMIT[path];
+}
+
 /** core + world 总纲的常驻全文，mate 每轮注入；文件不存在（懒建未产出）则跳过。 */
 export async function buildResidentDesigns(projectId: string): Promise<string> {
   const blocks: string[] = [];
   for (const path of RESIDENT_DOCS) {
     const content = await readDoc(projectId, path);
     if (content === undefined) continue;
-    blocks.push(`【常驻设定 · ${path}】（每轮注入，写作不得违背）\n${content}`);
+    const limit = RESIDENT_LIMIT[path];
+    const over =
+      limit !== undefined && content.length > limit
+        ? `\n（本文件 ${content.length} 字，超过建议上限 ${limit} 字；请把专题内容拆到 design/wiki/ 下的页面。）`
+        : "";
+    blocks.push(`【常驻设定 · ${path} · rev ${hashText(content).slice(0, 6)}】（每轮注入，写作不得违背）\n${content}${over}`);
   }
   return blocks.join("\n\n");
 }

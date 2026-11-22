@@ -13,7 +13,7 @@
 import { join } from "node:path";
 import type { ProposalDisplay } from "../core/types";
 import { projectPaths, talemateHome } from "../core/config";
-import { writeAtomic } from "../storage/atomic";
+import { readText, writeAtomic } from "../storage/atomic";
 import { indentLines } from "./proposal";
 
 /** 规划工件的项目相对写法——与作品文档同一个口径，只是根不同（它在 `.talemate/` 下）。 */
@@ -66,6 +66,14 @@ export async function savePlan(projectId: string, chapter: number, content: stri
   const rel = planRelPath(chapter);
   await writeAtomic(planAbs(projectId, chapter), planDocument(chapter, content));
   return rel;
+}
+
+/**
+ * 读回规划工件。规划在 `.talemate/` 下，`read` 够不着；harness 用它把已批准的规划全文
+ * 注入正文窗口，并在重启后重建待执行状态。
+ */
+export async function readPlan(projectId: string, chapter: number): Promise<string | undefined> {
+  return readText(planAbs(projectId, chapter));
 }
 
 /**

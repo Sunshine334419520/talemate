@@ -378,8 +378,30 @@ const MOCK_PROPOSAL = [
   "",
 ].join("\n");
 
+/**
+ * 折叠摘要的 mock 输出：四段 XML 契约的形状。冒烟/离线测试里触发折叠时，mock 不可能自己
+ * 写出一份摘要，但也不该落到降级路径——那会让"摘要正常"的分支永远测不到。
+ */
+const MOCK_FOLD = [
+  "<accomplished>",
+  "- 完成了这段对话",
+  "</accomplished>",
+  "<intent>",
+  "- 用户继续推进",
+  "</intent>",
+  "<open>",
+  "</open>",
+  "<pointers>",
+  "- state/progress.md",
+  "</pointers>",
+].join("\n");
+
 async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
   const lastUser = [...opts.messages].reverse().find((m) => m.role === "user")?.text ?? "";
+  if (opts.system?.includes("You fold an old stretch")) {
+    opts.onText?.(MOCK_FOLD);
+    return { text: MOCK_FOLD, toolCalls: [], finish: "stop" };
+  }
   const tools = opts.tools ?? [];
   // 剧本由 env TALEMATE_MOCK_TOOL=<toolName> 注入：mock 先调一次该工具再收尾，入参按 inputSchema.required 采样
   // 「演过一次就收尾」按工具名判，不是"窗口里有没有任何 tool 消息"——冒烟要能演

@@ -31,7 +31,7 @@ export interface LoopDeps {
   commitUser(input: string, agentId: string): Promise<void>;
   /** 事件出口（CLI 打印 / 未来 SSE） */
   onEvent(e: LLMEvent): void;
-  /** 可选：上下文压缩前检查——超阈值时写一条 compaction 消息。循环开始时调用一次。 */
+  /** 可选：上下文折叠前检查——越过高水位时写一条 context/compaction 记录。循环每步调用一次。 */
   maybeCompact?(): Promise<void>;
   /** 本轮最多多少步（防跑飞） */
   steps?: number;
