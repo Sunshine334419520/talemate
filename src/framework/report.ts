@@ -5,8 +5,7 @@
  */
 import { loadProjectMeta } from "../storage/project";
 import { enumerateDocs, readDoc } from "../storage/corpus";
-import { specFor } from "./design_spec";
-import { getSection, isFiller, leadLine, listHeadings } from "./markdown";
+import { isFiller, leadLine, listHeadings } from "./markdown";
 import { nameFromPath } from "./characters";
 
 /** 状态卡上这几格各读哪份文档——路径就是判据；路径是项目相对口径。 */
@@ -17,23 +16,15 @@ const PROGRESS_DOC = "state/progress.md";
 // isFiller 住在 markdown.ts；这里 re-export 是因为 proposal.ts 从本文件引它，保住那个调用点
 export { isFiller };
 
-/** 取一个小节正文的第一句有效内容（跳过占位与空行），用于"简要输出"。 */
+/** 取一小节的第一句；没有那个小节时退回整篇第一句有效内容。 */
 function firstLine(content: string | undefined, heading: string): string | undefined {
-  return content === undefined ? undefined : leadLine(content, heading);
-}
-
-/** 该小节填了没（小节存在 + 有非占位正文）。 */
-function sectionFilled(content: string | undefined, heading: string): boolean {
-  if (content === undefined) return false;
-  const s = getSection(content, heading);
-  if (!s.found) return false;
-  return (s.body ?? "").split("\n").some((l) => !isFiller(l));
-}
-
-/** 这份文档还差哪几个格（按规范的节顺序；文档不存在 → 全部算缺）。 */
-function missingSections(content: string | undefined, name: string): string[] {
-  const sections = specFor(name)?.sections ?? [];
-  return sections.filter((s) => !sectionFilled(content, s.heading)).map((s) => s.heading);
+  if (content === undefined) return undefined;
+  const under = leadLine(content, heading);
+  if (under !== undefined) return under;
+  return content
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith("#") && !isFiller(l));
 }
 
 /** 状态行右侧：不存在 →（空）；有首句 → ✓ 首句；存在但读不出首句 → fallback。 */
@@ -42,18 +33,16 @@ function layerBrief(exists: boolean, lead: string | undefined, fallback: string)
   return lead ? `✓ ${lead}` : fallback;
 }
 
-/** 引导语：只覆盖 core 与 world，只指向第一个还不齐的那一格所属的层；两层都齐 → 不引导。 */
+/** 引导语：只按“有没有这一层”提示，不再按必填格判缺。 */
 function buildGuidance(core: string | undefined, world: string | undefined): string | undefined {
   if (core === undefined && world === undefined) {
     return "想写个什么样的故事？直接讲给我听，我们边聊边把这些记下来。";
   }
-  const layers: { label: string; missing: string[] }[] = [
-    { label: "核心设定", missing: missingSections(core, CORE_DOC) },
-    { label: "世界观", missing: missingSections(world, WORLD_DOC) },
-  ];
-  const first = layers.find((l) => l.missing.length);
-  if (!first) return undefined;
-  return `${first.label}还差${first.missing.map((h) => `「${h}」`).join("、")}——现在聊聊，还是先记着？`;
+  const missing: string[] = [];
+  if (core === undefined) missing.push("核心设定");
+  if (world === undefined) missing.push("世界观");
+  if (missing.length === 0) return undefined;
+  return `${missing.join("、")}还没有——现在聊聊，还是先记着？`;
 }
 
 /** 卷号：`design/outline/vol_<N>.md` → N；不是卷纲就 undefined。 */

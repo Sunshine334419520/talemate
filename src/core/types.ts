@@ -144,8 +144,10 @@ export interface ProposalDisplay {
   loose?: string;
   looseChanged?: boolean;
   sections: ProposalDisplaySection[];
-  /** 整篇散文（规划 / 无格文档）的正文；有 sections 时为空 */
+  /** 整篇散文（规划 / 无格文档）的正文；有 diff 时为空 */
   body?: string;
+  /** 与上一版提案的差异（重提时）；首提为空 */
+  diff?: string;
   /** 还没定的格提示 */
   blankNote?: string;
 }
@@ -616,7 +618,7 @@ export type LLMEvent =
   | { type: "tool.result"; id: string; name: string; output: string; change?: WriteChange; ask?: AskRecord }
   | { type: "scope.open"; label: string }
   | { type: "scope.close"; label: string }
-  /** 只读展示给用户的块（提案逐格清单等）——无返回值，与 confirm/askUser 的交互式提示区分 */
+  /** 只读展示给用户的块（整篇提案/diff 等）——无返回值，与 confirm/askUser 的交互式提示区分 */
   | { type: "proposal"; text: string; view?: ProposalDisplay }
   /**
    * 这一次请求的用量（provider 每次都拿到 `usage`）。界面靠它显示"这个会话用了多少上下文"

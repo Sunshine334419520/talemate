@@ -32,6 +32,8 @@ function ProposalContent({ view }: { view: ProposalDisplay }) {
         <Markdown text={view.body} className="md proposal-md proposal-whole" />
       )}
 
+      {view.diff !== undefined && <pre className="proposal">{view.diff}</pre>}
+
       {view.sections.map((s) => {
         // 整篇兜底那一格叫「全文」；标题已经在卡头，别再画一个“全文”小节头
         const whole = s.heading === "全文";

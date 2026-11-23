@@ -10,7 +10,7 @@ import { createProject, loadProjectMeta, removeDoc, writeDoc } from "../src/stor
 import { enumerateDocs, readDoc, scanDocs } from "../src/storage/corpus";
 import { getSection, listHeadings, removeSection, upsertSection } from "../src/framework/markdown";
 import { RESIDENT_DOCS, docTree } from "../src/framework/anchor";
-import { SPECS, renderSpec } from "../src/framework/design_spec";
+import { GUIDES, renderGuide } from "../src/framework/design_guides";
 import { planAbs } from "../src/framework/plan";
 import { renderHits } from "../src/framework/search";
 import { buildResidentDesigns, buildIndex } from "../src/framework/anchor";
@@ -179,97 +179,49 @@ describe("markdown 区块手术", () => {
   });
 });
 
-// ─── design-spec（结构规范） ───
+// ─── design-spec（设计指南） ───
 
-describe("design-spec（结构规范）", () => {
-  /** 取一份规范的渲染文本。**按路径取**——规范描述的是还不存在的文档，所以给将来那个路径就行。 */
-  const at = (p: string): string => renderSpec(`design/${p}`) ?? "";
+describe("design-spec（设计指南）", () => {
+  /** 按路径取一份指南；描述的是还不存在的文档，所以给将来那个路径就行。 */
+  const at = (p: string): string => renderGuide(`design/${p}`) ?? "";
 
   test("常驻设定文档枚举：就两条路径", () => {
     expect(RESIDENT_DOCS).toEqual(["design/core.md", "design/wiki/world.md"]);
   });
 
-  test("core 规范 = 小说介绍四格；world = 空间/规则/术语三格（旧格移除）", () => {
+  test("指南回答“为什么写/要回答什么/别写”，不要求必有小节", () => {
     const core = at("core.md");
-    expect(core).toContain("## 一句话简介");
-    expect(core).toContain("## 金手指 / 超常设定");
-    // 这几处必须一致，但**不能**互相 import（prose → plan → proposal → design_spec 已是链，
-    // 指回去就是循环，见 design_spec 里那条注释）。所以由这里钉住：规范告诉模型写哪个 heading，
-    // 读/写那两格的那一侧就得按同一个找。题材格尤其要紧——建书时是 prose 的 `withShelf` 写进去的，
-    // 格名对不上就成了"写得进去、规范里读不出来"。
-    expect(core).toContain(`## ${STYLE_HEADING}`);
-    expect(core).toContain(`## ${SHELF_HEADING}`);
-    expect(core).not.toContain("一句话卖点");
-    expect(core).not.toContain("爽感承诺");
-    // 基调格是**故意移除**的（基调是读数不是合同，见 design_spec 的 core 段）——钉住它别被对称地加回来
-    expect(core).not.toContain("基调");
-    const world = at("wiki/world.md");
-    expect(world).toContain("## 空间与舞台");
-    expect(world).toContain("## 规则与秩序");
-    expect(world).toContain("## 术语表");
-    expect(world).not.toContain("世界观一句话");
-    expect(world).not.toContain("势力与人物群像");
-    expect(world).not.toContain("历史痕迹与秘密");
-    // 人物层没有规范小节（一角色一卡），形状在 guide 里；必有格枚举由 CHARACTER_FIELDS 派生
+    expect(core).toContain("为什么要写它");
+    expect(core).toContain("一句话简介");
+    expect(core).toContain("别写");
+    expect(core).not.toContain("## 一句话简介");
+    expect(core).not.toContain("该文档应含以下小节");
+
     const chars = at("characters/林晚.md");
-    expect(chars).toContain("### 基本档案");
-    expect(chars).toContain("### 说话方式");
-    expect(chars).toContain("自由长尾");
+    expect(chars).toContain("想要什么");
+    expect(chars).toContain("绝不做");
+    expect(chars).toContain("可验伪");
+    expect(chars).not.toContain("必有五格");
     expect(chars).toContain("propose-design");
-    expect(chars).not.toContain("add-character"); // 角色专用写工具已删
   });
 
-  test("每格三件齐备（写/别写/写成）+ 通篇形制 + 写入口", () => {
-    const core = at("core.md");
-    expect(core).toContain("## 题材 · 频道");
-    expect(core).toContain("写：");
-    expect(core).toContain("别写：");
-    expect(core).toContain("写成：");
-    expect(core).toContain("通篇：");
-    // 写入口**只有一种形式**：`path: <项目相对路径>`，而且**每块都有**——从前固定层给
-    // `layer: core · 目标 design/core.md`、其余给 `name: …`，目录型的层还一套都不给。
-    expect(core).toContain("path: design/core.md");
-    expect(core).not.toContain("layer:");
+  test("每份指南都带写入口（target）或目录入口标记", () => {
+    expect(at("core.md")).toContain("path: design/core.md");
     expect(at("characters/林晚.md")).toContain("path: design/characters/<名>.md");
-    // 题材格的规范里不再有"货架与读者预期契约"这类承诺语
-    expect(core).not.toContain("货架与读者预期契约");
-    // 角色层是一角色一卡，不套通篇形制（它的字段规范在 characters.ts）
-    expect(at("characters/林晚.md")).not.toContain("通篇：");
-  });
-
-  test("情节层 = 卷纲 + 序列纲两种文档；「整本大纲」连同它的五格一起没了", () => {
-    const outline = at("outline/");
-    // 一次调用取全这一层的两个尺度
-    expect(outline).toContain("## 本卷在全局的位置");
-    expect(outline).toContain("## 本卷的承诺");
-    expect(outline).toContain("## 本卷的节奏与情绪");
-    expect(outline).toContain("## 卷末状态");
-    expect(outline).toContain("## 本卷的序列");
-    expect(outline).toContain("path: design/outline/vol_<N>.md");
-    expect(outline).toContain("path: design/outline/vol_<N>/s<序号>.md");
-    expect(outline).toContain("整篇散文，不分小节"); // 序列纲不分格
-    // 旧「整本大纲」的五格随文档一起删掉——它们各自有更好的家（core / 卷纲 / 状态层）
-    expect(outline).not.toContain("## 一句话主线");
-    expect(outline).not.toContain("## 伏笔与回收登记");
-    // 目录入口**自己不是一个文件**，所以它那一段不给写入口；两个尺度各给各的
-    expect(outline).toContain("【情节层（卷纲 + 序列纲）】");
-    expect(outline).not.toContain("【情节层（卷纲 + 序列纲） · path:");
+    expect(at("outline/vol_1.md")).toContain("path: design/outline/vol_<N>.md");
+    expect(at("outline/vol_1/s2.md")).toContain("path: design/outline/vol_<N>/s<序号>.md");
+    expect(at("outline/")).toContain("【情节层（卷纲 + 序列纲）】");
+    expect(at("outline/")).not.toContain("【情节层（卷纲 + 序列纲） · path:");
   });
 
   test("两种大纲分得开：`outline/vol_*.md` 也命中序列纲的路径，靠「更长者胜出」分开", () => {
-    // `permission.match` 把 `*` 映射成 `.*`，**跨 `/`**——所以卷纲那条模式**也**能命中
-    // `outline/vol_1/s2.md`。分开它们的是模式长度（序列纲那条更长），不是表里的先后。
-    expect(at("outline/vol_2.md")).toContain("## 本卷的序列");
-    expect(at("outline/vol_2.md")).not.toContain("整篇散文，不分小节");
-    expect(at("outline/vol_2/s3.md")).toContain("整篇散文，不分小节");
-    expect(at("outline/vol_2/s3.md")).not.toContain("## 本卷的序列");
+    expect(at("outline/vol_2.md")).toContain("卷末什么状态");
+    expect(at("outline/vol_2.md")).not.toContain("入口 → 出口");
+    expect(at("outline/vol_2/s3.md")).toContain("入口 → 出口");
+    expect(at("outline/vol_2/s3.md")).not.toContain("卷末什么状态");
   });
 
-  test("规范正文里不出现已删的工具名——模型照它选工具，写了就是教它调不存在的东西", () => {
-    // 这条是被一次真事故逼出来的：`remove-character` 删掉之后，characters 的规范里
-    // 还留着「删角色用 remove-character」，而 `propose-design` 的 `section` 参数也早没了——
-    // **两份都是给模型看的工作法**，模型照着调只会撞"未知工具"。
-    // `docs.test.ts` 只扫 `docs/`，扫不到这里。
+  test("指南里不出现已删的工具名，也不教 propose-design 带 section", () => {
     const RETIRED = [
       "add-character",
       "update-character",
@@ -279,32 +231,24 @@ describe("design-spec（结构规范）", () => {
       "remove-design-section",
     ];
     const hits: string[] = [];
-    // 走四个层入口——目录型的入口会把名下每一种文档一并带出来，所以这一圈扫到全部五份规范
-    // 走注册表逐条扫：`target` 给单份文档，目录入口（没有 target）用自己的 `match` 取——
-    // 而目录入口会把名下每一种文档一并带出来，所以这一圈覆盖到全部规范。
-    for (const spec of SPECS) {
-      const text = renderSpec(spec.target ?? spec.match) ?? "";
-      for (const t of RETIRED) if (text.includes(t)) hits.push(`${spec.id} 的规范里出现已删的 ${t}`);
-      // 顺带：也不许再教 `section`（它已从 propose-design 删掉，改一格走 edit）
-      if (/propose-design[^\n]*section/.test(text)) hits.push(`${spec.id} 的规范里还在教 propose-design 带 section`);
+    for (const guide of GUIDES) {
+      const text = renderGuide(guide.target ?? guide.match) ?? "";
+      for (const t of RETIRED) if (text.includes(t)) hits.push(`${guide.id} 的指南里出现已删的 ${t}`);
+      if (/propose-design[^\n]*section/.test(text)) hits.push(`${guide.id} 还在教 propose-design 带 section`);
     }
     expect(hits).toEqual([]);
-    // 而且确实扫到了东西（否则上面那条空断言恒真）
     expect(at("characters/林晚.md")).toContain("propose-design");
   });
 
   test("design-spec 只收一个路径：文档路径给那一份，目录路径给名下全部", async () => {
-    // 文档路径——每份都取得到：主文档、卷纲、序列纲，以及从前会回"未登记"的角色卡
-    expect((await designSpecTool.execute({ path: "design/core.md" })).output).toContain("## 一句话简介");
-    expect((await designSpecTool.execute({ path: "design/outline/vol_1.md" })).output).toContain("## 本卷的序列");
-    expect((await designSpecTool.execute({ path: "design/outline/vol_1/s2.md" })).output).toContain("整篇散文，不分小节");
-    expect((await designSpecTool.execute({ path: "design/characters/林晚.md" })).output).toContain("### 基本档案");
-    // 目录路径——一次看清这一层有哪几种文档（从前得靠一个专用的 `layer` 参数才拿得到）
+    expect((await designSpecTool.execute({ path: "design/core.md" })).output).toContain("一句话简介");
+    expect((await designSpecTool.execute({ path: "design/outline/vol_1.md" })).output).toContain("卷末什么状态");
+    expect((await designSpecTool.execute({ path: "design/outline/vol_1/s2.md" })).output).toContain("入口 → 出口");
+    expect((await designSpecTool.execute({ path: "design/characters/林晚.md" })).output).toContain("想要什么");
     const dir = (await designSpecTool.execute({ path: "design/outline/" })).output;
     expect(dir).toContain("path: design/outline/vol_<N>.md");
     expect(dir).toContain("path: design/outline/vol_<N>/s<序号>.md");
-    // 没登记的明说自由成稿（从前这里回的是"layer 应为…"）
-    expect((await designSpecTool.execute({ path: "design/wiki/岛屿地图.md" })).output).toContain("没有登记结构规范");
+    expect((await designSpecTool.execute({ path: "design/wiki/岛屿地图.md" })).output).toContain("没有登记设计指南");
   });
 });
 
@@ -535,46 +479,13 @@ function makeDraftCtx(projectId: string, ...rulesets: Ruleset[]) {
   return ctx;
 }
 
-describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-design）", () => {
+describe("角色卡（自由正文；指南只给问题，不设必填格）", () => {
   const CARD = (name: string) => `design/characters/${name}.md`;
 
-  /**
-   * 一张合规的卡：必有五格齐全。卡不再由任何构造器生成——`add-character` 已删除，
-   * 建卡与改卡都走 propose-design。所以测试自己拼卡文本，就像模型会做的那样。
-   * `hollow` 把四个段落格写成（待定）——用来验"骨架只盯标题在不在"。
-   */
-  const cardText = (name: string, identity: string, opts: { extra?: string[]; hollow?: boolean } = {}) => {
-    const f = (s: string) => (opts.hollow ? "（待定）" : s);
-    return [
-      `# 角色：${name}`,
-      "",
-      "### 基本档案",
-      "",
-      `姓名：${name}`,
-      "性别：（待定）",
-      `身份 · 所属：${identity}`,
-      "",
-      "### 性格与矛盾",
-      "",
-      f("既认命又不认。"),
-      "",
-      "### 想要 · 最怕",
-      "",
-      f("想要一个说法。"),
-      "",
-      "### 底线 · 绝不做",
-      "",
-      f("不动女人和孩子。"),
-      "",
-      "### 说话方式",
-      "",
-      f("短句、直给。"),
-      "",
-      ...(opts.extra ?? []),
-    ].join("\n");
-  };
+  /** 一张自由形状的卡：没有固定小节，只回答指南里的问题。 */
+  const cardText = (name: string, body: string) => `# 角色：${name}\n\n${body.trim()}\n`;
 
-  /** 走完整两段式：propose（不写盘）→ 标记用户同意 → apply。被拒时不落盘。 */
+  /** 走完整两段式：propose（不写盘）→ 标记用户同意 → apply。 */
   async function land(name: string, content: string) {
     const ctx = makeDraftCtx(pid);
     const proposed = await proposeDesignTool.execute({ path: CARD(name), content }, ctx as never);
@@ -585,210 +496,82 @@ describe("角色卡（必有五格 + 自由长尾；唯一写入口是 propose-d
     return { proposed, ctx };
   }
 
-  test("建卡：两段式提案落盘——角色没有专用工具，创建就是 propose-design 带 name", async () => {
-    const { proposed } = await land("林晚", cardText("林晚", "空乘，与江屿困在同一座岛"));
-    expect(proposed.output).toContain("尚未写入");
+  const FREE = cardText(
+    "林晚",
+    "二房庶女，管着家里的账，却始终不被允许坐上主桌。\n\n" +
+      "她想要账册，不是为了钱，是为了让二房在族老面前没法再说她“只是个丫头”。\n" +
+      "她最怕被当成二房争产的棋子；所以先算账，再叫人。\n\n" +
+      "“二爷的账，什么时候轮到外人看了？”——她对二房以外的人，永远先问这一句。\n" +
+      "她绝不让人看见她哭。",
+  );
 
+  test("建卡：自由正文，没有必有小节也能提案落盘", async () => {
+    const { proposed } = await land("林晚", FREE);
+    expect(proposed.output).toContain("尚未写入");
     const content = (await readDoc(pid, CARD("林晚")))!;
     expect(content).toContain("# 角色：林晚");
-    for (const label of ["基本档案", "性格与矛盾", "想要 · 最怕", "底线 · 绝不做", "说话方式"]) {
-      expect(content).toContain(`### ${label}`);
-    }
-    // 名单现算（读卡），不存派生文件；身份取「身份 · 所属」那一行
-    expect(await buildIndex(pid)).toContain("- 林晚 · 空乘，与江屿困在同一座岛（必有齐）");
-  });
-
-  test("缺任一必有格 → 整篇提案被拒并列出缺哪几格（不再有构造器替模型补格）", async () => {
-    const thin = "# 角色：某人\n\n### 基本档案\n\n身份 · 所属：某人\n";
-    const ctx = makeDraftCtx(pid);
-    const msg = await rejectMessage(proposeDesignTool.execute({ path: CARD("某人"), content: thin }, ctx as never));
-    expect(msg).toContain("缺这几格");
-    expect(msg).toContain("性格与矛盾");
-    expect(msg).toContain("说话方式");
-    expect(ctx.pending.size).toBe(0); // 没登记任何提案
-    expect(await readDoc(pid, CARD("某人"))).toBeUndefined(); // 更没落盘
-  });
-
-  test("骨架只盯标题在不在：空标题能过校验，但名单里显示为待补", async () => {
-    await land("空壳", cardText("空壳", "某人的身份", { hollow: true }));
+    expect(content).toContain("她绝不让人看见她哭。");
+    // 名单只取首句，不再判“必有齐/待补”
     const roster = await buildIndex(pid);
-    expect(roster).toContain("- 空壳 · 某人的身份（待补：性格与矛盾、想要 · 最怕、底线 · 绝不做、说话方式）");
+    expect(roster).toContain("- 林晚 · 二房庶女，管着家里的账");
+    expect(roster).not.toContain("必有齐");
+    expect(roster).not.toContain("待补");
   });
 
-  test("名单行取「身份 · 所属」而不是首行（首行是姓名）", async () => {
-    await land("陆青", cardText("陆青", "七个吊唁者共同的旧友"));
-    const roster = await buildIndex(pid);
-    expect(roster).toContain("- 陆青 · 七个吊唁者共同的旧友（");
-    expect(roster).not.toContain("姓名：陆青");
+  test("薄卡也能交：没有“缺格即拒”，用户自己决定内容够不够", async () => {
+    const thin = "# 角色：某人\n\n码头搬运工，话少。\n";
+    const { proposed } = await land("某人", thin);
+    expect(proposed.output).toContain("尚未写入");
+    expect(await readDoc(pid, CARD("某人"))).toContain("码头搬运工");
   });
 
-  test("基本档案整格全待定也算缺（旧写法会误判成「填了」）；部分填了则保留未定的那几行", async () => {
-    const allPending = cardText("无名", "占位", { hollow: true }).replace(
-      "姓名：无名\n性别：（待定）\n身份 · 所属：占位",
-      "姓名：（待定）\n性别：（待定）\n身份 · 所属：（待定）",
-    );
-    await land("无名", allPending);
-    expect(await buildIndex(pid)).toContain("- 无名 · （待定）（待补：基本档案、");
-
-    const partial = cardText("半填", "占位").replace(
-      "姓名：半填\n性别：（待定）\n身份 · 所属：占位",
-      "姓名：半填\n性别：男\n身份 · 所属：（待定）",
-    );
-    await land("半填", partial);
-    const card = (await readDoc(pid, CARD("半填")))!;
-    expect(card).toContain("姓名：半填");
-    expect(card).toContain("身份 · 所属：（待定）"); // 未定的那一项留在卡上
-  });
-
-  test("整篇提案打到已存在的卡上 → 带「整篇重写」告警（add-character 查重的替代）", async () => {
+  test("整篇重写已存在的卡 → 只给“会整篇重写”的告警，不列旧格", async () => {
     const ctx = makeDraftCtx(pid);
     const r = await proposeDesignTool.execute(
-      { path: CARD("林晚"), content: cardText("林晚", "换了个身份") },
+      { path: CARD("林晚"), content: cardText("林晚", "换了一个身份。") },
       ctx as never,
     );
     expect(r.output).toContain("已存在");
     expect(r.output).toContain("整篇重写");
-    // 旧卡的小节标题被列出来——用户看得出哪些会消失
-    expect(r.output).toContain("5 个小节：基本档案、性格与矛盾、想要 · 最怕、底线 · 绝不做、说话方式");
+    expect(r.output).not.toContain("必有格");
   });
 
-  // 改一格走**二向的 edit**（锚点式），不走提案——提案只有整篇一种形态（见 design-docs.md）。
-  test("改一格走 edit：只换那一格，其余字节一字不动", async () => {
+  test("局部修改走 edit：只换那一段，其余字节一字不动", async () => {
+    await land("林晚", FREE);
     const ctx = makeDraftCtx(pid);
     const r = await editTool.execute(
-      { path: CARD("林晚"), find: "短句、直给。", replace: "新版：越在乎越呛，反话里藏担心" },
+      { path: CARD("林晚"), find: "她绝不让人看见她哭。", replace: "她会在没人的地方哭，但绝不当着人。" },
       ctx as never,
     );
     expect(r.output).toContain("已改写");
-
     const content = (await readDoc(pid, CARD("林晚")))!;
-    expect(content).toContain("新版：越在乎越呛");
-    expect(content).toContain("空乘，与江屿困在同一座岛"); // 别的格没被碰
-    expect(content).toContain("### 说话方式"); // 标题也没被吃掉
+    expect(content).toContain("她会在没人的地方哭");
+    expect(content).toContain("她想要账册");
   });
 
-  test("edit 改不了文件里没有的那段——拒绝文案要能自愈", async () => {
-    const ctx = makeDraftCtx(pid);
+  test("删一段/一个标题不再被“必有格”拦——卡没有必填格", async () => {
+    await land("林晚", FREE);
+    const ctx = makeCtx(pid);
     const r = await editTool.execute(
-      { path: CARD("林晚"), find: "卡上根本没有这一句。", replace: "x" },
+      { path: CARD("林晚"), find: "她绝不让人看见她哭。", replace: "" },
       ctx as never,
     );
-    expect(r.output).toContain("找不到");
-    // 原样，一个字节没写
-    expect(await readDoc(pid, CARD("林晚"))).toContain("空乘，与江屿困在同一座岛");
+    expect(r.output).toContain("已改写");
+    expect((await readDoc(pid, CARD("林晚")))!).not.toContain("她绝不让人看见她哭。");
   });
 
-  // ── 回归：自由长尾与老卡的废止小节，任何写入之后都必须一字不丢 ──
-
-  test("[回归] 自由长尾小节、老卡的废止小节在改一格之后一字不丢", async () => {
+  test("旧的结构化卡仍能出名单：键值行取值，跳过与卡名相同的姓名", async () => {
     await writeDoc(
       pid,
-      CARD("乔家劲"),
-      [
-        "# 角色：乔家劲",
-        "",
-        "### 基本档案",
-        "钵兰街阿劲，自诩四二六红棍",
-        "",
-        "### 回响",
-        "「破万法」：契机「想要公平地进行对决」。",
-        "",
-        "### 习惯动作",
-        "紧张时数东西够不够用",
-        "",
-        "### 当前",
-        "已故",
-        "",
-        "### 一句话定位",
-        "空姐，与江屿困同一座岛",
-        "",
-      ].join("\n"),
+      CARD("老卡"),
+      "# 角色：老卡\n\n### 基本档案\n姓名：老卡\n身份 · 所属：从前的一句定位\n",
     );
-    // 只改「回响」那一格：锚点给的是它当前的正文，替换成加了第二句的一版
-    const ctx = makeDraftCtx(pid);
-    const r = await editTool.execute(
-      {
-        path: CARD("乔家劲"),
-        find: "「破万法」：契机「想要公平地进行对决」。",
-        replace: "「破万法」：契机「想要公平地进行对决」。\n触发条件由性格导出。",
-      },
-      ctx as never,
-    );
-    expect(r.output).toContain("已改写");
-
-    const after = (await readDoc(pid, CARD("乔家劲")))!;
-    expect(after).toContain("触发条件由性格导出。");
-    // 其余小节连同正文原样保留——「习惯动作」「当前」「一句话定位」都是已废止的格，
-    // 现在算自由长尾，同样一字不动
-    for (const line of [
-      "钵兰街阿劲，自诩四二六红棍",
-      "紧张时数东西够不够用",
-      "### 当前",
-      "已故",
-      "### 一句话定位",
-      "空姐，与江屿困同一座岛",
-    ]) {
-      expect(after).toContain(line);
-    }
-    expect((after.match(/^### /gm) ?? []).length).toBe(5); // 没有多出/重复的小节
-  });
-
-  test("名单的「另有」列出自由长尾小节（每张卡都不同，所以它是信号不是噪音）", async () => {
     const roster = await buildIndex(pid);
-    expect(roster).toContain("- 乔家劲 · 钵兰街阿劲，自诩四二六红棍（待补：");
-    expect(roster).toContain("另有：回响、习惯动作、当前、一句话定位");
+    expect(roster).toContain("- 老卡 · 从前的一句定位");
   });
 
-  test("缺格的卡：整篇提案补齐必有五格，自由长尾原样留在卡上", async () => {
-    const before = (await readDoc(pid, CARD("乔家劲")))!;
-    const filled = before.replace(
-      "### 回响",
-      "### 性格与矛盾\n\n既认命又不认。\n\n### 想要 · 最怕\n\n想要一个说法；最怕欠人。\n\n### 底线 · 绝不做\n\n不动女人和孩子。\n\n### 说话方式\n\n短句、直给，不绕弯\n\n### 回响",
-    );
-    await land("乔家劲", filled);
-
-    const after = (await readDoc(pid, CARD("乔家劲")))!;
-    expect(after).toContain("既认命又不认。");
-    expect(after).toContain("紧张时数东西够不够用"); // 长尾还在
-    expect(await buildIndex(pid)).toContain(
-      "- 乔家劲 · 钵兰街阿劲，自诩四二六红棍（必有齐；另有：回响、习惯动作、当前、一句话定位）",
-    );
-  });
-
-  test("删一格走 edit：必有格删不掉（不变量拦），自由长尾随便删", async () => {
-    const ctx = makeCtx(pid);
-    // 必有格被 `characters.required-kept` 拦在管线的第 4 步——**弹窗之前**，
-    // 所以用户不会被问一件注定落不下去的事。
-    const bad = await editTool.execute(
-      { path: CARD("乔家劲"), find: "### 底线 · 绝不做", replace: "" },
-      ctx as never,
-    );
-    expect(bad.output).toContain("必有格");
-    expect((await readDoc(pid, CARD("乔家劲")))!).toContain("### 底线 · 绝不做");
-
-    // 自由长尾（老卡上那些废止的格）随便删
-    const ok = await editTool.execute(
-      { path: CARD("乔家劲"), find: "### 一句话定位\n空姐，与江屿困同一座岛", replace: "" },
-      ctx as never,
-    );
-    expect(ok.output).toContain("已改写");
-    expect((await readDoc(pid, CARD("乔家劲")))!).not.toContain("一句话定位");
-  });
-
-  test("名单：只有老「一句话定位」的卡也能出身份，不立刻退化成（待定）", async () => {
-    await writeDoc(pid, CARD("老卡"), "# 角色：老卡\n\n### 一句话定位\n从前的一句定位\n");
-    expect(await buildIndex(pid)).toContain("- 老卡 · 从前的一句定位");
-  });
-
-  test("[回归] 走 propose-design 落的卡进名单（旧的派生总表在这条路上会漏）", async () => {
-    await land("沈越", cardText("沈越", "婚礼／殡仪主持"));
-    const roster = await buildIndex(pid);
-    expect(roster).toContain("- 沈越 · 婚礼／殡仪主持（必有齐）"); // 名单现算 → 不会漏
-    expect(roster).not.toContain("characters/沈越.md:"); // 角色卡不铺必有格标题，只有一行
-  });
-
-  test("delete：删卡；名单随之消失（现算，不用额外同步）", async () => {
-    // **没有角色专用工具了**——删一份文档就是通用 delete 加一个项目相对路径。
+  test("删卡用通用 delete；名单随之消失", async () => {
+    await land("林晚", FREE);
     const r = await deleteTool.execute({ path: CARD("林晚") }, makeCtx(pid) as never);
     expect(r.output).toContain("已删除");
     expect(await readDoc(pid, CARD("林晚"))).toBeUndefined();
@@ -816,8 +599,10 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(ctx.pending.get(DOC)?.approved).toBe(false); // 同意由用户回话决定，默认否
 
     const shown = ctx.shown.join("\n");
-    expect(shown).toContain("1. 空间与舞台");
-    expect(shown).toContain("2. 规则与秩序");
+    expect(shown).toContain("提案 · 舞台");
+    expect(shown).toContain("空间与舞台");
+    expect(shown).toContain("一座与世隔绝的岛。");
+    expect(shown).toContain("规则与秩序");
     expect(shown).not.toContain("回复「没问题」");
     expect(shown).not.toContain(".md"); // 对用户不出现路径
     expect(shown).not.toContain("design/");
@@ -848,7 +633,7 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
   test("单格提案：整篇快照被改过 → 拒绝落盘（不盲写）", async () => {
     const ctx = makeDraftCtx(pid);
     await writeDoc(pid, DOC2, "# 舞台\n\n## 空间与舞台\n旧的一版。\n\n## 规则与秩序\n（待定）\n");
-    await proposeDesignTool.execute({ path: DOC2, content: "新的空间描述。", section: "空间与舞台" }, ctx as never);
+    await proposeDesignTool.execute({ path: DOC2, content: "新的空间描述。" }, ctx as never);
     ctx.pending.get(DOC2)!.approved = true;
 
     // 提案之后文档被别处改过
@@ -877,43 +662,28 @@ describe("design 写入：提案 → 回话 → 落盘", () => {
     expect(after).toContain("## 规则与秩序"); // 标题也没被吃掉
   });
 
-  test("守卫：无规范登记的散文放行（兜底成整篇一格），有规范登记的散文仍被拒", async () => {
+  test("守卫：只拒空/全占位；任何标题形状的散文都放行", async () => {
     const ctx = makeDraftCtx(pid);
-    // wiki 专题页 / 序列纲这类：整篇散文是正当形状，当成"整篇一格"用户照样看得到字节
     const flat = await proposeDesignTool.execute({ path: "design/wiki/x.md", content: "整段散文，一个标题都没有。" }, ctx as never);
     expect(flat.output).toContain("提案已交给用户审阅");
-
-    // 有规范登记的层：同样的散文会被渲染成"四格全（待定）"，正文却照样落盘——这才是要拒的
-    const msg = await rejectMessage(
-      proposeDesignTool.execute({ path: "design/core.md", content: "整段散文，一个标题都没有。" }, ctx as never),
+    const core = await proposeDesignTool.execute({ path: "design/core.md", content: "整段散文，一个标题都没有。" }, ctx as never);
+    expect(core.output).toContain("提案已交给用户审阅");
+    const empty = await rejectMessage(
+      proposeDesignTool.execute({ path: "design/core.md", content: "（待定）" }, ctx as never),
     );
-    expect(msg).toContain("没法逐格审阅");
+    expect(empty).toContain("空的");
   });
 
-  test("守卫：角色卡上出现 ## 被拒（否则卡里所有 ### 会从逐格审阅里消失）", async () => {
+  test("角色卡可以自由用 `##` 或 `###`，没有形状守卫", async () => {
     const ctx = makeDraftCtx(pid);
-    const msg = await rejectMessage(
-      proposeDesignTool.execute(
-        { path: "design/characters/某人.md", content: "# 角色：某人\n\n## 基本档案\n来历不明。\n" },
-        ctx as never,
-      ),
-    );
-    expect(msg).toContain("一律用 `###`");
-    expect(ctx.pending.size).toBe(0); // 没登记任何提案
-
-    // `edit` 往卡上加一节时也拦得住——**同一份不变量，判的是结果**，所以哪条路都一样。
-    // （`append-design` 已删：末尾加一节就是一次普通的 `edit`，拿尾块当锚点。）
-    await writeDoc(pid, "design/characters/某人.md", "# 角色：某人\n\n### 基本档案\n来历不明。\n");
-    const bad = await editTool.execute(
-      {
-        path: "design/characters/某人.md",
-        find: "来历不明。",
-        replace: "来历不明。\n\n## 回响\n破万法。",
-      },
+    const r = await proposeDesignTool.execute(
+      { path: "design/characters/某人.md", content: "# 角色：某人\n\n## 基本档案\n来历不明。\n" },
       ctx as never,
     );
-    expect(bad.output).toContain("一律用 `###`");
-    expect(await readDoc(pid, "design/characters/某人.md")).not.toContain("## 回响"); // 一个字节没落
+    expect(r.output).toContain("提案已交给用户审阅");
+    expect(ctx.pending.has("design/characters/某人.md")).toBe(true);
+    ctx.pending.delete("design/characters/某人.md");
+    await writeDoc(pid, "design/characters/某人.md", "# 角色：某人\n\n## 基本档案\n来历不明。\n");
 
     // 反过来：`###` 的自由小节（开放长尾）畅通
     const ok = await editTool.execute(

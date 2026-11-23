@@ -9,11 +9,9 @@ character-specific tool for that). Same path form every other tool takes.
 
 **This is for whole documents only.** To change part of an existing doc — a sentence, one section —
 use `edit`: the user reviews a diff of just that piece instead of re-reading the whole document, and
-it costs you far fewer tokens. A draft is refused only when its kind has a fixed shape (see
-design-spec — it holds the shape of every document kind) and the draft does not fill it, since
-the user would then be shown blanks while the prose landed anyway. Kinds that are free-form (sequence
-outlines, character cards, topic pages) are shown whole, as a single block. Fields you
-cannot fill yet get （待定）.
+it costs you far fewer tokens. The draft is shown whole; if you are replacing an earlier proposal,
+the user sees the diff against it. There is no "cell" grid and no required section list — answer the
+design guide's questions in whatever structure serves the document.
 
 **The draft IS the file**: on approval it is written byte for byte. So the content holds document
 text and nothing else — no notes to the user ("暂用名，待你定"), no rationale ("这句是配的试镜台词，

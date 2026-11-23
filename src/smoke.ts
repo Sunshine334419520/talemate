@@ -150,7 +150,7 @@ try {
   console.log(`    子会话：${subMetas.map((m) => `${m.title}(${m.id})`).join(", ")}`);
   if (!childSession) throw new Error("planner 子会话未落盘");
 
-  // 4b) design/ 懒建：初始为空（按需 design-spec 拿形状再成稿）
+  // 4b) design/ 懒建：初始为空（按需 design-spec 拿指南再成稿）
   const seeded = await enumerateDocs(meta.id, "design/");
   console.log(`[5b] design/ 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空，按需 design-spec 成稿）"}`);
   if (seeded.length !== 0) throw new Error("design/ 应懒建为空");
@@ -183,12 +183,13 @@ try {
   const view = proposalViews.at(-1);
   const rendered =
     prop.includes("提案 · 核心层") &&
-    prop.includes("1. 题材 · 频道") &&
+    prop.includes("## 题材 · 频道") &&
     !prop.includes("回复「没问题」") &&
     view?.kind === "design" &&
     view.title === "核心层" &&
-    view.sections.some((s) => s.heading === "题材 · 频道");
-  console.log(`[9b] 提案已渲染给用户（终端逐格 + 结构化卡片）：${rendered ? "✓" : "✗"}`);
+    view.sections.length === 0 &&
+    (view.body ?? "").includes("题材 · 频道");
+  console.log(`[9b] 提案已渲染给用户（整篇 + 结构化卡片）：${rendered ? "✓" : "✗"}`);
   if (!rendered) throw new Error(`提案未按预期渲染：${truncate(prop, 200)}`);
 
   const halted = r2.includes("等用户回话");

@@ -2,7 +2,7 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：2026-11-09 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`；右栏编辑的自动保存与离开拦截在 `desktop/src/renderer/SidePane.tsx` / `Workspace.tsx`，CAS 在 `src/storage/atomic.ts`，IPC 在 `desktop/src/main/index.ts` 的 `docs:save`
+> **对齐代码**：2026-11-23 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`；右栏编辑的自动保存与离开拦截在 `desktop/src/renderer/SidePane.tsx` / `Workspace.tsx`，CAS 在 `src/storage/atomic.ts`，IPC 在 `desktop/src/main/index.ts` 的 `docs:save`
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `ask-user.md`（提问与 pending）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
@@ -202,7 +202,7 @@
 | 本轮改动 | **这次请求全部结束（含收尾思考和最终总结）后**一张卡：按文件合并的清单，点开去右栏 | 你要的是一整件事的结果，不是每次落盘都报一次 |
 | 推理 | 收起成一行：跑着叫「思考中…」+ 秒数，跑完叫「思考过程」+ 字数 | 过程 |
 | 模型在准备长工具参数（写正文 / 设计稿 / 规划） | 过程里先一行「正在准备写文件…」；对话末尾常驻「处理中… Ns」 | 参数要流很久，这中间没有 text/tool-call 事件，不能静默 |
-| 提案 | **底部弹窗**：占住输入框，无超时、不能收起；标题 + 逐格 markdown + 三向按钮 | 三向审阅要读完整份提案；它是门，不能让人绕过按钮在输入框里回答 |
+| 提案 | **底部弹窗**：占住输入框，无超时、不能收起；标题 + 整篇/diff markdown + 三向按钮 | 三向审阅要读完整份提案；它是门，不能让人绕过按钮在输入框里回答 |
 | 落盘 / 委派审批 | **底部弹窗**占住输入框，不能收起 | 要你点头，审批不能藏起来 |
 | 提问 | **底部弹窗**占住输入框；收起成提示条；已答是只读卡 | 要你回答，且不能被后续消息顶走 |
 | 落盘确认里的 diff | 卡片上一行"看改动（右栏）" | 要你动手，但 diff 是细节——去右栏 |

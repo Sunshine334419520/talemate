@@ -192,7 +192,7 @@
 
 | 现在 | 处理 |
 |---|---|
-| `design_spec` 的全文小节模板 | 降级为设计指南（`design-guides.md`）；不再“没按格写就拒” |
+| 旧的全文小节模板（`design_spec`） | 已降级为设计指南（`design-guides.md`）；不再“没按格写就拒” |
 | 角色卡“五格必有、缺一即拒” | 删除；改成指南问题 + 自由正文 |
 | `characters.no-shallow-heading` / `skeleton-complete` / `required-kept` | 删除（它们是逐格审阅的产物） |
 | 提案逐格编号/“第 N 格” | 删除；审阅 = 整篇 + diff；局部改走 `edit` |

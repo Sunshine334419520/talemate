@@ -31,16 +31,6 @@ const MAX_TURNS = 4;
 
 // ─────────────────────────── 变体（单变量消融） ───────────────────────────
 
-/** design-spec 描述里「一段想法讨论通常碰到核心设定与世界观」——可能是「两层一起做」的暗示源。 */
-const P_DESIGNSPEC_PAIR: Patch = {
-  kind: "describe",
-  tool: "design-spec",
-  note: "design-spec.txt：去掉「一段想法讨论通常碰到核心设定与世界观」",
-  before:
-    "A story-idea discussion usually touches 核心设定\nand 世界观; a design pass usually touches one layer. ",
-  after: "",
-};
-
 /** 加一个交回契约：落盘结果里写明"这一层到此为止"。 */
 const P_APPLY_HANDBACK: Patch = {
   kind: "appendResult",
@@ -52,7 +42,6 @@ const P_APPLY_HANDBACK: Patch = {
 const VARIANTS: Variant[] = [
   { id: "baseline", note: "原样 = 当前产品（persona 那条规则已在里面，所以它就是新基线）", patches: [] },
   { id: "apply-handback", note: "【加】落盘结果里补交回契约", patches: [P_APPLY_HANDBACK] },
-  { id: "designspec-no-pair", note: "去掉「核心设定与世界观」那句暗示", patches: [P_DESIGNSPEC_PAIR] },
 ];
 
 // ─────────────────────────── 消融的落地 ───────────────────────────

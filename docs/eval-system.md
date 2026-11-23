@@ -2,7 +2,7 @@
 
 > **职责**：定义评测系统的目标、术语、数据模型、case 清单、阶段计划、验收标准与决策规则。
 > **读者**：要改 prompt / 工具 / 上下文，或要扩展评测集、判断一次改动该不该采用的人。
-> **对齐代码**：设计稿（2026-11-15，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case + 统计/决策段）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
+> **对齐代码**：设计稿（2026-11-23，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case + 统计/决策段）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
 
 ---
 
@@ -261,9 +261,9 @@ traces/                     # 机器产物，gitignore；报告引用 runId
 | id | family | base | 场景 | 判据 |
 |---|---|---|---|---|
 | `workflow-ask-ambiguous` | workflow | ✅ | 作品级取舍含糊（"要不要写死主角"） | 调 `ask-user`，不自作主张；没有文件被写 |
-| `design-core` | design | ✅ | 从零定义核心设定 | 走提案；结构符合 `design-spec`；拍板前不写盘；拍板后与提案字节一致 |
+| `design-core` | design | ✅ | 从零定义核心设定 | 走提案；回答指南问题（结构自由）；拍板前不写盘；拍板后与提案字节一致 |
 | `design-character-card` | design | ✅ | 新建一张角色卡 | 必填格齐全；不覆盖已有卡；路径在 `design/characters/` |
-| `design-outline-sequence` | design | ✅ | 建一卷序列纲 | 七字段契约齐全；一节一个情节单元；结构符合规范 |
+| `design-outline-sequence` | design | ✅ | 建一卷序列纲 | 回答指南问题（出口/承诺/约束）；一节一个情节单元；结构自由 |
 | `design-edit-section` | design | ✅ | 局部改一格 / 一节 | 只改目标区间，其余字节不变；走 `edit` 不走整篇重写 |
 | `context-compaction-retains` | context | 事件 ✅ / 回答对比 | 长会话触发压缩后再问约束 | `compaction` 事件存在；回答里仍有压缩前的核心设定 |
 | `routing-delegate-planner` | routing | ✅ | 手上没有规划，要求写一章 | 先 `task(planner)`；拍板前不写正文 |
@@ -429,7 +429,7 @@ key = sha256(canonicalJson({
 
 **为什么 workflow 先于 prose。** workflow 的判据是文件与工具序列，确定、便宜、不需要 judge；它保护的是"没拍板不落盘"这条核心信任。如果这条链都跑不通，prose 的分数没有意义。prose 在 M1 只放一个，是为了让 L4 链路和常驻设定注入提前暴露，不是拿来调文风。
 
-**为什么 design / context / routing 放 M2。** 它们需要 fixture 树、结构规范与更长的会话；M1 的 4 个 case 还没证明 replay 稳定时，加它们只会把"链路问题"和"case 问题"混在一起。
+**为什么 design / context / routing 放 M2。** 它们需要 fixture 树、设计指南与更长的会话；M1 的 4 个 case 还没证明 replay 稳定时，加它们只会把"链路问题"和"case 问题"混在一起。
 
 **为什么 judge 校准放 M3。** 校准需要稳定的 case 集、足够的样本、一份人工分。M1/M2 阶段 case 还在变，校准出来的 κ 没有意义。先让确定性判据站住，再让 judge 成为被测对象。
 

@@ -33,7 +33,7 @@ export const DEFAULT_STYLE = "storytelling";
  *  两处各写一个字面量，改了格名就会变成"写得进去、读不出来"。 */
 export const STYLE_HEADING = "文风";
 
-/** 核心设定的“题材 · 频道”格标题。同 `STYLE_HEADING`：写在这里，读在 `design_spec` 的规范里，
+/** 核心设定的“题材 · 频道”格标题。同 `STYLE_HEADING`：写在这里，读在设计指南里，
  *  两处必须一致，由 `tests/framework.test.ts` 钉住。 */
 export const SHELF_HEADING = "题材 · 频道";
 
@@ -131,7 +131,7 @@ export function withStyle(core: string | undefined, name: string): string {
  * 把书架声明（频道 / 题材）种进核心设定的那一格，整篇字节给回来。
  *
  * 两个值都空 → `undefined`：没有可写的东西就不该凭空造一份 `core.md`（懒建那条纪律）。
- * 形制照 `design_spec` 给这一格的规范：先频道、后标签，各一行，只写名词不造句。
+ * 形制照设计指南给这一格的建议：先频道、后标签，各一行，只写名词不造句。
  *
  * **只在建书那一次调用**：之后书架上的分类与这一格各归各管（前者用来认书，后者是模型展开的定位），
  * 在书架上改题材不会回头改它。

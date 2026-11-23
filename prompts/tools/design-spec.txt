@@ -1,20 +1,24 @@
-Return the structural spec for a design document kind: its exact section headings and what belongs in
-each — or, for kinds whose shape lives in the guide rather than in named sections (character cards,
-sequence outlines), the writing method instead. Every other tool addresses sections by name (read,
-propose-design, the status card) — inventing your own headings breaks them.
+Return the design guide for a document kind: why this document exists, what a good one answers, a
+short example, common failure modes, and a size hint. The guide does not prescribe required headings;
+the structure of the document is yours.
 
 Call this whenever the conversation is about **designing the novel** — the user telling you what
 they want to write, or asking to work on a layer. A story-idea discussion usually touches 核心设定
-and 世界观; a design pass usually touches one layer. Call it once per layer in play.
+and 世界观; a design pass usually touches one layer. Call it once per kind in play.
 
 Do NOT call it for anything else: writing a chapter, asking about status, or anything that isn't
 about designing the story.
 
-Draft from the user's own words, not by interrogating field by field, then propose it with
+Draft from the user's own words, not by interrogating question by question, then propose it with
 propose-design — the user reads the draft before anything is written to a file.
 
-path: a project-relative path under design/. A **document** path returns that kind's spec — core.md's
-kind is design/core.md, a character card is design/characters/<名>.md, and so on. A **directory** path
-(design/outline/, design/characters/) returns every kind under it, which is how you see at once how
-many document kinds a layer holds. The spec describes a document that does not exist yet, so give the
-path you intend to write. Documents with no spec (topic pages, chapter plans) are written free-form.
+path: a project-relative path under design/. A **document** path returns that kind's guide — core.md's
+kind is design/core.md, a character card is design/characters/<名>.md, a volume is
+design/outline/vol_<N>.md, a sequence is design/outline/vol_<N>/s<M>.md. A **directory** path
+(design/outline/, design/characters/) returns every guide under it. The guide describes a document
+that does not exist yet, so give the path you intend to write. Documents with no guide (topic pages,
+chapter plans) are written free-form.
+
+The guide is a quality bar, not a form: answer its questions in whatever shape serves the document.
+If a question is not relevant, leave it out; if something is undecided, write （待定）. The user will
+see the whole draft and can ask for changes.

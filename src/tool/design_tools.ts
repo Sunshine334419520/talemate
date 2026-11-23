@@ -6,8 +6,7 @@
  */
 import { DRAFT_MODE } from "../agent/modes";
 import { checkInvariants } from "../framework/invariants";
-import { SPECS } from "../framework/design_spec";
-import { listHeadings } from "../framework/markdown";
+import { GUIDES } from "../framework/design_guides";
 import { proposalDisplay, renderProposal, reviewable } from "../framework/proposal";
 import { writeFile } from "../framework/write_ops";
 import { readPrompt } from "../prompts";
@@ -17,7 +16,7 @@ import { defineTool, type RegisteredTool } from "./define";
 const P = (id: string) => readPrompt(`tools/${id}`);
 
 /**
- * 提案只写 `design/` 下的文档（章节正文走 `write`）；"某一层主文档不许写到别处"按 `SPECS` 的
+ * 提案只写 `design/` 下的文档（章节正文走 `write`）；"某一层主文档不许写到别处"按 `GUIDES` 的
  * `target` 判，不另抄一份文件清单。
  */
 function resolveDoc(path: unknown): { path: string } | { error: string } {
@@ -35,7 +34,7 @@ function resolveDoc(path: unknown): { path: string } | { error: string } {
     };
   }
   const base = clean.split("/").pop() ?? clean;
-  const clash = SPECS.find((s) => s.target !== undefined && s.target !== clean && s.target.split("/").pop() === base);
+  const clash = GUIDES.find((g) => g.target !== undefined && g.target !== clean && g.target.split("/").pop() === base);
   if (clash?.target) {
     return {
       error: `${clash.title}的主文档是 ${clash.target}，不是 ${clean}——写它请用 path:"${clash.target}"；或者换个文件名。`,
@@ -50,10 +49,9 @@ function resolveDoc(path: unknown): { path: string } | { error: string } {
  */
 function cardRewriteWarn(current: string | undefined): string | undefined {
   if (current === undefined) return undefined;
-  const heads = listHeadings(current, 3).map((h) => h.title);
   return (
-    `⚠️ 这张角色卡已存在（${heads.length} 个小节：${heads.join("、")}）——本提案会**整篇重写**它，` +
-    "上面没出现的旧小节都会消失。只想改一格的话，用 `edit` 改那一格（不必整篇提案）。"
+    "⚠️ 这份文档已存在——本提案会整篇重写它，上面没出现的内容都会消失。" +
+    "只想改一段的话，用 `edit` 改那一段（不必整篇提案）。"
   );
 }
 
@@ -107,10 +105,7 @@ export const proposeDesignTool: RegisteredTool<{ path: string; content: string }
     const violation = checkInvariants({ path, opKind: "write", before: current, after: content });
     if (violation) throw new Error(violation);
     if (!reviewable(path, content)) {
-      throw new Error(
-        "这版草稿没法逐格审阅（正文里没有小节标题，或没按该层规范的小节组织），用户看到的会是一页空白却照样落盘。" +
-          "请每格一个 `## 标题`（先调 design-spec 拿这一层的形状）。",
-      );
+      throw new Error("这版草稿是空的（或整篇都是（待定）占位）——先写点能看的字节，再交给用户。");
     }
 
     const prev = ctx.getProposal(path);

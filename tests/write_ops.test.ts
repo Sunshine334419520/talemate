@@ -406,11 +406,13 @@ describe("write_ops · 给用户的材料", () => {
   });
 
   test("不变量跑在弹窗**之前**——违反它时用户根本不会被问", async () => {
-    // 角色卡整篇写缺必有格：用户不该被问一件注定落不下去的事，所以 lastAsk 应当还是空的。
+    // 新造一个重名小节：用户不该被问一件注定落不下去的事，所以 lastAsk 应当还是空的。
+    const path = "design/wiki/重名.md";
+    await writeDoc(pid, path, "# 地理\n\n## 北岸\n礁石。\n");
     const ctx = makeCtx();
     const r = await writeFile(ctx, {
       via: "confirm",
-      op: { kind: "write", path: "design/characters/缺格的卡.md", content: "# 角色：缺格的卡\n" },
+      op: { kind: "write", path, content: "# 地理\n\n## 北岸\n礁石。\n\n## 北岸\n沙滩。\n" },
       action: "写入",
     });
     expect(r.ok).toBe(false);

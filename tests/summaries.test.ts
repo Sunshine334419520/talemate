@@ -11,7 +11,7 @@
 import { describe, test, expect } from "bun:test";
 import { summarize } from "../src/framework/summaries";
 
-/** 只填了「基本档案」的薄卡：身份取得到，其余四格待补。 */
+/** 一张手写的卡：名单行取第一句有内容的正文；`姓名：林晚` 与卡名相同，跳过。 */
 const THIN = "# 角色：林晚\n\n### 基本档案\n姓名：林晚\n身份 · 所属：空乘\n";
 
 /** 索引给的默认名字就是这一段的文件名（组名前缀已剥掉）。 */
@@ -19,14 +19,15 @@ const at = (path: string, content: string | undefined, label?: string): string |
   summarize({ path, label: label ?? (path.split("/").pop() as string), content });
 
 describe("summaries · 注册表派发（角色卡）", () => {
-  test("一人一行：`- 名 · 身份（必有齐 / 待补：…）`，**不铺**必有格的标题", () => {
-    expect(at("design/characters/林晚.md", THIN)).toBe(
-      "- 林晚 · 空乘（待补：性格与矛盾、想要 · 最怕、底线 · 绝不做、说话方式）",
-    );
+  test("一人一行：`- 名 · 首句`，不再有“必有齐/待补”", () => {
+    expect(at("design/characters/林晚.md", THIN)).toBe("- 林晚 · 空乘");
   });
 
-  test("自由长尾缀在「另有」里——不读卡也知道它上面还有什么", () => {
-    expect(at("design/characters/林晚.md", `${THIN}\n### 回响\n破万法。\n`)).toContain("另有：回响");
+  test("自由小节不改变那一行——卡没有必填格，也没有“另有”清单", () => {
+    const line = at("design/characters/林晚.md", `${THIN}\n### 回响\n破万法。\n`);
+    expect(line).toBe("- 林晚 · 空乘");
+    expect(line).not.toContain("另有");
+    expect(line).not.toContain("待补");
   });
 
   test("读不到内容 → 那一行也在，只是写成「（缺）」", () => {
@@ -42,7 +43,7 @@ describe("summaries · 注册表派发（角色卡）", () => {
   });
 });
 
-describe("summaries · 规范派生（不分格的文档给 `label（首句）`）", () => {
+describe("summaries · 指南派生（取首句的文档给 `label（首句）`）", () => {
   test("序列纲整篇散文：首句才是信号，小节标题不是——**而且得缀上文件名**", () => {
     expect(at("design/outline/vol_1/s1.md", "主角混进内城，为的是见一个人。\n第二句。\n", "vol_1/s1.md")).toBe(
       "vol_1/s1.md（主角混进内城，为的是见一个人。）",
@@ -90,7 +91,7 @@ describe("summaries · 没有一行的情况（交给索引铺小节）", () => 
     expect(at("design/outline/vol_2.md", "## 本卷在全局的位置\n承接上卷。\n")).toBeUndefined();
   });
 
-  test("没登记规范的文档：同样 undefined", () => {
+  test("没登记指南的文档：同样 undefined", () => {
     expect(at("design/wiki/岛屿地图.md", "# 岛屿地图\n\n## 北岸\n礁石。\n")).toBeUndefined();
   });
 

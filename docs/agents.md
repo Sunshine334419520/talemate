@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-11-22 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
+> **对齐代码**：2026-11-23 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -110,7 +110,7 @@
 
 | id | 用途 |
 |---|---|
-| `design-spec` | 按需返回"结构规范 + 成稿做法"。`path` 给一份文档的路径（`design/core.md`、`design/characters/林晚.md`、`design/outline/vol_1.md`）就取那一份的；给一个目录（`design/outline/`）就把名下每一种文档一并返回 |
+| `design-spec` | 按需返回**设计指南**（为什么写、回答哪些问题、好例/反例、尺寸），不规定必填小节。`path` 给一份文档的路径（`design/core.md`、`design/characters/林晚.md`、`design/outline/vol_1.md`）就取那一份的；给一个目录（`design/outline/`）就把名下每一种文档一并返回 |
 
 **`core_tools`** — 委派 / 知识 / 人机交互
 

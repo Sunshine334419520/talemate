@@ -2,7 +2,7 @@
 
 > **职责**：回答"哪些东西随写作在变、它们存在哪、什么时候写回去"。
 > **读者**：要改 `state/` 相关行为的人；以及想知道"为什么它不在 `design/` 下面"的人。
-> **对齐代码**：2026-10-19 · 根清单在 `core/config.ts` 的 `DOC_ROOTS`（读口写口共用一份）；`state/progress.md` 的目录行在 `framework/summaries.ts`；第 4 条纪律、承诺账/知识边界与 `progress.md` 的 7 章窗口给模型看的那一份在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的状态回写那一条
+> **对齐代码**：2026-11-23 · 根清单在 `core/config.ts` 的 `DOC_ROOTS`（读口写口共用一份）；`state/progress.md` 的目录行在 `framework/summaries.ts`；第 4 条纪律、承诺账/知识边界与 `progress.md` 的 7 章窗口给模型看的那一份在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的状态回写那一条
 > 相邻：`design-docs.md`（四层活文档）· `characters.md`（卡上不装状态）· `outline.md`（序列进度）· `chapter-planning.md`（章末回写挂在规划里）
 
 ## 一句话
@@ -52,7 +52,7 @@ state/
 
 所以**加一类状态 = 建一个目录或文件，零代码**。要新代码的只有"加一个根"那一件事，而那件事一辈子大概只做这一次。
 
-**写手的写法说明不在 `design_spec`**：那一行如果加（`sections: []`），会命中 `summaries.ts` 的"不分格文档 → 一行首句"分支，把 `list` 里角色状态的小节名换掉——而 `summaries.ts` 明说那张铺法"有用"。所以第 4 条纪律给模型看的那一份挂在**规划 prompt**（`propose-plan.txt` / `planner.system.txt` 的状态回写那一条），写手正是在那一刻写状态文件。
+**写手的写法说明不在设计指南里**：状态文件是自由形状，`list` 对它铺小节标题。第 4 条纪律给模型看的那一份挂在**规划 prompt**（`propose-plan.txt` / `planner.system.txt` 的状态回写那一条），写手正是在那一刻写状态文件。
 
 `progress.md` 在 `list` 里只占一行（几条 · 最新一条）——它是只追加的流水，几十章之后整篇铺小节会把目录淹掉，而按 `outline.md` 立的判据，**没有被分别读取的小节就不展开**。
 

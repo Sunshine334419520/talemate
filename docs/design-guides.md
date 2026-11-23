@@ -1,8 +1,8 @@
 # 设计指南：只给“什么叫好”，不给“必须填哪格”
 
 > **职责**：定义小说设计文档（角色卡、卷纲、序列纲、核心设定、世界观、章规划）怎么被引导、审阅与修改；明确哪些是创作判断，哪些是机器数据。
-> **读者**：要改 `src/framework/design_spec.ts`、`src/framework/proposal.ts`、`src/framework/characters.ts`、`src/framework/invariants.ts`、`src/tool/design_tools.ts` 与相关提示词的人。
-> **对齐代码**：2026-11-23 · 本文替代旧的“全文小节模板 + 逐格审阅 + 缺格即拒”；标【提议】的是尚未落地的设计。对象与真源见 `information-model.md`。
+> **读者**：要改 `src/framework/design_guides.ts`、`src/framework/proposal.ts`、`src/framework/characters.ts`、`src/framework/invariants.ts`、`src/tool/design_tools.ts` 与相关提示词的人。
+> **对齐代码**：2026-11-23 · 已落地：指南注册表、整篇/diff 提案、形状不变量删除；旧的全文小节模板已删除。对象与真源见 `information-model.md`。
 > **相邻**：`information-model.md`（对象/真源/载体）· `perception.md`（每一步怎么选材料）· `state.md`（状态层）· `characters.md` / `outline.md` / `design-docs.md`（旧文档，其中的“必须按格写”由本文替代）
 
 **一句话**：设计文档是给未来写作的契约；我们告诉模型“一份好文档回答什么问题、什么算烂”，不规定它必须长成几张格子。
@@ -40,6 +40,8 @@ export interface DesignGuide {
   size?: string;
   /** 可选的结构建议；模型可以不用 */
   suggestedShape?: string;
+  /** `list` 里这一类怎么占一行：铺标题，还是取首句 */
+  summary: "headings" | "lead";
 }
 ```
 
@@ -239,7 +241,7 @@ export interface DesignGuide {
 
 ## 8. 怎么引导模型
 
-1. **`design-spec` 工具改名为“设计指南”**：按路径 glob 返回 `DesignGuide`（purpose/questions/examples/antiPatterns/size），不再返回“必须有哪些小节”。
+1. **`design-spec` 返回设计指南**（工具 id 保留，避免工具面 churn）：按路径 glob 返回 `DesignGuide`（purpose/questions/examples/antiPatterns/size），不再返回“必须有哪些小节”。
 2. **`propose-design` 提示词**：先说 purpose，再给 questions 与反例；要求“回答这些问题，结构自定；每一笔要能改变某个选择或某句话”。
 3. **不做逐格渲染**：提案 = 整篇正文 + 与现文的 diff。
 4. **不做形状校验**：只校验路径、权限、CAS、原子写；如果文档用了标题，校验标题不重复（寻址需要），不校验“必须有哪几个标题”。

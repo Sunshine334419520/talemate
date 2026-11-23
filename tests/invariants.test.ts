@@ -1,5 +1,5 @@
 /**
- * invariants 的离线测试：四条不变量各自的判据，以及它们**不该**拦的那些。
+ * invariants 的离线测试：目前只剩“重名小节”一条；角色卡的形状不变量已删除。
  * 运行：bun test
  *
  * 这一层是纯函数（`before` / `after` 两份文本进，错误文案出），所以不用起临时目录。
@@ -48,42 +48,40 @@ describe("invariants · 重名小节（design/*）", () => {
   });
 });
 
-describe("invariants · 角色卡三条（design/characters/*.md）", () => {
+describe("invariants · 角色卡不再有形状守卫", () => {
   const CARD = "design/characters/林晚.md";
-  const full = "# 角色：林晚\n\n### 基本档案\n姓名：林晚\n\n### 说话方式\n短句。\n";
 
-  test("卡上出现 `##` → 拒（不管哪条路写的）", () => {
-    expect(check({ path: CARD, after: "# 角色：林晚\n\n## 基本档案\n来历不明。\n" })).toContain("一律用 `###`");
+  test("卡上出现 `##` 不再被拒——审阅是整篇/diff，不依赖 `###` 分格", () => {
+    expect(check({ path: CARD, after: "# 角色：林晚\n\n## 基本档案\n来历不明。\n" })).toBeUndefined();
   });
 
-  test("整篇写缺必有格 → 拒；**局部改不要求凑齐**（它本来就不带标题）", () => {
-    const thin = "# 角色：林晚\n\n### 基本档案\n姓名：林晚\n";
-    expect(check({ path: CARD, after: thin })).toContain("缺这几格");
-    // 局部改：标题集合原样（本来就缺），只改正文 —— 两条都不该拦
-    expect(
-      check({ path: CARD, opKind: "replace", before: thin, after: "# 角色：林晚\n\n### 基本档案\n姓名：林晚之\n" }),
-    ).toBeUndefined();
+  test("整篇写缺任何“必有格”都不拦——卡没有必填格", () => {
+    const thin = "# 角色：林晚\n\n码头搬运工，话少。\n";
+    expect(check({ path: CARD, after: thin })).toBeUndefined();
   });
 
-  test("必有格整格消失 → 拒；**删掉整张卡不算**（那时它不再是卡了）", () => {
-    const without = "# 角色：林晚\n\n### 基本档案\n姓名：林晚\n";
-    expect(check({ path: CARD, opKind: "replace", before: full, after: without })).toContain("必有格");
+  test("删掉一整段也不拦；删掉整张卡当然也不拦", () => {
+    const full = "# 角色：林晚\n\n### 基本档案\n姓名：林晚\n\n### 说话方式\n短句。\n";
+    expect(check({ path: CARD, opKind: "replace", before: full, after: "# 角色：林晚\n\n短句。\n" })).toBeUndefined();
     expect(check({ path: CARD, opKind: "delete", before: full, after: "" })).toBeUndefined();
   });
 
-  test("新建的卡没有'丢掉'可言——缺格由骨架那条管，不由这条管", () => {
-    expect(check({ path: CARD, before: undefined, after: "# 角色：林晚\n" })).toContain("缺这几格");
+  test("重名标题仍然拦——这是寻址需要，不是创作形状", () => {
+    expect(
+      check({
+        path: CARD,
+        before: "# 角色：林晚\n\n### 回响\n一\n",
+        after: "# 角色：林晚\n\n### 回响\n一\n\n### 回响\n二\n",
+      }),
+    ).toContain("回响");
   });
 });
 
 describe("invariants · 管辖范围", () => {
-  test("非角色卡的文档不受那三条管", () => {
+  test("非角色卡的文档同样只受重名标题约束", () => {
     expect(check({ path: "design/wiki/world.md", after: "整段散文，没有标题。" })).toBeUndefined();
   });
-
-  test("多条都违反时只报第一条（一次给一个能改的）", () => {
-    // 既有 `##`、又缺格：报的是 `##` 那条（它在数组里靠前）
-    const out = check({ path: "design/characters/林晚.md", after: "# 角色：林晚\n\n## 基本档案\nx\n" });
-    expect(out).toContain("一律用 `###`");
+  test("不在 design/ 下的文档不归它管", () => {
+    expect(check({ path: "chapters/ch1.md", before: "## 甲\n", after: "## 甲\n\n## 甲\n" })).toBeUndefined();
   });
 });
