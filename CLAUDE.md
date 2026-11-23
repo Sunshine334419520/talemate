@@ -116,6 +116,9 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | What is this product, and what is it deliberately *not*? | `docs/product.md` |
 | How is the code organised; what happens in one turn? | `docs/architecture.md` |
 | How context is folded: what survives, what never enters a summary | `docs/compaction.md` |
+| How each step's context is triaged: P0-P3, placement, trace | `docs/perception.md` |
+| What information objects exist, where truth lives, how they are addressed | `docs/information-model.md` |
+| How novel design docs are guided (not templated) | `docs/design-guides.md` |
 | Session events, projections, redaction, and trace export | `docs/telemetry.md` |
 | How the eval system is designed: cases, families, replay, milestones | `docs/eval-system.md` |
 | Agents, tools, skills — how to classify and add them | `docs/agents.md` |
