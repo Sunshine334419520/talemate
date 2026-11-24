@@ -1,12 +1,17 @@
 /**
  * 配置与路径解析。
  * - TALEMATE_HOME：受管根目录（默认 ~/.talemate），其下 novels/<project-id> 一小说一目录。
+ * - 语料根表（每本书可读/可写/可搜的目录）：从 `talemate.json.corpusRoots` 读，形状在 core/roots.ts。
  * - 模型配置沿用现有环境变量（TALEMATE_PROVIDER/MODEL/REASONING/MAX_TOKENS/…），兼容已有 .env。
  */
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_CORPUS_ROOTS, normalizeCorpusRoots, type CorpusRoot } from "./roots";
 import type { ModelConfig, Provider, Reasoning } from "./types";
+
+export type { CorpusRoot };
 
 /**
  * 当前日期（YYYY-MM-DD），system prompt 的 env 行用它。
@@ -35,26 +40,45 @@ export function paths(home = talemateHome()) {
 }
 
 /**
- * 作品的三个根。
+ * 默认语料根的 id（`design` / `chapters` / `state`），由 `DEFAULT_CORPUS_ROOTS` 推出来，不手抄。
  *
- * 读口与写口共用这一份清单：加根只改这一行，两边同时到位。若分成两份，漏改一处的后果是
- * 写得进去读不回来（或反过来）且不报错——正是 CLAUDE.md 里"绝不手抄一份能推出来的清单"要防的事。
- *
- * 三个根的分工：`design/` 与 `chapters/` 是作品（设定与正文），`state/` 是当前状态
- * （每章都在变的东西：谁在场、谁知道什么、伏笔收到哪了）。判据见 `docs/state.md`。
+ * 真正的根表是**项目级**的（`talemate.json` 的 `corpusRoots`，见 `core/roots.ts`）。读、写、搜三处
+ * 都该用 `projectCorpusRoots(projectId)`——这份 id 清单只是"新书默认是什么"，不是边界。
  */
-export const DOC_ROOTS = ["design", "chapters", "state"] as const;
+export const DEFAULT_CORPUS_ROOT_IDS = DEFAULT_CORPUS_ROOTS.map((r) => r.id);
 
-export type DocRoot = (typeof DOC_ROOTS)[number];
+/** 一本书的根目录（不含具体根）。 */
+export function projectRoot(projectId: string): string {
+  return join(paths(talemateHome()).novelsRoot, projectId);
+}
 
 /**
- * 某个根在某项目下的绝对目录——唯一一处"根 → 目录"的映射。
+ * 这本书的根表：读 `talemate.json` 的 `corpusRoots`，缺省/坏掉的条目回 `DEFAULT_CORPUS_ROOTS`。
  *
- * 不能用 `root === "design" ? pp.design : pp.chapters` 这种三元：加第三个根时它会把 state
- * 静默地指到 chapters/；改成按键取之后，"根没有对应目录"是编译期错误。
+ * 同步读：`docAbs` / `write_ops.resolveTarget` 是同步的，且每次调用读一份很小的 JSON。
+ * 老项目没有 `corpusRoots` 字段 → 默认三根，零迁移。
  */
-export function rootAbs(projectId: string, root: DocRoot): string {
-  return projectPaths(talemateHome(), projectId)[root];
+export function projectCorpusRoots(projectId: string): CorpusRoot[] {
+  const file = join(projectRoot(projectId), "talemate.json");
+  try {
+    const meta = JSON.parse(readFileSync(file, "utf-8")) as { corpusRoots?: unknown };
+    return normalizeCorpusRoots(meta.corpusRoots);
+  } catch {
+    return [...DEFAULT_CORPUS_ROOTS];
+  }
+}
+
+/**
+ * 某个根在某项目下的绝对目录——唯一一处"根 id → 目录"的映射。
+ * 不认识的 id 直接抛：宁可启动/调用时炸，也不要静默指到别处。
+ */
+export function corpusRootAbs(projectId: string, rootId: string): string {
+  const roots = projectCorpusRoots(projectId);
+  const spec = roots.find((r) => r.id === rootId);
+  if (spec === undefined) {
+    throw new Error(`没有这个语料根：${rootId}（可用：${roots.map((r) => r.id).join(" / ")}）`);
+  }
+  return join(projectRoot(projectId), spec.dir);
 }
 
 /**
@@ -119,7 +143,7 @@ export function projectPaths(home: string, projectId: string) {
     plans: join(root, ".talemate", "plans"),
     // 考据本：researcher 查证过的结论（一题一份）。同 `.talemate/` 的道理，而且更强——这本
     // 账的全部意义就是不打扰用户，所以它既不是作品、也不该有任何审阅环节。读口只有
-    // `recall` 一个（它进不了 DOC_ROOTS，`read`/`list`/`search` 都够不着）。见 `storage/notes.ts`。
+    // `recall` 一个（它进不了项目根表，`read`/`glob`/`grep` 都够不着）。见 `storage/notes.ts`。
     research: join(root, ".talemate", "research"),
   };
 }

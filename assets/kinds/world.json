@@ -1,0 +1,9 @@
+{
+  "id": "world",
+  "label": "世界观总纲",
+  "section": "世界观",
+  "order": 20,
+  "match": ["design/wiki/world.md"],
+  "create": "design/wiki/world.md",
+  "fields": [{ "key": "title", "label": "标题", "type": "string" }]
+}

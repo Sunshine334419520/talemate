@@ -49,7 +49,7 @@ export function parseNote(name: string, raw: string): Note {
   return { name, date, body };
 }
 
-/** 关键词命中：题目与正文一起过一遍，用的是 `search` 那一套（`markdown.findInContent`）。 */
+/** 关键词命中：题目与正文一起过一遍，用的是 `grep` 那一套（`markdown.findInContent`）。 */
 export function matchNotes(notes: Note[], query: string): Note[] {
   const q = query.trim();
   if (!q) return notes;

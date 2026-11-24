@@ -1,0 +1,13 @@
+{
+  "id": "world-entry",
+  "label": "世界观条目",
+  "section": "世界观",
+  "order": 30,
+  "match": ["design/wiki/*.md"],
+  "create": "design/wiki/{title}.md",
+  "fields": [
+    { "key": "title", "label": "标题", "type": "string" },
+    { "key": "order", "label": "排序", "type": "number", "min": 0 },
+    { "key": "tags", "label": "标签", "type": "string-list" }
+  ]
+}

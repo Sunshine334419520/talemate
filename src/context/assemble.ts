@@ -2,6 +2,8 @@
  * 上下文组装：buildSystemPrompt 拼 env 块 + 角色 system + 项目 AGENTS.md（常驻全量）+ skill 清单；
  * toNeutralMessages 把持久化消息窗口（loadModelWindow 之后）转成 provider 无关的 NeutralMsg[]。
  *
+ * 作品文档不进 system：模型要靠 `read` / `glob` / `grep` 现取，这样它知道读的是哪一份、哪一节。
+ *
  * 存储 → LLM 不是 1:1：折叠记录（role:"context"）渲染成一条 <context-state> user 消息；旧
  * compaction 消息渲染成 <story-state>；一条含工具 part 的 assistant 展开成 assistant(toolCalls)
  * + 每条 completed tool 一条 role:"tool" 结果。
@@ -18,14 +20,11 @@ export function buildSystemPrompt(parts: {
   roleSystem: string;
   rules: string; // AGENTS.md 全文（可为空）
   skills: string; // <available_skills>（可为空）
-  /** core/world 常驻设定全文（mate 每轮注入；见 framework/anchor buildResidentDesigns） */
-  resident?: string;
 }): string {
   const blocks: string[] = [];
   const env = `${today()} 作品：${parts.projectTitle} 当前角色：${parts.agentName}`;
   blocks.push(env);
   blocks.push(parts.roleSystem);
-  if (parts.resident) blocks.push(parts.resident);
   if (parts.rules) blocks.push(`Instructions from: AGENTS.md\n${parts.rules}`);
   if (parts.skills) {
     blocks.push(

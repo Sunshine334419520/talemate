@@ -150,7 +150,7 @@ export function legacyRecordOf(m: StoredMessage, at = m.ts): CompactionRecord {
     legacy: true,
     consumed: { fromSeq: m.seq, toSeq: m.seq, turns: 0 },
     summary: { session, accomplished: [], intent: [], open: [], pointers: [] },
-    pinned: { decisions: [], resident: [] },
+    pinned: { decisions: [] },
     evidence: [],
     budget: { usable: 0, trigger: 0, before: 0, after: 0 },
     dropped: { messages: 0, toolResults: 0, toolChars: 0 },

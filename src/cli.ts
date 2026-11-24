@@ -9,6 +9,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { loadModelConfig, hasCredentials } from "./core/config";
 import type { AskAnswer, AskOutcome, AskRequest, LLMEvent, StoredMessage } from "./core/types";
 import { buildProjectStatus } from "./framework/report";
+import { renderAssetList, runAssetCommand } from "./cli_assets";
 import { createProject, loadProjectMeta } from "./storage/project";
 import { enumerateDocs, readDoc } from "./storage/corpus";
 import { readHomeStateOr, writeHomeState } from "./storage/home_state";
@@ -361,6 +362,8 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
           "  /debug         当前会话的调试信息：模型、模式、待批，以及会话目录与事件/改动索引路径",
           "  /trace         会话轨迹摘要（事件/span/耗时）；/trace export [路径] 导出脱敏副本；/trace list [查询] 跨会话列表；/trace prune --days N [--dry-run] 归档旧会话",
           "  /design <name>    打印某设计文档全文（design/ 相对路径，如 core、wiki/world、characters/沈越）",
+          "  /assets [kind]    列资产（kind 写 id 或中文名），含节拍覆盖的章范围与问题标记",
+          "  /asset <子命令>   资产增删改查：/asset new|show|set|move|delete（不带子命令看用法）",
           "  /msg <seq>     打印某条落盘消息全文（工具入参/输出），seq 看工具落盘提示",
           "  /verbose       打开详细打印（默认开）",
           "  /quiet         只显示最终文本",
@@ -530,6 +533,27 @@ async function handleSlash(raw: string): Promise<"continue" | "quit" | "switch">
       const name = arg.includes(".md") ? arg : `${arg}.md`;
       const c = await readDoc(curSpaceId, `design/${name}`);
       console.log(c === undefined ? `没有 ${name}` : `# ${name}\n${c}`);
+      return "continue";
+    }
+    case "/assets": {
+      if (!curSpaceId) {
+        console.log("还没有进入项目空间。");
+        return "continue";
+      }
+      console.log(await renderAssetList(curSpaceId, arg));
+      return "continue";
+    }
+    case "/asset": {
+      if (!curSpaceId) {
+        console.log("还没有进入项目空间。");
+        return "continue";
+      }
+      console.log(
+        await runAssetCommand(curSpaceId, arg, async (path) => {
+          const answer = (await rl.question(`删除 ${path}？[y/N] `)).trim().toLowerCase();
+          return answer === "y" || answer === "yes";
+        }),
+      );
       return "continue";
     }
     case "/msg": {

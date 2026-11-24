@@ -9,9 +9,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolContext } from "../src/core/types";
 import { buildIndex } from "../src/framework/anchor";
+import { globDocs, grepDocs } from "../src/framework/find";
 import { renderHits } from "../src/framework/search";
 import { renderTaskResult } from "../src/tool/core_tools";
-import { listTool, readTool, searchTool } from "../src/tool/read_tools";
+import { grepTool } from "../src/tool/find_tools";
+import { readTool } from "../src/tool/read_tools";
 import { createProject, writeDoc } from "../src/storage/project";
 import { readDoc, scanDocs } from "../src/storage/corpus";
 
@@ -23,6 +25,8 @@ function ctx(): ToolContext {
   return {
     readDoc: (path) => readDoc(projectId, path),
     listIndex: (prefix) => buildIndex(projectId, prefix),
+    globDocs: async (pattern, path) => (await globDocs(projectId, pattern, path)).text,
+    grepDocs: async (query) => (await grepDocs(projectId, query)).text,
     searchDocs: async (query, prefix, limit) => renderHits(await scanDocs(projectId, query, prefix), query, limit),
   } as unknown as ToolContext;
 }
@@ -64,32 +68,27 @@ describe("read 的上限与分页", () => {
     expect(out).toContain("offset=12000");
   });
 
-  test("常驻文档不重复返回全文", async () => {
+  test("设计文档没有常驻特例：core 照常返回全文", async () => {
+    // 从前 core / world 每轮注入 system，read 它们只回一个指针；没有常驻层之后这个特例必须消失，
+    // 否则模型会被告知"正文在 system 里"，而 system 里根本没有。
     await writeDoc(projectId, "design/core.md", "# 核心设定\n## 一句话简介\n一个人。\n");
     const out = (await readTool.execute({ path: "design/core.md" }, ctx())).output;
-    expect(out).toContain("常驻注入");
-    expect(out).not.toContain("一个人。");
+    expect(out).toContain("一个人。");
+    expect(out).not.toContain("常驻");
   });
 });
 
-describe("list / search / task 的上限", () => {
-  test("list 超过 80 行时截断并报剩余", async () => {
-    const fake = {
-      listIndex: async () => Array.from({ length: 100 }, (_, i) => `line ${i}`).join("\n"),
-    } as unknown as ToolContext;
-    const out = (await listTool.execute({}, fake)).output;
-    expect(out).toContain("还有 20 行未显示");
-  });
-
-  test("search 最多显示 40 处并提示缩小范围", async () => {
+describe("grep / task 的上限", () => {
+  test("grep 单文件最多显示 20 处并报本文件剩余", async () => {
     await writeDoc(
       projectId,
       "design/wiki/hits.md",
       `# 命中\n\n${Array.from({ length: 50 }, (_, i) => `第 ${i} 行：沈越`).join("\n")}\n`,
     );
-    const out = (await searchTool.execute({ query: "沈越" }, ctx())).output;
-    expect(out).toContain("命中 50 处，显示前 40 处");
-    expect(out).toContain("还有 10 处未显示");
+    const out = (await grepTool.execute({ pattern: "沈越" }, ctx())).output;
+    expect(out).toContain("命中 50 处，显示前 20 处");
+    expect(out).toContain("本文件还有 30 处未显示");
+    expect(out).toContain("还有 30 处未显示；缩小 path 或 include");
   });
 
   test("task 结论超过 12k 时截断并标注", () => {

@@ -10,12 +10,11 @@ offset (optional): a character offset to continue from when the output said it w
 large doc in slices instead of trying to pull it whole.
 
 Without section, returns the whole doc (up to a size limit). A truncated answer names the sections
-and the offset to continue from. Prefer a section read for a large doc. Run list first to see which
-docs and sections exist.
+and the offset to continue from. Prefer a section read for a large doc. Run glob first to see which
+docs exist.
 
-design/core.md and design/wiki/world.md are already resident in the system prompt every turn; asking
-for them without a section returns a pointer instead of the text twice. Read a section when you need
-one.
+Nothing is resident: every design doc has to be read before you rely on it, and the read result is
+the only copy of those bytes you have.
 
 The design docs (design/) hold the novel's setting; the chapter prose is under chapters/ — read the
 previous chapter there when you need continuity.

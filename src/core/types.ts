@@ -1,5 +1,6 @@
 /** talemate 跨层共享类型。轻栈：TS + Bun、无 Effect、文件系统存储。 */
 import type { Action, PermissionConfig, PermissionName } from "../permission";
+import type { CorpusRoot } from "./roots";
 
 /** provider：anthropic 原生、openai 兼容（DeepSeek/Moonshot 等经 baseURL 指向）、mock（离线冒烟） */
 export type Provider = "anthropic" | "openai" | "mock";
@@ -209,7 +210,7 @@ export interface PendingProposal {
    * 仅规划提案：这一章的正文已经落盘了。
    *
    * 是标记，不是删除：规划正文只活在 `pending` 的 `content` 里（工件在 `.talemate/plans/`，
-   * 而 `.talemate/` 不在 `DOC_ROOTS`，`read` / `list` / `search` 都够不着它），删掉条目就成了
+   * 而 `.talemate/` 不在项目根表，`read` / `glob` / `grep` 都够不着它），删掉条目就成了
    * "用户说改第 2 条时谁也读不到第 2 条"；留着只多一行注记。
    * 置位者是 harness（正文落盘那一刻），不由模型自述——同 `approved`。
    */
@@ -292,6 +293,20 @@ export interface ToolContext {
   readDoc(path: string): Promise<string | undefined>;
   /** 某一段语料的目录（渲染好的文本，含每个文档的一级小节标题）。`prefix` 是项目相对前缀，如 `design/` */
   listIndex(prefix: string): Promise<string>;
+  /**
+   * 按项目相对 glob 找文件路径（渲染好的文本）。候选集是项目根表里可搜索的目录；
+   * `path` 是目录范围（省略 = 整本书）。工具层不自己 walk 文件系统。
+   */
+  globDocs(pattern: string, path?: string): Promise<string>;
+  /** 按正则搜语料（渲染好的命中表）。`path` 可为目录或单个文件；`include` 是目录下的文件 glob。 */
+  grepDocs(query: {
+    pattern: string;
+    path?: string;
+    include?: string;
+    literal?: boolean;
+    ignoreCase?: boolean;
+    context?: number;
+  }): Promise<string>;
   /** 跨一段语料扫词（渲染好的命中表）：改/删前查引用、看影响面。`prefix` 同上；`limit` 超出时截断 */
   searchDocs(query: string, prefix: string, limit?: number): Promise<string>;
   /**
@@ -430,7 +445,7 @@ export type AssistantPart =
  * 下一次 `read` 返回新 rev 时，模型能看见这份材料已经变了。
  */
 export interface EvidenceEntry {
-  kind: "read" | "search" | "task" | "recall" | "skill" | "web";
+  kind: "read" | "grep" | "task" | "recall" | "skill" | "web";
   /** 项目相对路径；只有 read/search/web 这类按文档寻址的工具有 */
   path?: string;
   /** read 指定的小节 */
@@ -489,7 +504,6 @@ export interface CompactionRecord {
     promises?: string;
     decisions: DecisionEntry[];
     plan?: { chapter: number; path: string; hash: string };
-    resident: Array<{ path: string; rev: string }>;
   };
   evidence: EvidenceEntry[];
   budget: { usable: number; trigger: number; before: number; after: number };
@@ -516,7 +530,7 @@ export type PerceptionAction = "include" | "compress" | "defer" | "drop";
 
 /** 候选的取数坐标。正文不进事件，坐标必须能重取。 */
 export interface PerceptionSource {
-  kind: "resident" | "doc" | "state" | "derived" | "session" | "user" | "web" | "tool";
+  kind: "doc" | "state" | "derived" | "session" | "user" | "web" | "tool";
   path?: string;
   section?: string;
   rev?: string;
@@ -538,7 +552,7 @@ export interface ContextCandidate {
   freshness: "fresh" | "stale";
   source: PerceptionSource;
   cost: "free" | "cheap" | "expensive" | "interrupt";
-  expandable?: { tool: "read" | "search" | "recall"; path?: string; query?: string };
+  expandable?: { tool: "read" | "grep" | "recall"; path?: string; query?: string };
   /** 已经在常驻/system/消息窗口里——去重时不重复注入。 */
   alreadyInContext?: boolean;
   gap?: string;
@@ -700,6 +714,11 @@ export interface ProjectMeta {
   permissions?: PermissionConfig;
   /** 项目级 AGENTS.md 之外的补充说明（可选） */
   notes?: string;
+  /**
+   * 语料根表：哪些目录算文档、各自能读/写/搜。缺省由建书时写入 `DEFAULT_CORPUS_ROOTS`，
+   * 老项目没有这个字段 → `core/config.projectCorpusRoots` 回默认三根（零迁移）。
+   */
+  corpusRoots?: CorpusRoot[];
 }
 
 /** ─── LLM 事件（CLI 打印 / 未来 SSE 用） ─── */

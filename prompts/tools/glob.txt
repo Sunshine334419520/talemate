@@ -1,0 +1,14 @@
+Find files by a project-relative glob pattern. Returns matching paths only — it does not read
+contents. Use it to discover what documents exist, then `read` the ones you need (or `grep` to find
+a term across all of them).
+
+pattern: `*` matches within one path segment (not across `/`), `**` matches any number of segments,
+`?` matches one character. A pattern with no `/` matches the **file name at any depth** — so `*.md`
+finds every markdown file, while `design/*.md` only matches directly under `design/`.
+path (optional): a project-relative directory to search under. Omit it to search the whole project.
+
+Results are project-relative paths, sorted numerically (`vol_2` before `vol_10`). At most 100 files;
+when the result is truncated the output says so — narrow `path` or the pattern and retry.
+
+The searchable set is every directory this project declares readable+searchable (its roots). A path
+that is not under such a directory is refused rather than silently returning nothing.

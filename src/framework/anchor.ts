@@ -1,19 +1,16 @@
 /**
- * 常驻设定注入 + 文档索引。路径一律项目相对（`design/core.md`），与工具收的路径、`FileOp.path`、
- * 权限 pattern 同一个口径。
+ * 文档索引：左栏那棵树与模型看到的目录清单。路径一律项目相对（`design/core.md`），与工具收的
+ * 路径、`FileOp.path`、权限 pattern 同一个口径。
  *
- * 常驻集只有 design/core.md 与 design/wiki/world.md：每轮现读全文注入 mate、不带状态包装；
- * wiki 专题页与 characters/outline 按需读，写作进度/伏笔/待定这类状态信息归状态层不归这里。
+ * 这里只做分组、缩进、铺小节标题这类通用的事——"某种文档在目录里长什么样"是策略，
+ * 住在 `framework/summaries.ts` 的注册表里。哪些目录进得来由项目根表决定（`core/roots.ts`），
+ * 本文件不认识根的名字。
  *
- * 索引这一侧只做分组、缩进、铺小节标题这类通用的事——"某种文档在目录里长什么样"是策略，
- * 住在 `framework/summaries.ts` 的注册表里。
+ * 没有常驻文档：任何一份文档都要靠 `read` / `glob` / `grep` 现取，见 `docs/perception.md`。
  */
-import { DOC_ROOTS, enumerateDocs, readDoc } from "../storage/corpus";
-import { hashText } from "../core/hash";
+import { enumerateDocs, readDoc } from "../storage/corpus";
 import { listHeadings } from "./markdown";
 import { summarize } from "./summaries";
-
-export const RESIDENT_DOCS = ["design/core.md", "design/wiki/world.md"] as const;
 
 /**
  * 已删掉的派生总表（角色卡副本，会脱节），老项目里可能还留着。
@@ -135,7 +132,7 @@ export function docTree(paths: string[]): DocNode[] {
 }
 
 /**
- * 生成某一段语料的目录（CLI 的 `/status` 与 `list` 复用）。`prefix` 是要索引的那一段，
+ * 生成某一段语料的目录（`read` 找不到文档时回给模型，CLI 的 `/status` 也用它）。`prefix` 是要索引的那一段，
  * 组名与缩进按前缀之下的相对路径算——按项目相对路径的第一段分组会把所有文档塞进同一个组。
  */
 export async function buildIndex(projectId: string, prefix = "design/"): Promise<string> {
@@ -158,7 +155,7 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
     groups.get(g)!.push(f);
   }
   // 已知目录按固定次序（根在最前），其余一律附在后面——否则枚举得到、却不显示的新目录会被
-  // 静默丢掉。列整个项目时分组就是那三个根（顺序同 `DOC_ROOTS`），后四个是 `design/` 之内的
+  // 静默丢掉。列整个项目时分组就是那三个根，后四个是 `design/` 之内的
   // 分组，给 `prefix = "design/"` 用。
   const KNOWN = ["design", "chapters", "state", "", "wiki", "characters", "outline"];
   const rest = [...groups.keys()].filter((g) => !KNOWN.includes(g)).sort();
@@ -173,12 +170,6 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
       // 组名已单独占一行，行内不再重复前缀——否则三层路径（outline/vol_1/s1.md）会吃掉半行。
       const rel = relOf.get(f) ?? f;
       const label = g ? rel.slice(g.length + 1) : rel;
-
-      // 常驻文档超预算：在 list 里明说，不静默截断（§7.2）
-      const limit = residentLimitOf(f);
-      if (limit !== undefined && content !== undefined && content.length > limit) {
-        lines.push(`${fileIndent}${label}（${content.length} 字，超过建议上限 ${limit} 字；请拆分到 wiki 专题页）`);
-      }
 
       // ① 这个形状自己有一行（角色卡：一人一行，不铺必有格）→ 就用它，不再铺小节
       const one = summarize({ path: f, label, content });
@@ -201,31 +192,4 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
     }
   }
   return lines.join("\n");
-}
-
-/** 常驻文档的建议体积上限（字符）。超了提示，不静默截断——半条规则比没有规则更糟。 */
-const RESIDENT_LIMIT: Record<string, number> = {
-  "design/core.md": 8_000,
-  "design/wiki/world.md": 30_000,
-};
-
-/** 常驻文档的建议上限；不是常驻文档 → undefined。 */
-export function residentLimitOf(path: string): number | undefined {
-  return RESIDENT_LIMIT[path];
-}
-
-/** core + world 总纲的常驻全文，mate 每轮注入；文件不存在（懒建未产出）则跳过。 */
-export async function buildResidentDesigns(projectId: string): Promise<string> {
-  const blocks: string[] = [];
-  for (const path of RESIDENT_DOCS) {
-    const content = await readDoc(projectId, path);
-    if (content === undefined) continue;
-    const limit = RESIDENT_LIMIT[path];
-    const over =
-      limit !== undefined && content.length > limit
-        ? `\n（本文件 ${content.length} 字，超过建议上限 ${limit} 字；请把专题内容拆到 design/wiki/ 下的页面。）`
-        : "";
-    blocks.push(`【常驻设定 · ${path} · rev ${hashText(content).slice(0, 6)}】（每轮注入，写作不得违背）\n${content}${over}`);
-  }
-  return blocks.join("\n\n");
 }

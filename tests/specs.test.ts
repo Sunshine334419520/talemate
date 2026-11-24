@@ -13,7 +13,6 @@
  *      自相矛盾的规范——比没有更糟。见文末「规范注册表 · 工作法」。
  */
 import { describe, test, expect } from "bun:test";
-import { RESIDENT_DOCS } from "../src/framework/anchor";
 import { CARD_DIR } from "../src/framework/characters";
 import { SPECS, type DocSpec, specFor } from "../src/framework/design_spec";
 import { match } from "../src/permission";
@@ -82,8 +81,8 @@ describe("规范注册表 · 管辖范围", () => {
     expect(specFor("design/outline/vol_2.md")?.sections.length).toBeGreaterThan(0);
   });
 
-  test("常驻注入的两条路径都登记了规范——否则状态卡问不出「还差哪几格」", () => {
-    const bad = RESIDENT_DOCS.filter((p) => specFor(p) === undefined);
+  test("核心与世界观都登记了规范——否则状态卡问不出「还差哪几格」", () => {
+    const bad = ["design/core.md", "design/wiki/world.md"].filter((p) => specFor(p) === undefined);
     expect(bad).toEqual([]);
   });
 

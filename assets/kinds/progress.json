@@ -1,0 +1,9 @@
+{
+  "id": "progress",
+  "label": "章节流水",
+  "section": "现状",
+  "order": 100,
+  "match": ["state/progress.md"],
+  "create": "state/progress.md",
+  "fields": []
+}

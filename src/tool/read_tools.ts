@@ -1,16 +1,14 @@
 /**
- * read-tools：项目语料的三个读口 read / list / search——给路径要内容、要目录、要跨文档找词。
- * 都按项目相对路径寻址，与 `write` / `edit` / `delete` 同一套口径，所以 `read` 读得到章节，
- * `search` 也扫得到章节。名字里没有 `-design`：管辖范围由 `path` 参数给，已越过 `design/`。
+ * read-tools：项目语料的读口 `read`——给路径要内容（整篇或某一小节）。
+ * 按项目相对路径寻址，与 `write` / `edit` / `delete` 同一套口径，所以 `read` 读得到章节。
+ * 找路径用 `find_tools` 的 `glob`，找内容用它的 `grep`；这里只负责"读一份"。
  *
- * 取数在 `storage/corpus.ts`，目录渲染在 `framework/anchor.buildIndex`，命中渲染在
- * `framework/search.renderHits`；本文件只加"工具边界"的预算（§11.3：先截断，后压缩）。
+ * 取数在 `storage/corpus.ts`；本文件只加"工具边界"的预算（§11.3：先截断，后压缩）。
  *
  * 边界：一句 fs 都不碰（有结构测试钉着）。
  */
 import type { ToolContext } from "../core/types";
 import { hashText } from "../core/hash";
-import { RESIDENT_DOCS } from "../framework/anchor";
 import { getSection, listHeadings } from "../framework/markdown";
 import { readPrompt } from "../prompts";
 import { defineTool, type RegisteredTool } from "./define";
@@ -19,10 +17,6 @@ const P = (id: string) => readPrompt(`tools/${id}`);
 
 /** 单次 read 的上限（字符）。压缩不为工具输出擦屁股，截断先在这一层发生。 */
 const READ_LIMIT = 12_000;
-/** list 的行数上限；超了报总数，不静默丢。 */
-const LIST_MAX_LINES = 80;
-/** search 的命中条数上限。 */
-const SEARCH_MAX_HITS = 40;
 
 /**
  * 路径所属的那一段（`design/core.md` → `design/`），"没找到"时用它列出那一段有什么；
@@ -112,16 +106,6 @@ export const readTool: RegisteredTool<{ path: string; section?: string; offset?:
       };
     }
 
-    // 常驻层已经每轮注入 core / world；再读全文等于同一份设定在上下文里出现两次
-    if ((RESIDENT_DOCS as readonly string[]).includes(args.path)) {
-      return {
-        output:
-          `# ${args.path} @${rev}\n` +
-          "这份文档已每轮常驻注入（完整正文在 system 里）；要读某一节请用 section=<小节名>，不必重读全文。",
-        metadata: { path: args.path, rev, resident: true },
-      };
-    }
-
     const offset = Math.max(0, Math.floor(Number(args.offset) || 0));
     if (content.length > READ_LIMIT || offset > 0) {
       const slice = content.slice(offset, offset + READ_LIMIT);
@@ -142,54 +126,4 @@ export const readTool: RegisteredTool<{ path: string; section?: string; offset?:
   },
 });
 
-/**
- * list：目录索引；`path` 是项目相对前缀——给 `design/` 就只列企划，给 `chapters/` 只列正文，
- * 不给就列整个项目。
- */
-export const listTool: RegisteredTool<{ path?: string }> = defineTool<{ path?: string }>({
-  id: "list",
-  description: P("list"),
-  input: {
-    type: "object",
-    properties: {
-      path: {
-        type: "string",
-        description: "Optional project-relative prefix to scope the listing: design/, chapters/ or state/. Omit for the whole project.",
-      },
-    },
-  },
-  async execute(args, ctx) {
-    const output = await ctx.listIndex((args.path ?? "").trim());
-    const lines = output.split("\n");
-    if (lines.length <= LIST_MAX_LINES) return { output };
-    return {
-      output: `${lines.slice(0, LIST_MAX_LINES).join("\n")}\n…（目录还有 ${lines.length - LIST_MAX_LINES} 行未显示；用 path=… 缩小范围）`,
-      metadata: { truncated: true },
-    };
-  },
-});
-
-/** search：跨文档查引用；`path` 同 list——范围是参数，不是焊在工具名里的。 */
-export const searchTool: RegisteredTool<{ query: string; path?: string }> = defineTool<{
-  query: string;
-  path?: string;
-}>({
-  id: "search",
-  description: P("search"),
-  input: {
-    type: "object",
-    properties: {
-      query: { type: "string", description: "Term to search (character / setting / term)" },
-      path: {
-        type: "string",
-        description: "Optional project-relative prefix to scope the search: design/, chapters/ or state/. Omit for the whole project.",
-      },
-    },
-    required: ["query"],
-  },
-  async execute(args, ctx) {
-    return { output: await ctx.searchDocs(args.query, (args.path ?? "").trim(), SEARCH_MAX_HITS) };
-  },
-});
-
-export const READ_TOOLS: RegisteredTool[] = [readTool, listTool, searchTool];
+export const READ_TOOLS: RegisteredTool[] = [readTool];

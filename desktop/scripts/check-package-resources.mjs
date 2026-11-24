@@ -63,7 +63,7 @@ for (const target of targets) {
   console.log(`[resources] ${target}: domino ${existsSync(domino) ? "present" : "MISSING"}`);
   if (!existsSync(domino)) failed = true;
 
-  for (const folder of ["prompts", "skills"]) {
+  for (const folder of ["prompts", "skills", "assets"]) {
     const source = await files(join(ROOT, folder));
     const packed = await files(join(target, folder));
     const missing = [...source.keys()].filter((rel) => !packed.has(rel));

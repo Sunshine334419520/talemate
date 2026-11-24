@@ -93,7 +93,6 @@ export async function foldContext(req: FoldRequest): Promise<FoldOutcome> {
   const evidence = evidenceFrom(selection.picked);
   const pinned: CompactionRecord["pinned"] = {
     decisions: req.decisions,
-    resident: req.pinned.resident,
     ...(req.pinned.project === undefined ? {} : { project: req.pinned.project }),
     ...(req.pinned.promises === undefined ? {} : { promises: req.pinned.promises }),
     ...(req.plan === undefined ? {} : { plan: req.plan }),

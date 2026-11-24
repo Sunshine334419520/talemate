@@ -72,8 +72,7 @@ function profileFor(purpose: PerceptionPurpose, candidate: ContextCandidate): Pr
     candidate.id.startsWith("voice.") ||
     candidate.id.startsWith("narrative.progress") ||
     candidate.id.startsWith("narrative.promises") ||
-    candidate.id.startsWith("narrative.prev-ending") ||
-    candidate.id.startsWith("world.resident.")
+    candidate.id.startsWith("narrative.prev-ending")
   ) {
     return { tier: "P1", placement: "system.head" };
   }

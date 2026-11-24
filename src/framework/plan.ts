@@ -1,11 +1,11 @@
 /**
  * 章节规划工件：写一章之前那份可执行规划的落脚处、命名与渲染。它落在 `<novel>/.talemate/plans/`
  * 而不在 `design/`——`design/` + `chapters/` 是作品（用户的、要审阅的、可进版本控制），规划是引擎的
- * 工作区（可清理、用户不必看、不进 `list` / `search` / 不变量 / 结构规范）。
+ * 工作区（可清理、用户不必看、不进 `glob` / `grep` / 不变量 / 结构规范）。
  *
  * 由此两条路有意不走：不经 `framework/write_ops.ts`（那条路认识的是作品文档——diff、CAS、不变量后验、
  * 权限 pattern，规划一样都不需要，它由 `propose-plan` 整篇写、整篇渲染，用户看过的字节就是落盘的字节）；
- * 不进 `storage/corpus.ts` 的 `DOC_ROOTS`（所以 `read` / `list` / `search` 看不见它，`renderPendingNote`
+ * 不进语料根表（所以 `read` / `glob` / `grep` 看不见它，`renderPendingNote`
  * 才要把路径报出来，mate 在下一次压缩之后仍要知道它在哪）。
  *
  * 一章一个文件、文件名由章号决定，所以同名即覆盖，规划数量由章数封顶；执行完不删——它是"这一次执行"的记录。

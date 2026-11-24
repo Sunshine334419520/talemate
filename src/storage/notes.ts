@@ -1,7 +1,7 @@
 /**
  * 考据本的唯一 IO：`<novel>/.talemate/research/<题目>.md`。
  *
- * 落在 `.talemate/` 而不是第四个根：不进 `DOC_ROOTS`，read/list/search、不变量与结构规范一概够不着它，
+ * 落在 `.talemate/` 而不是第二个根：不进语料根表，read/glob/grep、不变量与结构规范一概够不着它，
  * 也不需要用户拍板、不进版本控制；代价是全产品只有 `recall` 一个读口，垃圾笔记的出路只有文件系统。
  *
  * 单开一个模块是因为取数只有一个口：`src/tool/` 不许 import `node:fs`、也不许 import 本层，

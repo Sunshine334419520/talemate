@@ -123,7 +123,7 @@ describe("corpus · 夹具（`writeDoc` / `removeDoc`）", () => {
     await writeDoc(pid, "design/fixture/probe.md", "播种\n");
     expect(await readDoc(pid, "design/fixture/probe.md")).toBe("播种\n");
 
-    // 根之外的路径一律不认（与读口同一套 `DOC_ROOTS`）
+    // 根表之外的路径一律不认（与读口同一张项目根表）
     await expect(writeDoc(pid, "talemate.json", "x")).rejects.toThrow();
     await expect(writeDoc(pid, "design/../talemate.json", "x")).rejects.toThrow();
   });

@@ -95,6 +95,8 @@ function makeCtx(
     getMode: () => undefined,
     readDoc: async () => undefined,
     listIndex: async () => "",
+    globDocs: async () => "",
+    grepDocs: async () => "",
     searchDocs: async () => "",
     runSubagent: async () => ({ text: "", sessionId: "sub-test" }),
     loadSkill: async () => undefined,

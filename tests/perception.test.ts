@@ -66,7 +66,6 @@ describe("分诊 · v1 prose Profile", () => {
     candidate("narrative.progress", "narrative", "最近进度"),
     candidate("voice.brief", "voice", "声音简报", { alreadyInContext: true }),
     candidate("author.decision.0", "author", "决定原话"),
-    candidate("world.resident.design/core.md", "world", "核心设定", { alreadyInContext: true }),
     candidate("narrative.chapter.old", "narrative", "", { expandable: { tool: "read", path: "chapters/old.md" } }),
     candidate("character.knowledge", "character", "", { gap: "state/knowledge.md 未建立" }),
   ];
@@ -88,7 +87,7 @@ describe("分诊 · v1 prose Profile", () => {
     const metrics = perceptionMetrics(plan);
     expect(metrics.p0Coverage).toBe(1);
     expect(metrics.missing).toBe(1);
-    expect(metrics.duplicate).toBe(4);
+    expect(metrics.duplicate).toBe(3);
     expect(metrics.deferred).toBe(1);
   });
 

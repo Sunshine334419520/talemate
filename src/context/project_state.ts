@@ -1,30 +1,22 @@
 /**
- * 项目状态快照：折叠时从文件现取的 `<project>` / `<promises>` / 常驻 rev。
+ * 项目状态快照：折叠时从文件现取的 `<project>` / `<promises>`。
  *
- * 这些块是复制不是生成（D1）：位置、未回收承诺、常驻设定都在磁盘上，职责是给出坐标，
- * 而不是让摘要再写一份 canon。取不到就是没有，不猜、不补。
+ * 这些块是复制不是生成（D1）：位置与未回收承诺都在磁盘上，职责是给出坐标，而不是让摘要再写
+ * 一份 canon。取不到就是没有，不猜、不补。
  *
  * 边界：只读 `storage/corpus.ts` 与 `framework/markdown.ts`；不写文件、不认识 Session。
  */
 import type { CompactionRecord } from "../core/types";
-import { hashText } from "../core/hash";
 import { getSection, listHeadings } from "../framework/markdown";
-import { RESIDENT_DOCS } from "../framework/anchor";
 import { readDoc } from "../storage/corpus";
 
 export interface PinnedSnapshot {
   project?: string;
   promises?: string;
-  resident: Array<{ path: string; rev: string }>;
 }
 
 const PROGRESS_DOC = "state/progress.md";
 const FORESHADOWING_DOC = "state/foreshadowing.md";
-
-/** 常驻文件超预算时在 `list`/启动检查里提示；这里只取 rev，不重复正文。 */
-function revOf(content: string): string {
-  return hashText(content).slice(0, 6);
-}
 
 function clamp(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}\n…（已截断）`;
@@ -63,13 +55,6 @@ export function openPromises(content: string): string | undefined {
 
 /** 折叠时现取一份 pinned 快照。规划由调用方（Session）按当前 pending 另给。 */
 export async function buildPinned(projectId: string): Promise<PinnedSnapshot> {
-  const resident: PinnedSnapshot["resident"] = [];
-  for (const path of RESIDENT_DOCS) {
-    const content = await readDoc(projectId, path);
-    if (content === undefined) continue;
-    resident.push({ path, rev: revOf(content) });
-  }
-
   const progress = await readDoc(projectId, PROGRESS_DOC);
   const project = progress === undefined ? undefined : lastSections(progress, 7);
 
@@ -79,7 +64,6 @@ export async function buildPinned(projectId: string): Promise<PinnedSnapshot> {
   return {
     ...(project === undefined ? {} : { project }),
     ...(promises === undefined ? {} : { promises }),
-    resident,
   };
 }
 
@@ -90,11 +74,6 @@ export function renderPinned(pinned: CompactionRecord["pinned"]): string {
   if (pinned.promises !== undefined) out.push(`<promises>\n${pinned.promises}\n</promises>`);
   if (pinned.plan !== undefined) {
     out.push(`<plan chapter="${pinned.plan.chapter}" path="${pinned.plan.path}" hash="${pinned.plan.hash}" />`);
-  }
-  if (pinned.resident.length) {
-    out.push(
-      `<resident>\n${pinned.resident.map((r) => `${r.path} @${r.rev}`).join("\n")}\n</resident>`,
-    );
   }
   return out.join("\n");
 }

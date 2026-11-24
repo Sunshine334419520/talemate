@@ -77,7 +77,7 @@ function renderTool(part: Extract<NonNullable<StoredMessage["parts"]>[number], {
     const body = part.error ?? part.output ?? "";
     return `${pointer}\n${clamp(body, CONCLUSION_KEEP_CHARS)}`;
   }
-  if (part.name === "read" || part.name === "search" || part.name === "webfetch" || part.name === "websearch") {
+  if (part.name === "read" || part.name === "grep" || part.name === "webfetch" || part.name === "websearch") {
     const body = part.error ?? firstParagraph(part.output ?? "");
     return `${pointer} ${body}`;
   }

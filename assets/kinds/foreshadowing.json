@@ -1,0 +1,9 @@
+{
+  "id": "foreshadowing",
+  "label": "伏笔账",
+  "section": "现状",
+  "order": 90,
+  "match": ["state/foreshadowing.md"],
+  "create": "state/foreshadowing.md",
+  "fields": []
+}

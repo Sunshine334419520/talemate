@@ -1,12 +1,13 @@
 /**
  * 项目级存储：
- * - 建/列/读/写项目元（talemate.json）
- * - AGENTS.md（项目规则）、design/（活文档）、chapters/（成品）、state/（当前状态）
+ * - 建/列/读/写项目元（talemate.json，含项目根表 corpusRoots）
+ * - AGENTS.md（项目规则）与默认语料根目录（design/ / chapters/ / state/，见 core/roots.ts）
  * 会话级存储见 session-store.ts。
  */
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { talemateHome, paths, projectPaths } from "../core/config";
+import { DEFAULT_CORPUS_ROOTS } from "../core/roots";
 import type { ProjectMeta } from "../core/types";
 import { docAbs } from "./corpus";
 import { rand4, safeName, safeRelPath, slugify } from "./util";
@@ -23,12 +24,13 @@ export async function createProject(opts: {
   // project-id：拼音/英文 slug + 短随机，避免撞名
   const id = `${slugify(opts.title)}-${rand4()}`;
   const pp = projectPaths(home, id);
-  await mkdir(pp.design, { recursive: true });
+  // 默认语料根逐个建目录：根表是 `DEFAULT_CORPUS_ROOTS`，这里不再手抄 design/chapters/state。
+  for (const root of DEFAULT_CORPUS_ROOTS) {
+    await mkdir(join(pp.root, root.dir), { recursive: true });
+  }
   await mkdir(pp.wiki, { recursive: true });
   await mkdir(pp.characters, { recursive: true });
   await mkdir(pp.outline, { recursive: true });
-  await mkdir(pp.chapters, { recursive: true });
-  await mkdir(pp.state, { recursive: true });
   await mkdir(pp.skills, { recursive: true });
   await mkdir(pp.sessions, { recursive: true });
 
@@ -38,6 +40,7 @@ export async function createProject(opts: {
     genre: opts.genre,
     channel: opts.channel,
     createdAt: Date.now(),
+    corpusRoots: [...DEFAULT_CORPUS_ROOTS],
   };
   await writeProjectMeta(meta);
   // 建项目不预种任何文件：
@@ -100,8 +103,8 @@ export async function readProjectRules(projectId: string): Promise<string> {
  * 只有一个写口）。留在这里是因为测试要播种字节：造夹具得能绕过权限弹窗与 CAS 直接把文件放好，
  * 否则每个用例都要先演一遍完整落盘流程。别在 `src/` 里用它。
  *
- * 它只挑得出 `DOC_ROOTS`（design / chapters / state）之下的路径——清单只有一份、住在 `core/config.ts`，
- * 读口写口与这里共用；绝对路径也由 `corpus.docAbs` 一处算（夹具与读口不会各走各的）。
+ * 它只挑得出项目根表（`talemate.json.corpusRoots`）里的路径——那张表只有一份、由 `core/config.ts`
+ * 读，读口写口与这里共用；绝对路径也由 `corpus.docAbs` 一处算（夹具与读口不会各走各的）。
  */
 export async function writeDoc(projectId: string, path: string, content: string): Promise<string> {
   const abs = docAbs(projectId, path);

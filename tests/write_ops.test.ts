@@ -8,13 +8,14 @@
  * 与它行尾写法不同的文件。
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtemp, readFile as readRaw, rm } from "node:fs/promises";
+import { mkdtemp, readFile as readRaw, rm, writeFile as writeRaw } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProject, writeDoc } from "../src/storage/project";
-import { DOC_ROOTS, readDoc } from "../src/storage/corpus";
-import { projectPaths } from "../src/core/config";
-import { WRITE_ROOTS, writeFile, type WriteRequest } from "../src/framework/write_ops";
+import { DEFAULT_CORPUS_ROOT_IDS, projectCorpusRoots, projectPaths } from "../src/core/config";
+import { readDoc } from "../src/storage/corpus";
+import { writableCorpusRoots } from "../src/core/roots";
+import { writeFile, type WriteRequest } from "../src/framework/write_ops";
 import { PLAN_KEY, type PendingProposal, type PermissionRequest, type ToolContext } from "../src/core/types";
 import { dropFileCheckpointsFrom, loadFileCheckpoints } from "../src/storage/file-history";
 
@@ -72,6 +73,8 @@ function makeCtx(): TestCtx {
     getMode: () => undefined,
     readDoc: () => Promise.resolve(undefined),
     listIndex: () => Promise.resolve(""),
+    globDocs: () => Promise.resolve(""),
+    grepDocs: () => Promise.resolve(""),
     searchDocs: () => Promise.resolve(""),
     runSubagent: () => Promise.resolve({ text: "", sessionId: "sub-test" }),
     loadSkill: () => Promise.resolve(undefined),
@@ -146,11 +149,26 @@ describe("write_ops · 直写（二向）", () => {
     expect(await readRaw(join(projectPaths(HOME, pid).state, "progress.md"), "utf-8")).toBe("# 流水\n");
   });
 
-  test("读口与写口认的是**同一份**根清单，不是手抄的两份", async () => {
-    // 加一个根要动两处（`corpus.DOC_ROOTS` 与 `write_ops.WRITE_ROOTS`）时，漏改一处的后果是
-    // "写得进去读不回来"（或反过来），且不报错。所以这条钉的是**同一个数组**——
-    // 不是"两个内容相等的数组"。
-    expect(WRITE_ROOTS).toBe(DOC_ROOTS);
+  test("可写边界取自项目根表：加一个根，读口与写口同时认它", async () => {
+    // 从前根清单是两份手抄的数组（读口一份、写口一份），漏改一处就是
+    // "写得进去读不回来"，且不报错。现在两边都读 `talemate.json.corpusRoots`——这条钉的是
+    // **改项目元数据就够了**，不需要动任何工具代码。
+    const metaPath = projectPaths(HOME, pid).meta;
+    expect(projectCorpusRoots(pid).map((r) => r.id)).toEqual([...DEFAULT_CORPUS_ROOT_IDS]);
+
+    const before = await readRaw(metaPath, "utf-8");
+    const meta = JSON.parse(before) as { corpusRoots?: unknown[] };
+    meta.corpusRoots = [...(meta.corpusRoots ?? []), { id: "notes", dir: "notes", read: true, write: true, search: true }];
+    await writeRaw(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    try {
+      const ctx = makeCtx();
+      const r = await writeFile(ctx, confirm({ kind: "write", path: "notes/idea.md", content: "点子\n" }));
+      expect(r.ok).toBe(true);
+      expect(await readRaw(join(projectPaths(HOME, pid).root, "notes", "idea.md"), "utf-8")).toBe("点子\n");
+    } finally {
+      await writeRaw(metaPath, before, "utf-8");
+    }
+    expect(writableCorpusRoots(projectCorpusRoots(pid)).every((r) => r.read)).toBe(true);
   });
 
   test("根不对 / 想穿目录 → 拒绝，且文案说清可写的根有哪些", async () => {

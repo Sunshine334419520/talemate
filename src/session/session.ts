@@ -57,7 +57,8 @@ import {
 } from "../context/perception";
 import { collectProseCandidates } from "../context/perception_candidates";
 import { buildPinned } from "../context/project_state";
-import { buildResidentDesigns, buildIndex } from "../framework/anchor";
+import { buildIndex } from "../framework/anchor";
+import { globDocs as findGlobDocs, grepDocs as findGrepDocs } from "../framework/find";
 import { isChapterFile, planRelPath, readPlan } from "../framework/plan";
 import { buildProseBrief } from "../framework/prose";
 import { labelOf } from "../framework/proposal";
@@ -270,7 +271,7 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
   const settled: string[] = [];
   for (const p of pending.values()) {
     // 规划没有要落盘的目标文档：它批准的是"照它去写正文"这个执行，不是一次落盘。
-    // 工件路径要报出来：规划落在 `.talemate/plans/`，那是 `read` / `list` 看不见的地方，
+    // 工件路径要报出来：规划落在 `.talemate/plans/`，那是 `read` / `glob` 看不见的地方，
     // 压缩之后 mate 仍得知道它存下来了（见 framework/plan.ts 的文件头）。
     if (p.name === PLAN_KEY) {
       const what = p.chapter ? `第 ${p.chapter} 章的规划（${planRelPath(p.chapter)}）` : "这一章的规划";
@@ -1336,14 +1337,12 @@ export class Session {
   }
 
   /**
-   * 拼 system prompt：env + 角色 system + (core/world 常驻设定) + AGENTS.md + skill 目录。
-   * 常驻设定只给可见 primary（mate）注入——subagent 不注入（省 token，靠 task prompt 切片）。
+   * 拼 system prompt：env + 角色 system + AGENTS.md + skill 目录（正文窗口另见 `proseWindow`）。
+   * 没有任何文档正文常驻——设计文档也要模型自己 `read`，这样它才知道读的是哪一份、读到了哪一节。
    */
   private async buildSystem(agent: AgentDef, perception?: ContextPlan): Promise<string> {
     const rules = await readProjectRules(this.projectId);
     const skills = await discoverSkills(this.projectId);
-    let resident: string | undefined;
-    if (agent.mode === "primary" && !agent.hidden) resident = await buildResidentDesigns(this.projectId);
     const mode = this.mode ? MODES[this.mode] : undefined;
     // prose mode 用独立的 role system；其余模式仍用 agent.system。
     const roleSystem = mode?.system === undefined ? agent.system : readPrompt(mode.system);
@@ -1354,7 +1353,6 @@ export class Session {
       roleSystem,
       rules,
       skills: renderSkillCatalog(skills),
-      resident,
     });
     // 模式注记排在角色壳之后、状态注记之前：它是"眼下在干什么"，压过角色的默认姿态。
     const note = renderPendingNote(this.pending);
@@ -1387,12 +1385,12 @@ export class Session {
    * 退出上下文，所以这份 token 只在写那一章的几轮里付。理由见 `framework/prose.ts` 的文件头。
    */
   private async proseWindow(agent: AgentDef): Promise<string | undefined> {
-    // 与常驻设定同一条边界：只给可见的 primary。规划只由 mate 执行。
+    // 与正文窗口同一条边界：只给可见的 primary。
     if (agent.mode !== "primary" || agent.hidden) return undefined;
     const plan = this.pending.get(PLAN_KEY);
     if (!plan || !plan.approved || plan.done || plan.chapter === undefined) return undefined;
     const brief = await buildProseBrief(this.projectId, plan.chapter);
-    // 规划正文由 harness 读文件注入：`.talemate/` 不在 DOC_ROOTS，模型工具读不到它。
+    // 规划正文由 harness 读文件注入：`.talemate/` 不在语料根表里，模型工具读不到它。
     // 用户看过的计划字节必须指导正文，而且重启后仍要能注入（不再只活在内存 pending 里）。
     const text = await readPlan(this.projectId, plan.chapter);
     if (text === undefined) return brief;
@@ -1473,6 +1471,8 @@ export class Session {
       // 都不预设管辖范围：`prefix` 由调用工具给。
       readDoc: (path) => readDoc(this.projectId, path),
       listIndex: (prefix) => buildIndex(this.projectId, prefix),
+      globDocs: async (pattern, path) => (await findGlobDocs(this.projectId, pattern, path)).text,
+      grepDocs: async (query) => (await findGrepDocs(this.projectId, query)).text,
       searchDocs: async (query, prefix, limit) =>
         renderHits(await scanDocs(this.projectId, query, prefix), query, limit),
       // 把当前生效的规则集交给子会话去派生（父的 deny 继承、allow 不继承）

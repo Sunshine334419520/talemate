@@ -38,8 +38,8 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "exit-draft",
       "enter-prose",
       "exit-prose",
-      "search",
-      "list",
+      "glob",
+      "grep",
       "skill",
       "ask-user",
       "confirm",
@@ -60,7 +60,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
     // `recall` 只读：规划者自己也在查证（它的 persona 就是"不能凭记忆断言的事实自己查"），
     // 考据本里可能已有答案——没它就只会上网重查一遍。只给 `recall`，永远不给 `remember`：
     // 记什么、什么时候记，是研究员那份契约。
-    tools: ["read", "list", "search", "webfetch", "websearch", "recall"],
+    tools: ["read", "glob", "grep", "webfetch", "websearch", "recall"],
     permission: {
       // 子代理跑在隔离上下文里、用户不在场：不能提问（提问就是一次 io.confirm），
       // 也不能委派（防链式 spawn）。
@@ -85,7 +85,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "The fact-checker. Researches the real world and returns findings with their sources — how a period's office or tax really worked, what a thing was called, how far a weapon reached.\n" +
       "Use this when the novel needs a fact you must not assert from memory and settling it will take several searches and reads: it returns the conclusion and its sources, not the pages it read to get there. For a fact one lookup settles, call webfetch yourself instead. It reads the project but never writes the book — you decide what lands. Findings it expects to be asked again it keeps in its own research notes, so a later session does not look them up twice.",
     mode: "subagent",
-    tools: ["read", "list", "search", "webfetch", "websearch", "recall", "remember"],
+    tools: ["read", "glob", "grep", "webfetch", "websearch", "recall", "remember"],
     permission: {
       // 同 planner：子代理不能提问、不能委派
       question: "deny",

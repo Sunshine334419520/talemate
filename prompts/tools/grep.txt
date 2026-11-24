@@ -1,0 +1,21 @@
+Search document contents with a regular expression. Results are grouped by file; each match shows
+the file path, then the line number and the matching line text, for example:
+
+  design/outline/vol_1.md
+    42: 旧债：……
+
+Use it to find where a name, term or pattern is used, to check references before a rename, or to
+gather every mention of something.
+
+pattern: a JavaScript regular expression. Set `literal: true` to search for the text as-is (useful
+for Chinese punctuation that would otherwise need escaping). A broken regex returns a short error
+you can correct.
+path (optional): a project-relative directory or one specific file. Omit it to search the whole
+project.
+include (optional): a file glob under `path` (e.g. `characters/*.md`, `*.md`).
+ignoreCase (optional): case-insensitive matching.
+context (optional): 0–3 lines before and after each match.
+
+Caps: 100 matches in total, 20 per file, 500 characters per line. Output says when it truncated;
+narrow `path` or `include` and retry. A term that appears in a document's frontmatter or headings
+will match too — grep is plain text search, not a semantic lookup.

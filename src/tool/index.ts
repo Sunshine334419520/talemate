@@ -5,13 +5,14 @@
 import type { RegisteredTool } from "./define";
 import { DESIGN_TOOLS } from "./design_tools";
 import { FILE_TOOLS } from "./file_tools";
+import { FIND_TOOLS } from "./find_tools";
 import { FRAMEWORK_TOOLS } from "./framework_tools";
 import { READ_TOOLS } from "./read_tools";
 import { RESEARCH_TOOLS } from "./research_tools";
 import { CORE_TOOLS } from "./core_tools";
 import { WEB_TOOLS } from "./web_tools";
 
-export { DESIGN_TOOLS, FRAMEWORK_TOOLS, READ_TOOLS, RESEARCH_TOOLS, CORE_TOOLS, WEB_TOOLS, FILE_TOOLS };
+export { DESIGN_TOOLS, FRAMEWORK_TOOLS, FIND_TOOLS, READ_TOOLS, RESEARCH_TOOLS, CORE_TOOLS, WEB_TOOLS, FILE_TOOLS };
 export * from "./define";
 export type { RegisteredTool };
 
@@ -22,6 +23,7 @@ export type { RegisteredTool };
 export const BUILTIN_TOOLS: RegisteredTool[] = [
   ...FILE_TOOLS,
   ...READ_TOOLS,
+  ...FIND_TOOLS,
   ...RESEARCH_TOOLS,
   ...DESIGN_TOOLS,
   ...FRAMEWORK_TOOLS,

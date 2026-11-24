@@ -1,0 +1,24 @@
+{
+  "id": "outline",
+  "label": "大纲",
+  "section": "大纲",
+  "order": 50,
+  "match": ["design/outline/*.md", "design/outline/**/*.md"],
+  "create": "design/outline/{title}.md",
+  "fields": [
+    { "key": "title", "label": "标题", "type": "string" },
+    { "key": "startChapter", "label": "起始章", "type": "number", "default": 1, "min": 1 },
+    {
+      "key": "status",
+      "label": "状态",
+      "type": "enum",
+      "default": "planning",
+      "values": [
+        { "value": "planning", "label": "规划中" },
+        { "value": "in_progress", "label": "进行中" },
+        { "value": "done", "label": "已完成" }
+      ]
+    },
+    { "key": "order", "label": "排序", "type": "number", "min": 0 }
+  ]
+}

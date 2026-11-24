@@ -20,12 +20,14 @@
  *   所以"模型夹带用户没看过的字节"在结构上不可能，不是靠检查拦住的。
  *
  * 边界：不认识"层""角色卡""小节"。领域语义在工具层（派生成 op），内容不变量在 invariants.ts。
+ * 也不认识根的名单：可写边界是项目根表里 `write` 的那些根，写口与读口从同一张表取数（见 core/roots.ts）。
  */
 import { join } from "node:path";
 import { PLAN_KEY } from "../core/types";
 import type { FileOp, PermissionVerdict, ToolContext, WriteChange } from "../core/types";
 import { PROSE_MODE } from "../agent/modes";
-import { DOC_ROOTS, rootAbs } from "../core/config";
+import { corpusRootAbs, projectCorpusRoots } from "../core/config";
+import { writableCorpusRoots } from "../core/roots";
 import { readText, removeIfUnchanged, StaleContentError, writeIfUnchanged } from "../storage/atomic";
 import { recordFileCheckpoint } from "../storage/file-history";
 import { joinBom, splitBom } from "../storage/bom";
@@ -36,15 +38,6 @@ import { formatProse } from "./format_prose";
 import { checkInvariants } from "./invariants";
 import type { MatchLevel } from "./match";
 import { proposalOp } from "./proposal";
-
-/**
- * 可写的根：就是作品的三个根，与读口同一份清单（`core/config.DOC_ROOTS`）。这个导出留着，是因为
- * 文档与工具 prompt 引的是这个名字。
- *
- * 加一个根要同时想清楚三件事：权限 pattern（`state/…` 落进规则表的哪一档）、常驻注入（要不要每轮
- * 注入）、读写两处都到位（读写同一份清单保证这条）。
- */
-export const WRITE_ROOTS = DOC_ROOTS;
 
 export type WriteFailure =
   /** 目标文件不存在（replace / delete 用） */
@@ -95,17 +88,23 @@ interface Target {
 
 function resolveTarget(projectId: string, path: string): Target | { error: string } {
   const clean = path.replace(/\\/g, "/");
-  const root = WRITE_ROOTS.find((r) => clean.startsWith(`${r}/`));
-  if (!root) {
+  const roots = writableCorpusRoots(projectCorpusRoots(projectId));
+  let best: { spec: (typeof roots)[number]; rel: string } | undefined;
+  for (const spec of roots) {
+    if (!clean.startsWith(`${spec.dir}/`)) continue;
+    const rel = safeRelPath(clean.slice(spec.dir.length + 1));
+    if (rel === undefined) continue;
+    if (best === undefined || spec.dir.length > best.spec.dir.length) best = { spec, rel };
+  }
+  if (best === undefined) {
+    const dirs = roots.map((r) => r.dir);
     return {
       error:
-        `目标要写成 <根>/<相对路径>，可写的根只有 ${WRITE_ROOTS.join(" / ")}` +
+        `目标要写成 <根>/<相对路径>，这本书可写的根只有 ${dirs.join(" / ")}` +
         `（收到：${path}）。`,
     };
   }
-  const rel = safeRelPath(clean.slice(root.length + 1));
-  if (!rel) return { error: `非法路径：${path}` };
-  return { abs: join(rootAbs(projectId, root), rel), pattern: `${root}/${rel}` };
+  return { abs: join(corpusRootAbs(projectId, best.spec.id), best.rel), pattern: `${best.spec.dir}/${best.rel}` };
 }
 
 /**

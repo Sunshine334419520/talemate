@@ -9,17 +9,19 @@ import { join } from "node:path";
 import { createProject, loadProjectMeta, removeDoc, writeDoc } from "../src/storage/project";
 import { enumerateDocs, readDoc, scanDocs } from "../src/storage/corpus";
 import { getSection, listHeadings, removeSection, upsertSection } from "../src/framework/markdown";
-import { RESIDENT_DOCS, docTree } from "../src/framework/anchor";
+import { docTree } from "../src/framework/anchor";
 import { SPECS, renderSpec } from "../src/framework/design_spec";
 import { planAbs } from "../src/framework/plan";
 import { renderHits } from "../src/framework/search";
-import { buildResidentDesigns, buildIndex } from "../src/framework/anchor";
+import { buildIndex } from "../src/framework/anchor";
 import { buildProjectStatus } from "../src/framework/report";
 import { applyDesignTool, proposeDesignTool } from "../src/tool/design_tools";
 import { deleteTool, editTool } from "../src/tool/file_tools";
 import { defineTool } from "../src/tool/define";
 import { designSpecTool } from "../src/tool/framework_tools";
-import { listTool, readTool, searchTool } from "../src/tool/read_tools";
+import { globDocs, grepDocs } from "../src/framework/find";
+import { globTool, grepTool } from "../src/tool/find_tools";
+import { readTool } from "../src/tool/read_tools";
 import { recallTool, rememberTool } from "../src/tool/research_tools";
 import { listNoteNames, noteAbs, readNote } from "../src/storage/notes";
 import { projectPaths, talemateHome } from "../src/core/config";
@@ -185,10 +187,6 @@ describe("design-spec（结构规范）", () => {
   /** 取一份规范的渲染文本。**按路径取**——规范描述的是还不存在的文档，所以给将来那个路径就行。 */
   const at = (p: string): string => renderSpec(`design/${p}`) ?? "";
 
-  test("常驻设定文档枚举：就两条路径", () => {
-    expect(RESIDENT_DOCS).toEqual(["design/core.md", "design/wiki/world.md"]);
-  });
-
   test("core 规范 = 小说介绍四格；world = 空间/规则/术语三格（旧格移除）", () => {
     const core = at("core.md");
     expect(core).toContain("## 一句话简介");
@@ -332,23 +330,27 @@ describe("读口 · read / list / search", () => {
     expect(r.output).not.toContain("core.md");
   });
 
-  test("list：省略 path = 整个项目（两段都出现）；给前缀就只列那一段", async () => {
+  test("glob：省略 path = 整个项目；给目录就只搜那一段", async () => {
     const id = await proj();
-    const all = (await listTool.execute({}, makeCtx(id) as never)).output;
+    await writeDoc(id, "design/core.md", "# 核心\n");
+    await writeDoc(id, CH, "沈越在这里。\n");
+    const all = (await globTool.execute({ pattern: "**/*.md" }, makeCtx(id) as never)).output;
     expect(all).toContain("design/");
     expect(all).toContain("chapters/");
     expect(all).toContain("chapter_ch9_v1.md");
 
-    const onlyCh = (await listTool.execute({ path: "chapters/" }, makeCtx(id) as never)).output;
+    const onlyCh = (await globTool.execute({ pattern: "**/*.md", path: "chapters" }, makeCtx(id) as never)).output;
     expect(onlyCh).toContain("chapter_ch9_v1.md");
     expect(onlyCh).not.toContain("core.md");
   });
 
-  test("search：范围是参数。扫得到正文里的引用——删名前的引用检查靠这一条", async () => {
+  test("grep：范围是参数。扫得到正文里的引用——删名前的引用检查靠这一条", async () => {
     const id = await proj();
-    const all = (await searchTool.execute({ query: "沈越" }, makeCtx(id) as never)).output;
+    await writeDoc(id, "design/core.md", "# 核心\n\n沈越想要回去。\n");
+    await writeDoc(id, CH, "沈越在这里。\n");
+    const all = (await grepTool.execute({ pattern: "沈越" }, makeCtx(id) as never)).output;
     expect(all).toContain(CH);
-    const scoped = (await searchTool.execute({ query: "沈越", path: "design/" }, makeCtx(id) as never)).output;
+    const scoped = (await grepTool.execute({ pattern: "沈越", path: "design" }, makeCtx(id) as never)).output;
     expect(scoped).not.toContain("chapters/");
   });
 });
@@ -422,17 +424,12 @@ describe("项目懒建 / 搜索 / 锚点", () => {
     expect(await scanDocs(pid, "不存在的词", "design/")).toHaveLength(0);
   });
 
-  test("buildResidentDesigns：core + world 总纲常驻全文，无状态包装", async () => {
+  test("索引把 core 与 world 也当普通文档列出来（没有常驻层）", async () => {
     await writeDoc(pid, "design/core.md", "# core\n\n## 一句话简介\n沈越 想要活着回去。");
     await writeDoc(pid, "design/wiki/world.md", "## 空间与舞台\n一座荒岛。\n\n## 规则与秩序\n无超自然。");
-    const resident = await buildResidentDesigns(pid);
-    expect(resident).toContain("沈越 想要活着回去"); // core 全文
-    expect(resident).toContain("一座荒岛。"); // world 总纲全文
-    expect(resident).toContain("无超自然。");
-    expect(resident).not.toContain("<nvl-state>"); // 无状态包装
-    expect(resident).not.toContain("写作进度"); // 进度归工具，不常驻
     const index = await buildIndex(pid);
-    expect(index).toContain("core.md"); // 索引仍由 list 提供
+    expect(index).toContain("core.md");
+    expect(index).toContain("world.md");
   });
 });
 
@@ -516,6 +513,8 @@ function makeCtx(
     // 读口留着，写口一个都不留（改文件只能走 write/edit，见 core/types.ts）
     readDoc: (path) => readDoc(projectId, path),
     listIndex: (prefix) => buildIndex(projectId, prefix),
+    globDocs: async (pattern, path) => (await globDocs(projectId, pattern, path)).text,
+    grepDocs: async (query) => (await grepDocs(projectId, query)).text,
     searchDocs: async (q, prefix) => renderHits(await scanDocs(projectId, q, prefix), q),
     runSubagent: async () => ({ text: "（无）", sessionId: "sub-test" }),
     loadSkill: async () => undefined,
@@ -1324,7 +1323,7 @@ describe("会话模式 · draft", () => {
 
   test("但只读工具与两个出口都还在（模式不是把人关死）", () => {
     const available = visibleUnder(BASE_PERMISSIONS, MODES.draft.permission);
-    const missing = ["read", "list", "design-spec", "propose-plan", "exit-draft", "ask-user"].filter(
+    const missing = ["read", "glob", "grep", "design-spec", "propose-plan", "exit-draft", "ask-user"].filter(
       (t) => !available.includes(t),
     );
     expect(missing).toEqual([]);

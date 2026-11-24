@@ -42,8 +42,8 @@ import { isSubagentSession, listSessionIds, loadMessages, loadSessionMeta } from
 import { createProject, listProjects, loadProjectMeta } from "../../../src/storage/project";
 import { writeIfUnchanged } from "../../../src/storage/atomic";
 import { existsSync, watch, type FSWatcher } from "node:fs";
-import { DOC_ROOTS, docAbs } from "../../../src/storage/corpus";
-import { projectPaths, rootAbs, sessionPaths, talemateHome } from "../../../src/core/config";
+import { docAbs } from "../../../src/storage/corpus";
+import { projectPaths, projectCorpusRoots, corpusRootAbs, sessionPaths, talemateHome } from "../../../src/core/config";
 import { rm } from "node:fs/promises";
 import { homeStatePath, readHomeState, readHomeStateOr, writeHomeState } from "../../../src/storage/home_state";
 import { webSettingsView } from "../../../src/core/web";
@@ -199,9 +199,9 @@ function watchDocs(projectId: string): void {
     clearTimeout(timer);
     timer = setTimeout(() => win?.webContents.send("tm:docs-changed"), 300);
   };
-  for (const root of DOC_ROOTS) {
+  for (const root of projectCorpusRoots(projectId)) {
     try {
-      watchers.push(watch(rootAbs(projectId, root), { recursive: true }, bump));
+      watchers.push(watch(corpusRootAbs(projectId, root.id), { recursive: true }, bump));
     } catch {
       // 那个根还不存在（懒建）——没有目录就是还没有文档，也没什么可盯的
     }
@@ -457,7 +457,7 @@ function registerHandlers(): void {
 
   ipcMain.handle("sessions:list", (_e, projectId: string) => sessionsOf(projectId));
 
-  /** 文档树：`enumerateDocs` 只认 `DOC_ROOTS` 那三个根、`docTree` 定次序——两处判据都在 harness 里。 */
+  /** 文档树：`enumerateDocs` 只认项目根表里可读的根、`docTree` 定次序——两处判据都在 harness 里。 */
   ipcMain.handle("docs:tree", async (_e, projectId: string): Promise<DocNode[]> =>
     docTree(await enumerateDocs(projectId, "")),
   );
@@ -506,7 +506,7 @@ function registerHandlers(): void {
    * 没有可生成的东西——值是库里一个卡名。库里没有这个名字就**不写**（回 `unknown`），
    * 别把界面传来的一串字直接落进作品。
    *
-   * 不需要手动广播刷新：`watchDocs` 盯着 `DOC_ROOTS`，这次写盘会和别的写盘一样被它带出去。
+   * 不需要手动广播刷新：`watchDocs` 盯着项目根表，这次写盘会和别的写盘一样被它带出去。
    */
   ipcMain.handle(
     "style:set",

@@ -1,0 +1,36 @@
+{
+  "id": "character",
+  "label": "角色",
+  "section": "角色",
+  "order": 40,
+  "match": ["design/characters/*.md"],
+  "create": "design/characters/{title}.md",
+  "fields": [
+    { "key": "title", "label": "标题", "type": "string" },
+    { "key": "name", "label": "姓名", "type": "string" },
+    { "key": "aliases", "label": "别名", "type": "string-list" },
+    {
+      "key": "role",
+      "label": "定位",
+      "type": "enum",
+      "default": "supporting",
+      "values": [
+        { "value": "protagonist", "label": "主角" },
+        { "value": "antagonist", "label": "反派" },
+        { "value": "supporting", "label": "配角" },
+        { "value": "minor", "label": "龙套" }
+      ]
+    },
+    {
+      "key": "status",
+      "label": "状态",
+      "type": "enum",
+      "default": "active",
+      "values": [
+        { "value": "active", "label": "启用" },
+        { "value": "archived", "label": "归档" }
+      ]
+    },
+    { "key": "order", "label": "排序", "type": "number", "min": 0 }
+  ]
+}

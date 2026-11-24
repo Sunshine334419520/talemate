@@ -1,0 +1,24 @@
+{
+  "id": "beat",
+  "label": "节拍",
+  "section": "大纲",
+  "order": 60,
+  "match": ["design/outline/**/beats/*.md"],
+  "fields": [
+    { "key": "title", "label": "标题", "type": "string" },
+    { "key": "outline", "label": "所属大纲", "type": "string", "required": true },
+    { "key": "order", "label": "顺序", "type": "number", "default": 0, "min": 0 },
+    { "key": "chapters", "label": "预计章数", "type": "number", "default": 1, "min": 1 },
+    {
+      "key": "status",
+      "label": "状态",
+      "type": "enum",
+      "default": "pending",
+      "values": [
+        { "value": "pending", "label": "待开始" },
+        { "value": "in_progress", "label": "进行中" },
+        { "value": "done", "label": "已完成" }
+      ]
+    }
+  ]
+}

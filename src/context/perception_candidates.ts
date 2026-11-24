@@ -8,7 +8,6 @@
  */
 import { hashText } from "../core/hash";
 import type { ContextCandidate, DecisionEntry } from "../core/types";
-import { RESIDENT_DOCS } from "../framework/anchor";
 import { CARD_DIR, nameFromPath } from "../framework/characters";
 import { chapterNumberOf, planRelPath } from "../framework/plan";
 import { buildProseBrief } from "../framework/prose";
@@ -123,18 +122,7 @@ export async function collectProseCandidates(input: ProseCandidateInput): Promis
     );
   }
 
-  // P1：常驻设定与声音。都在 system 里，记录它们是为了去重，不是为了再注入一份。
-  for (const path of RESIDENT_DOCS) {
-    const content = await readDoc(projectId, path);
-    if (content === undefined) continue;
-    out.push(
-      make(`world.resident.${path}`, "world", content, { kind: "resident", path, rev: revOf(content) }, {
-        authority: "authoritative",
-        cost: "free",
-        alreadyInContext: true,
-      }),
-    );
-  }
+  // P1：声音。正文规范与文风卡在 system 里，记录它是为了去重，不是为了再注入一份。
   try {
     const brief = await buildProseBrief(projectId, chapter);
     out.push(
@@ -260,7 +248,6 @@ export async function collectProseCandidates(input: ProseCandidateInput): Promis
     out.push(pathOnly(`narrative.chapter.${path}`, "narrative", path));
   }
   for (const path of await enumerateDocs(projectId, "design/wiki/")) {
-    if ((RESIDENT_DOCS as readonly string[]).includes(path)) continue;
     out.push(pathOnly(`world.doc.${path}`, "world", path));
   }
   for (const path of await enumerateDocs(projectId, "design/outline/")) {

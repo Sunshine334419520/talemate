@@ -6,7 +6,7 @@
  * 两个工具的守卫刻意不对称：
  * - `remember` 三重上锁——不在别人的白名单里、`notes` 为 `deny` 时从 schema 里消失、runner 还有
  *   一道粗粒度兜底；写是在改东西，就该这么锁。
- * - `recall` 没有 `permission`（读不改世界，同 `read` / `list` / `search`）。代价是 runner 那句兜底
+ * - `recall` 没有 `permission`（读不改世界，同 `read` / `glob` / `grep`）。代价是 runner 那句兜底
  *   `if (tool.permission && …)` 对它成了死代码——挡不住被幻觉调出来的 `recall`，"某个模式下禁掉"
  *   也没有把手。所以圈定必须是结构性的：目录由 `projectId` 推死、不收任何路径参数、题目读侧也过校验。
  *   `tests/framework.test.ts` 有一条钉住"这个缺席是故意的"——否则下一个人会为了对称给它加上。

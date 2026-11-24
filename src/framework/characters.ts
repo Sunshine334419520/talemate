@@ -5,7 +5,7 @@
  * 本文件只做"怎么算一张合规的卡"的读侧判定——骨架齐不齐、必有格空不空、名单行取哪一行。角色卡没有
  * 专用写工具：建卡改卡走 `propose-design` / `edit`，删卡走 `delete`。
  *
- * 没有派生总表：名单（有哪些人 + 每人必有格齐没齐）由 `list` 每次现算，数据源只有卡本身。
+ * 没有派生总表：名单（有哪些人 + 每人必有格齐没齐）由 `glob` / `read` 每次现算，数据源只有卡本身。
  * 索引文件是卡的副本，副本会脱节（走 propose-design 落卡就不更新），所以不设。
  */
 import { getSection, isFiller, isPendingLine, leadLine, listHeadings, matchesLevel2Heading } from "./markdown";
@@ -127,7 +127,7 @@ export function tailSections(content: string): string[] {
 }
 
 /**
- * 名单（`list` 的角色段）取这一行：「基本档案」里「身份 · 所属」的值。回退链（为的是手写 / 旧卡不炸）：
+ * 名单（目录索引的角色段）取这一行：「基本档案」里「身份 · 所属」的值。回退链（为的是手写 / 旧卡不炸）：
  * 没有该键 → 第一条键值行的值 → 第一行正文（自由散文的老写法）→「一句话定位」（更老的卡）。
  */
 export function cardIdentity(content: string): string | undefined {

@@ -146,20 +146,20 @@ export interface PreflightResult {
 }
 
 /**
- * 发请求之前先量 system + tools。常驻设定过大时压缩无能为力——它只能动消息，而问题不在消息。
+ * 发请求之前先量 system + tools。这一头过大时压缩无能为力——它只能动消息，而问题不在消息。
  * 这里宁可拒绝并给出数字，也不发一个注定超窗的请求、或在 `lastInput` 上无限触发压缩。
  */
 export function preflight(budget: ContextBudget, systemChars: number, toolsChars: number): PreflightResult {
   const system = Math.ceil(systemChars * 0.6);
   const tools = Math.ceil(toolsChars * 0.3);
-  const residentRatio = (system + tools) / budget.usable;
-  if (residentRatio > 0.55) {
+  const promptRatio = (system + tools) / budget.usable;
+  if (promptRatio > 0.55) {
     return {
       ok: false,
       message:
-        `常驻上下文过大：system 约 ${system} token、工具定义约 ${tools} token，` +
-        `合计约占模型窗口 ${Math.round(residentRatio * 100)}%（可用 ${budget.usable}）。` +
-        "压缩只能处理对话，修不好常驻层——请拆分 design/wiki/world.md，或换更大窗口的模型。",
+        `提示词底子过大：system 约 ${system} token、工具定义约 ${tools} token，` +
+        `合计约占模型窗口 ${Math.round(promptRatio * 100)}%（可用 ${budget.usable}）。` +
+        "压缩只能处理对话，修不好这一层——请精简 AGENTS.md 与 skill 目录，或换更大窗口的模型。",
     };
   }
   // 单层超限也拒绝：工具太多是配置问题，不是对话能压掉的

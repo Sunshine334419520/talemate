@@ -146,7 +146,7 @@ async function foldOnce(
     messages,
     budget,
     system: "fold",
-    pinned: { decisions: extra.decisions ?? [], resident: [] },
+    pinned: { decisions: extra.decisions ?? [] },
     decisions: extra.decisions ?? [],
     open: extra.open ?? [],
     ...(extra.plan === undefined ? {} : { plan: extra.plan }),
@@ -169,11 +169,11 @@ describe("预算与估算", () => {
     expect(b.trigger).toBe(Math.round((1_000_000 - 32_000 - 4096) * 0.85));
   });
 
-  test("常驻层超 55% 时 preflight 拒绝，且文案带数字", () => {
+  test("提示词底子超 55% 时 preflight 拒绝，且文案带数字", () => {
     const small: ContextBudget = { ...BUDGET, usable: 1000 };
     const r = preflight(small, 6000, 0);
     expect(r.ok).toBe(false);
-    expect(r.message).toContain("常驻上下文过大");
+    expect(r.message).toContain("提示词底子过大");
     expect(preflight(small, 100, 100).ok).toBe(true);
     // 分层上限：合计没超 55%，但单独一层超了
     const layered: ContextBudget = { ...BUDGET, usable: 1000, systemCap: 400, toolsCap: 150, stateCap: 100 };
@@ -294,7 +294,6 @@ describe("折叠 · 累积与账本", () => {
       summary: { session: "第 13 章按用户要求让林晚保持沉默", accomplished: [], intent: [], open: ["账册何时暴露"], pointers: ["state/foreshadowing.md"] },
       pinned: {
         decisions: [{ at: 1, proposal: "plan:13", verdict: "refine", note: "把账册往后挪" }],
-        resident: [{ path: "design/core.md", rev: "abc123" }],
         project: "写到第 12 章",
       },
       evidence: [{ kind: "read", path: "state/foreshadowing.md", rev: "a1b2c3", label: "read", chars: 812 }],
@@ -321,7 +320,7 @@ describe("折叠 · 失败与降级", () => {
       messages,
       budget: { ...BUDGET, trigger: 0, lowWater: 0 },
       system: "fold",
-      pinned: { decisions: [], resident: [] },
+      pinned: { decisions: [] },
       decisions: [],
       open: [],
       summarizer: fake(),
@@ -532,7 +531,7 @@ test("摘要满了两级折叠：旧行进 archive，session 不超预算", () =
         open: [],
         pointers: [],
       },
-      pinned: { decisions: [], resident: [] },
+      pinned: { decisions: [] },
       evidence: [],
       budget: { usable: 0, trigger: 0, before: 0, after: 0 },
       dropped: { messages: 0, toolResults: 0, toolChars: 0 },

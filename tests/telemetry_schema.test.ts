@@ -50,7 +50,7 @@ const SAMPLES: { [K in TraceEventType]: TraceEventData[K] } = {
     at: 1,
     consumed: { fromSeq: 1, toSeq: 4, turns: 2 },
     summary: { session: "s", accomplished: [], intent: [], open: [], pointers: [] },
-    pinned: { decisions: [], resident: [] },
+    pinned: { decisions: [] },
     evidence: [],
     budget: { usable: 1000, trigger: 850, before: 900, after: 200 },
     dropped: { messages: 4, toolResults: 0, toolChars: 0 },

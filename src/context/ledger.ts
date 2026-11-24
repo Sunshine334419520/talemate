@@ -14,8 +14,8 @@ function kindOf(name: string): EvidenceEntry["kind"] | undefined {
   switch (name) {
     case "read":
       return "read";
-    case "search":
-      return "search";
+    case "grep":
+      return "grep";
     case "task":
       return "task";
     case "recall":
@@ -83,7 +83,7 @@ export function evidenceFrom(messages: readonly StoredMessage[]): EvidenceEntry[
             ? typeof input.name === "string"
               ? input.name
               : "skill"
-            : kind === "search" || kind === "recall"
+            : kind === "grep" || kind === "recall"
               ? typeof input.query === "string"
                 ? input.query
                 : p.name
@@ -102,7 +102,7 @@ export function evidenceFrom(messages: readonly StoredMessage[]): EvidenceEntry[
         ...(path === undefined ? {} : { path }),
         ...(section === undefined ? {} : { section }),
         ...(rev === undefined ? {} : { rev }),
-        ...(kind === "task" || kind === "search" || kind === "recall"
+        ...(kind === "task" || kind === "grep" || kind === "recall"
           ? { digest: kind === "task" ? conclusionDigest(p.output) : firstLine(p.output) }
           : {}),
       };

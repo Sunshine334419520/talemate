@@ -17,7 +17,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DOC_ROOTS, hasCredentials, loadModelConfig, projectPaths, sessionPaths, today } from "../src/core/config";
+import { hasCredentials, loadModelConfig, projectCorpusRoots, projectPaths, sessionPaths, today } from "../src/core/config";
 import { PLAN_KEY, type PendingProposal } from "../src/core/types";
 import { openSession, type UserIO } from "../src/session/session";
 import { enumerateDocs, readDoc } from "../src/storage/corpus";
@@ -203,8 +203,8 @@ async function readTree(dir: string, prefix = ""): Promise<Record<string, string
 
 async function snapshot(projectId: string, sessionId: string): Promise<TurnSnapshot> {
   const files: Record<string, string> = {};
-  for (const root of DOC_ROOTS) {
-    for (const path of await enumerateDocs(projectId, `${root}/`)) {
+  for (const root of projectCorpusRoots(projectId)) {
+    for (const path of await enumerateDocs(projectId, `${root.dir}/`)) {
       const text = await readDoc(projectId, path);
       if (text !== undefined) files[path] = text;
     }
