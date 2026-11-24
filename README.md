@@ -73,6 +73,7 @@ talemate new 我的小说 悬疑
 | 评测系统怎么规划（设计稿） | [`docs/eval-system.md`](docs/eval-system.md) |
 | 会话事件、投影与导出 | [`docs/telemetry.md`](docs/telemetry.md) |
 | Agent / 工具 / Skill 怎么分类与触发 | [`docs/agents.md`](docs/agents.md) |
+| 这本书有哪些资产、每种资产的文件长什么样 | [`docs/assets.md`](docs/assets.md) |
 | 企划的四层活文档与两段式落盘 | [`docs/design-docs.md`](docs/design-docs.md) |
 | 角色卡长什么样、怎么维护 | [`docs/characters.md`](docs/characters.md) |
 | 大纲由什么构成、为什么没有整本大纲 | [`docs/outline.md`](docs/outline.md) |

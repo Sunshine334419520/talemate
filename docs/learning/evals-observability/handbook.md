@@ -472,7 +472,7 @@ export interface EvalCase {
 export interface Manifest {
   promptHash: string;                       // 装配后的 system + tools 全量 hash
   promptParts: Record<string, string>;      // 分段 hash：mate / tools / modes / skills
-  contextHash: string;                      // 注入的常驻文档 hash（≠ prompt！）
+  contextHash: string;                      // 随请求注入的非 prompt 内容 hash（今天恒为空串）
   model: { provider: string; model: string; temperature?: number; maxTokens: number };
   toolsHash: string;
   codeCommit: string;
@@ -610,9 +610,8 @@ talemate 的「prompt」有六个载体，改任何一个都会改变行为：
 | 模式纪律 | `prompts/modes/<id>.txt` | 进入模式后 | `promptParts.modes` |
 | 正文规范 | `prompts/prose.rules.txt` | 写作窗口（harness 注入） | `promptParts.prose` |
 | 技能卡 | `skills/*/SKILL.md` | 模型加载后（tool 结果） | `promptParts.skills` |
-| **常驻设定** | `design/core.md`、`design/wiki/world.md` | 每轮 | **`contextHash`（不是 prompt）** |
 
-**为什么要分开**：常驻设定是**数据**，不是提示词。但它同样改变行为。如果只 hash prompt，那么「同一个 prompt 跑出不同结果」就无法解释——因为改的是 `core.md`。
+**为什么曾把 `contextHash` 单列**：从前 `design/core.md` 与 `design/wiki/world.md` 每轮注入 system，它们是**数据**而不是提示词，改一份 `core.md` 也会改变行为；只 hash prompt 就解释不了"同一个 prompt 跑出不同结果"。现在没有文档常驻，`contextHash` 保留字段但恒为空串——真要解释差异，看的是模型这一步**读了哪些文件**（证据账里的 `path#section@rev`）。
 
 ```ts
 // src/eval/manifest.ts
@@ -629,7 +628,7 @@ export function buildManifest(s: Session, cfg: ModelConfig): Manifest {
       modes: sha(s.mode ? readPrompt(`modes/${s.mode}.txt`) : ""),
       skills: sha(s.loadedSkillDigests.join("\n")),
     },
-    contextHash: sha(s.residentDocs.join("\n")),
+    contextHash: "",
     model: { provider: cfg.provider, model: cfg.model, temperature: cfg.temperature, maxTokens: cfg.maxTokens },
     toolsHash: sha(tools),
     codeCommit: execSync("git rev-parse --short HEAD").toString().trim(),
@@ -1101,7 +1100,7 @@ turn  ctx_tokens  system  tools  messages  note
 #### S1-3 manifest 与 prompt hash（半天）
 
 - **做什么**：实现 §4.7 的 `buildManifest`；每次 run 写 `manifest.json`；报告表头抄四行。
-- **验收**：改一个字（比如 `mate.system.txt` 加一个空格），`promptHash` 变；改 `design/core.md`，`contextHash` 变而 `promptHash` 不变。
+- **验收**：改一个字（比如 `mate.system.txt` 加一个空格），`promptHash` 变；改 `design/core.md`，`promptHash` 不变（没有文档常驻，它不在请求里，只在模型 `read` 时才影响这一步）。
 - **坑**：hash 装配后的字节，不是源文件。`context/assemble.ts` 的拼接逻辑改了也要能反映。
 
 #### S1-4 指标聚合（1 天）

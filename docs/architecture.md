@@ -2,7 +2,7 @@
 
 > **职责**：回答"代码怎么组织、一次请求从进到出经过什么"。
 > **读者**：要改 `src/` 的人。
-> **对齐代码**：2026-11-22 · 本文与代码冲突时**以代码为准** · 2026-11-22 上下文压缩改为 `context/compaction` 记录（见 `compaction.md`）
+> **对齐代码**：2026-11-24 · 本文与代码冲突时**以代码为准** · 2026-11-24 文档不再常驻注入、语料根改为项目级注册表（`core/roots.ts`）
 > 相邻：`agents.md`（Agent 与工具）· `design-docs.md`（写作领域）· `product.md`（为什么这么设计）
 
 ## 模块分层
@@ -50,9 +50,9 @@ skill/    SKILL.md 发现与注入（内置库 / 全局库 / 项目库，优先�
     ├── talemate.json               # 项目元信息: id/书名/题材/createdAt/agents.<id> 覆盖
     ├── AGENTS.md                   # 用户自己的项目规矩（不预建·可空）；存在才每轮注入
     ├── design/                     # ◀ 企划活文档（懒建——文件被写才出现）
-    │   ├── core.md                 #   核心层: 小说介绍（常驻）
+    │   ├── core.md                 #   核心层: 小说介绍（按需 read）
     │   ├── wiki/                   #   世界层 = wiki
-    │   │   ├── world.md            #     总纲入口（常驻）: 空间与舞台/规则与秩序/术语表
+    │   │   ├── world.md            #     总纲入口（按需 read）: 空间与舞台/规则与秩序/术语表
     │   │   └── <题>.md             #     专题页（按需读，自由新增）: 地理/势力/历史…
     │   ├── characters/             #   人物层: 一角色一卡（无派生总表，名单现算）
     │   │   └── <名>.md             #     # 角色:<名> + 必有五格 + 自由长尾
@@ -71,9 +71,11 @@ skill/    SKILL.md 发现与注入（内置库 / 全局库 / 项目库，优先�
         └── sessions/<id>/          #   会话元 session.json + 事件日志 events.jsonl + 改动索引 changes.jsonl
 ```
 
-**三个根 vs 工作区**：`design/`（设定）、`chapters/`（正文）、`state/`（当前状态）是**作品的三个根**
-——写入可写、读口可读、可进版本控制，清单只有一份（`core/config.DOC_ROOTS`，读写两处共用）。
-`.talemate/` 是**引擎的**：可清理、用户不必看、不参与 `list` / `search` / 不变量 / 结构规范
+**默认三个根 vs 工作区**：`design/`（设定）、`chapters/`（正文）、`state/`（当前状态）是**作品默认的三个根**
+——写入可写、读口可读、可进版本控制。根表是**项目级**的（`talemate.json` 的 `corpusRoots`，形状见
+`core/roots.ts`）：读口、写口、`glob`/`grep` 与权限 pattern 都从这一张表取数，加一个根（如 `notes/`）
+只改元数据，不改工具代码。
+`.talemate/` 是**引擎的**：可清理、用户不必看、不参与 `glob` / `grep` / 不变量 / 结构规范
 （所以规划工件 `read` 也读不到，它的路径由待办注记报出来）。
 
 **考据本（`research/`）也在这一侧，而且更极端**：它连用户都看不见——不进任何界面、不拍板，
@@ -144,12 +146,8 @@ messages = [<context-state> 合成消息] + 最近 turn 原文 + 刚读的设定
 
 1. **AGENTS.md = 常驻、每步全量注入**。内容归用户——项目级、用户管理、**默认可空、不预建**；系统只提供"存在就注入"的能力。**产品核心行为不得依赖它**：路径约定归工具，分层工作法归 design-spec，写作与命名纪律归各角色 system。
 2. **Skill = 目录化、按需注入**。正文不常驻；system 只给清单，命中后用 `skill` 工具把正文作为 tool-result 带进来。三个库按**扫描顺序**定优先级：仓库内置 < 用户全局 < 项目。
-3. **活文档 = 工具读取、按需切片**。要什么读什么，读到的内容作为 user 侧材料。**例外：`core.md` + `wiki/world.md` 每轮现读全文注入**（见下）。
+3. **活文档 = 工具读取、按需切片**。要什么读什么，读到的内容作为 user 侧材料。**没有任何文档常驻**——包括 `core.md` 与 `wiki/world.md`。
 4. **取当前版本**：写作/task 委派时现读，绝不引用缓存。
-
-### 常驻注入
-
-`buildResidentDesigns` 现读 `core.md` + `wiki/world.md` 全文，**只给可见的 primary（mate）**——subagent 不注入（省 token，靠 task prompt 切片）。无状态包装、不缓存。
 
 ## 上下文压缩
 
@@ -163,7 +161,7 @@ messages = [<context-state> 合成消息] + 最近 turn 原文 + 刚读的设定
   > 已知值：`deepseek` 全系 **1M** · `claude-opus/sonnet/fable/mythos` 1M · `claude-haiku` 200K ·
   > 认不出的按 128K（保守：低估让人早点收拾上下文，高估让人撞墙）。
 - **产物 = 一条 `context/compaction` 事件**（`CompactionRecord`）：累积摘要 + 由 harness 确定性
-  生成的 pinned（进度 / 未回收承诺 / 决定 / 规划坐标 / 常驻 rev）+ 证据账。它是原子提交；
+  生成的 pinned（进度 / 未回收承诺 / 决定 / 规划坐标）+ 证据账。它是原子提交；
   摘要失败时写一条 `degraded` 记录（只把工具结果换成指针），或干脆不写。
 - **上下文边界**：窗口 = 记录渲染出的 `<context-state>` + `consumed.toSeq` 之后的原文。
   最近 turn 的 tool part 原样保留，不拍平。旧 `role:"compaction"` 消息作为 legacy 继续累积。

@@ -37,7 +37,7 @@
 
 **`notes` 是第五类，理由不是"更好管"**：它**装不进 `edit`**。求值第 1 步让任何匹配的 `deny` 恒赢、不受层级顺序影响，而子代理的规则集又是从父的 deny 派生的——researcher 身上挂着 `edit: "*": deny`，那条 deny 压得住 `edit` 里任何"考据本例外"。可它必须在**隔离上下文**里记下一笔、还不能弹用户的脸（子代理的 `ask` 就是一次 `io.confirm`），所以只能自成一类。
 
-**刻意不设权限的**：`read` / `list` / `search`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `recall`（翻考据本，同上）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**「先摆出来、用户拍板才执行」已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft` / `enter-prose` / `exit-prose`（模式切换）。
+**刻意不设权限的**：`read` / `glob` / `grep`（读项目文档是这个产品的日常，且我们没有 `.env` 那种"读了就是泄露"的对应物）· `recall`（翻考据本，同上）· `design-spec` / `skill`（只往上下文里放东西）· `propose-design` / `propose-plan`（**「先摆出来、用户拍板才执行」已经是一道更严的门**，见文末）· `enter-draft` / `exit-draft` / `enter-prose` / `exit-prose`（模式切换）。
 
 **无权限的读有个代价，`recall` 上要记住：** 没有 `permission`，runner 那道粗粒度兜底（`if (tool.permission && …)`）对它就是死代码，`visibleTools` 也没有可 deny 的把手——**挡不住被幻觉调出来的调用，也不能被某个模式收走**。所以它的圈定必须是**结构性的**：目录由项目推死、不收任何路径参数、题目在读侧也过校验。
 

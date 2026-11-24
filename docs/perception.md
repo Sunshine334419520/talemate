@@ -2,7 +2,7 @@
 
 > **职责**：定义 Agent 每一步推理之前，哪些材料有资格进入上下文、以什么层级和位置进入、哪些压缩、哪些留在工具后面、以及如何记录这次感知决策。
 > **读者**：要改 `src/session/`、`src/context/`、`src/framework/`、`prompts/*` 的人；以及要判断"某次输出错在模型，还是错在模型一开始就没看到"的人。
-> **对齐代码**：2026-11-23 · shadow 已落地并默认开启；inject 已接上（`TALEMATE_PERCEPTION=inject`，只给 eval 对照用，默认不开）；发现未做。标【现状】的部分已按当前代码核对；其余是本文的设计。本文不受既有接口约束；旧版以“生产单元/问题登记表”为中心，已废弃。
+> **对齐代码**：2026-11-24 · shadow 已落地并默认开启；inject 已接上（`TALEMATE_PERCEPTION=inject`，只给 eval 对照用，默认不开）；发现未做。标【现状】的部分已按当前代码核对；其余是本文的设计。本文不受既有接口约束；旧版以“生产单元/问题登记表”为中心，已废弃。
 > **相邻**：`compaction.md`（语义压缩：折叠、证据账）· `architecture.md`（一次交互怎么走）· `state.md`（状态层）· `design-docs.md`（四类活文档）· `chapter-planning.md`（章节生产）· `telemetry.md`（事件与 trace）· `perception-triage.md` / `perception-discovery.md`（分诊与发现的详细设计，待写）
 
 **一句话**：感知不是"把该知道的都放进去"，而是"这一步推理需要的最小高信号材料，按正确的层级和位置进入上下文，其余留在工具后面"。
@@ -106,7 +106,7 @@ Profile 是**分诊的起点**，不是硬编码清单：同一步骤的不同�
 ### 4.3 位置也是分诊
 
 ```text
-system（头部）  角色、规则、常驻核心/世界观（稳定、少变）
+system（头部）  角色、规则（稳定、少变）
 system（中部）  P2 压缩件（越大纲、旧决定、背景）
 system（尾部）  P0 + 高 P1（紧挨生成；避免 Lost in the Middle）
 messages        最近对话原文；当前用户消息在最后
@@ -117,7 +117,7 @@ messages        最近对话原文；当前用户消息在最后
 
 1. **P0 不放中间。** 长上下文对开头和结尾更敏感；P0 必须在尾部或最新请求附近。
 2. **稳定规则放头部，变化状态放尾部。** 头部每轮变化小，值得缓存；尾部每轮重算。
-3. **P3 不进 prompt 正文。** 只给 `list` / `search` / `read` 的入口；模型需要时自己取。
+3. **P3 不进 prompt 正文。** 只给 `glob` / `grep` / `read` 的入口；模型需要时自己取。
 
 inject 的渲染只取 `include` / `compress` 且**尚未在上下文里**的决定：每块以
 `<perception purpose placement>` 包裹，每个来源一个 `<perception-item tier source>`。
@@ -131,10 +131,10 @@ inject 的渲染只取 `include` / `compress` 且**尚未在上下文里**的决
 |---|---|
 | **authority**：authoritative / current / supporting / inferred | 权威材料不能被推断替代 |
 | **freshness**：fresh / stale（带 rev） | 过期的 P0/P1 不能进；要么重取，要么报错 |
-| **cost**：free / cheap / expensive / interrupt | 常驻 < 计算 < 状态 < 文档小节 < 章节正文 < 外网 < 问用户 |
+| **cost**：free / cheap / expensive / interrupt | system 固定层 < 计算 < 状态 < 文档小节 < 章节正文 < 外网 < 问用户 |
 | **size**：字符/token | 决定压缩还是丢弃 |
 | **expandable**：能否按 path/section 再取 | P3 与发现的入口 |
-| **already-in-context**：是否已在常驻/窗口/证据账里 | 去重，避免同一份材料出现两次 |
+| **already-in-context**：是否已在窗口/证据账里 | 去重，避免同一份材料出现两次 |
 
 分诊不是“把候选全部塞进去再排”，而是**先决定资格与层级，再决定位置与粒度**。
 
@@ -217,14 +217,14 @@ export interface ContextPlan {
 
 ```text
 问题/缺口
-  → 候选地图：list / 已知锚点 / 名字与术语
-  → 广扫：search（40 条上限）
+  → 候选地图：glob / 已知锚点 / 名字与术语
+  → 广扫：grep（100 条上限）
   → 精读：read section（12k 上限，offset 续读）
   → 沿人名/术语/章号继续找
   → 停：关键问题有证据 / 预算用完 / 没有新命中
 ```
 
-- 用现有 `list` / `search` / `read`；**不新增发现 agent**。
+- 用现有 `glob` / `grep` / `read`；**不新增发现 agent**。
 - 最多 N 轮（建议 3），每轮必须缩小范围或命中新证据；没有进展就停。
 - 不使用"把 2000 个文件全读一遍"式扫描。
 - 整个过程进 Perception Trace：查询、命中、进入、丢弃、轮数。
@@ -320,7 +320,7 @@ budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
 ```text
 Session.buildRequest(agent)
   → collectCandidates(purpose, project, session)
-      resident / state / plan / chapters / decisions / craft / reader / tool results
+      plan / state / chapters / decisions / craft / reader / tool results
   → triage(candidates, purpose, budget)
       → ContextPlan { decisions }
   → assemble(plan)（v1 shadow 不消费；inject 才消费）→ system + messages
@@ -341,9 +341,9 @@ Session.generate
 
 ### 9.3 工具与发现
 
-- `read` / `search` / `list` / `recall` 既是 P3 的取数口，也是渐进发现的执行口。
-- 工具边界的上限（read 12k、search 40、list 80、task 12k）是感知预算的第一道，不是最后一道。
-- 常驻文档去重：`core.md` / `wiki/world.md` 已在 system，`read` 不再返回全文。
+- `read` / `glob` / `grep` / `recall` 既是 P3 的取数口，也是渐进发现的执行口。
+- 工具边界的上限（read 12k、glob/grep 100 条、task 12k）是感知预算的第一道，不是最后一道。
+- **没有文档常驻**，所以没有"已在 system 里、read 不必返回全文"这条去重规则了。
 - **不新增感知工具、不新增 agent。**
 
 ### 9.4 与记忆/治理的边界
@@ -371,14 +371,14 @@ Session.generate
 2. **分诊 Profile**：先做 `plan` / `prose` / `revision` 三个；`chat` 用轻量版。
 3. **位置**：system.head / system.tail / system.middle / tool.index；P0 放尾部。
 4. **压缩取舍**：P2 截取/融合；P3 只留坐标；P0 超限报错。
-5. **发现**：复用 `list`/`search`/`read`，最多 3 轮，记录 trace；不新建 agent。
+5. **发现**：复用 `glob`/`grep`/`read`，最多 3 轮，记录 trace；不新建 agent。
 6. **Perception Trace**：`perception/plan` 事件 + 指标。
 7. **不做的**：多模态、向量库、问题登记表、在感知层做审批门、reader/craft 自动生成。
 
 先跑两三章真实项目，观察 P0/P1 的权重、位置、压缩比是否真的影响输出，再调 Profile 与阈值。
 
-**当前落地（2026-11-23）**：只做 `prose` 的 shadow。候选来自已批准规划、当前指令、常驻 core/world、
-角色卡与角色此刻、`progress`、未回收承诺、上一章结尾、上一轮决定、常驻声音简报；`state/reader`、
+**当前落地（2026-11-24）**：只做 `prose` 的 shadow。候选来自已批准规划、当前指令、
+角色卡与角色此刻、`progress`、未回收承诺、上一章结尾、上一轮决定、声音简报；`state/reader`、
 `state/craft`、`state/knowledge`、`state/relations` 还没有载体，按 `missing` 记入 trace。
 `/trace` 已显示 plan 次数、P0 覆盖、延迟/丢弃/过期/重复/缺失与最近预算；inject 已可用
 （`TALEMATE_PERCEPTION=inject`，只给 eval 变体对照），发现循环未做。
@@ -389,7 +389,7 @@ Session.generate
 ## 11. 验收标准
 
 1. 每一步的 `request/header` 都有 `perceptionHash`；hash 变化时写一条 `perception/plan`，能重建候选、层级、动作、位置与来源 rev。
-2. 同一份材料不在上下文出现两次（常驻/窗口/证据账去重）。
+2. 同一份材料不在上下文出现两次（窗口/证据账去重）。
 3. P0 候选全部进入；P0 超预算时报可操作错误，不静默截断。
 4. P0 位于 system 尾部或最新请求附近，不在长上下文中部。
 5. 过期的候选不进入；要么重取，要么在 trace 里记 `stale`。
@@ -433,7 +433,7 @@ export interface ContextCandidate {
   authority: "authoritative" | "current" | "supporting" | "inferred";
   freshness: "fresh" | "stale";
   source: {
-    kind: "resident" | "doc" | "state" | "derived" | "session" | "user" | "web" | "tool";
+    kind: "doc" | "state" | "derived" | "session" | "user" | "web" | "tool";
     path?: string;
     section?: string;
     rev?: string;
@@ -441,7 +441,7 @@ export interface ContextCandidate {
     label?: string;
   };
   cost: "free" | "cheap" | "expensive" | "interrupt";
-  expandable?: { tool: "read" | "search" | "recall"; path?: string; query?: string };
+  expandable?: { tool: "read" | "grep" | "recall"; path?: string; query?: string };
 }
 ```
 
@@ -449,7 +449,7 @@ export interface ContextCandidate {
 
 1. **P0/P1 的默认权重**：先按本文件 Profile 手动写，跑真实章节后调；不要先上学习型打分。
 2. **头部/尾部的实际效果**：`system.tail` 是否足够接近生成，还是要 P0 作为最后一条 user 消息？先用 system.tail 测。
-3. **P3 的索引粒度**：只给路径 + 一行说明，还是给 `list` 目录？先给路径 + 标题索引。
+3. **P3 的索引粒度**：只给路径 + 一行说明，还是给 `glob` 目录清单？先给路径 + 标题索引。
 4. **发现轮数**：3 轮是否够；以"没有新命中"为停条件是否需要更细的收敛判据。
 5. **读者账/工艺账**：属于 memory 的设计；感知只预留 reader/author 两条信号线，不在本文件定义格式。
 6. **多模态**：小说项目何时真正需要图/表；在此之前不做。

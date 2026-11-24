@@ -2,7 +2,7 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：2026-11-24 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/config.ts` 的 `DOC_ROOTS`，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`；右栏编辑的自动保存与离开拦截在 `desktop/src/renderer/SidePane.tsx` / `Workspace.tsx`，CAS 在 `src/storage/atomic.ts`，IPC 在 `desktop/src/main/index.ts` 的 `docs:save`
+> **对齐代码**：2026-11-24 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/roots.ts` 的根表，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`；右栏编辑的自动保存与离开拦截在 `desktop/src/renderer/SidePane.tsx` / `Workspace.tsx`，CAS 在 `src/storage/atomic.ts`，IPC 在 `desktop/src/main/index.ts` 的 `docs:save`
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `ask-user.md`（提问与 pending）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
@@ -266,7 +266,7 @@ flowchart LR
 
 两条纪律：
 
-1. **界面不自己读文件系统。** "什么算一份作品文档"只能有一处（今天在 `core/config.ts` 的 `DOC_ROOTS` 与 `corpus.ts`）；界面要是自己 walk 目录，就会长出第二份，两份迟早说两套话。
+1. **界面不自己读文件系统。** "什么算一份作品文档"只能有一处（今天在 `core/roots.ts` 的根表与 `corpus.ts`）；界面要是自己 walk 目录，就会长出第二份，两份迟早说两套话。
 2. **裁决喂给同一段判定。** 三向、确认、提问的**问法**归交付层，**判定**归 harness（`session.ts` 已经这么分了）。
 
 形态是桌面应用：harness 仍然跑在本机的 bun 子进程里，桌面壳只做窗口与前端。这与 `architecture.md` 里已经写下的"模块边界必须让 server 能成为另一个薄外壳"是同一条。
@@ -284,7 +284,7 @@ flowchart LR
 | | 做什么 |
 |---|---|
 | **新** | 桌面壳 + 首屏的选作品界面 |
-| **新** | 左栏的会话列表与文件树（分组与顺序照 `anchor.ts`，范围照 `DOC_ROOTS`） |
+| **新** | 左栏的会话列表与文件树（分组与顺序照 `anchor.ts`，范围照根表的 `read` 根） |
 | **改** | 三处核心接口，见「十一」 |
 
 **存量代码几乎没有要动的**：session、循环、工具、写口全部照旧——这正是当初把 `UserIO` 单独划出来的用处。
@@ -497,7 +497,7 @@ bun run desktop:selftest # 不开窗口，主进程跑一个 mock 回合
 左栏文档树、右栏只读预览落地。三处值得记下来的：
 
 - **"目录怎么组织"这条判据只写了一遍。** 我第一版在壳里按字母序排（那是第二份判据），随后挪回
-  `framework/anchor.ts` 的 `docTree()`：顶层按 `DOC_ROOTS` 的次序、同层目录在前、其余按
+  `framework/anchor.ts` 的 `docTree()`：顶层按根表的次序、同层目录在前、其余按
   **`numeric`** 比较。那个 `numeric` 不是洁癖——`chapter_ch2` 与 `chapter_ch10` 按字典序正好反过来，
   而界面上一眼看得出的顺序错，比"少了点什么"更让人以为程序坏了。四条测试钉着它（`framework.test.ts`）。
 - **markdown 必过 DOMPurify。** 文档里可能贴进任何东西（查证时从网页抄来的片段、用户自己粘的

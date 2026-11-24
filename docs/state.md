@@ -2,7 +2,7 @@
 
 > **职责**：回答"哪些东西随写作在变、它们存在哪、什么时候写回去"。
 > **读者**：要改 `state/` 相关行为的人；以及想知道"为什么它不在 `design/` 下面"的人。
-> **对齐代码**：2026-10-19 · 根清单在 `core/config.ts` 的 `DOC_ROOTS`（读口写口共用一份）；`state/progress.md` 的目录行在 `framework/summaries.ts`；第 4 条纪律、承诺账/知识边界与 `progress.md` 的 7 章窗口给模型看的那一份在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的状态回写那一条
+> **对齐代码**：2026-11-24 · 语料根表在 `core/roots.ts`（项目级，`talemate.json` 的 `corpusRoots`；读口写口共用）；`state/progress.md` 的目录行在 `framework/summaries.ts`；第 4 条纪律、承诺账/知识边界与 `progress.md` 的 7 章窗口给模型看的那一份在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的状态回写那一条
 > 相邻：`design-docs.md`（四层活文档）· `characters.md`（卡上不装状态）· `outline.md`（序列进度）· `chapter-planning.md`（章末回写挂在规划里）
 
 ## 一句话
@@ -50,11 +50,11 @@ state/
 
 > 用户提出要加什么就加什么。工具原样保留，不催、不校验。
 
-所以**加一类状态 = 建一个目录或文件，零代码**。要新代码的只有"加一个根"那一件事，而那件事一辈子大概只做这一次。
+所以**加一类状态 = 建一个目录或文件，零代码**。连"加一个根"也不用改代码：往项目根表（`talemate.json.corpusRoots`）里加一条 `{ id, dir, read, write, search }`，读口、写口、`glob`/`grep` 同时认得它。
 
-**写手的写法说明不在 `design_spec`**：那一行如果加（`sections: []`），会命中 `summaries.ts` 的"不分格文档 → 一行首句"分支，把 `list` 里角色状态的小节名换掉——而 `summaries.ts` 明说那张铺法"有用"。所以第 4 条纪律给模型看的那一份挂在**规划 prompt**（`propose-plan.txt` / `planner.system.txt` 的状态回写那一条），写手正是在那一刻写状态文件。
+**写手的写法说明不在 `design_spec`**：那一行如果加（`sections: []`），会命中 `summaries.ts` 的"不分格文档 → 一行首句"分支，把目录索引里角色状态的小节名换掉——而 `summaries.ts` 明说那张铺法"有用"。所以第 4 条纪律给模型看的那一份挂在**规划 prompt**（`propose-plan.txt` / `planner.system.txt` 的状态回写那一条），写手正是在那一刻写状态文件。
 
-`progress.md` 在 `list` 里只占一行（几条 · 最新一条）——它是只追加的流水，几十章之后整篇铺小节会把目录淹掉，而按 `outline.md` 立的判据，**没有被分别读取的小节就不展开**。
+`progress.md` 在目录索引里只占一行（几条 · 最新一条）——它是只追加的流水，几十章之后整篇铺小节会把目录淹掉，而按 `outline.md` 立的判据，**没有被分别读取的小节就不展开**。
 
 ## 四条纪律
 
@@ -62,7 +62,7 @@ state/
 
 **2. 流水是"读"的依据，不是进度本身。** 故事内时间、写到哪儿了都不单独存——它们从 `progress.md` 现读现算：“能算出来的不要存”，存一份进度表，它迟早和实际章节数说两套话，而**脱节的缓存比没有更糟**。状态卡上那行"写到第 3 章（…）"就是这么现读出来的（`report.ts` 的 `outlineBrief`）。**它只报位置不报剩余**——理由见 `roadmap.md` 的“序列进度只报位置，不报剩余”。
 
-**3. 不常驻注入。** `design/core.md` 与 `design/wiki/world.md` 每轮注入，state **不**——它每章都在变，而且只在"写作前那一步"用得上（规划本来就会读它）。常驻等于每轮为一份只在某一刻有用的东西付钱。第 4 条与 `progress.md` 的窗口保证它不随章节长大，但那也不是常驻的理由。
+**3. 不常驻注入。** 没有文档常驻——`design/core.md` 与 `design/wiki/world.md` 现在也要 `read`，state 更不必说。它每章都在变，而且只在"写作前那一步"用得上（规划本来就会读它）。常驻等于每轮为一份只在某一刻有用的东西付钱。第 4 条与 `progress.md` 的窗口保证它不随章节长大。
 
 **4. 状态记"现在"，不记"来历"。** 添一行之前先过一句：**这一行描述的是"现在"，还是"发生过什么"？**"现在"留着——它约束下一章怎么写；"发生过什么"归**正文**（它本来就是全量记录），或者哪儿都不去。
 
@@ -108,8 +108,8 @@ state/
 
 | 文件 | 职责 |
 |---|---|
-| `core/config.ts` | `DOC_ROOTS`（三个根，读口写口共用）与 `rootAbs`（唯一的根→目录映射） |
-| `storage/corpus.ts` | 读口：枚举 / 读 / 扫词，三个根通吃 |
-| `framework/write_ops.ts` | 写口：`WRITE_ROOTS` 就是同一份清单，两处不会各说各话 |
-| `framework/summaries.ts` | `state/progress.md` 在 `list` 里占哪一行 |
-| `framework/anchor.ts` | `buildIndex` 的分组次序（三个根在头里） |
+| `core/roots.ts` + `core/config.ts` | `CorpusRoot` 表（`id` / `dir` / `read` / `write` / `search`）与项目级读取（`projectCorpusRoots`）；`corpusRootAbs` 是唯一的根→目录映射 |
+| `storage/corpus.ts` | 读口：枚举 / 读 / 扫词，按根表通吃 |
+| `framework/write_ops.ts` | 写口：可写边界取自同一张根表的 `write` 根，两处不会各说各话 |
+| `framework/summaries.ts` | `state/progress.md` 在目录索引里占哪一行 |
+| `framework/anchor.ts` | `buildIndex` 的分组次序（默认三个根在头里） |

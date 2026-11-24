@@ -1,9 +1,9 @@
 # 上下文压缩架构（Context Fold）
 
-> **职责**：定义会话上下文的生命周期——哪些材料常驻、哪些按需、哪些被折叠、哪些绝不进摘要，以及压缩失败时怎么办。
+> **职责**：定义会话上下文的生命周期——哪些材料按需、哪些被折叠、哪些绝不进摘要，以及压缩失败时怎么办。
 > **读者**：要改 `src/session/`、`src/context/`、`src/storage/session-store.ts`、`src/telemetry/` 的人。
-> **对齐代码**：2026-11-21 · 标【现状】的段落已按代码核对；标【现状】的段落尚未落地。
-> **相邻**：`architecture.md`（一次交互怎么走）· `state.md`（状态层）· `design-docs.md`（常驻设定）· `telemetry.md`（事件与投影）
+> **对齐代码**：2026-11-24 · 标【现状】的段落已按代码核对；常驻注入已删（pinned 不再带 resident）。
+> **相邻**：`architecture.md`（一次交互怎么走）· `state.md`（状态层）· `design-docs.md`（设计文档体系）· `telemetry.md`（事件与投影）
 
 **一句话**：压缩不压书，只压对话。书的事实从文件现取；压缩只保留磁盘上没有的意图、决定和未完成任务。
 
@@ -32,7 +32,7 @@
 | **折叠（fold）** | 把工作集里最老的一段 turn 转成一条上下文记录的动作。不是"摘要"，产物包含摘要、证据、决定、pinned 快照 |
 | **折叠记录（CompactionRecord）** | 一次折叠的 canonical 事件；消息窗口由它投影出来 |
 | **工作集（working set）** | 仍以原文保留在窗口里的消息；折叠只吃工作集 |
-| **pinned** | 折叠时由 harness 从文件与事件确定性生成的块：位置、未回收承诺、用户决定、计划、常驻 rev、证据 |
+| **pinned** | 折叠时由 harness 从文件与事件确定性生成的块：位置、未回收承诺、用户决定、计划、证据 |
 | **证据账（evidence ledger）** | 被压段里"读过什么"的确定性记录：工具、路径、小节、rev、字数、结论摘要 |
 | **决定账（decision ledger）** | 会话内用户拍板的确定性记录：接受 / 拒绝 / 提意见，含用户原话 |
 | **高/低水位** | 触发折叠与折叠目标：越过高水位才折，一次折到低水位以下 |
@@ -48,10 +48,10 @@
 | # | 问题 | 代码事实 | 后果 |
 |---|---|---|---|
 | 1 | 第二次折叠丢上一份摘要 | `headText` 只认 user/assistant，compaction 落到空串；窗口又从最新 compaction 起 | 前史在第二次折叠时静默消失 |
-| 2 | 工具输出完全不参与摘要 | 摘要只取 assistant 的 `text` part；`read`/`search`/`task`/`recall` 都是 tool part | 规划简报、刚读到的设定、考据结论压一次就没 |
+| 2 | 工具输出完全不参与摘要 | 摘要只取 assistant 的 `text` part；`read`/`grep`/`task`/`recall` 都是 tool part | 规划简报、刚读到的设定、考据结论压一次就没 |
 | 3 | `recent` 不是消息，是纯文本 | `recent` 被转成 `[user]/[assistant]` 文本；tool part 与工具入参全丢；原文不在窗口里 | 最近一个 turn 的结构与内容同时丢失 |
-| 4 | 规划正文不可读 | 计划只活在内存 `pending` 与 `.talemate/plans/`；后者不在 `DOC_ROOTS` | 折叠或重启后，系统要求"照规划执行"，模型却读不到规划 |
-| 5 | system 超限时压缩无能为力 | `isOverBudget` 用含 system 的 `lastInput` 判超，`compact()` 只动 messages；窗口 ≤ 6 条直接返回 null | 常驻设定过大时每步触发压缩，永远修不好 |
+| 4 | 规划正文不可读 | 计划只活在内存 `pending` 与 `.talemate/plans/`；后者不在语料根表里 | 折叠或重启后，系统要求"照规划执行"，模型却读不到规划 |
+| 5 | system 超限时压缩无能为力 | `isOverBudget` 用含 system 的 `lastInput` 判超，`compact()` 只动 messages；窗口 ≤ 6 条直接返回 null | 提示词底子过大时每步触发压缩，永远修不好 |
 
 根因：**把"对话记录"当成了"项目记忆"**。这本书的记忆在文件里；对话里真正不可恢复的只有用户意图、否决理由、未决问题与正在进行的任务。
 
@@ -74,14 +74,13 @@
 
 ## 5. 分层模型【现状】
 
-每一轮送给模型的上下文由五层组成；只有 L2/L3 会被折叠。
+每一轮送给模型的上下文由下面几层组成；只有 L2/L3 会被折叠。**作品文档一层都不在 system 里**——包括
+`design/core.md` 与 `design/wiki/world.md`：它们和别的文档一样，靠 `read` 现取。
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ system                                                       │
 │  L0 固定层   env · role system · AGENTS.md · skill 目录       │
-│  L0 常驻层   design/core.md + design/wiki/world.md           │
-│              （每轮现读，带 rev，有字符预算）                  │
 │  L1 任务层   待审提案 · 已批准计划 · 未答提问 · 当前模式       │
 │  L1 正文窗   正文规范 + 文风卡 + 本章规划全文                  │
 ├──────────────────────────────────────────────────────────────┤
@@ -100,7 +99,6 @@
 | 层 | 内容 | 谁写 | 生命周期 | 折叠策略 |
 |---|---|---|---|---|
 | **L0 固定** | system 外壳、AGENTS.md、skill 目录 | harness | 每轮重建 | 不压 |
-| **L0 常驻** | core / world 全文 | 文件 | 每轮现读 | 不压，但限体积 |
 | **L1 任务态** | 提案、计划、提问、模式 | harness | 跨轮、可持久化 | 不压 |
 | **L1 正文窗** | 规范、文风、本章规划 | harness | 写正文期间 | 不压 |
 | **L2 工作集** | 最近对话原文 | 事件投影 | 高水位内保留 | 按 turn 整段淘汰 |
@@ -165,10 +163,8 @@ lowWater  = usable * 0.50
 
 先算 `systemTokens + toolSchemaTokens`：
 
-- `> usable * 0.55`：不折叠，返回可操作错误——"常驻设定 X 字，约占模型窗口 Y%；请拆分 `design/wiki/world.md` 或换更大窗口的模型"。
+- `> usable * 0.55`：不折叠，返回可操作错误——"提示词底子过大：system 约 X token、工具定义约 Y token，合计约占模型窗口 Z%；请精简 AGENTS.md 与 skill 目录，或换更大窗口的模型"。
 - `> usable`：第一次请求都不发。不允许先发一个必超的请求，或在 `lastInput` 上无限触发压缩。
-
-常驻文档的体积预算：`design/core.md` 建议 ≤ 8k 字符，`design/wiki/world.md` ≤ 30k 字符。超了在 `list` 与启动检查里提示，**不静默截断**——半条规则比没有规则更糟。
 
 ### 7.3 构造折叠输入
 
@@ -192,7 +188,7 @@ lowWater  = usable * 0.50
 
 工具结果分两类：
 
-- **原始材料**（`read` / `search` / `webfetch` / `recall` 列表）：只给指针 + 首段，正文由 `path#section@rev` 重读。
+- **原始材料**（`read` / `grep` / `webfetch` / `recall` 列表）：只给指针 + 首段，正文由 `path#section@rev` 重读。
 - **结论**（`task` 的 `<task_result>`、`recall` 的结论、一次考据的最终答复）：给正文，按字符上限截断。结论是感知的产物，不是可重读的原文；压掉它等于压掉取证结果。
 
 ### 7.4 生成与校验
@@ -392,7 +388,7 @@ tokens ≈ cjk + ascii + 4 × 消息条数 + tool schema 字符 × 0.3
 
 | 层 | 占 usable 上限 | 超限行为 |
 |---|---|---|
-| system（含常驻） | 40% | preflight 报错，要求拆 world.md / 换模型 |
+| system | 40% | preflight 报错，要求精简 AGENTS.md / skill 目录或换模型 |
 | tools schema | 15% | 报错（工具太多是配置问题） |
 | `<context-state>` | 10% | 先折 `<session>`，再截 `<evidence>` |
 | working set | ≥ 40% | 低于此则折叠 |
@@ -405,16 +401,15 @@ tokens ≈ cjk + ascii + 4 × 消息条数 + tool schema 字符 × 0.3
 |---|---|---|
 | `read`（无 section） | 12k 字符 | 标题索引 + 首段 + "用 section=… 读某一节"；超长 section 支持 `offset` 分页 |
 | `read`（有 section） | 12k 字符 | 第一节 + "此节还有 N 字，用 offset=… 继续" |
-| `search` | 40 条命中 | "命中 N 处，显示前 40；用 path 缩小范围" |
-| `list` | 80 行 | 文档树 + "还有 N 份" |
+| `grep` | 100 条命中 / 单文件 20 处 | "命中 N 处，显示前 100；用 path 缩小范围" |
+| `glob` | 100 条路径 | "找到 N 份，显示前 100；用 path 缩小范围" |
 | `webfetch` | 80k（已有） | 已有 |
 | `task` | 结论全文，≤ 12k | 超限截断并标注 |
 | `recall` | 目录 / 单条 | 已有 |
 
-两条感知卫生：
+一条感知卫生：
 
-1. **常驻文档去重**：`read` 读到 `design/core.md` / `design/wiki/world.md` 且没指定 section 时，返回"已在常驻层 @rev；要读某一节用 section"，避免同一份设定在上下文里出现两次。
-2. **证据账替代全文留存**：一次 `read` 的全文只需活到当前 turn 结束；之后由 `path#section@rev` 代表它。模型要细节就重读。
+**证据账替代全文留存**：一次 `read` 的全文只需活到当前 turn 结束；之后由 `path#section@rev` 代表它。模型要细节就重读。
 
 ---
 
@@ -475,7 +470,7 @@ tokens ≈ cjk + ascii + 4 × 消息条数 + tool schema 字符 × 0.3
 | `compaction-degraded` | summarizer 抛错 → 工具结果变指针，user/assistant 文本保留，无新增专名 |
 | `compaction-hysteresis` | 折叠一次后下一次请求不再触发 |
 | `compaction-oversized-turn` | 单 turn 超预算时只修剪工具结果，不拆 Q/A |
-| `compaction-system-overflow` | 常驻设定超窗 → 报错且不发请求，不进入循环 |
+| `compaction-system-overflow` | system + tools 超窗 → 报错且不发请求，不进入循环 |
 | `compaction-restart` | 重开会话，已批准计划仍可进入正文模式 |
 | `compaction-legacy` | 旧 `role:"compaction"` 消息能被继续累积 |
 
@@ -504,7 +499,7 @@ src/context/
 | `StoredMessage.role: "compaction"` | 折叠改为事件；旧消息保留为 legacy 投影，迁移期后删除该 role |
 | `loadModelWindow` 的"从 compaction 起" | 投影按 `consumed.toSeq` 决定窗口；原文消息不拍平 |
 | `compaction/summary` 事件 | 由 `context/compaction` 取代；旧事件兼容读 |
-| `.talemate/plans` 不可读 | 不改 `DOC_ROOTS`；由 harness 在正文窗口注入，工具仍读不到 |
+| `.talemate/plans` 不可读 | 不进语料根表；由 harness 在正文窗口注入，工具仍读不到 |
 | `RECENT_KEEP = 6` | 改为 `recentFloor` token 预算 |
 | `prompts/summarizer.system.txt` | 重写为"折叠对话"，不再写 story-state / 设定 / 伏笔 |
 
@@ -531,7 +526,6 @@ export interface CompactionRecord {
     promises?: string;
     decisions: DecisionEntry[];
     plan?: { chapter: number; path: string; hash: string };
-    resident: Array<{ path: string; rev: string }>;
   };
   evidence: EvidenceEntry[];
   budget: { usable: number; trigger: number; before: number; after: number };
@@ -571,7 +565,7 @@ export interface DecisionEntry {
 ### 阶段 0：止血（不改数据模型）
 
 1. 累积摘要：`<previous-fold>` 进入 summarizer 输入；测试断言内容包含旧摘要专名。
-2. 摘要输入带工具摘要：`read` 给 path@rev + 首段；`task` 给结论正文；`search` 给命中数与 top 路径。
+2. 摘要输入带工具摘要：`read` 给 path@rev + 首段；`task` 给结论正文；`grep` 给命中数与 top 路径。
 3. `recent` 改为"保留顺序号"：折叠记录存 `toSeq`，窗口从"折叠消息 + toSeq 之后的原文"取；不再拍平。
 4. 正文窗口注入已批准计划全文（harness 读文件）。
 5. preflight：system + tools 超限时报错，不进入消息压缩。
@@ -595,9 +589,8 @@ export interface DecisionEntry {
 
 ### 阶段 3：取数与卫生
 
-- `read` 分页 / `read` 常驻去重 / `list`、`search` 上限；
-- 文档 rev 进 `read` 输出与常驻块；
-- 常驻体积预算与 `list`/启动提示。
+- `read` 分页 / `glob`、`grep` 上限；
+- 文档 rev 进 `read` 输出；
 
 ### 阶段 4：评测与体验
 
@@ -619,6 +612,7 @@ export interface DecisionEntry {
 | **新增一个"记忆管理" agent** | 它是隐藏的 harness 能力，不需要用户可见角色；新增 agent 只会让"谁决定保留什么"变得模糊 |
 | **摘要当作 canon** | 与两阶段落盘、CAS、"用户看过的字节才落盘"全部冲突 |
 | **state 常驻注入** | 每轮为只在写作前有用的东西付钱；改为折叠时快照 + 规划/正文时读取 |
+| **文档常驻注入（`core.md` / `world.md` 每轮进 system）** | 每轮为一份会过期的副本付钱，还让模型分不清"我读过"与"它一直在"；改回按需 `read` + 证据账 |
 | **压缩时静默丢弃、不记账** | 用户与模型都不知道丢了什么；违反可观测性 |
 
 ---

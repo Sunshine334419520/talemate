@@ -2,7 +2,7 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-11-22 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
+> **对齐代码**：2026-11-24 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
 > 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
 
 ## 归类判定规则
@@ -38,8 +38,8 @@
 | 角色 | mode | 职责 | 谁能触发它 | 工具 |
 |---|---|---|---|---|
 | **mate 搭档** | primary | 用户的创作参谋与项目执掌者：把"想法"长成四层活文档并维护；**自己写正文**；当编排者，委派并拍板 | 用户每次输入 | 见下 |
-| **planner 规划者** | subagent | 把一个章节意图读成一份**场景简报**：前情、这场戏（谁要什么、谁挡谁）、必须发生、不能提前兑现、章末问题，以及按序的产物清单 | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（`edit` / `notes` 是**类别拒**——落盘类工具整个不在 schema 里）+ `recall`（**只读**考据本，别重查） |
-| **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `list` `search` `webfetch` `websearch`（同上，类别拒）+ `recall` `remember`（它自己的考据本） |
+| **planner 规划者** | subagent | 把一个章节意图读成一份**场景简报**：前情、这场戏（谁要什么、谁挡谁）、必须发生、不能提前兑现、章末问题，以及按序的产物清单 | mate 经 `task` | `read` `glob` `grep` `webfetch` `websearch`（`edit` / `notes` 是**类别拒**——落盘类工具整个不在 schema 里）+ `recall`（**只读**考据本，别重查） |
+| **researcher 考据** | subagent | 就一个**外部世界的事实**问题上外网查证，返回**结论 + 出处**（并明说哪些没查到/来源打架） | mate 经 `task` | `read` `glob` `grep` `webfetch` `websearch`（同上，类别拒）+ `recall` `remember`（它自己的考据本） |
 | **summarizer** | primary + **hidden** | 上下文折叠时只写对话叙事（意图 / 决定 / 未决 / 下一步）；pinned 与证据账由 harness 确定性生成。不进角色表、不进 task 可派列表、不当默认 primary | harness 内部自动 | 无 |
 
 - mate **自己写正文**（规范与文风卡由 harness 在写作窗口注入 system，见下「Skill 系统」）；**正文不派子代理**——它没有比自身更短的结论（"中间材料不进主线"那条判据对它不成立），而 mate 没见过正文就识别不出写作中浮现的新点子。理由与取舍见 `chapter-planning.md`。
@@ -80,13 +80,18 @@
 
 **三个都不自己落盘**——拼出 `FileOp` 交给 `framework/write_ops.ts` 那条唯一路径，所以校验、不变量后验、权限、CAS、原子写、diff 全在那一处。某个 agent 能碰哪个根由权限表划（"加一个要保护的目录"是加一条规则，不是造一个工具）：`design_tools` 的提案自己先拦一道"只写 `design/` 下"，子代理则整类是 `edit: deny`。唯一**不走这条路**的写是 `propose-plan` 落规划工件——它不是作品文档，见 `framework/plan.ts`。
 
-**`read_tools`** — 项目语料的三个读口（**项目级**：`design/` / `chapters/` / `state/` 通吃）
+**`find_tools`** — 项目语料的两个找法（**项目级**：项目根表里所有可读目录通吃）
+
+| id | 用途 |
+|---|---|
+| `glob` | 按项目相对 glob 找文件路径（`*` 不跨 `/`、`**` 任意层、`?` 单字符；无 `/` 的模式按文件名在任意深度匹配）。只读路径、不读内容；`path` 限定目录 |
+| `grep` | 按正则搜文档内容，返回"文件 → 行号 + 行文本"；`path` 可为目录或单个文件，`include` 再按文件 glob 过滤，支持 `literal` / `ignoreCase` / `context` |
+
+**`read_tools`** — 项目语料的读口
 
 | id | 用途 |
 |---|---|
 | `read` | 按项目相对路径读整篇，或读其中一个 `section` |
-| `list` | 目录索引（角色卡一人一行；**不分格的文档也只给一行 + 首句**，如序列纲；章节流水只给一行"几条 · 最新一条"）。`path` 限定范围，省略 = 整个项目 |
-| `search` | 跨文档扫词，返回"文件 → 小节 + 行"（改/删前查影响面）。`path` 同上 |
 
 **`research_tools`** — 考据本（researcher 自己的笔记本）
 
@@ -95,7 +100,7 @@
 | `recall` | 翻考据本：带 `query` 按词找（题目与正文都算命中面），不带就列已有题目。**未命中会回已有清单**——那是换措辞重试的路，不是错误 |
 | `remember` | 记一条（题目 + 结论，**必须带出处 URL**），同名即覆盖。只给 researcher（`notes` 权限），planner 只有 `recall` |
 
-考据本落在 `<novel>/.talemate/research/<题目>.md`——**引擎工作区，不是作品**：不进 `DOC_ROOTS`，`read` / `list` / `search` 一概够不着，读口只有 `recall` 一个（mate 读不到、用户也看不见，所以垃圾笔记的出路只有文件系统）。它解决的就一件事：**同一个问题不该被查第二遍**——查回来的结论不靠上下文活过压缩（折叠只留路径与结论首行，细节要按证据账重读），所以要落在笔记里。见 `framework/research.ts`。
+考据本落在 `<novel>/.talemate/research/<题目>.md`——**引擎工作区，不是作品**：不进项目根表，`read` / `glob` / `grep` 一概够不着，读口只有 `recall` 一个（mate 读不到、用户也看不见，所以垃圾笔记的出路只有文件系统）。它解决的就一件事：**同一个问题不该被查第二遍**——查回来的结论不靠上下文活过压缩（折叠只留路径与结论首行，细节要按证据账重读），所以要落在笔记里。见 `framework/research.ts`。
 
 **`design_tools`** — design/ 的三向提案
 
@@ -188,7 +193,7 @@ Fetch 的 403/404 或空正文退回直连（站点策略/正文提取失败）�
 
 ### mate 的工作协议
 
-1. **企划对话（含大纲）**：mate 直接答；查 = `list`/`read`/`search`。
+1. **企划对话（含大纲）**：mate 直接答；查 = `glob`/`grep`/`read`。
    - **局部改**（一句、一段、一格、删一节）= `edit`：用户看 diff 就够，二向（接受 / 拒绝）。
    - **整篇成稿** = 进 `enter-draft` → **`propose-design` → 用户回话 → `apply-design`**：三向（接受 / 拒绝 / 提意见）。
    - **删整份文档**（角色卡、过期专题页）= `delete`：它先把引用列出来，**级联清理由 mate 自己用 `edit` 做**。
@@ -198,7 +203,7 @@ Fetch 的 403/404 或空正文退回直连（站点策略/正文提取失败）�
    ① 材料不在手上就 `task(planner)` 要一份**规划** → ② **`propose-plan` 把规划交给用户拍板**（它带 `halt`，回合到此为止，规划落 `.talemate/plans/ch_<N>.md`）→ ③ 用户接受后 **mate 自己写正文**：harness 随 system 把正文规范与这本书的文风卡交出去（见下「Skill 系统」的例外），mate 用 `write` 落 `chapters/`（二向：用户看 diff 点头）→ ④ **状态回写**：把这一章改变的东西写回 `state/`（角色的处境、伏笔账、这一章的流水），同样走二向。这一环列在规划的「产物（按序）」里，见 `state.md`。
    - **规划派得出去，正文不派**：规划的中间材料（翻设定、查资料、试错）远多于它交回来的那一页结论，正是 SubAgent 的判据；而正文**没有比它更短的结论**——产物就是全部中间材料，且 mate 没见过它就识别不出写作中浮现的新点子（`chapter-planning.md`）。
    - ② **是这条链上唯一的门**：交出去就停（`halt`）。规划是"照它去执行"，**批准的是执行本身**——所以没有第二个"没拍板就不许写"的检查点：写正文是普通 `write`，用户照样在 diff 上点头。
-   - **能自己查一步就查完的，不要派规划者**：core 常驻、序列纲刚读过的时候，材料本来就在 mate 手里，派出去等于把已有的东西抄一遍。
+   - **能自己查一步就查完的，不要派规划者**：core 刚读过、序列纲在手上，材料本来就在 mate 手里，派出去等于把已有的东西抄一遍。
 3. **作品级取舍**（"要不要写残酷点"）→ `ask-user`。
 4. **什么时候必须派**：需要隔离上下文或独立专注才 `task`；mate 自己能一两步查完的绝不派。
 5. **执行中发现更好的走法，就地按新的写。** 规划是**写作前**的准备，管不到写作中的发现——那不需要"变更申请"，也不需要追加提案（`chapter-planning.md` 的末节）。

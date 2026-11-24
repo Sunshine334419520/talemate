@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-10-25 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> **对齐代码**：2026-11-24 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，语料根表 `core/roots.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
 > 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -11,14 +11,14 @@
 
 | 层 | 文档 | 变化特征 | 注入方式 |
 |---|---|---|---|
-| **核心层** | `design/core.md` | 极少变、一改牵全身、用户必须拍板 | **常驻**注入 |
-| **世界层** | `design/wiki/world.md` + `design/wiki/<题>.md` | 慢变、追加为主；长尾拆专题页 | 总纲**常驻**；专题页按需读 |
+| **核心层** | `design/core.md` | 极少变、一改牵全身、用户必须拍板 | 按需 `read`（无文档常驻） |
+| **世界层** | `design/wiki/world.md` + `design/wiki/<题>.md` | 慢变、追加为主；长尾拆专题页 | 按需 `read`；`glob` / `grep` 找路径 |
 | **人物层** | `design/characters/<名>.md` | 慢变 | 按需读（见 `characters.md`） |
 | **情节层** | `design/outline/vol_<N>.md`（卷纲）+ `design/outline/vol_<N>/s<序号>.md`（序列纲） | 快变、最局部 | 按需读（当前卷 / 序列切片） |
 
 **"层"是产品词汇，不是代码里的一个类型。** 它指的是 `design/` 下的四个目录、以及状态卡与 `mate` 对用户说的那四个名字（核心设定 / 世界观 / 角色 / 大纲）。代码里**没有** `LayerId`、没有按层登记的规范表、也没有 `layer` 参数——文档的归属由**路径**说，别的都不需要。（从前这三样都有，于是"层"这个概念同时当了寻址键、规范匹配键和注入分组；实测下来，只有第一条是多余的。）
 
-**常驻只有两份**：`design/core.md` 与 `design/wiki/world.md`——`anchor.RESIDENT_DOCS` 就是**两条路径**，不再经过"层 id → 路径"那一跳。其余按需 `read`。常驻注入只给可见的 primary（mate）。
+**没有任何文档常驻注入。** `design/core.md` 与 `design/wiki/world.md` 从前每轮进 system，现在和别的文档一样：模型要 `read` 才拿到内容，而读到的就是读它的那一刻的版本。`anchor.RESIDENT_DOCS` 与相关注入已删除——留在 system 里只是一份会过期的副本，还让模型不知道自己没读过它。
 
 **`state/` 不是第五层。** 它记的是"现在到哪了"（谁在场、谁知道什么、伏笔收到哪了），每章都在变——比变化最快的情节层还快一个数量级。所以它在项目根下与 `design/` **平级**，与设定分开。判据与形状见 `state.md`。
 
@@ -80,7 +80,7 @@ read           { path: "chapters/chapter_ch2_v1.md" }
 **两条守卫**（都在 `design_tools.resolveDoc`，都回**字面路径**让模型自纠）：
 
 - **提案只写 `design/` 下的文档**：`path: "chapters/…"` 会被拒——章节正文走 `write` / `edit`，那条路不需要"用户先看整篇再接受"。
-- **主文档不许写到别处**：`design/world.md` 会被拒并指回 `design/wiki/world.md`。起因是实测模型把世界层写成前者，而常驻注入只认后者的路径——**写错位置的世界层不会被注入，等于白写且用户看不出来**。判据是注册表里那条规范的 `target`，不另抄一份文件清单。
+- **主文档不许写到别处**：`design/world.md` 会被拒并指回 `design/wiki/world.md`。起因是实测模型把世界层写成前者，而规范、索引与索引条目都只认后者的路径——**写错位置的世界层不会被读到，等于白写且用户看不出来**。判据是注册表里那条规范的 `target`，不另抄一份文件清单。
 
 ## 文档级的守卫
 
@@ -88,7 +88,7 @@ read           { path: "chapters/chapter_ch2_v1.md" }
 - **不在任何格里的字节也单独放一段**（`proposal.uncoveredText`）：文档标题行、`##` 之前的导语。渲染只认 `items[].body` 的话，这些字节会被整个跳过，而它们照样落盘——"用户看过的字节 == 落盘的字节"就成了假的。
 - **重名小节**：寻址按标题，两个同名 `##` 之后"读第 2 节"永远命中前一个——此后工具读不懂这份文档。`framework/invariants.ts` 的 `design.no-duplicate-heading` 拦"**新造出来**的重名"。
 - **角色卡的 `##` 陷阱**：`proposal.ownItems` 取**最浅**标题层。角色卡上冒出任意一个 `##`，卡里**所有** `###` 都从逐格审阅里消失。`characters.no-shallow-heading` 拦它——**判结果**，所以 `write` / `edit` / `propose-design` 哪条路都绕不过。详见 `characters.md`。
-- **删除**：`delete` 内置 `search` 引用检查（**整个项目**：正文里也会提到角色与设定名），命中结果放进 confirm——**级联清理由模型自己用 `edit` 做**，工具只负责把影响面列出来。
+- **删除**：`delete` 内置引用检查（**整个项目**：正文里也会提到角色与设定名，走 `corpus.scanDocs`），命中结果放进 confirm——**级联清理由模型自己用 `edit` 做**，工具只负责把影响面列出来。
 
 ## 章节生产
 
@@ -116,7 +116,7 @@ flowchart TD
 
 **从前还有第二道门**（`task(writer)` 查那份 `approved`，没拍板就不放行）。它随 writer 一起取消了：正文改由 mate 自己写，而"写正文"是普通 `write`——用户照样在 diff 上点头，再挂一道门只是把同一件事问两遍。
 
-**规划落盘**，落在 `<novel>/.talemate/plans/ch_<N>.md`——**引擎的工作区，不是 `design/`**。`design/` + `chapters/` 是作品（用户的、要被审阅的、可进版本控制的），`.talemate/` 是这一次执行的状态：可清理、用户不必看、不参与 `list` / `search` / 不变量 / 结构规范。所以它**不走 `write_ops`**（那条路认识的是作品文档：diff、CAS、权限 pattern）——由 `propose-plan` 自己整篇写、整篇渲染出来，用户看过的字节就是落盘的字节。命名与清理策略见 `framework/plan.ts`。
+**规划落盘**，落在 `<novel>/.talemate/plans/ch_<N>.md`——**引擎的工作区，不是 `design/`**。`design/` + `chapters/` 是作品（用户的、要被审阅的、可进版本控制的），`.talemate/` 是这一次执行的状态：可清理、用户不必看、不参与 `glob` / `grep` / 不变量 / 结构规范。所以它**不走 `write_ops`**（那条路认识的是作品文档：diff、CAS、权限 pattern）——由 `propose-plan` 自己整篇写、整篇渲染出来，用户看过的字节就是落盘的字节。命名与清理策略见 `framework/plan.ts`。
 
 **mate 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善核心设定"就走企划成型，说"写第 N 章"就走章节生产。
 
@@ -130,7 +130,7 @@ flowchart TD
 |---|---|
 | `storage/corpus.ts` | **语料层**：枚举 / 读 / 扫词的唯一实现（项目相对口径、三个根、一条 walker）。只读，没有任何写口 |
 | `framework/design_spec.ts` | **一张**规范表：按路径 glob 登记（`SPECS`），**更具体的模式胜出**。每份规范 = 该有哪些小节 + 写/别写/写成 + 成稿工作法。`specFor` / `renderSpec`（目录入口会把名下每种文档一并返回） |
-| `framework/summaries.ts` | 目录摘要器注册表：**某种文档在 `list` 里占哪一行**（角色卡一人一行、不分格的给首句）。形状照抄 `invariants` |
+| `framework/summaries.ts` | 目录摘要器注册表：**某种文档在目录索引里占哪一行**（角色卡一人一行、不分格的给首句）。形状照抄 `invariants` |
 | `framework/search.ts` | 扫词命中的**渲染**（`renderHits`：按文件分组 + 小节标注）。取数在 `corpus` |
 | `framework/write_ops.ts` | **写盘唯一路径**：解析目标 → 读 → 算结果 → diff → 取批准 → CAS + 原子写。二向与三向都走它 |
 | `framework/file_ops.ts` | `FileOp` → 新内容（纯函数）：整篇 / 锚点替换 / 删除**三种**。行尾适配在这一层 |
@@ -139,6 +139,7 @@ flowchart TD
 | `framework/proposal.ts` | 提案视图（`ownItems` / `itemsOf` / `reviewable` / `renderProposal` 终端视图 + `proposalDisplay` 结构化卡片）＋ `proposalOp`（提案 → 写盘 op）。规范查询转发给 `design_spec.specFor` |
 | `framework/plan.ts` | **章节规划工件**：命名（`.talemate/plans/ch_<N>.md`）、落盘、终端渲染（`renderPlan`）与卡片视图（`planDisplay`）。**不走 `write_ops`**——它不是作品文档，见本文件“章节生产” |
 | `framework/markdown.ts` | 区块**读**手术（`getSection` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
-| `framework/anchor.ts` | 常驻注入（`RESIDENT_DOCS` 两条路径）+ `buildIndex`（`list` 的索引） |
-| `tool/read_tools.ts` | `read` / `list` / `search` 三个薄壳（**项目级**，与 design 无关） |
+| `framework/anchor.ts` | 目录索引（`buildIndex` / `docTree`，`read` 找不到文档时的清单与左栏的那一份）。**没有常驻注入** |
+| `tool/read_tools.ts` | `read` 一个薄壳（**项目级**，与 design 无关） |
+| `tool/find_tools.ts` | `glob` / `grep` 两个找法，候选集来自语料根表 |
 | `tool/design_tools.ts` | `propose-design` / `apply-design`——上面的工具壳，守卫（`resolveDoc`）都在这里 |
