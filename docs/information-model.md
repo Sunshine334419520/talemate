@@ -2,10 +2,10 @@
 
 > **职责**：回答"这本书有哪些信息对象、每个对象的真源在哪、哪些只是缓存/投影、谁写谁审、半衰期多长、怎么寻址、冲突以谁为准"。
 > **读者**：要改 `src/storage/`、`src/framework/`、`src/session/`、`src/context/` 或设计新文档种类的人；以及要判断"某次写偏是模型不行，还是信息本身没有载体"的人。
-> **对齐代码**：2026-11-23 · 标【现状】的载体已按当前代码核对；标【提议】的是本文的设计，尚未落地。本文优先于旧的字段模板：创作文档自由，机器数据独立。
-> **相邻**：`design-guides.md`（创作文档怎么写才算好）· `perception.md`（每一步怎么选材料）· `compaction.md`（对话怎么折叠）· `state.md`（状态层的形状）· `design-docs.md` / `characters.md` / `outline.md`（旧的四层与字段规范，本文替代其“必须按格写”的部分）
+> **对齐代码**：2026-11-23 · 标【现状】的载体已按当前代码核对；标【提议】的是本文的设计，尚未落地。本文只定对象、真源、写者与寻址；创作文档的形状不在本文范围。
+> **相邻**：`perception.md`（每一步怎么选材料）· `compaction.md`（对话怎么折叠）· `state.md`（状态层的形状）· `design-docs.md` / `characters.md` / `outline.md`（现有的四层与字段规范）
 
-**一句话**：先定对象，再选载体；一个对象只有一个真源；创作文档自由，机器要用的数据单独放。
+**一句话**：先定对象，再选载体；一个对象只有一个真源。
 
 ---
 
@@ -47,7 +47,7 @@
 |---|---|---|---|---|---|---|---|---|
 | **世界规则/事实** | 世界是什么样、术语/地名 | `design/core.md`、`design/wiki/*`、卷/序列纲 | `list` 行 | 用户 + mate（提案） | 用户拍板 | 长 | `path#section@rev` | core 常驻；world 索引常驻，正文按需 |
 | **章节事件** | 发生过什么 | `chapters/chapter_ch<N>_v<M>.md` | `state/progress.md`、场景索引、章摘要 | mate（write） | 用户看 diff | 永久 | 章号/版本、行范围、场景索引 | P2/P3；按场景取 |
-| **角色基线** | 他是谁、要什么/怕什么/绝不做什麼、声音 | `design/characters/<名>.md` | `list` 一行 | 用户 + mate（提案） | 用户拍板 | 长 | `path`，整篇 | P0/P1；整篇或按指南问题取 |
+| **角色基线** | 他是谁、要什么/怕什么/绝不做什麼、声音 | `design/characters/<名>.md` | `list` 一行 | 用户 + mate（提案） | 用户拍板 | 长 | `path`，整篇 | P0/P1；整篇或按需取 |
 | **角色此刻** | 此刻处境、要什么 | `state/characters/<名>.md` | 无 | mate 章末回写 | 用户看 diff | 每章 | `path#section` | P0/P1；按在场人物取 |
 | **知识边界** | 谁知道/不知道/误以为什么 | **`state/knowledge.md`（提议）** | 无 | mate 回写 | 用户看 diff | 每章 | 命题 id | P0/P1；按场景命题取 |
 | **关系** | 谁欠谁、此刻盟友/反目、怎么看对方 | **`state/relations.md`（提议）** | 无 | mate 回写 | 用户看 diff | 每章 | 人物对 | P1；按在场人物取 |
@@ -192,10 +192,6 @@
 
 | 现在 | 处理 |
 |---|---|
-| `design_spec` 的全文小节模板 | 降级为设计指南（`design-guides.md`）；不再“没按格写就拒” |
-| 角色卡“五格必有、缺一即拒” | 删除；改成指南问题 + 自由正文 |
-| `characters.no-shallow-heading` / `skeleton-complete` / `required-kept` | 删除（它们是逐格审阅的产物） |
-| 提案逐格编号/“第 N 格” | 删除；审阅 = 整篇 + diff；局部改走 `edit` |
 | `state/progress.md` 被当源 | 降级为 cache；chapters 是 truth |
 | 知识按角色各存一份 | 迁到命题级 `state/knowledge`（提议） |
 | 关系只活在正文/大纲 | 视需要加 `state/relations`（提议） |
@@ -213,8 +209,7 @@
 - 本文对象表作为唯一清单；
 - `progress` 明确为 cache，加章数对账；
 - 决定索引（计算，不落文件）；
-- reader/craft 的载体先定（`state/reader.md`、`state/craft.md`）；
-- 删除逐格审阅与形状不变量。
+- reader/craft 的载体先定（`state/reader.md`、`state/craft.md`）。
 
 ### 阶段 1：机器数据独立
 
@@ -224,14 +219,7 @@
 - 别名索引（grep 用）；
 - 承诺状态机读化（账本内，不是卷纲）。
 
-### 阶段 2：创作文档去模板
-
-- `design-guides.md` 落地；
-- 角色卡/卷纲/序列纲自由正文 + 指南问题；
-- 提案整篇/diff；`edit` 局部修改；
-- `list` 用首行/首标题。
-
-### 阶段 3：对账与评测
+### 阶段 2：对账与评测
 
 - progress vs chapters 对账；
 - 承诺计划 vs 实际状态对账；

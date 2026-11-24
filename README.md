@@ -70,7 +70,6 @@ talemate new 我的小说 悬疑
 | 上下文怎么折叠、摘要承载什么 | [`docs/compaction.md`](docs/compaction.md) |
 | 每一步的上下文怎么分诊、放哪、怎么记录 | [`docs/perception.md`](docs/perception.md) |
 | 这本书有哪些信息对象、真源在哪、怎么寻址 | [`docs/information-model.md`](docs/information-model.md) |
-| 角色卡/卷纲/序列怎么引导，而不是模板 | [`docs/design-guides.md`](docs/design-guides.md) |
 | 评测系统怎么规划（设计稿） | [`docs/eval-system.md`](docs/eval-system.md) |
 | 会话事件、投影与导出 | [`docs/telemetry.md`](docs/telemetry.md) |
 | Agent / 工具 / Skill 怎么分类与触发 | [`docs/agents.md`](docs/agents.md) |

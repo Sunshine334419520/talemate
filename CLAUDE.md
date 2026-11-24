@@ -118,7 +118,6 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | How context is folded: what survives, what never enters a summary | `docs/compaction.md` |
 | How each step's context is triaged: P0-P3, placement, trace | `docs/perception.md` |
 | What information objects exist, where truth lives, how they are addressed | `docs/information-model.md` |
-| How novel design docs are guided (not templated) | `docs/design-guides.md` |
 | Session events, projections, redaction, and trace export | `docs/telemetry.md` |
 | How the eval system is designed: cases, families, replay, milestones | `docs/eval-system.md` |
 | Agents, tools, skills — how to classify and add them | `docs/agents.md` |
