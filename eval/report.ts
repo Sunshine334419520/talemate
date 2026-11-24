@@ -6,7 +6,7 @@
  */
 import { decideComparison, type Decision } from "./decide";
 import { bucketCounts, mcnemarExact, reliability, wilsonInterval } from "./stats";
-import { FAILURE_BUCKETS, type Family, type RunResult } from "./types";
+import { FAILURE_BUCKETS, type Family, type PerceptionRunStats, type RunResult } from "./types";
 
 /**
  * 报告默认文件名：按运行日归档，不按 `--today`。
@@ -70,6 +70,30 @@ function percentDelta(baseline: number, variant: number): string {
 function failedFirst(runs: readonly RunResult[]): RunResult | undefined {
   const run = firstRun(runs);
   return run !== undefined && run.verdict !== "pass" ? run : undefined;
+}
+
+function perceptionOf(run: RunResult | undefined): PerceptionRunStats | undefined {
+  return run?.perception !== undefined && run.perception.plans > 0 ? run.perception : undefined;
+}
+
+function pct(value: number | undefined): string {
+  return value === undefined ? "—" : value.toFixed(2);
+}
+
+function num(value: number | undefined): string {
+  return value === undefined ? "—" : String(value);
+}
+
+function budget(p: PerceptionRunStats | undefined): string {
+  return p?.budgetUsed === undefined || p.budgetCeiling === undefined ? "—" : `${p.budgetUsed}/${p.budgetCeiling}`;
+}
+
+function perceptionCell(
+  baseline: PerceptionRunStats | undefined,
+  variant: PerceptionRunStats | undefined,
+  read: (p: PerceptionRunStats | undefined) => string,
+): string {
+  return `${read(baseline)}→${read(variant)}`;
 }
 
 const DECISION_LABEL: Record<Decision["verdict"], string> = {
@@ -141,6 +165,24 @@ export function renderBaselineReport(results: readonly RunResult[], clock: strin
   }
 
   const failures = results.filter((result) => result.verdict !== "pass");
+  const perceived = cases.filter(([, runs]) => perceptionOf(firstRun(runs)) !== undefined);
+  if (perceived.length > 0) {
+    lines.push(
+      "",
+      "## 感知",
+      "",
+      "| case | plans | P0 覆盖 | 延迟 | 丢弃 | 过期 | 重复 | 缺失 | 压缩比 | 预算 |",
+      "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    );
+    for (const [caseId, runs] of perceived) {
+      const p = perceptionOf(firstRun(runs));
+      if (p === undefined) continue;
+      lines.push(
+        `| ${caseId} | ${p.plans} | ${pct(p.p0Coverage)} | ${num(p.deferred)} | ${num(p.dropped)} | ${num(p.stale)} | ${num(p.duplicate)} | ${num(p.missing)} | ${pct(p.compressionRatio)} | ${budget(p)} |`,
+      );
+    }
+  }
+
   if (failures.length > 0) {
     lines.push("", "## 失败", "");
     for (const result of failures) {
@@ -305,6 +347,38 @@ export function renderComparisonReport(
       lines.push(`| ${bucket} | ${before} | ${after} | ${change >= 0 ? "+" : ""}${change} |`);
     }
     lines.push("", "按 case 首轮计；桶数变化要对着失败明细读，不能只看总数。");
+  }
+
+  const perceivedPairs = cases.filter(
+    ([, pair]) => perceptionOf(firstRun(pair.baseline)) !== undefined || perceptionOf(firstRun(pair.variant)) !== undefined,
+  );
+  if (perceivedPairs.length > 0) {
+    lines.push(
+      "",
+      "## 感知（baseline → variant）",
+      "",
+      "| case | plans | P0 覆盖 | 延迟 | 丢弃 | 过期 | 重复 | 缺失 | 压缩比 | 预算 |",
+      "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    );
+    for (const [caseId, pair] of perceivedPairs) {
+      const b = perceptionOf(firstRun(pair.baseline));
+      const v = perceptionOf(firstRun(pair.variant));
+      lines.push(
+        `| ${caseId} | ${perceptionCell(b, v, (p) => num(p?.plans))} | ${perceptionCell(b, v, (p) => pct(p?.p0Coverage))} | ${perceptionCell(
+          b,
+          v,
+          (p) => num(p?.deferred),
+        )} | ${perceptionCell(b, v, (p) => num(p?.dropped))} | ${perceptionCell(b, v, (p) => num(p?.stale))} | ${perceptionCell(
+          b,
+          v,
+          (p) => num(p?.duplicate),
+        )} | ${perceptionCell(b, v, (p) => num(p?.missing))} | ${perceptionCell(b, v, (p) => pct(p?.compressionRatio))} | ${perceptionCell(
+          b,
+          v,
+          budget,
+        )} |`,
+      );
+    }
   }
 
   const baselineTokens = cases.reduce((n, [, pair]) => n + tokensOf(firstRun(pair.baseline)), 0);

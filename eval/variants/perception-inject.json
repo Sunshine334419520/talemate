@@ -1,0 +1,7 @@
+{
+  "id": "perception-inject",
+  "note": "感知从 shadow 切到 inject：只改变 ContextPlan 是否参与 system 组装；不补 prompt 文本",
+  "patches": [],
+  "env": { "TALEMATE_PERCEPTION": "inject" },
+  "cassette": "own"
+}

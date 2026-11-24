@@ -193,4 +193,44 @@ describe("判据执行", () => {
     expect(out[0]?.ok).toBe(false);
     expect(out[0]?.detail).toContain("超出实际轮数");
   });
+
+  test("perception-plan 读最近一条 plan 的指标，不只看事件存在", async () => {
+    const plan = (metrics: { p0Coverage: number; stale: number }): AnyTraceEvent => ({
+      schemaVersion: 1,
+      sessionId: "s",
+      seq: 9,
+      time: 9,
+      type: "perception/plan",
+      data: {
+        step: 0,
+        purpose: "prose",
+        hash: "p",
+        builtAt: 1,
+        budget: { ceiling: 100, used: 10 },
+        decisions: [],
+        missing: [],
+        metrics: {
+          p0Coverage: metrics.p0Coverage,
+          dropped: 0,
+          compressionRatio: 1,
+          stale: metrics.stale,
+          duplicate: 0,
+          missing: 0,
+          deferred: 0,
+        },
+      },
+    });
+    const clean: TurnSnapshot = { files: {}, messages: MESSAGES, events: [...EVENTS, plan({ p0Coverage: 1, stale: 0 })], changes: [] };
+    const stale: TurnSnapshot = { files: {}, messages: MESSAGES, events: [...EVENTS, plan({ p0Coverage: 0.5, stale: 1 })], changes: [] };
+    const checks: EvalCase = {
+      ...CASE,
+      checks: [{ kind: "perception-plan", minP0Coverage: 1, maxStale: 0 }],
+    };
+    const ok = await runChecks(checks, [clean], fixtureRoot);
+    expect(ok[0]?.ok).toBe(true);
+    const bad = await runChecks(checks, [stale], fixtureRoot);
+    expect(bad[0]?.ok).toBe(false);
+    expect(bad[0]?.detail).toContain("P0 覆盖 0.50");
+    expect(bad[0]?.detail).toContain("stale 1");
+  });
 });

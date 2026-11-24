@@ -31,11 +31,13 @@ import type {
   AskRequest,
   AssistantPart,
   ConfirmReply,
+  ContextPlan,
   DecisionEntry,
   LLMEvent,
   ModelConfig,
   PendingAskRecord,
   PendingProposal,
+  PerceptionTrace,
   ProjectMeta,
   ProposalPresented,
   StoredMessage,
@@ -46,6 +48,14 @@ import { buildSystemPrompt, toNeutralMessages } from "../context/assemble";
 import { budgetFor, estimateMessagesTokens, preflight } from "../context/budget";
 import { foldContext } from "../context/fold";
 import { decisionsFrom } from "../context/ledger";
+import {
+  perceptionMode,
+  perceptionTokenBudget,
+  perceptionTraceOf,
+  renderPerceptionBlock,
+  triageCandidates,
+} from "../context/perception";
+import { collectProseCandidates } from "../context/perception_candidates";
 import { buildPinned } from "../context/project_state";
 import { buildResidentDesigns, buildIndex } from "../framework/anchor";
 import { isChapterFile, planRelPath, readPlan } from "../framework/plan";
@@ -349,6 +359,12 @@ export class Session {
   private lastSystemHash: string | undefined;
   private lastHeaderKey: string | undefined;
   private lastContextKey: string | undefined;
+  /** 最近一次写进事件的 perception plan hash：同一份 plan 不重复写。 */
+  private lastPerceptionHash: string | undefined;
+  /** 下一次 generate 要落账的 plan；由 buildRequest 写入，generate 消费。 */
+  private pendingPerception?: PerceptionTrace;
+  /** 会话拍板缓存：感知的 author 线按它取，不每步重读事件日志。 */
+  private decisions?: DecisionEntry[];
   /** 这个 Session 是恢复已有会话（true）还是新建（false） */
   private readonly resumed: boolean;
   /** 这个 Session 进程里的第一次请求；恢复时即使 header 没变也要写 resume 快照 */
@@ -571,6 +587,7 @@ export class Session {
       ...(p.chapter === undefined ? {} : { chapter: p.chapter }),
       ...(note === undefined || note.trim() === "" ? {} : { note: note.trim() }),
     };
+    this.decisions?.push(decision);
     void appendProposalDecision(this.projectId, this.sessionId, decision).catch(() => {});
   }
 
@@ -827,6 +844,9 @@ export class Session {
         generate: async (req, o) => {
           const current = step++;
           activeStep = current;
+          // buildRequest 算好的感知方案只对这一次请求有效；没有 plan（非 prose / off）就是 undefined。
+          const perception = this.pendingPerception;
+          this.pendingPerception = undefined;
           const t0 = Date.now();
           let streamedChars = 0;
           let firstTokenAt: number | undefined;
@@ -847,6 +867,12 @@ export class Session {
           const toolsHash = hashText(toolsJson);
           const messagesHash = hashText(messagesJson);
           this.trace("step/start", { step: current });
+
+          // 感知方案按 hash 才写：每一步仍可从 request/header 的 perceptionHash 指回来。
+          if (perception !== undefined && perception.hash !== this.lastPerceptionHash) {
+            this.trace("perception/plan", { ...perception, step: current });
+            this.lastPerceptionHash = perception.hash;
+          }
 
           // system prompt 是模型可见状态，必须能从日志重建；按变化才写，避免每步复制几 KB。
           if (systemHash !== this.lastSystemHash) {
@@ -894,6 +920,7 @@ export class Session {
             toolsHash,
             messagesHash,
             promptHash: hashJson({ systemHash, toolsHash }),
+            ...(perception === undefined ? {} : { perceptionHash: perception.hash }),
             systemChars: requestChars.system,
             toolsChars: requestChars.tools,
             messagesChars: requestChars.messages,
@@ -1142,7 +1169,7 @@ export class Session {
    * 那时显示 0% 是错的。**字符不是 token**——界面按比例估，标「~」。
    */
   async requestSizes(): Promise<{ system: number; tools: number; messages: number }> {
-    const req = await this.buildRequest(this.agent);
+    const req = await this.buildRequest(this.agent, { perceive: false });
     return {
       system: req.system.length,
       tools: JSON.stringify(req.tools ?? []).length,
@@ -1151,20 +1178,57 @@ export class Session {
   }
 
   /** 组装一次请求：截窗后的历史 → NeutralMsg + system + 该角色可见工具 */
-  private async buildRequest(agent: AgentDef): Promise<{ system: string; messages: NeutralMsg[]; tools?: ToolSchema[] }> {
+  private async buildRequest(
+    agent: AgentDef,
+    options?: { perceive?: boolean },
+  ): Promise<{ system: string; messages: NeutralMsg[]; tools?: ToolSchema[] }> {
     const neutral = toNeutralMessages(await this.messageWindow());
     // 结构化接受后的执行指令只进第一次请求：它是一次性的“现在动手”，不是一条用户消息。
     if (this.turnInstruction !== undefined) {
       neutral.push({ role: "user", text: this.turnInstruction });
       this.turnInstruction = undefined;
     }
-    const system = await this.buildSystem(agent);
+    // 感知是旁路观测：shadow 只算 plan、写事件；inject 才让 plan 参与下面的 system 组装。
+    const perception = options?.perceive === false ? undefined : await this.buildPerception(agent);
+    this.pendingPerception = perception?.trace;
+    const system = await this.buildSystem(agent, perceptionMode() === "inject" ? perception?.plan : undefined);
     const tools = this.allowedTools(agent);
     const toolSchemas = this.tools.schemasFor(
       tools,
       tools.includes("task") ? { taskCatalog: this.agents.subagentCatalog() } : undefined,
     );
     return { system, messages: neutral, tools: toolSchemas.length ? toolSchemas : undefined };
+  }
+
+  /**
+   * prose 这一步的感知方案。v1 只覆盖"已批准、未执行"的规划；其余步骤不写事件，
+   * 免得 trace 里出现一堆没有 Profile 的假决策。
+   *
+   * 失败返回 undefined：观测落不了账不该让这一轮发不出去。真正的分诊错误由测试抓，
+   * 不靠生产路径把请求炸掉。
+   */
+  private async buildPerception(agent: AgentDef): Promise<{ plan: ContextPlan; trace: PerceptionTrace } | undefined> {
+    if (perceptionMode() === "off") return undefined;
+    if (agent.mode !== "primary" || agent.hidden) return undefined;
+    const plan = this.pending.get(PLAN_KEY);
+    if (!plan || !plan.approved || plan.done || plan.chapter === undefined) return undefined;
+    const diskPlan = await readPlan(this.projectId, plan.chapter);
+    const planText = diskPlan ?? plan.content;
+    if (planText.trim() === "") return undefined;
+    try {
+      const candidates = await collectProseCandidates({
+        projectId: this.projectId,
+        chapter: plan.chapter,
+        planText,
+        planInContext: diskPlan !== undefined,
+        ...(this.lastUserText.trim() === "" ? {} : { instruction: this.lastUserText }),
+        decisions: this.decisions ?? [],
+      });
+      const perception = triageCandidates(candidates, "prose", perceptionTokenBudget(), plan.chapter);
+      return { plan: perception, trace: perceptionTraceOf(perception, Date.now()) };
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -1275,7 +1339,7 @@ export class Session {
    * 拼 system prompt：env + 角色 system + (core/world 常驻设定) + AGENTS.md + skill 目录。
    * 常驻设定只给可见 primary（mate）注入——subagent 不注入（省 token，靠 task prompt 切片）。
    */
-  private async buildSystem(agent: AgentDef): Promise<string> {
+  private async buildSystem(agent: AgentDef, perception?: ContextPlan): Promise<string> {
     const rules = await readProjectRules(this.projectId);
     const skills = await discoverSkills(this.projectId);
     let resident: string | undefined;
@@ -1307,7 +1371,13 @@ export class Session {
             "</planner-result>",
           ].join("\n")
         : undefined;
-    return [base, mode?.note, note, askNote, plannerNote, prose].filter(Boolean).join("\n\n");
+    // inject：P1 靠头、P2 居中、P0 靠尾；shadow 时 perception 是 undefined，逐字保持旧 system。
+    const injectedHead = perception === undefined ? undefined : renderPerceptionBlock(perception, "system.head");
+    const injectedMiddle = perception === undefined ? undefined : renderPerceptionBlock(perception, "system.middle");
+    const injectedTail = perception === undefined ? undefined : renderPerceptionBlock(perception, "system.tail");
+    return [base, mode?.note, note, askNote, plannerNote, injectedHead, injectedMiddle, prose, injectedTail]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   /**
@@ -1476,6 +1546,7 @@ export class Session {
       this.lastInput = this.cache.some((m) => m.role === "context") ? undefined : meta?.usage?.at(-1)?.input;
       // 恢复基线：不看上一份日志，第一请求会把“配置没变”误报成 resume，或重复写 system/tools
       const events = await eventLogFor(this.projectId, this.sessionId).read();
+      this.decisions ??= decisionsFrom(events);
       for (const event of events) {
         if (event.type === "system/prompt") {
           this.lastSystemHash = event.data.hash;
@@ -1483,6 +1554,8 @@ export class Session {
           this.lastContextKey = `${event.data.provider}\u0000${event.data.model}\u0000${event.data.contextWindow ?? ""}`;
         } else if (event.type === "request/header") {
           this.lastHeaderKey = this.headerKeyOf(event.data);
+        } else if (event.type === "perception/plan") {
+          this.lastPerceptionHash = event.data.hash;
         }
       }
     }

@@ -250,6 +250,27 @@ export function projectSpans(events: AnyTraceEvent[]): Span[] {
   return spans.sort((a, b) => a.startMs - b.startMs || a.spanId.localeCompare(b.spanId));
 }
 
+type PerceptionEvent = Extract<AnyTraceEvent, { type: "perception/plan" }>;
+
+/**
+ * 感知投影：一条会话写过几次 plan、最近一次的分诊指标。
+ *
+ * 这是 `/trace` 与 eval 报告共用的唯一入口；不要再从 `PerceptionTrace` 里另算一份。
+ * 只读事件，不读文件——指标在事件写入时已经由纯函数算过。
+ */
+export interface PerceptionStats {
+  plans: number;
+  latest?: PerceptionEvent["data"];
+}
+
+export function projectPerception(events: AnyTraceEvent[]): PerceptionStats {
+  const plans = events.filter((event): event is PerceptionEvent => event.type === "perception/plan");
+  return {
+    plans: plans.length,
+    ...(plans.length === 0 ? {} : { latest: plans[plans.length - 1]!.data }),
+  };
+}
+
 /** 一份会话的账：从事件折出来的数字。界面、`/debug`、将来的 eval reader 读同一处。 */
 export interface SessionStats {
   events: number;

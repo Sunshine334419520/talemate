@@ -321,7 +321,7 @@ export function Workspace({
     return () => {
       alive = false;
     };
-  }, [view, info?.sessionId, history.length, live.length]);
+  }, [view, info?.sessionId, history.length, live.length, busy]);
 
   useEffect(() => {
     void (async () => {
@@ -1239,7 +1239,7 @@ export function Workspace({
               canRewind={canRewind}
             />
           ) : (
-            <Trace live={live} info={info} trajectory={trajectory} />
+            <Trace live={live} info={info} trajectory={trajectory} busy={busy} />
           )}
             {warn !== null && <p className="note zhu">［提醒］{warn}</p>}
             {error !== null && <p className="note">［错误］{error}</p>}

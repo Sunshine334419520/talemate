@@ -29,6 +29,7 @@ export const CHECK_KINDS = [
   "event-exists",
   "event-count-at-most",
   "assistant-text-contains",
+  "perception-plan",
 ] as const;
 
 export type CheckKind = (typeof CHECK_KINDS)[number];
@@ -58,6 +59,15 @@ export type Check = CheckBase &
     | { kind: "event-exists"; type: string }
     | { kind: "event-count-at-most"; type: string; n: number }
     | { kind: "assistant-text-contains"; text: string }
+    | {
+        kind: "perception-plan";
+        /** 0–1；1 = 所有已存在的 P0 候选都进了 */
+        minP0Coverage?: number;
+        maxStale?: number;
+        maxDuplicate?: number;
+        maxDeferred?: number;
+        maxMissing?: number;
+      }
   );
 
 export interface EvalCase {
@@ -115,6 +125,8 @@ export interface Manifest {
   promptParts: Record<string, string>;
   /** 常驻文档 hash，≠ prompt */
   contextHash: string;
+  /** 首个请求生效的感知 plan hash；没有感知时缺省 */
+  perceptionHash?: string;
   toolsHash: string;
   model: { provider: string; model: string; reasoning?: string; temperature?: number; maxTokens: number };
   codeCommit: string;
@@ -137,6 +149,20 @@ export const FAILURE_BUCKETS = [
 
 export type FailureBucket = (typeof FAILURE_BUCKETS)[number];
 
+/** 一条 run 的感知摘要：由 `projectPerception(events)` 折出来，不让报告另算一份。 */
+export interface PerceptionRunStats {
+  plans: number;
+  p0Coverage?: number;
+  dropped?: number;
+  deferred?: number;
+  stale?: number;
+  duplicate?: number;
+  missing?: number;
+  compressionRatio?: number;
+  budgetUsed?: number;
+  budgetCeiling?: number;
+}
+
 export interface RunResult {
   runId: string;
   caseId: string;
@@ -152,6 +178,8 @@ export interface RunResult {
   /** baseline | 变体名 */
   variantId: string;
   repeat: number;
+  /** 感知摘要；没有 `perception/plan` 时缺省 */
+  perception?: PerceptionRunStats;
   manifest: Manifest;
   checks: { id: string; ok: boolean; detail?: string }[];
   verdict: "pass" | "fail" | "error" | "timeout";

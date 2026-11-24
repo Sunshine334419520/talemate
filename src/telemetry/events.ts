@@ -10,6 +10,7 @@
 import type {
   CompactionRecord,
   DecisionEntry,
+  PerceptionTrace,
   ProposalPresented,
   StoredMessage,
   ToolState,
@@ -95,6 +96,8 @@ export interface TraceEventData {
     toolsHash: string;
     messagesHash: string;
     promptHash: string;
+    /** 这一步生效的 `perception/plan` hash；没有感知（非 prose / off）时缺省 */
+    perceptionHash?: string;
     systemChars: number;
     toolsChars: number;
     messagesChars: number;
@@ -131,6 +134,11 @@ export interface TraceEventData {
    * 消息窗口由它投影出来（`projection.ts`），不再写 compaction 消息。
    */
   "context/compaction": CompactionRecord;
+  /**
+   * 这一步的上下文决策。只在 plan hash 变化时写；每一步的 `request/header` 带 `perceptionHash`，
+   * 所以"这个请求看到了什么"仍可重建。正文不进这条事件，坐标与规模足够重取。
+   */
+  "perception/plan": PerceptionTrace & { step: number };
   /** 提案给用户看过的那一版（每个版本一条；决策按 proposal 键对回来） */
   "proposal/presented": ProposalPresented;
   /** 用户拍板：接受 / 拒绝 / 提意见。按钮不产生用户消息，原话只能靠它留下来 */
@@ -170,6 +178,7 @@ const EVENT_TYPES: Record<TraceEventType, true> = {
   "compaction/summary": true,
   "compaction/end": true,
   "context/compaction": true,
+  "perception/plan": true,
   "proposal/presented": true,
   "proposal/decision": true,
   "tool/call": true,

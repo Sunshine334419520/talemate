@@ -50,4 +50,24 @@ describe("/trace 摘要 · 上下文水位", () => {
     expect(summary).toContain("上下文：最新 350");
     expect(summary).not.toContain("最近 messages");
   });
+
+  test("感知摘要读最近一条 plan 的指标，不从别处另算", () => {
+    const summary = renderTraceSummary([
+      event(1, "perception/plan", {
+        step: 0,
+        purpose: "prose",
+        hash: "p",
+        builtAt: 1,
+        budget: { ceiling: 12_000, used: 7200 },
+        decisions: [],
+        missing: ["state/reader.md 未建立"],
+        metrics: { p0Coverage: 1, dropped: 3, compressionRatio: 0.42, stale: 1, duplicate: 2, missing: 1, deferred: 23 },
+      }),
+    ]);
+    expect(summary).toContain("感知：plan 1 次");
+    expect(summary).toContain("P0 覆盖 1.00");
+    expect(summary).toContain("延迟 23");
+    expect(summary).toContain("过期 1 · 重复 2 · 缺失 1");
+    expect(summary).toContain("最近预算 7.2k/12.0k");
+  });
 });

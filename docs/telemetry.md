@@ -2,7 +2,7 @@
 
 > **职责**：回答"会话事件是什么形状、谁在什么时候发、messages/span/统计怎么从它折出来、导出时怎么脱敏"。
 > **读者**：要加一类事件、加一个投影、接一个观测消费者（eval reader / OTel）的人。
-> **对齐代码**：2026-11-22 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；压缩记录见 `compaction.md`
+> **对齐代码**：2026-11-23 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；压缩记录见 `compaction.md`；感知记录见 `perception.md`
 
 ## 一句话
 
@@ -53,6 +53,7 @@
 | `tool/call` / `tool/result` | 每次工具执行前后（含被 `planGatePart` 拦下的） | `Session` 的 `executeTool` / `applyApprovedDesign` |
 | `compaction/start` / `compaction/end` | 一次折叠的开始/结束（观测用；不在失败时提交记录） | `Session.maybeCompact` |
 | `context/compaction` | 一次折叠的 canonical 记录：摘要 + pinned + 证据账 + 预算。窗口由它投影 | `appendContextRecord` |
+| `perception/plan` | 一次上下文分诊：层级 / 动作 / 位置 / 来源坐标。**按 hash 变化才写**；每步 `request/header` 带 `perceptionHash` | `Session.generate` |
 | `proposal/presented` / `proposal/decision` | 提案给用户看过的那一版 / 用户的拍板与原话 | `Session.notePresented` / `noteDecision` |
 
 为什么 `assistant/attempt` 必须存在：上面那三种消息事件只记得成功落盘的消息。一次网络失败、一次用户中止、一次被截断的流，在任何消息投影里都不存在——不单独记，它们就永远查不到。
@@ -67,6 +68,12 @@
 而不是把同一份 system/messages 复制进 header。
 
 为什么工具正文不复制进事件：入参与输出已经在 `assistant/message` 的 parts 里。事件只记边界上才拿得到的事实（`state` / `durationMs` / `outputChars` / `error`），再存一份正文就是第二份真源。
+
+## 感知投影
+
+`projection.ts` 的 `projectPerception(events)` 折出"写过几次 plan + 最近一次的指标"
+（P0 覆盖、延迟、丢弃、过期、重复、缺失、压缩比、预算）。`/trace` 的感知行与 eval 报告共用这一份；
+事件里不存候选正文，只存 `source` 坐标与规模——正文在文件或 `system/prompt` 里。
 
 ## 改动索引（另一份投影）
 
@@ -110,7 +117,8 @@ turn
 
 每条记录带内容（text / reasoning / tool input / output / error / change / system prompt）和元数据
 （seq / 时间 / 耗时 / 状态 / step / requestSeq）。消息不再是一种独立模式——它只是 `user` /
-`assistant` 记录；原始事件仍在 `/trace`，不在这张表里重复。
+`assistant` 记录；原始事件仍在 `/trace`，不在这张表里重复。感知不是一张表里的行：它是某一步请求的
+决策，挂在 `request/header.perceptionHash` 指到的那份 plan 上，在请求详情里展开。
 
 ## 请求详情：由日志折叠
 
@@ -121,6 +129,7 @@ turn
 - `system`：最近一次 `system/prompt` 的全文；
 - `context`：最近一次 `request/context`；
 - `messages`：该 header 之前的事件投影，再按最后一次折叠（`context` 记录或旧 compaction）截窗。
+- `perception`：该 header 的 `perceptionHash` 指到的那份 plan（没有就是缺失，不拿最近一条冒充）。
 
 它**不存请求体**，也不读 cassette；这是 DSH 的“模型可见 ⟺ 已持久引用”：
 请求 = `header.config + deriveMessages() + header.tools`。旧日志缺 `system/prompt` 或 tools 快照时，

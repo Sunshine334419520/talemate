@@ -29,6 +29,16 @@ export interface Variant {
   id: string;
   note: string;
   patches: Patch[];
+  /**
+   * 进程级环境变量，run 前设置、run 后恢复。用于"只改代码开关、不改 prompt"的对照
+   * （例如感知 shadow / inject）。不写进仓库文件。
+   */
+  env?: Record<string, string>;
+  /**
+   * cassette 归属：`own`（默认）按变体名单存；`baseline` 与 baseline 共用。
+   * 只有"确认请求逐字相同"的 noop 才该共享——否则 replay miss 会被误读成变体行为。
+   */
+  cassette?: "own" | "baseline";
 }
 
 /**

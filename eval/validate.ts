@@ -41,6 +41,7 @@ const CHECK_FIELDS: Record<CheckKind, readonly string[]> = {
   "event-exists": ["type"],
   "event-count-at-most": ["type", "n"],
   "assistant-text-contains": ["text"],
+  "perception-plan": [],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -108,6 +109,24 @@ function validateCheck(value: unknown, at: string): Issue[] {
     const names = value.names;
     if (!Array.isArray(names) || names.length === 0 || names.some((name) => !isText(name))) {
       issues.push({ where: at, message: "names 必须是非空的字符串数组" });
+    }
+  }
+
+  if (kind === "perception-plan") {
+    const numeric = ["minP0Coverage", "maxStale", "maxDuplicate", "maxDeferred", "maxMissing"] as const;
+    if (numeric.every((key) => value[key] === undefined)) {
+      issues.push({ where: at, message: "perception-plan 至少给一个阈值" });
+    }
+    if (
+      value.minP0Coverage !== undefined &&
+      (typeof value.minP0Coverage !== "number" || value.minP0Coverage < 0 || value.minP0Coverage > 1)
+    ) {
+      issues.push({ where: at, message: "minP0Coverage 必须是 0–1 的数字" });
+    }
+    for (const key of ["maxStale", "maxDuplicate", "maxDeferred", "maxMissing"] as const) {
+      if (value[key] !== undefined && !isNonNegativeInt(value[key])) {
+        issues.push({ where: at, message: `${key} 必须是非负整数` });
+      }
     }
   }
 
@@ -329,6 +348,14 @@ export async function validateVariants(
     if (!isRecord(value) || !isText(value.id) || !isText(value.note) || !Array.isArray(value.patches)) {
       issues.push({ where, message: "需要 id / note / patches" });
       continue;
+    }
+    if (value.env !== undefined) {
+      if (!isRecord(value.env) || Object.values(value.env).some((v) => typeof v !== "string")) {
+        issues.push({ where, message: "env 必须是字符串到字符串的对象" });
+      }
+    }
+    if (value.cassette !== undefined && value.cassette !== "own" && value.cassette !== "baseline") {
+      issues.push({ where, message: 'cassette 只能是 "own" 或 "baseline"' });
     }
     const expected = file.replace(/\.json$/, "");
     if (value.id !== expected) issues.push({ where, message: `id 与文件名不一致：${value.id}` });

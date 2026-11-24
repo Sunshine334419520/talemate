@@ -9,6 +9,7 @@ import { Fragment, useMemo, useState } from "react";
 import type {
   AskRecord,
   OpenInfo,
+  PerceptionTrace,
   RequestDetail,
   StoredMessage,
   TrajectoryRecord,
@@ -87,6 +88,93 @@ function messageText(message: StoredMessage): string {
   return message.text ?? "";
 }
 
+function PerceptionDetail({ trace }: { trace: PerceptionTrace }) {
+  const m = trace.metrics;
+  const source = (decision: PerceptionTrace["decisions"][number]): string => {
+    const { path, section, rev, label } = decision.source;
+    const parts = [path, section === undefined ? "" : `#${section}`, rev === undefined ? "" : `@${rev}`].filter(
+      (part): part is string => part !== undefined && part !== "",
+    );
+    return parts.length > 0 ? parts.join("") : (label ?? "—");
+  };
+  return (
+    <div className="trace-perception">
+      <dl className="trace-overview">
+        <div>
+          <dt>目的</dt>
+          <dd>
+            {trace.purpose}
+            {trace.chapter === undefined ? "" : ` · 第 ${trace.chapter} 章`}
+          </dd>
+        </div>
+        <div>
+          <dt>预算</dt>
+          <dd>
+            {trace.budget.used} / {trace.budget.ceiling} token
+          </dd>
+        </div>
+        <div>
+          <dt>P0 覆盖</dt>
+          <dd>{m.p0Coverage.toFixed(2)}</dd>
+        </div>
+        <div>
+          <dt>取舍</dt>
+          <dd>
+            延迟 {m.deferred} · 丢弃 {m.dropped} · 过期 {m.stale} · 重复 {m.duplicate} · 缺失 {m.missing}
+          </dd>
+        </div>
+        <div>
+          <dt>压缩比</dt>
+          <dd>{m.compressionRatio.toFixed(2)}</dd>
+        </div>
+        <div>
+          <dt>plan hash</dt>
+          <dd>
+            <code>{trace.hash}</code>
+          </dd>
+        </div>
+      </dl>
+      {trace.missing.length > 0 && (
+        <p className="trace-note">缺失载体：{trace.missing.join("、")}</p>
+      )}
+      <div className="trace-perception-table-wrap">
+        <table className="trace-perception-table">
+          <thead>
+            <tr>
+              <th>层级</th>
+              <th>动作</th>
+              <th>位置</th>
+              <th>来源</th>
+              <th>字符</th>
+              <th>原因</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trace.decisions.map((decision) => (
+              <tr key={`${decision.id}-${decision.tier}-${decision.action}`}>
+                <td>{decision.tier}</td>
+                <td>{decision.action}</td>
+                <td>{decision.placement}</td>
+                <td>
+                  <b>{decision.id}</b>
+                  <br />
+                  <span className="trace-muted">{source(decision)}</span>
+                </td>
+                <td>
+                  {decision.sourceChars === decision.chars
+                    ? String(decision.chars)
+                    : `${decision.sourceChars}→${decision.chars}`}
+                </td>
+                <td>{decision.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function RequestDetailPanel({ detail }: { detail: RequestDetail | null | undefined }) {
   if (detail === undefined) return <p className="trace-note">读取请求详情…</p>;
   if (detail === null) return <p className="trace-note">读不到这一段的请求详情。</p>;
@@ -117,6 +205,12 @@ function RequestDetailPanel({ detail }: { detail: RequestDetail | null | undefin
           <pre>{JSON.stringify(detail.tools, null, 2)}</pre>
         </details>
       )}
+      {detail.perception !== undefined && (
+        <details open>
+          <summary>感知 · {detail.perception.decisions.length} 条决策</summary>
+          <PerceptionDetail trace={detail.perception} />
+        </details>
+      )}
       <details>
         <summary>messages · {detail.messages.length} 条</summary>
         {detail.messages.map((message, i) => {
@@ -133,7 +227,7 @@ function RequestDetailPanel({ detail }: { detail: RequestDetail | null | undefin
   );
 }
 
-type DetailTab = "overview" | "preview" | "input" | "output" | "tools" | "request" | "raw";
+type DetailTab = "overview" | "preview" | "input" | "output" | "tools" | "request" | "perception" | "raw";
 
 const TAB_LABEL: Record<DetailTab, string> = {
   overview: "概览",
@@ -142,6 +236,7 @@ const TAB_LABEL: Record<DetailTab, string> = {
   output: "输出",
   tools: "工具",
   request: "请求",
+  perception: "感知",
   raw: "原始内容",
 };
 
@@ -150,7 +245,7 @@ function tabsFor(record: TrajectoryRecord): DetailTab[] {
   if (record.kind === "system") tabs.push("preview", "tools");
   else if (record.kind === "tool") tabs.push("input", "output");
   else tabs.push("preview");
-  if (record.requestSeq !== undefined) tabs.push("request");
+  if (record.requestSeq !== undefined) tabs.push("request", "perception");
   tabs.push("raw");
   return tabs;
 }
@@ -294,6 +389,17 @@ function TabBody({
       return <Overview record={record} turn={turn} />;
     case "preview":
       return <Preview record={record} />;
+    case "perception":
+      if (requestDetail === undefined) {
+        return (
+          <button type="button" className="trace-detail-button" onClick={onRequest}>
+            读取这一步的感知
+          </button>
+        );
+      }
+      if (requestDetail === null) return <p className="trace-note">读不到这一步的请求详情。</p>;
+      if (requestDetail.perception === undefined) return <p className="trace-note">这一步没有感知决策。</p>;
+      return <PerceptionDetail trace={requestDetail.perception} />;
     case "input":
       return record.input === undefined ? <p className="trace-note">没有记录入参。</p> : <pre className="trace-code">{record.input}</pre>;
     case "output":
@@ -399,10 +505,12 @@ export function Trace({
   live,
   info,
   trajectory,
+  busy,
 }: {
   live: LiveItem[];
   info: OpenInfo | null;
   trajectory: TrajectoryView | null;
+  busy: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["value"]>("all");
@@ -576,7 +684,7 @@ export function Trace({
             </table>
           )}
 
-          {live.length > 0 && (
+          {busy && live.length > 0 && (
             <div className="trace-live">
               <div className="trace-live-head">
                 <span className="pulse" />

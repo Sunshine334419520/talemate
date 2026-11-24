@@ -25,6 +25,7 @@ import { createProject } from "../src/storage/project";
 import { loadMessages } from "../src/storage/session-store";
 import { readChanges } from "../src/storage/change_index";
 import { eventLogFor, resetEventLogs } from "../src/telemetry/log";
+import { projectPerception } from "../src/telemetry/projection";
 import { readCassette } from "../src/llm/replay";
 import { hashJson } from "../src/core/hash";
 import type { AnyTraceEvent } from "../src/telemetry/events";
@@ -243,6 +244,7 @@ function failureBucketOf(results: { id: string; ok: boolean }[], verdict: RunRes
   if (failed.id.startsWith("budget:")) return "budget-exceeded";
   if (failed.id.startsWith("tool-called") || failed.id.startsWith("tool-order")) return "no-tool";
   if (failed.id.startsWith("turn-halted")) return "approval-skipped";
+  if (failed.id.startsWith("perception-plan")) return "constraint-lost";
   if (failed.id.startsWith("file-") || failed.id.startsWith("change-recorded")) return "file-wrong";
   if (failed.id.startsWith("max-")) return "budget-exceeded";
   return "other";
@@ -291,6 +293,7 @@ async function manifestOf(
     promptHash: h?.promptHash ?? (request === undefined ? "" : hashJson({ system: request.system, tools: request.tools })),
     promptParts,
     contextHash: hashJson(fixtures),
+    ...(h?.perceptionHash === undefined ? {} : { perceptionHash: h.perceptionHash }),
     toolsHash: h?.toolsHash ?? (request === undefined ? "" : hashJson(request.tools)),
     model: {
       provider: h?.provider ?? request?.provider ?? "unknown",
@@ -341,7 +344,7 @@ async function runOnce(
   const caseDir = join(EVAL_ROOT, "cases", evalCase.id);
   const fixtures = evalCase.fixtures === true ? await readTree(join(caseDir, "fixtures")) : {};
   const runId = variantId === "baseline" ? `${evalCase.id}-r${repeat}` : `${evalCase.id}-${variantId}-r${repeat}`;
-  const cassetteName = variant !== undefined && variant.patches.length > 0 ? `${variantId}.jsonl` : "baseline.jsonl";
+  const cassetteName = variant === undefined || variant.cassette === "baseline" ? "baseline.jsonl" : `${variantId}.jsonl`;
   const replayFile = join(EVAL_ROOT, "cassettes", evalCase.id, cassetteName);
   const traceDir = join(REPO_ROOT, "traces", runId);
 
@@ -355,6 +358,7 @@ async function runOnce(
   const prevMaxTokens = process.env.TALEMATE_MAX_TOKENS;
   const prevUsed = process.env.TALEMATE_REPLAY_USED;
   const prevEnv = new Map(Object.keys(evalCase.env ?? {}).map((key) => [key, process.env[key]]));
+  const prevVariantEnv = new Map(Object.keys(variant?.env ?? {}).map((key) => [key, process.env[key]]));
 
   process.env.TALEMATE_HOME = home;
   process.env.TALEMATE_TODAY = options.clock;
@@ -365,6 +369,7 @@ async function runOnce(
   if (evalCase.model?.temperature !== undefined) process.env.TALEMATE_TEMPERATURE = String(evalCase.model.temperature);
   if (evalCase.model?.maxTokens !== undefined) process.env.TALEMATE_MAX_TOKENS = String(evalCase.model.maxTokens);
   for (const [key, value] of Object.entries(evalCase.env ?? {})) process.env[key] = value;
+  for (const [key, value] of Object.entries(variant?.env ?? {})) process.env[key] = value;
   if (options.record) process.env.TALEMATE_RECORD = "1";
   else delete process.env.TALEMATE_RECORD;
 
@@ -462,6 +467,10 @@ async function runOnce(
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    for (const [key, value] of prevVariantEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 
   const last = snapshots.at(-1);
@@ -511,6 +520,7 @@ async function runOnce(
   ) ?? { input: 0, output: 0 };
   const steps = last?.events.filter((event) => event.type === "step/start").length ?? 0;
   const wallMs = Date.now() - startedAt;
+  const perception = projectPerception(last?.events ?? []);
 
   let rubricScore: number | undefined;
   if (options.judge && evalCase.rubric !== undefined && last !== undefined) {
@@ -540,6 +550,16 @@ async function runOnce(
     ...(rubricScore === undefined ? {} : { rubricScore }),
     variantId,
     repeat,
+    ...(perception.latest === undefined
+      ? {}
+      : {
+          perception: {
+            plans: perception.plans,
+            ...perception.latest.metrics,
+            budgetUsed: perception.latest.budget.used,
+            budgetCeiling: perception.latest.budget.ceiling,
+          },
+        }),
     manifest: await manifestOf(
       evalCase,
       runId,

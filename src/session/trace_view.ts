@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { talemateHome, sessionPaths } from "../core/config";
 import { writeAtomic } from "../storage/atomic";
 import { eventLogFor } from "../telemetry/log";
-import { projectSpans, projectStats } from "../telemetry/projection";
+import { projectPerception, projectSpans, projectStats } from "../telemetry/projection";
 import type { Span, SpanName } from "../telemetry/projection";
 import { redactEvents } from "../telemetry/redact";
 import type { RedactionPolicy } from "../telemetry/redact";
@@ -112,6 +112,18 @@ export function renderTraceSummary(events: AnyTraceEvent[]): string {
     `- span：${[...counts].map(([name, n]) => `${name} ${n}`).join(" · ") || "无"}`,
   ];
   const context = contextWatermark(events);
+  const perception = projectPerception(events);
+  if (perception.plans > 0) {
+    const latest = perception.latest;
+    if (latest !== undefined) {
+      const m = latest.metrics;
+      const budget = `${(latest.budget.used / 1000).toFixed(1)}k/${(latest.budget.ceiling / 1000).toFixed(1)}k`;
+      lines.push(
+        `- 感知：plan ${perception.plans} 次 · P0 覆盖 ${m.p0Coverage.toFixed(2)} · 延迟 ${m.deferred} · 丢弃 ${m.dropped}` +
+          `（过期 ${m.stale} · 重复 ${m.duplicate} · 缺失 ${m.missing}）· 压缩比 ${m.compressionRatio.toFixed(2)} · 最近预算 ${budget}`,
+      );
+    }
+  }
   if (context !== undefined) {
     const { latest, peak, compactions } = context;
     const last = compactions.at(-1);

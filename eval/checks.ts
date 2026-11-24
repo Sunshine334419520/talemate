@@ -82,6 +82,8 @@ function labelOf(check: Check): string {
       return `${check.kind}:${check.type}`;
     case "assistant-text-contains":
       return `assistant-text-contains:${check.text}`;
+    case "perception-plan":
+      return "perception-plan";
   }
 }
 
@@ -278,6 +280,42 @@ async function evaluate(
       return count <= check.n
         ? { id: labelOf(check), ok: true, detail: `${check.type} × ${count}` }
         : { id: labelOf(check), ok: false, detail: `${check.type} × ${count}，超过 ${check.n}` };
+    }
+
+    case "perception-plan": {
+      const plans = snap.events.filter(
+        (event): event is Extract<AnyTraceEvent, { type: "perception/plan" }> => event.type === "perception/plan",
+      );
+      const latest = plans.at(-1);
+      if (latest === undefined) {
+        return { id: labelOf(check), ok: false, detail: "没有 perception/plan 事件" };
+      }
+      const m = latest.data.metrics;
+      const failures: string[] = [];
+      if (check.minP0Coverage !== undefined && m.p0Coverage < check.minP0Coverage) {
+        failures.push(`P0 覆盖 ${m.p0Coverage.toFixed(2)} < ${check.minP0Coverage}`);
+      }
+      if (check.maxStale !== undefined && m.stale > check.maxStale) failures.push(`stale ${m.stale} > ${check.maxStale}`);
+      if (check.maxDuplicate !== undefined && m.duplicate > check.maxDuplicate) {
+        failures.push(`duplicate ${m.duplicate} > ${check.maxDuplicate}`);
+      }
+      if (check.maxDeferred !== undefined && m.deferred > check.maxDeferred) {
+        failures.push(`deferred ${m.deferred} > ${check.maxDeferred}`);
+      }
+      if (check.maxMissing !== undefined && m.missing > check.maxMissing) {
+        failures.push(`missing ${m.missing} > ${check.maxMissing}`);
+      }
+      return failures.length === 0
+        ? {
+            id: labelOf(check),
+            ok: true,
+            detail: `P0 ${m.p0Coverage.toFixed(2)} · stale ${m.stale} · duplicate ${m.duplicate} · deferred ${m.deferred} · missing ${m.missing}（第 ${plans.length} 条 plan）`,
+          }
+        : {
+            id: labelOf(check),
+            ok: false,
+            detail: `${failures.join("；")}（P0 ${m.p0Coverage.toFixed(2)} · stale ${m.stale} · duplicate ${m.duplicate} · deferred ${m.deferred} · missing ${m.missing}）`,
+          };
     }
   }
 }

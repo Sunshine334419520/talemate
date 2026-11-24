@@ -28,6 +28,29 @@ const HEADER = (step: number): TraceEventData["request/header"] => ({
 
 const TOOL = { name: "read", description: "Read", inputSchema: { type: "object" } };
 
+const PERCEPTION: TraceEventData["perception/plan"] = {
+  step: 0,
+  purpose: "prose",
+  chapter: 1,
+  hash: "ph",
+  builtAt: 1,
+  budget: { ceiling: 100, used: 20 },
+  decisions: [
+    {
+      id: "character.state.沈越",
+      tier: "P0",
+      action: "include",
+      placement: "system.tail",
+      source: { kind: "state", path: "state/characters/沈越.md", rev: "r1" },
+      sourceChars: 4,
+      chars: 4,
+      reason: "p0-required",
+    },
+  ],
+  missing: [],
+  metrics: { p0Coverage: 1, dropped: 0, compressionRatio: 1, stale: 0, duplicate: 0, missing: 0, deferred: 0 },
+};
+
 describe("请求详情 · 折叠", () => {
   test("header 配置 + 最近 system/prompt + 最近带 tools 的快照 + 消息窗口", () => {
     const events = [
@@ -51,6 +74,18 @@ describe("请求详情 · 折叠", () => {
         message.role === "assistant" ? (message.parts ?? []).map((part) => (part.type === "text" ? part.text : "")).join("") : message.text ?? "",
       ),
     ).toEqual(["你好", "在"]);
+  });
+
+  test("header 的 perceptionHash 指到哪份 plan，才给哪份；不拿最近一条冒充", () => {
+    const events = [
+      ev(1, "perception/plan", PERCEPTION),
+      ev(2, "request/header", { ...HEADER(0), perceptionHash: "ph" }),
+      ev(3, "request/header", HEADER(1)),
+    ];
+    const matched = buildRequestDetail(events, 2);
+    expect(matched?.perception?.decisions[0]?.id).toBe("character.state.沈越");
+    const unmatched = buildRequestDetail(events, 3);
+    expect(unmatched?.perception).toBeUndefined();
   });
 
   test("compaction 之后只取窗口，不把整份历史再喂回去", () => {

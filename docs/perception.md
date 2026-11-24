@@ -2,7 +2,7 @@
 
 > **职责**：定义 Agent 每一步推理之前，哪些材料有资格进入上下文、以什么层级和位置进入、哪些压缩、哪些留在工具后面、以及如何记录这次感知决策。
 > **读者**：要改 `src/session/`、`src/context/`、`src/framework/`、`prompts/*` 的人；以及要判断"某次输出错在模型，还是错在模型一开始就没看到"的人。
-> **对齐代码**：2026-11-22 · 标【现状】的部分已按当前代码核对；其余是本文的设计。本文不受既有接口约束；旧版以“生产单元/问题登记表”为中心，已废弃。
+> **对齐代码**：2026-11-23 · shadow 已落地并默认开启；inject 已接上（`TALEMATE_PERCEPTION=inject`，只给 eval 对照用，默认不开）；发现未做。标【现状】的部分已按当前代码核对；其余是本文的设计。本文不受既有接口约束；旧版以“生产单元/问题登记表”为中心，已废弃。
 > **相邻**：`compaction.md`（语义压缩：折叠、证据账）· `architecture.md`（一次交互怎么走）· `state.md`（状态层）· `design-docs.md`（四类活文档）· `chapter-planning.md`（章节生产）· `telemetry.md`（事件与 trace）· `perception-triage.md` / `perception-discovery.md`（分诊与发现的详细设计，待写）
 
 **一句话**：感知不是"把该知道的都放进去"，而是"这一步推理需要的最小高信号材料，按正确的层级和位置进入上下文，其余留在工具后面"。
@@ -118,6 +118,10 @@ messages        最近对话原文；当前用户消息在最后
 1. **P0 不放中间。** 长上下文对开头和结尾更敏感；P0 必须在尾部或最新请求附近。
 2. **稳定规则放头部，变化状态放尾部。** 头部每轮变化小，值得缓存；尾部每轮重算。
 3. **P3 不进 prompt 正文。** 只给 `list` / `search` / `read` 的入口；模型需要时自己取。
+
+inject 的渲染只取 `include` / `compress` 且**尚未在上下文里**的决定：每块以
+`<perception purpose placement>` 包裹，每个来源一个 `<perception-item tier source>`。
+已在 system/messages 的候选在分诊时就是 `drop`（`already-in-context`），不会重复出现。
 
 ### 4.4 分诊输入
 
@@ -278,9 +282,10 @@ budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
 
 ```ts
 "perception/plan": {
+  step: number;
   purpose: Purpose;
   chapter?: number;
-  cacheKey: string;
+  hash: string;
   builtAt: number;
   budget: { ceiling: number; used: number };
   decisions: Array<{
@@ -289,15 +294,22 @@ budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
     action: Action;
     placement: Placement;
     source: { kind: string; path?: string; section?: string; rev?: string; seq?: number };
+    sourceChars: number;
     chars: number;
     reason: string;
   }>;
-  discovery?: { rounds: number; queries: number; hits: number; reads: number };
-  metrics: { p0Coverage: number; dropped: number; compressionRatio: number; stale: number; duplicate: number };
+  missing: string[];
+  metrics: { p0Coverage: number; dropped: number; compressionRatio: number; stale: number; duplicate: number; missing: number; deferred: number };
 };
 ```
 
-只记坐标与规模；正文在 `system/prompt`。`/trace` 加一行本次感知决策；`/debug` 能回答"这次为什么没看到 X"。
+只记坐标与规模；正文在 `system/prompt`。**按 hash 变化才写**：每一步的 `request/header` 带
+`perceptionHash`，所以"这个请求看到了什么"仍可从最近一条 plan 重建，而事件账不会每步复制一份。
+`/trace` 加一行感知摘要；感知**不是轨迹表里的一行**——它是某一步请求的决策，桌面端在有
+`requestSeq` 的记录详情里按 `request/header.perceptionHash` 展开，不拿最近一条冒充。
+
+`P0` 覆盖只算已存在的 P0 候选；缺载体（`state/reader.md` 未建立这类）进 `missing`，不拉低
+`p0Coverage`——"没有这份材料"和"有却没进去"是两件事，不能混成一个小数。
 
 ---
 
@@ -311,9 +323,11 @@ Session.buildRequest(agent)
       resident / state / plan / chapters / decisions / craft / reader / tool results
   → triage(candidates, purpose, budget)
       → ContextPlan { decisions }
-  → assemble(ContextPlan) → system + messages
+  → assemble(plan)（v1 shadow 不消费；inject 才消费）→ system + messages
   → chat()
-  → trace("perception/plan", decisions) + trace("system/prompt", system)
+Session.generate
+  → trace("perception/plan", plan)（hash 变化时）
+  → trace("system/prompt", system)
 ```
 
 感知在**每次请求前**运行，不是"开工前装配一次"。一章有几十次请求，每次的分诊结果可以不同。
@@ -363,11 +377,18 @@ Session.buildRequest(agent)
 
 先跑两三章真实项目，观察 P0/P1 的权重、位置、压缩比是否真的影响输出，再调 Profile 与阈值。
 
+**当前落地（2026-11-23）**：只做 `prose` 的 shadow。候选来自已批准规划、当前指令、常驻 core/world、
+角色卡与角色此刻、`progress`、未回收承诺、上一章结尾、上一轮决定、常驻声音简报；`state/reader`、
+`state/craft`、`state/knowledge`、`state/relations` 还没有载体，按 `missing` 记入 trace。
+`/trace` 已显示 plan 次数、P0 覆盖、延迟/丢弃/过期/重复/缺失与最近预算；inject 已可用
+（`TALEMATE_PERCEPTION=inject`，只给 eval 变体对照），发现循环未做。
+默认 shadow：`TALEMATE_PERCEPTION=off` 可关掉，`TALEMATE_PERCEPTION_TOKENS` 覆盖 12k 预算。
+
 ---
 
 ## 11. 验收标准
 
-1. 每次请求都有一条 `perception/plan`，能重建候选、层级、动作、位置与来源 rev。
+1. 每一步的 `request/header` 都有 `perceptionHash`；hash 变化时写一条 `perception/plan`，能重建候选、层级、动作、位置与来源 rev。
 2. 同一份材料不在上下文出现两次（常驻/窗口/证据账去重）。
 3. P0 候选全部进入；P0 超预算时报可操作错误，不静默截断。
 4. P0 位于 system 尾部或最新请求附近，不在长上下文中部。

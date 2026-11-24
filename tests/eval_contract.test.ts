@@ -135,4 +135,17 @@ describe("case 契约 · 校验器", () => {
     });
     expect(issues.map((i) => i.message).join("\n")).toContain("changeKind");
   });
+
+  test("perception-plan 至少一个阈值，覆盖必须落在 0–1", () => {
+    expect(
+      validateCase({
+        ...MINIMAL,
+        checks: [{ kind: "perception-plan", minP0Coverage: 1, maxStale: 0 }],
+      }),
+    ).toEqual([]);
+    const empty = validateCase({ ...MINIMAL, checks: [{ kind: "perception-plan" }] });
+    expect(empty.map((i) => i.message).join("\n")).toContain("至少给一个阈值");
+    const bad = validateCase({ ...MINIMAL, checks: [{ kind: "perception-plan", minP0Coverage: 2 }] });
+    expect(bad.map((i) => i.message).join("\n")).toContain("0–1");
+  });
 });

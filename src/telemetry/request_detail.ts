@@ -6,7 +6,7 @@
  *
  * 边界：消息用 `projectMessages` 的同一份投影，再按最后一次 compaction 截窗（与 loadModelWindow 同义）。
  */
-import type { StoredMessage } from "../core/types";
+import type { PerceptionTrace, StoredMessage } from "../core/types";
 import type { AnyTraceEvent } from "./events";
 import { projectMessages } from "./projection";
 
@@ -27,6 +27,8 @@ export interface RequestDetail {
   context?: { provider: string; model: string; contextWindow?: number };
   /** 该步请求里的消息窗口（不含 system；system 走 ChatOpts.system） */
   messages: StoredMessage[];
+  /** 该步 header 的 `perceptionHash` 指到的那份 plan；没有感知时缺省 */
+  perception?: PerceptionTrace;
 }
 
 function windowMessages(messages: StoredMessage[]): StoredMessage[] {
@@ -47,6 +49,7 @@ export function buildRequestDetail(events: readonly AnyTraceEvent[], headerSeq: 
   let system: RequestDetail["system"];
   let tools: RequestDetail["tools"];
   let context: RequestDetail["context"];
+  let perception: PerceptionTrace | undefined;
   for (const event of eventsUpTo) {
     if (event.type === "system/prompt") {
       system = { seq: event.seq, text: event.data.text, hash: event.data.hash };
@@ -58,6 +61,13 @@ export function buildRequestDetail(events: readonly AnyTraceEvent[], headerSeq: 
         model: event.data.model,
         ...(event.data.contextWindow === undefined ? {} : { contextWindow: event.data.contextWindow }),
       };
+    } else if (
+      event.type === "perception/plan" &&
+      header.perceptionHash !== undefined &&
+      event.data.hash === header.perceptionHash
+    ) {
+      // 只有 header 明确指到的那份 plan 才是这一步的；不要拿"最近一条"冒充
+      perception = event.data;
     }
   }
 
@@ -74,6 +84,7 @@ export function buildRequestDetail(events: readonly AnyTraceEvent[], headerSeq: 
     ...(tools === undefined ? {} : { tools }),
     ...(system === undefined ? {} : { system }),
     ...(context === undefined ? {} : { context }),
+    ...(perception === undefined ? {} : { perception }),
     messages: windowMessages(projectMessages(eventsUpTo)),
   };
 }

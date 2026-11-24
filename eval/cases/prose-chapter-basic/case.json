@@ -30,6 +30,14 @@
     {
       "kind": "change-recorded",
       "path": "chapters/chapter_ch1_v1.md"
+    },
+    {
+      "kind": "event-exists",
+      "type": "perception/plan"
+    },
+    {
+      "kind": "perception-plan",
+      "minP0Coverage": 1
     }
   ],
   "rubric": "prose-chapter-basic",

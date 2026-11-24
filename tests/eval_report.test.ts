@@ -84,6 +84,27 @@ describe("报告 · pass@k 与判断段", () => {
     expect(report).toContain("单次通过率 50.0%");
   });
 
+  test("报告读 RunResult.perception，不从事件另算一份", () => {
+    const baseline = {
+      ...makeRun("prose-chapter-basic", "baseline", "pass", { family: "prose", base: true }),
+      perception: { plans: 2, p0Coverage: 1, deferred: 3, dropped: 4, stale: 1, duplicate: 2, missing: 1, compressionRatio: 0.5, budgetUsed: 7200, budgetCeiling: 12000 },
+    };
+    const variant = {
+      ...makeRun("prose-chapter-basic", "perception-inject", "pass", { family: "prose", base: true }),
+      perception: { plans: 2, p0Coverage: 0.5, deferred: 5, dropped: 6, stale: 1, duplicate: 2, missing: 0, compressionRatio: 1, budgetUsed: 9000, budgetCeiling: 12000 },
+    };
+    const baselineReport = renderBaselineReport([baseline], "2026-11-01");
+    expect(baselineReport).toContain("## 感知");
+    expect(baselineReport).toContain("| prose-chapter-basic | 2 | 1.00 | 3 | 4 | 1 | 2 | 1 | 0.50 | 7200/12000 |");
+
+    const comparison = renderComparisonReport([baseline, variant], "2026-11-01", "perception-inject", "note", {
+      targetFamily: "prose",
+    });
+    expect(comparison).toContain("## 感知（baseline → variant）");
+    expect(comparison).toContain("1.00→0.50");
+    expect(comparison).toContain("7200/12000→9000/12000");
+  });
+
   test("证据齐全时判断段给出采用", () => {
     const baseRuns = [0, 1, 2].flatMap((repeat) => [
       makeRun("design-core", "baseline", "pass", { family: "design", base: true, repeat, rubricScore: 3.4 }),

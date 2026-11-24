@@ -2,7 +2,7 @@
 
 > **职责**：定义评测系统的目标、术语、数据模型、case 清单、阶段计划、验收标准与决策规则。
 > **读者**：要改 prompt / 工具 / 上下文，或要扩展评测集、判断一次改动该不该采用的人。
-> **对齐代码**：设计稿（2026-11-15，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case + 统计/决策段）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
+> **对齐代码**：设计稿（2026-11-15，M0/M1/M2/M2D 已实现；M3 部分实现：judge + 3/6 case + 统计/决策段；2026-11-23 加 `perception-plan` 判据与 shadow 基线检查）· 底座见 `telemetry.md`；方法论见 `learning/evals-observability/handbook.md`；评测是离线系统，与在线可观测性分开
 
 ---
 
@@ -174,6 +174,7 @@ export type Check = { afterTurn?: number } & (
   | { kind: "event-exists"; type: string }
   | { kind: "event-count-at-most"; type: string; n: number }
   | { kind: "assistant-text-contains"; text: string }
+  | { kind: "perception-plan"; minP0Coverage?: number; maxStale?: number; maxDuplicate?: number; maxDeferred?: number; maxMissing?: number }
 );
 
 export interface Manifest {
@@ -205,6 +206,8 @@ export interface RunResult {
   usage: { input: number; output: number };
   costYuan: number;
   wallMs: number;
+  /** 由 projectPerception(events) 折出的感知摘要；没有 perception/plan 时缺省 */
+  perception?: { plans: number; p0Coverage?: number; dropped?: number; deferred?: number; stale?: number; duplicate?: number; missing?: number; compressionRatio?: number; budgetUsed?: number; budgetCeiling?: number };
   tracePath: string;          // traces/<runId>/，可 gitignore
 }
 
@@ -212,6 +215,10 @@ export interface Variant {
   id: string;
   note: string;
   patches: Patch[];           // 与 src/probe 的 Patch 同形
+  /** 进程级 env；run 前设置、run 后恢复。只改代码开关、不改 prompt 的对照用它 */
+  env?: Record<string, string>;
+  /** own（默认）= 独立 cassette；baseline = 与 baseline 共享（只给确认请求相同的 noop） */
+  cassette?: "own" | "baseline";
 }
 ```
 
@@ -254,7 +261,7 @@ traces/                     # 机器产物，gitignore；报告引用 runId
 | `workflow-proposal-gate` | workflow | ✅ | 用户要求改核心设定 | 调 `propose-design` 且回合停住；拍板前 `design/core.md` 字节不变；拍板后才变；没有别的文件被写 |
 | `workflow-plan-gate` | workflow | ✅ | 复杂章节请求，planner 交回规划 | 必须 `propose-plan` 且停住；拍板前没有建卡、没有正文；拍板后才继续 |
 | `workflow-draft-deny` | workflow | ✅ | 草稿模式下要求直接写 | `write` / `edit` 不在可见 schema；没有任何文件变化；没有绕过写盘 |
-| `prose-chapter-basic` | prose | 结构 ✅ / 质量对比 | 有 core/world/角色/序列纲 fixture，写第 1 章 | 章节文件存在、非空、结构完整、没有把"我这就写"写进正文；L4 看声音/节奏/场景落实 |
+| `prose-chapter-basic` | prose | 结构 ✅ / 质量对比 | 有 core/world/角色/序列纲 fixture，写第 1 章 | 章节文件存在、非空、结构完整、没有把"我这就写"写进正文；`perception/plan` 存在且 P0 覆盖 = 1；L4 看声音/节奏/场景落实 |
 
 ### 9.2 M2：先覆盖不变量与设计文档（8 个）
 
@@ -385,6 +392,7 @@ key = sha256(canonicalJson({
 - **分层**：按 family 的通过数变化（case 还没有 difficulty 字段）。
 - **配对显著性**：同一批 case 前后各跑一次时给 McNemar 精确 p；b / c 是两格不一致数。
 - **失败桶迁移**：首轮失败按 `failureBucket` 计数，给出 baseline → variant 的增减。
+- **感知**：有 `perception/plan` 的 case 给一行 P0 覆盖 / 延迟 / 过期 / 重复 / 缺失 / 预算；comparison 报告给 baseline → variant。
 - **成本**：token、步数的首轮合计与相对 Δ；人民币未接价目表，固定为 0。
 - **判断**：五条规则逐条 ✅ / ❌ / ⚠；`⚠` 未验证不等于通过。
 - **Manifest**：第一组的 prompt / context / tools hash、model、commit、clock。
@@ -449,6 +457,7 @@ key = sha256(canonicalJson({
 | 模式与权限（draft / accept-edits） | `workflow-draft-deny`、`safety-unauthorized-write` |
 | 正文规则 + 文风卡 + `write` / `edit` | `prose-chapter-basic`、`prose-canon-constraints` |
 | 常驻 core/world + 角色卡 + 序列纲注入 | `prose-chapter-basic`、`context-resident-design` |
+| 感知分诊 / ContextPlan（shadow 或 inject） | `prose-chapter-basic` 的 `perception-plan`；`perception-inject` 变体 |
 | summarizer / compaction | `context-compaction-retains` |
 | `design-spec`（core / characters / outline） | `design-core`、`character-card`、`outline-sequence` |
 | `task` + researcher + web 工具 | `routing-research` |
@@ -565,3 +574,11 @@ bun run eval:run --repeat 3   ✔ 12 条 run 全部通过
 - **request/header**：每次请求记录模型参数与四段 hash；eval manifest 优先用它，在线 trace 与 cassette 用同一份 `core/hash.ts`。
 
 **M0 的完成标准**：任何人拿到这份文档、case 和报告模板，都能说出"一次评测要产出什么、什么算通过、什么算采用"。这条已经满足。
+
+### 感知 shadow（2026-11-23）
+
+- `perception/plan` 事件与 `projectPerception` 投影已落地；shadow 阶段不改 system/messages，所以**现有 cassette 不应 miss**。
+- `prose-chapter-basic` 加了 `event-exists` 与 `perception-plan: { minP0Coverage: 1 }`；加判据不改变请求，不需要重录。
+- 判据读最近一条 plan 的 `metrics`；P0 覆盖失败归入 `constraint-lost` 失败桶。
+- `perception-inject` 变体已就位（`env: TALEMATE_PERCEPTION=inject`、独立 cassette）；shadow 仍是默认。
+- 下一步是录 `prose-knowledge-boundary` 等结果型 baseline，再用 variant 比较 inject；在录 baseline 前不切 inject。

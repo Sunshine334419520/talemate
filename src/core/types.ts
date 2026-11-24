@@ -498,6 +498,108 @@ export interface CompactionRecord {
   degraded: boolean;
 }
 
+/** ─── 感知：这一步的上下文决策 ─── */
+
+/** 这一步要完成什么；Profile 按它选候选与默认层级。 */
+export type PerceptionPurpose = "chat" | "plan" | "prose" | "revision" | "research" | "audit";
+
+export type PerceptionTier = "P0" | "P1" | "P2" | "P3";
+
+export type PerceptionPlacement =
+  | "system.head"
+  | "system.middle"
+  | "system.tail"
+  | "messages.recent"
+  | "tool.index";
+
+export type PerceptionAction = "include" | "compress" | "defer" | "drop";
+
+/** 候选的取数坐标。正文不进事件，坐标必须能重取。 */
+export interface PerceptionSource {
+  kind: "resident" | "doc" | "state" | "derived" | "session" | "user" | "web" | "tool";
+  path?: string;
+  section?: string;
+  rev?: string;
+  seq?: number;
+  label?: string;
+}
+
+/**
+ * 一份可能进入本次上下文的材料。`text` 只活在这次分诊里，不进事件；事件只记坐标与规模。
+ * `gap` 表示这个候选本该有、但载体还不存在（例如 `state/reader.md`）——它进 trace 的缺失账，
+ * 不冒充已进入的材料。
+ */
+export interface ContextCandidate {
+  id: string;
+  line: "world" | "character" | "narrative" | "reader" | "author" | "voice" | "dialogue" | "external" | "task";
+  text: string;
+  chars: number;
+  authority: "authoritative" | "current" | "supporting" | "inferred";
+  freshness: "fresh" | "stale";
+  source: PerceptionSource;
+  cost: "free" | "cheap" | "expensive" | "interrupt";
+  expandable?: { tool: "read" | "search" | "recall"; path?: string; query?: string };
+  /** 已经在常驻/system/消息窗口里——去重时不重复注入。 */
+  alreadyInContext?: boolean;
+  gap?: string;
+}
+
+export interface ContextDecision {
+  candidate: ContextCandidate;
+  tier: PerceptionTier;
+  action: PerceptionAction;
+  placement: PerceptionPlacement;
+  /** compress 后的文本；include 时为空（直接用原文） */
+  text?: string;
+  reason: string;
+}
+
+export interface ContextPlan {
+  purpose: PerceptionPurpose;
+  chapter?: number;
+  budget: { ceiling: number; used: number };
+  decisions: ContextDecision[];
+  /** 载体缺失，不能进入材料；与"被丢弃"分开记。 */
+  missing: string[];
+}
+
+export interface PerceptionMetrics {
+  /** 已存在的 P0 候选里进了多少；缺载体不算在分母里（另见 missing）。 */
+  p0Coverage: number;
+  dropped: number;
+  compressionRatio: number;
+  stale: number;
+  duplicate: number;
+  missing: number;
+  deferred: number;
+}
+
+/** `perception/plan` 事件里的一条决策：只留坐标与规模，不复制正文。 */
+export interface PerceptionTraceDecision {
+  id: string;
+  tier: PerceptionTier;
+  action: PerceptionAction;
+  placement: PerceptionPlacement;
+  source: PerceptionSource;
+  /** 原始候选的字符数 */
+  sourceChars: number;
+  /** 实际进入上下文的字符数（include/compress） */
+  chars: number;
+  reason: string;
+}
+
+/** 一次上下文决策的 canonical 记录；同一份 hash 不重复写事件。 */
+export interface PerceptionTrace {
+  purpose: PerceptionPurpose;
+  chapter?: number;
+  hash: string;
+  builtAt: number;
+  budget: { ceiling: number; used: number };
+  decisions: PerceptionTraceDecision[];
+  missing: string[];
+  metrics: PerceptionMetrics;
+}
+
 /** 提案给用户看过的那一版（界面回看、评测、将来项目级失败账都靠它）。 */
 export interface ProposalPresented {
   proposal: string;

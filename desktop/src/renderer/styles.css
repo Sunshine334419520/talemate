@@ -1575,6 +1575,13 @@ html[data-material="none"] .side { background: var(--sb-gradient-opaque); }
 .trace-kind.compaction { background: color-mix(in srgb, #7f8c8d 18%, transparent); color: #667273; }
 .trace-kind.attempt { background: color-mix(in srgb, var(--zhu) 16%, transparent); color: var(--zhu); }
 .trace-kind.rewind { background: color-mix(in srgb, #7f8c8d 18%, transparent); color: #667273; }
+.trace-perception-table-wrap { overflow: auto; max-height: 52vh; border: 1px solid var(--line); border-radius: 8px; }
+.trace-perception-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.trace-perception-table th,
+.trace-perception-table td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.trace-perception-table th { position: sticky; top: 0; background: var(--card); color: var(--faint); font-weight: 600; }
+.trace-perception-table tr:last-child td { border-bottom: 0; }
+.trace-perception-table td b { font-weight: 600; }
 .trace-content-cell { min-width: 0; }
 .trace-row-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trace-details {
