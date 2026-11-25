@@ -88,8 +88,8 @@ export interface EvalCase {
   prosePlanChapter?: number;
   /** 上面那份规划的正文；省略 = 一句话占位 */
   prosePlanContent?: string;
-  /** 跑之前把会话切到这个模式（draft / accept-edits / prose）；省略 = 默认 */
-  mode?: "draft" | "accept-edits" | "prose";
+  /** 跑之前把会话切到这个模式（accept-edits / prose）；省略 = 默认 */
+  mode?: "accept-edits" | "prose";
   /** 评测用户是否回答提问；false = 沿用 autoIO（无回答方），true = 一律答"按你的判断来" */
   answerer?: boolean;
   /** 本 case 专用的环境变量（如压低的压缩阈值）；跑完恢复 */

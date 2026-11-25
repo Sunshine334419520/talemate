@@ -44,7 +44,7 @@ export async function createProject(opts: {
   };
   await writeProjectMeta(meta);
   // 建项目不预种任何文件：
-  // - design/ 懒建——用户要完善某层时由 mate 调 design-spec 拿形状再成稿落盘；
+  // - design/ 懒建——用户或 mate 要写某一层时直接 write，没有必须先取的"形状"
   // - AGENTS.md 是用户自己的项目规矩（等同 CLAUDE.md：项目级、用户管理、默认可空）。
   //   系统只提供"每轮注入该文件"的能力（readProjectRules → context/assemble）：文件不存在 →
   //   readProjectRules 返回 "" → assemble 整块跳过，什么都不注入，用户建了才加载。

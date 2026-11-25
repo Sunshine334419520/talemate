@@ -85,10 +85,10 @@ describe("事件视图 · turn/step", () => {
   test("压缩、回退、harness 工具都挂到正确层级", () => {
     const model = buildTraceModel([
       ev(1, "turn/start", { agent: "mate", resumed: false }),
-      ev(2, "tool/call", { callId: "h1", name: "apply-design", inputChars: 4 }),
+      ev(2, "tool/call", { callId: "h1", name: "write", inputChars: 4 }),
       ev(3, "tool/result", {
         callId: "h1",
-        name: "apply-design",
+        name: "write",
         state: "completed",
         outputChars: 12,
         durationMs: 1,

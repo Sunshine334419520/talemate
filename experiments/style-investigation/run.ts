@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       "The user has already approved the chapter plan; all of its prerequisites are already landed. Write the chapter now.",
     )
     .replace(
-      "- Follow the approved plan's 产物（按序）. If it names a character card or a world page that does not exist yet, create it with propose-design first and stop for the user's review. Do not write prose around a missing prerequisite.\n",
+      "- Follow the approved plan's 产物（按序）. If it names a character card or a world page that does not exist yet, create it with write (the user reviews the diff). Do not write prose around a missing prerequisite.\n",
       "- Do not create cards or world pages; they are already landed. Write the chapter now.\n",
     );
   const c4System = c2System

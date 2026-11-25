@@ -269,7 +269,7 @@ export function toOpenAIMessages(
           : {}),
       };
       if (withReasoning) {
-        // 老消息/合成 apply-design 可能没有 reasoning 原文；字段仍然要在，否则 DeepSeek 400。
+        // 老消息/合成工具调用可能没有 reasoning 原文；字段仍然要在，否则 DeepSeek 400。
         // 不用空串：部分兼容层会把它当成“没传”；给一条明确的占位说明。
         assistant.reasoning_content =
           m.reasoning ?? "The harness recorded this assistant turn; no model reasoning was stored.";
@@ -360,8 +360,8 @@ function repairJson(s: string): string {
 
 // ─── Mock（离线冒烟：验证 runner / 工具循环，不打网络） ───
 
-/** 冒烟剧本：propose-design 的一份合法草稿（必须带该层规范的小节标题，否则会被工具守卫拒）。 */
-const MOCK_PROPOSAL = [
+/** 冒烟剧本：一份合法的整篇写入（核心设定）。 */
+const MOCK_CORE_DOC = [
   "# 核心设定",
   "",
   "## 题材 · 频道",
@@ -414,8 +414,8 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
     const input =
       mockTool === "task"
         ? { agent: "planner", prompt: "把第 1 章的规划做出来。" }
-        : mockTool === "propose-design"
-          ? { path: "design/core.md", content: MOCK_PROPOSAL }
+        : mockTool === "write"
+          ? { path: "design/core.md", content: MOCK_CORE_DOC }
           : sampleArgs(schema);
     opts.onToolCallStart?.({ id: "mock-call-1", name: mockTool });
     return {

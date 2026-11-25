@@ -1,14 +1,13 @@
 /**
- * 角色卡 schema 与读助手（framework 领域层）：一角色一卡，`design/characters/<名>.md`，`# 角色：<名>`
- * 标题 + 若干 `###` 小节，分必有五格（见 CHARACTER_FIELDS）与自由长尾（工具原样保留，不催、不校验）。
+ * 角色卡读助手（framework 领域层）：一角色一卡，`design/characters/<名>.md`。
  *
- * 本文件只做"怎么算一张合规的卡"的读侧判定——骨架齐不齐、必有格空不空、名单行取哪一行。角色卡没有
- * 专用写工具：建卡改卡走 `propose-design` / `edit`，删卡走 `delete`。
+ * 这里只做**读侧**判定：要不要显示「身份」、缺哪些常见字段（「待补」是提示，不是通行证）、
+ * 自由长尾有哪些。正文长什么样不在这里校验——模板是建议，卡片可以只写一段话。
  *
- * 没有派生总表：名单（有哪些人 + 每人必有格齐没齐）由 `glob` / `read` 每次现算，数据源只有卡本身。
- * 索引文件是卡的副本，副本会脱节（走 propose-design 落卡就不更新），所以不设。
+ * 角色卡没有专用写工具：建卡改卡走 `write` / `edit`，删卡走 `delete`。
+ * 没有派生总表：名单由 `glob` / `read` 每次现算，数据源只有卡本身。
  */
-import { getSection, isFiller, isPendingLine, leadLine, listHeadings, matchesLevel2Heading } from "./markdown";
+import { getSection, isFiller, isPendingLine, leadLine, listHeadings } from "./markdown";
 
 export type CharacterFieldKey = "profile" | "contradiction" | "want_fear" | "bottom_line" | "idiolect";
 
@@ -22,8 +21,8 @@ export interface CharacterField {
 }
 
 /**
- * 必有格，顺序即规范顺序。它是骨架的单一真相源：`missingSkeletonSections` 判齐、`design_spec` 的
- * guide、名单行的「待补」都由它派生——加一格只在这里加，别处不再抄一份。
+ * 常见格，顺序即展示顺序。它是「待补」提示的单一真相源——加一格只在这里加，别处不再抄一份。
+ * 不齐不拦落盘：用户想写一段散文、或者只写三格，都行。
  */
 export const CHARACTER_FIELDS: CharacterField[] = [
   { key: "profile", label: "基本档案" },
@@ -97,22 +96,9 @@ export function isMissingField(v: string | undefined): boolean {
   return cleanPlaceholder(v) === undefined;
 }
 
-/** 卡上只许 `###`：`##` 会让卡里所有 `###` 从逐格审阅里消失——用户看不到却被落盘。 */
-export function rejectShallowHeading(content: string): string | undefined {
-  return matchesLevel2Heading(content);
-}
-
 /**
- * 这张卡的骨架还缺哪几格（必有五格）；整篇提案缺了不许落盘，否则会出现半身卡。不自动补格——
- * 自动补会让"用户看过的"≠"落盘的"，那正是提案渲染存在的理由。这里只判标题在不在，内容空不空
- * 由 `pendingRequiredLabels` 判：空标题能过骨架校验，但会在名单里显示为待补。
+ * 这张卡还缺哪些常见格的内容。名单行用（「待补：…」）——提示，不是门槛。
  */
-export function missingSkeletonSections(content: string): string[] {
-  const have = new Set(listHeadings(content, 3).map((h) => h.title));
-  return CHARACTER_FIELDS.filter((f) => !have.has(f.label)).map((f) => f.label);
-}
-
-/** 这张卡还缺哪些必有格的内容。名单行用（「待补：…」）。 */
 export function pendingRequiredLabels(content: string): string[] {
   const fields = parseCardBody(content);
   return CHARACTER_FIELDS.filter((f) => isMissingField(fields[f.key])).map((f) => f.label);
@@ -162,7 +148,7 @@ const TAIL_LIMIT = 5;
 export function characterLine(content: string): string {
   const identity = cardIdentity(content) ?? "（待定）";
   const missing = pendingRequiredLabels(content);
-  const status = missing.length ? `待补：${missing.join("、")}` : "必有齐";
+  const status = missing.length ? `待补：${missing.join("、")}` : "常见格齐";
   const tail = tailSections(content);
   const extra = tail.length
     ? `；另有：${tail.slice(0, TAIL_LIMIT).join("、")}${tail.length > TAIL_LIMIT ? "…" : ""}`

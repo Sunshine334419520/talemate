@@ -1,13 +1,12 @@
 /**
  * 目录摘要器：一份文档在目录索引里占哪一行——按路径匹配的注册表。
  *
- * `match` 与 `framework/invariants.ts`、权限、`design_spec.SPECS` 必须同一套口径（glob，
- * `*` 跨 `/`，项目相对）：`summarize` 把同一个 `path` 先喂给形状、再喂给规范，口径不同就会各读各的。
- * 加一种文档形状 = 加一行数据。
+ * `match` 与 `framework/invariants.ts`、权限、资产种类（`assetkinds`）必须同一套口径（glob，
+ * `*` 跨 `/`，项目相对）。加一种文档形状 = 加一行数据。
  */
 import { match } from "../permission";
+import { kindOf } from "./assets";
 import { CARD_DIR, characterLine, nameFromPath } from "./characters";
-import { specFor } from "./design_spec";
 import { isFiller, listHeadings } from "./markdown";
 
 /**
@@ -88,19 +87,18 @@ function proseLead(content: string): string {
 /**
  * 这一份在目录里占哪一行；返回 `undefined` = 没有一行可言，索引去铺它的小节标题。
  *
- * 命中了注册表 → 那个形状说了算：它给一行就用，它在自己匹配范围里让位就是"没有一行"，不再退
- * 回去问规范（退回会让"不是卡"的文件掉进"不分格就取首句"里）。没命中 → 规范说不分格
- * （`sections` 为空，如序列纲）给 `label（首句）`，这条从规范派生，不在这里再抄一遍路径模式。
- *
- * 其余（有格的文档、没登记规范的文档）→ `undefined`，索引铺它的小节标题。
+ * 命中了注册表 → 那个形状说了算：它给一行就用，它在自己匹配范围里让位就是"没有一行"，
+ * 不再退回去问别的形状。没命中 → 整篇散文的资产（大纲 / 节拍 / 世界观条目 / 概览）如果**没有小节**，
+ * 给 `label（首句）`：这类文档首句才有信息。有 `##` 的仍然铺小节——写了结构就该让人看见结构。
  */
 export function summarize(input: SummaryInput): string | undefined {
   const hook = SUMMARIES.find((s) => s.match.some((p) => match(input.path, p)));
   if (hook) return hook.line(input);
   // 内容读不到时没有"首句"可取——交给索引统一写「（缺）」，免得每个形状各写一套。
   if (input.content === undefined) return undefined;
-  const spec = specFor(input.path);
-  if (spec !== undefined && spec.sections.length === 0) {
+  const proseKinds = new Set(["outline", "beat", "world", "world-entry", "brief"]);
+  const kind = kindOf(input.path);
+  if (kind !== undefined && proseKinds.has(kind.id) && !listHeadings(input.content, 2).length) {
     return `${input.label}（${proseLead(input.content)}）`;
   }
   return undefined;

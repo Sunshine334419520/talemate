@@ -18,16 +18,6 @@ function ProposalContent({ view }: { view: ProposalDisplay }) {
       {view.warning !== undefined && <p className="note zhu proposal-warning">{view.warning}</p>}
       {view.previousNote !== undefined && <p className="proposal-note">{view.previousNote}</p>}
 
-      {view.loose !== undefined && (
-        <section className="proposal-section">
-          <div className="proposal-section-head">
-            <span className="proposal-section-title">开头</span>
-            {view.looseChanged === true && <span className="proposal-badge">本版改动</span>}
-          </div>
-          <Markdown text={view.loose} className="md proposal-md" />
-        </section>
-      )}
-
       {view.body !== undefined && (
         <Markdown text={view.body} className="md proposal-md proposal-whole" />
       )}
@@ -48,8 +38,6 @@ function ProposalContent({ view }: { view: ProposalDisplay }) {
           </section>
         );
       })}
-
-      {view.blankNote !== undefined && <p className="proposal-blank-note">{view.blankNote}</p>}
     </>
   );
 }

@@ -21,31 +21,12 @@ export interface ModeDef {
 }
 
 /**
- * 三向审阅所在的模式 id。工具的前置判断与 harness 的退出判断都引它，不各写一遍字面量
- * ——两边写岔了，模型会看到"工具说可以提案、harness 却不认"。
+ * 正文模式：只换 system，不改权限；进出由 enter-prose / exit-prose 与 plan done 管。
+ * 没有"草稿模式"：审阅走写前 diff / 整篇预览，不再是一层把落盘藏起来的模式（见 docs/design-docs.md）。
  */
-export const DRAFT_MODE = "draft";
-
-/** 正文模式：只换 system，不改权限；进出由 enter-prose / exit-prose 与 plan done 管。 */
 export const PROSE_MODE = "prose";
 
 export const MODES: Record<string, ModeDef> = {
-  /**
-   * 只读，产出一份东西交给用户审阅——三向（接受 / 拒绝 / 提意见）的唯一通道。
-   *
-   * 出口条件是用户接受或拒绝，不是"提案成功"（见 `session.verdictEffect`）：提意见留在模式里
-   * 接着改，所以一次设计会话只进一次模式。
-   *
-   * 权限用 `deny` 而不是从白名单里减名字，因此自动覆盖所有声明了 `edit` 的工具，将来新增的
-   * 写作工具也不会破功；带 `*` 的 deny 会让它们从 schema 里消失，而不是"有但会被拒"。
-   */
-  [DRAFT_MODE]: {
-    id: DRAFT_MODE,
-    title: "草稿模式",
-    note: readPrompt("modes/draft"),
-    permission: { edit: "deny", delegate: "deny" },
-  },
-
   [PROSE_MODE]: {
     id: PROSE_MODE,
     title: "正文",

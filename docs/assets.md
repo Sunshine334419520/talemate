@@ -2,8 +2,8 @@
 
 > **职责**：回答"一本书里有哪些资产、每种资产的文件长什么样、frontmatter 放什么、节拍怎么挂在大纲上、增删改查的语义是什么"。
 > **读者**：要加一种资产、改存储格式、做 UI/CLI 的人；以及要确认"我的书能不能这样组织"的用户。
-> **对齐代码**：2026-11-24 · 种类定义在 `assets/kinds/*.json`（`framework/assetkinds.ts` 加载）；解析与增删改查在 `framework/assets.ts`，CLI 命令在 `cli_assets.ts`（`/assets`、`/asset new|show|set|move|delete`），头部格式在 `framework/frontmatter.ts`；桌面 UI 尚未接入
-> **相邻**：`design-docs.md`（现行的设计文档与两段式，将被本文件取代）· `characters.md` · `outline.md` · `state.md` · `architecture.md`
+> **对齐代码**：2026-11-25 · 种类定义在 `assets/kinds/*.json`（`framework/assetkinds.ts` 加载）；解析与增删改查在 `framework/assets.ts`，CLI 命令在 `cli_assets.ts`（`/assets`、`/asset new|show|set|move|delete`），头部格式在 `framework/frontmatter.ts`；桌面 UI 尚未接入
+> **相邻**：`design-docs.md`（四层活文档与 diff 落盘）· `characters.md` · `outline.md` · `state.md` · `architecture.md`
 
 ## 0. 一句话
 
@@ -140,7 +140,7 @@ b03 chapters=1  →  第 17 章
 
 ## 6. 模板与旧文件
 
-- 新建时给"空白 / 按模板"两种起点：模板只是**初始正文**（从旧的 `design_spec` 里迁过来），
+- 新建时给"空白 / 按模板"两种起点：模板只是**初始正文**（从旧的结构规范整理过来），
   之后怎么改都行，不校验、不拒绝。
 - 旧项目**零迁移**可读：
   - 无 frontmatter 的 `core.md` / `characters/*.md` / `vol_*.md` / `chapters/*.md` 照常成资产，
@@ -168,8 +168,8 @@ b03 chapters=1  →  第 17 章
 - **不校验正文**：不要求必有小节、不要求角色五格、不拒绝自由结构。
 - **不做关系图谱**：节拍→章范围是现算；伏笔/关系仍是弱引用，不建外键表。
 - **不做引用级联**：删除只处理"节拍→大纲"这一层，其余交给调用方。
-- **不改工具面**：`design-spec`、`propose-design`、`enter-draft` 等仍在（拆流程是下一步，见
-  `notes/资产优先工作台重构.md`）。
+- **工具面已经拆完**：规范查询、两段式提案、草稿模式与旧确认工具都已删除；整篇成稿是一次
+  `write`（用户看 diff）。剩余的拆层记录在 `notes/资产优先工作台重构.md`。
 
 ## 9. 相关源码
 

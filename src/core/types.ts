@@ -127,28 +127,23 @@ export interface ProposalDisplaySection {
 }
 
 /**
- * 提案的结构化视图：界面按它画标题、分格与 markdown；CLI 仍可用同一份 `text`。
+ * 提案的结构化视图：界面按它画标题与 markdown；CLI 用同一份 `text`。
  *
- * 它只描述“怎么展示”，不改变“什么会落盘”——落盘内容仍是提案登记里的 `content`。
+ * 现在只有规划一种：设计文档不再走"提案 → 落盘"两段式，整篇写由 `write` 的 diff 预览承担。
  */
 export interface ProposalDisplay {
-  kind: "design" | "plan";
-  /** 卡片标题：角色：陆敬斋 / 核心层 / 第 4 章 · 规划 */
+  kind: "plan";
+  /** 卡片标题：第 4 章 · 规划 */
   title: string;
-  /** 格数、待定数等一行小字 */
+  /** 一行小字 */
   subtitle?: string;
-  /** 额外提醒（如核心设定被外部改写） */
+  /** 额外提醒 */
   warning?: string;
   /** 替换了上一版时的说明 */
   previousNote?: string;
-  /** 不在任何格里的开头/导语；与标题相同的 H1 已被去掉，空则不显示 */
-  loose?: string;
-  looseChanged?: boolean;
   sections: ProposalDisplaySection[];
-  /** 整篇散文（规划 / 无格文档）的正文；有 sections 时为空 */
+  /** 整篇正文（规划） */
   body?: string;
-  /** 还没定的格提示 */
-  blankNote?: string;
 }
 
 /** 一次提问的结构化记录：挂在 tool part 上落盘，界面据此回看。 */
@@ -173,30 +168,21 @@ export interface PendingAskRecord {
 /**
  * `propose-plan` 登记的章节规划在待执行表里的键。
  *
- * 用保留键而不是路径：待执行表的键对文档提案来说是落盘目标（`write_ops` 的 `via:"pending"` 拿它
- * 去取 op），而规划不走那条路——它落 `.talemate/plans/`（引擎工作区），由 `framework/plan.ts`
- * 自己写。设计文档的键一定是 `design/` 下的路径，撞不上。
+ * 用保留键而不是路径：待执行表只剩规划一种，键不承载落盘目标——规划落 `.talemate/plans/`
+ * （引擎工作区），由 `framework/plan.ts` 自己写，`write_ops` 不认它。
  */
 export const PLAN_KEY = "__plan__";
 
 /**
- * 一份待用户拍板的设计提案（propose → apply 的中转态）。
- * apply-design 不收正文、只写这里存的那份，所以"用户看过的 == 落盘的"由构造保证。
+ * 一份待用户拍板的章节规划（propose-plan 的中转态）。
+ *
+ * 设计文档不再有提案：整篇写走 `write`，用户看 diff 点头就是审阅，没有"登记—落盘"两段。
  */
 export interface PendingProposal {
-  /**
-   * 目标活文档的项目相对路径（`design/core.md`）；规划提案是 `PLAN_KEY`——那不是路径，
-   * 所以字段叫 `name` 而不是 `path`：它装的是这份提案的键。
-   */
+  /** 恒为 `PLAN_KEY`；留着字段是为了与事件/界面里的"提案键"同一口径。 */
   name: string;
-  /** 正文：文档提案 = 将落盘的整篇全文；规划 = 那一份规划（落 `.talemate/plans/`） */
+  /** 这一份规划的正文（落 `.talemate/plans/`，也用于本回合的展示与重启恢复） */
   content: string;
-  /**
-   * 提案时的整篇快照——落盘前校验文档未被改过，变了要求重新提案（CAS 的基准）。
-   *
-   * 提案永远是整篇：局部修改走二向的 `edit`，不进提案，所以不存在"只改一格"的提案。
-   */
-  base?: string;
   /**
    * 仅规划提案：这份规划是第几章的。
    *
@@ -271,15 +257,10 @@ export interface ToolContext {
   clearProposal(name: string): void;
   /** 切换会话模式（见 agent/modes.ts）；undefined = 回到普通模式 */
   setMode(mode: string | undefined): void;
-  /** 退出草稿模式，恢复进入草稿前的那一层（如 accept-edits） */
-  exitDraft(): void;
   /** 退出正文模式，恢复进入正文前的那一层 */
   exitProse(): void;
   /**
    * 当前模式 id，没进模式 → undefined。
-   *
-   * 给"只在某种模式里才有意义"的工具做前置用：`propose-design` / `propose-plan` 是三向的出口，
-   * 不在草稿模式里就没有三向可谈——它们据此回一句自愈文案，让模型先把模式切过去。
    */
   getMode(): string | undefined;
   /**
@@ -401,7 +382,7 @@ export interface ToolDef<Args = unknown> {
    */
   permission?: PermissionName;
   /**
-   * 该工具成功后结束本回合，把控制权交回用户（如 propose-design：结论提出来了，该用户说话了）。
+   * 该工具成功后结束本回合，把控制权交回用户（如 propose-plan：规划提出来了，该用户说话了）。
    * 只在 state==="completed" 时生效——校验失败必须留给模型同轮自纠，否则循环会死在一个本可自愈的错误上。
    */
   halt?: boolean;

@@ -419,7 +419,7 @@ async function runOnce(
       };
       session.pending.set(PLAN_KEY, plan);
     }
-    // 先种规划再进模式：prose/draft 的 system 依赖当前章节的 plan
+    // 先种规划再进模式：prose 的 system 依赖当前章节的 plan
     if (evalCase.mode !== undefined) session.setMode(evalCase.mode);
 
     const prompts = [evalCase.brief, ...(evalCase.followUps ?? [])];

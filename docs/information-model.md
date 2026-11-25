@@ -93,7 +93,7 @@
 
 | 对象 | 谁写 | 走哪条路 | 谁批准 |
 |---|---|---|---|
-| 世界规则/角色基线 | mate + 用户 | `propose-design` → `apply-design` | 用户拍板 |
+| 世界规则/角色基线 | mate + 用户 | `write` / `edit`（看 diff） | 用户点头 |
 | 章节正文 | mate | `write` / `edit`（diff） | 用户看 diff |
 | 角色此刻/承诺/读者/工艺/知识/关系 | mate | `write` / `edit`（diff） | 用户看 diff |
 | 规划 | mate | `propose-plan` → 落 `.talemate/plans` | 用户拍板 |
@@ -104,7 +104,7 @@
 
 三条纪律：
 
-1. **canon 只能走两段式或 diff 可见的写路径。** 模型不能自己声称“用户同意了”。
+1. **canon 只能走 diff 可见的写路径。** 模型不能自己声称“用户同意了”。
 2. **状态回写是 diff，不是提案。** 它每章都变，走 `write` / `edit` 就够。
 3. **机器索引不手改。** 决定索引、场景索引、`progress` 都是投影/缓存；要改就改真源。
 

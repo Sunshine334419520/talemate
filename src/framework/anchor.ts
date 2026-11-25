@@ -140,7 +140,7 @@ export async function buildIndex(projectId: string, prefix = "design/"): Promise
   // 根行：给了前缀就写那个前缀；不给（列整个项目）写一句话——空字符串会留下一行空白。
   const lines: string[] = [prefix === "" ? "（整个项目）" : prefix];
   if (!files.length) {
-    lines.push("  （空，按需 design-spec 成稿）");
+    lines.push("  （空）");
     return lines.join("\n");
   }
   // 分组键 = 前缀之下第一段目录（wiki / characters / outline；""=根）

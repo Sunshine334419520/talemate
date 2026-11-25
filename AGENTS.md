@@ -7,11 +7,10 @@ talemate — an AI novel-writing agent. TypeScript on Bun; CLI + agent harness. 
 ```bash
 bun test                 # unit tests — all offline, no LLM calls
 bun run typecheck        # tsc --noEmit   (tsconfig excludes tests/ — test files are not typechecked)
-bun run probe --check    # validates ablation patch strings; no model calls
 bun run smoke            # mock-provider end-to-end, needs no API key
 ```
 
-**IMPORTANT — this is the definition of done: `bun test` + `bun run typecheck` must pass.** If you touched `prompts/` or `src/probe/`, also run `bun run probe --check`: a prompt edit silently invalidates the ablation baseline, and the check is the only thing that notices.
+**IMPORTANT — this is the definition of done: `bun test` + `bun run typecheck` must pass.** If you touched a prompt that an eval variant patches, also run `bun run eval:check`: a prompt edit silently invalidates that variant's `before` string, and the check is the only thing that notices.
 
 ## Language
 
@@ -91,7 +90,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 - **Error messages have three shapes** — keep them: `"<tool> 缺少 <field>（收到：<JSON.stringify(args).slice(0, 200)>）——请…重新调用"`; `"没有找到 <X>「<名>」。可用小节：\n<list>"`; and `"<why not>——<what to do instead>。<next action>"`.
 - Optional hooks: `needsConfirm(args)` (returns a Chinese summary), `halt: true` (ends the turn — **only when the call succeeded**), `metadata` (only when there's machine-readable info).
 - **`AgentDef.tools` is not an enforcement boundary.** It only decides which schemas the model sees; execution looks up the global registry. **Removing a tool means deleting its definition** — taking it out of the whitelist does nothing.
-- **Adding a tool touches 7 places**: define it → add to its domain array → (new domain only) `tool/index.ts` → create `prompts/tools/<id>.txt` → add to an agent whitelist in `agent/registry.ts` → it must appear in `docs/agents.md` (enforced by `tests/docs.test.ts`) → if a probe patches that prompt, sync the `before` string in `src/probe/advance.ts`.
+- **Adding a tool touches 6 places**: define it → add to its domain array → (new domain only) `tool/index.ts` → create `prompts/tools/<id>.txt` → add to an agent whitelist in `agent/registry.ts` → it must appear in `docs/agents.md` (enforced by `tests/docs.test.ts`).
 
 ## Tests
 

@@ -19,7 +19,7 @@ const at = (path: string, content: string | undefined, label?: string): string |
   summarize({ path, label: label ?? (path.split("/").pop() as string), content });
 
 describe("summaries · 注册表派发（角色卡）", () => {
-  test("一人一行：`- 名 · 身份（必有齐 / 待补：…）`，**不铺**必有格的标题", () => {
+  test("一人一行：`- 名 · 身份（常见格齐 / 待补：…）`，**不铺**常见格的标题", () => {
     expect(at("design/characters/林晚.md", THIN)).toBe(
       "- 林晚 · 空乘（待补：性格与矛盾、想要 · 最怕、底线 · 绝不做、说话方式）",
     );
@@ -42,7 +42,7 @@ describe("summaries · 注册表派发（角色卡）", () => {
   });
 });
 
-describe("summaries · 规范派生（不分格的文档给 `label（首句）`）", () => {
+describe("summaries · 整篇散文的资产（给 `label（首句）`）", () => {
   test("序列纲整篇散文：首句才是信号，小节标题不是——**而且得缀上文件名**", () => {
     expect(at("design/outline/vol_1/s1.md", "主角混进内城，为的是见一个人。\n第二句。\n", "vol_1/s1.md")).toBe(
       "vol_1/s1.md（主角混进内城，为的是见一个人。）",
@@ -85,13 +85,15 @@ describe("summaries · 章节流水（只追加，所以只给一行）", () => 
 });
 
 describe("summaries · 没有一行的情况（交给索引铺小节）", () => {
-  test("有格的文档：返回 undefined，索引去铺它的小节标题", () => {
+  test("有格的核心设定：返回 undefined，索引去铺它的小节标题", () => {
     expect(at("design/core.md", "# 核心\n\n## 一句话简介\n沈越想活着回去。\n")).toBeUndefined();
     expect(at("design/outline/vol_2.md", "## 本卷在全局的位置\n承接上卷。\n")).toBeUndefined();
+    expect(at("design/wiki/岛屿地图.md", "# 岛屿地图\n\n## 北岸\n礁石。\n")).toBeUndefined();
   });
 
-  test("没登记规范的文档：同样 undefined", () => {
-    expect(at("design/wiki/岛屿地图.md", "# 岛屿地图\n\n## 北岸\n礁石。\n")).toBeUndefined();
+  test("整篇散文资产（没有小节）才走首句：写了 `##` 就还结构给它", () => {
+    expect(at("design/outline/第1卷/beats/b01.md", "她上岛。\n")).toBe("b01.md（她上岛。）");
+    expect(at("design/outline/第1卷/beats/b01.md", "## 这一拍\n她上岛。\n")).toBeUndefined();
   });
 
   test("非卡且读不到内容 → undefined（「（缺）」由索引统一写，不在这里各写一套）", () => {

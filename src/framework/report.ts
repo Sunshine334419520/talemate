@@ -1,11 +1,10 @@
 /**
- * 项目四层"现状报告"：进入空间时的状态卡片，与 `/status` 复用。
- * 真值 = design/ 文件（有没有、填没填都读出来）。
- * 卡片只出现层名与格名——文件名/路径属内部维护，不进用户视野。
+ * 项目现状卡：进入空间时的状态卡片，与 `/status` 复用。
+ * 真值 = 语料根下的文件（有没有、填没填都读出来）。
+ * 卡片只出现层名与首句——文件名/路径属内部维护，不进用户视野。
  */
 import { loadProjectMeta } from "../storage/project";
 import { enumerateDocs, readDoc } from "../storage/corpus";
-import { specFor } from "./design_spec";
 import { getSection, isFiller, leadLine, listHeadings } from "./markdown";
 import { nameFromPath } from "./characters";
 
@@ -14,7 +13,7 @@ const CORE_DOC = "design/core.md";
 const WORLD_DOC = "design/wiki/world.md";
 const PROGRESS_DOC = "state/progress.md";
 
-// isFiller 住在 markdown.ts；这里 re-export 是因为 proposal.ts 从本文件引它，保住那个调用点
+// isFiller 住在 markdown.ts；这里 re-export 是因为 summary 等调用点从本文件引它
 export { isFiller };
 
 /** 取一个小节正文的第一句有效内容（跳过占位与空行），用于"简要输出"。 */
@@ -22,38 +21,10 @@ function firstLine(content: string | undefined, heading: string): string | undef
   return content === undefined ? undefined : leadLine(content, heading);
 }
 
-/** 该小节填了没（小节存在 + 有非占位正文）。 */
-function sectionFilled(content: string | undefined, heading: string): boolean {
-  if (content === undefined) return false;
-  const s = getSection(content, heading);
-  if (!s.found) return false;
-  return (s.body ?? "").split("\n").some((l) => !isFiller(l));
-}
-
-/** 这份文档还差哪几个格（按规范的节顺序；文档不存在 → 全部算缺）。 */
-function missingSections(content: string | undefined, name: string): string[] {
-  const sections = specFor(name)?.sections ?? [];
-  return sections.filter((s) => !sectionFilled(content, s.heading)).map((s) => s.heading);
-}
-
 /** 状态行右侧：不存在 →（空）；有首句 → ✓ 首句；存在但读不出首句 → fallback。 */
 function layerBrief(exists: boolean, lead: string | undefined, fallback: string): string {
   if (!exists) return "（空）";
   return lead ? `✓ ${lead}` : fallback;
-}
-
-/** 引导语：只覆盖 core 与 world，只指向第一个还不齐的那一格所属的层；两层都齐 → 不引导。 */
-function buildGuidance(core: string | undefined, world: string | undefined): string | undefined {
-  if (core === undefined && world === undefined) {
-    return "想写个什么样的故事？直接讲给我听，我们边聊边把这些记下来。";
-  }
-  const layers: { label: string; missing: string[] }[] = [
-    { label: "核心设定", missing: missingSections(core, CORE_DOC) },
-    { label: "世界观", missing: missingSections(world, WORLD_DOC) },
-  ];
-  const first = layers.find((l) => l.missing.length);
-  if (!first) return undefined;
-  return `${first.label}还差${first.missing.map((h) => `「${h}」`).join("、")}——现在聊聊，还是先记着？`;
 }
 
 /** 卷号：`design/outline/vol_<N>.md` → N；不是卷纲就 undefined。 */
@@ -122,10 +93,5 @@ export async function buildProjectStatus(projectId: string): Promise<string> {
   lines.push(`◇ 角色现状  ${charBrief}`);
   lines.push(`◇ 大纲现状  ${await outlineBrief(projectId, designPaths)}`);
 
-  const guidance = buildGuidance(core, world);
-  if (guidance) {
-    lines.push("");
-    lines.push(guidance);
-  }
   return lines.join("\n");
 }

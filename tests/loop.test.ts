@@ -10,7 +10,7 @@ import { toNeutralMessages } from "../src/context/assemble";
 import { toOpenAIMessages } from "../src/llm/provider";
 import type { AssistantTurn, NeutralMsg } from "../src/llm/types";
 import { runLoop, type LoopDeps } from "../src/session/loop";
-import { draftVerdict, isAgreement, renderPendingNote, verdictEffect, type DraftVerdict } from "../src/session/session";
+import { isAgreement, planVerdict, renderPendingNote, verdictEffect, type PlanVerdict } from "../src/session/session";
 
 const AGENT: AgentDef = {
   id: "mate",
@@ -150,19 +150,19 @@ describe("runLoop · halt", () => {
   test("停在提案那一步：剩余调用不执行但补 error part，且不再请求模型", async () => {
     const h = harness(
       [
-        { text: "", toolCalls: [call("c1", "propose-design"), call("c2", "apply-design")], finish: "tool_calls" },
+        { text: "", toolCalls: [call("c1", "propose-plan"), call("c2", "write")], finish: "tool_calls" },
         { text: "不该到这里", toolCalls: [], finish: "stop" },
       ],
       (c) =>
-        c.name === "propose-design"
-          ? { type: "tool", id: c.id, name: c.name, state: "completed", output: "提案已交给用户审阅", halt: true }
+        c.name === "propose-plan"
+          ? { type: "tool", id: c.id, name: c.name, state: "completed", output: "规划已交给用户拍板", halt: true }
           : { type: "tool", id: c.id, name: c.name, state: "completed", output: "落了盘" },
     );
 
     const reply = await runLoop(AGENT, "讲个故事", h.deps);
 
     expect(h.generateCalls()).toBe(1); // 没有第二次请求
-    expect(h.executed).toEqual(["propose-design"]); // 第二个调用根本没执行
+    expect(h.executed).toEqual(["propose-plan"]); // 第二个调用根本没执行
     expect(h.committed).toHaveLength(1); // 只落盘一条 assistant 消息
 
     const parts = h.committed[0].parts;
@@ -171,13 +171,13 @@ describe("runLoop · halt", () => {
     expect(skipped?.type === "tool" && skipped.error).toContain("本回合已结束");
 
     // 那一步没有正文 → 回落到工具的确认语，别给调用方一个空回复
-    expect(reply).toBe("提案已交给用户审阅");
+    expect(reply).toBe("规划已交给用户拍板");
   });
 
   test("工具失败不 halt：留给模型同轮自纠", async () => {
     const h = harness(
       [
-        { text: "", toolCalls: [call("c1", "propose-design")], finish: "tool_calls" },
+        { text: "", toolCalls: [call("c1", "propose-plan")], finish: "tool_calls" },
         { text: "自纠后的正文", toolCalls: [], finish: "stop" },
       ],
       (c) => ({ type: "tool", id: c.id, name: c.name, state: "error", error: "文档里没有小节「金手指」" }),
@@ -191,8 +191,8 @@ describe("runLoop · halt", () => {
 
   test("有正文时不回落（正文优先）", async () => {
     const h = harness(
-      [{ text: "这是前言", toolCalls: [call("c1", "propose-design")], finish: "tool_calls" }],
-      (c) => ({ type: "tool", id: c.id, name: c.name, state: "completed", output: "提案已交给用户审阅", halt: true }),
+      [{ text: "这是前言", toolCalls: [call("c1", "propose-plan")], finish: "tool_calls" }],
+      (c) => ({ type: "tool", id: c.id, name: c.name, state: "completed", output: "规划已交给用户拍板", halt: true }),
     );
     expect(await runLoop(AGENT, "x", h.deps)).toBe("这是前言");
   });
@@ -201,8 +201,8 @@ describe("runLoop · halt", () => {
 describe("halt 之后的消息仍是合法请求形状", () => {
   test("N 个 toolCall 对应 N 条 tool 消息（缺一个都是静默坏请求）", () => {
     const parts: AssistantPart[] = [
-      { type: "tool", id: "c1", name: "propose-design", state: "completed", output: "提案", halt: true },
-      { type: "tool", id: "c2", name: "apply-design", state: "error", error: "本回合已结束，这次调用没有执行。" },
+      { type: "tool", id: "c1", name: "propose-plan", state: "completed", output: "规划", halt: true },
+      { type: "tool", id: "c2", name: "write", state: "error", error: "本回合已结束，这次调用没有执行。" },
     ];
     const msgs = toNeutralMessages([
       { seq: 1, role: "assistant", ts: 0, agent: "mate", parts, finish: "tool_calls" },
@@ -274,9 +274,9 @@ describe("isAgreement · 同意由 harness 判，不问模型", () => {
   });
 });
 
-describe("draftVerdict · 三向：接受 / 拒绝 / 提意见", () => {
+describe("planVerdict · 规划裁决：接受 / 拒绝 / 提意见", () => {
   test("三种结局各归各家", () => {
-    const cases: [string, DraftVerdict][] = [
+    const cases: [string, PlanVerdict][] = [
       ["没问题", "accept"],
       ["好的", "accept"],
       ["ok", "accept"],
@@ -291,7 +291,7 @@ describe("draftVerdict · 三向：接受 / 拒绝 / 提意见", () => {
     ];
     const wrong = cases
       .map(([s, want]) => {
-        const got = draftVerdict(s);
+        const got = planVerdict(s);
         return got === want ? undefined : `${JSON.stringify(s)}：预期 ${want}，实际 ${got}`;
       })
       .filter((x): x is string => x !== undefined);
@@ -302,23 +302,16 @@ describe("draftVerdict · 三向：接受 / 拒绝 / 提意见", () => {
     // 「不行，但第 3 格改成雨夜」既不是干净的同意，也不是干净的拒绝——用户还给了材料，
     // 那就是"接着改"。误判成拒绝会把模式关掉，用户就被关在门外了。
     for (const s of ["不行，但第 3 格改成雨夜", "算了，换个方向重写", "没问题，但第 3 格改成雨夜"]) {
-      expect(draftVerdict(s)).toBe("refine");
+      expect(planVerdict(s)).toBe("refine");
     }
   });
 
   test("认不出的一律算提意见——绝不误判成接受（fail-closed）", () => {
-    expect(draftVerdict("嗯……你说呢")).toBe("refine");
-    expect(verdictEffect(draftVerdict("嗯……你说呢")).approved).toBe(false);
+    expect(planVerdict("嗯……你说呢")).toBe("refine");
+    expect(verdictEffect(planVerdict("嗯……你说呢")).approved).toBe(false);
   });
 
-  test("接受与拒绝都出模式，提意见留在里面", () => {
-    // 出口条件是"用户接受或拒绝"，不是"提案成功"——这条是"一次设计会话只进一次模式"的前提。
-    expect(verdictEffect("accept").leaveDraft).toBe(true);
-    expect(verdictEffect("reject").leaveDraft).toBe(true);
-    expect(verdictEffect("refine").leaveDraft).toBe(false);
-  });
-
-  test("只有拒绝才作废提案；接受要留着给 apply-design 落盘", () => {
+  test("只有拒绝才作废规划；接受要留着给这一章执行", () => {
     expect(verdictEffect("accept").dropProposal).toBe(false);
     expect(verdictEffect("reject").dropProposal).toBe(true);
     expect(verdictEffect("refine").dropProposal).toBe(false);
@@ -327,7 +320,8 @@ describe("draftVerdict · 三向：接受 / 拒绝 / 提意见", () => {
 
 describe("renderPendingNote · 协议状态独立于消息历史", () => {
   const p = (over: Partial<PendingProposal>): PendingProposal => ({
-    name: "core.md",
+    name: "plan",
+    chapter: 1,
     content: "x",
     approved: false,
     at: 1,
@@ -338,16 +332,18 @@ describe("renderPendingNote · 协议状态独立于消息历史", () => {
     expect(renderPendingNote(new Map())).toBeUndefined();
   });
 
-  test("有提案 → 说清「哪一份 / 是否已同意」，与历史是否被压缩无关", () => {
+  test("有规划 → 说清「哪一章 / 是否已同意」，与历史是否被压缩无关", () => {
     const note = renderPendingNote(
       new Map([
-        ["core.md", p({})],
-        ["wiki/world.md", p({ name: "wiki/world.md", approved: true })],
+        ["plan", p({})],
+        ["plan-2", p({ name: "plan-2", chapter: 2, approved: true })],
       ]),
     )!;
     expect(note).toContain("<pending-proposal>");
-    expect(note).toContain("core.md：用户还没同意");
-    expect(note).toContain("wiki/world.md：用户已表示同意 → 立刻调用 apply-design");
+    expect(note).toContain("第 1 章的规划");
+    expect(note).toContain("用户还没同意 → 等他回话");
+    expect(note).toContain("第 2 章的规划");
+    expect(note).toContain("用户已表示同意 → 按「产物（按序）」执行");
     expect(note).toContain("</pending-proposal>");
   });
 });

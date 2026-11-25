@@ -143,7 +143,7 @@ export interface TraceEventData {
   "proposal/presented": ProposalPresented;
   /** 用户拍板：接受 / 拒绝 / 提意见。按钮不产生用户消息，原话只能靠它留下来 */
   "proposal/decision": DecisionEntry;
-  /** `step` 缺省 = 不是某一轮模型请求发起的（例如 harness 代模型执行 apply-design） */
+  /** `step` 缺省 = 不是某一轮模型请求发起的（例如 harness 代模型执行的操作） */
   "tool/call": { callId: string; name: string; inputChars: number; step?: number };
   "tool/result": {
     callId: string;

@@ -1,7 +1,7 @@
 # 提问：一次创作决策怎么问、怎么答
 
 > **职责**：回答"一次提问怎么问、怎么答、超时/跳过/收起各算什么、回答走哪条路"。
-> **读者**：要改 `ask-user`、`confirm`、提问卡片、超时或迟到回答的人。
+> **读者**：要改 `ask-user`、提问卡片、超时或迟到回答的人。
 > **对齐代码**：2026-10-18 · 规则在 `src/session/asks.ts`；工具在 `src/tool/core_tools.ts`；journal 与迟到回答在 `src/session/session.ts` 与 `src/storage/session-store.ts`；计时与路由在 `desktop/src/main/index.ts`；界面在 `desktop/src/renderer/AskCard.tsx`
 > 相邻：`agents.md`（工具名册）· `permissions.md`（`question` 权限）· `ui.md`（中栏与输入区）· `architecture.md`（一次请求怎么走）
 
@@ -98,7 +98,7 @@ open ──提交──────────────────> answere
 pending 不是跳过更不是同意。`prompts/mate.system.txt` 的 `# Asking` 管“什么时候不该问”：
 能从项目里读到的不问，不拿提问当权限门，跳过或超时都不是同意。
 
-## 为什么不合 `confirm`
+## 为什么不合成一次审批
 
 两者共享底部弹窗外壳（`ConfirmDock` 用同一套 `.ask-sheet` 样式），但契约必须分开。
 审批卡没有收起按钮：它占住输入框直到用户给答复，收起会让搭档一直卡在工具调用里。

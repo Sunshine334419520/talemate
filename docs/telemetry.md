@@ -144,7 +144,7 @@ session
 └─ turn（agent / resumed / status / error）
    ├─ step（request/header、finish、usage、attempts）
    │  └─ tool（callId / state / inputChars / outputChars / durationMs / change）
-   ├─ tools（没有 step 的 harness 调用，例如 apply-design）
+   ├─ tools（没有 step 的 harness 调用，例如写盘审批）
    └─ compactions（start / record / end）
 rewinds
 ```

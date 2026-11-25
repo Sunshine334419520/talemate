@@ -42,7 +42,6 @@ export const writeTool: RegisteredTool<{ path: string; content: string }> = defi
   },
   async execute(args, ctx) {
     const r = await writeFile(ctx, {
-      via: "confirm",
       op: { kind: "write", path: args.path, content: args.content },
       action: `写入 ${args.path}`,
     });
@@ -78,7 +77,6 @@ export const editTool: RegisteredTool<{ path: string; find: string; replace: str
   },
   async execute(args, ctx) {
     const r = await writeFile(ctx, {
-      via: "confirm",
       op: { kind: "replace", path: args.path, find: args.find, replace: args.replace, all: args.all },
       action: `改写 ${args.path}`,
     });
@@ -146,7 +144,6 @@ export const deleteTool: RegisteredTool<{ path: string; term?: string }> = defin
       `有命中就自己判断要不要用 edit 一并清理，别留悬空引用：\n${await ctx.searchDocs(term, "")}`;
 
     const r = await writeFile(ctx, {
-      via: "confirm",
       op: { kind: "delete", path },
       action: `删除 ${path}`,
       note: refs,

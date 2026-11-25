@@ -55,11 +55,11 @@ function truncate(s: string, n: number): string {
 }
 
 /**
- * 提案类工具的入参就是整篇正文（文档草稿 / 章节规划），内容由 harness 渲染后经 `proposal` 事件整块
- * 打印，所以不走常规工具行的截断打印——否则会打出 `input={"path":"design/core.md",...}`，既看不懂，
- * 也和"对用户不出现文件路径"的纪律冲突；规划还会把正文重复一遍。
+ * 提案类工具的入参就是整篇正文（章节规划），内容由 harness 渲染后经 `proposal` 事件整块
+ * 打印，所以不走常规工具行的截断打印——否则会打出 `input={...}`，既看不懂，
+ * 也会把正文重复一遍。
  */
-const PROPOSAL_TOOLS = new Set(["propose-design", "apply-design", "propose-plan"]);
+const PROPOSAL_TOOLS = new Set(["propose-plan"]);
 
 // ─────────────────────────── REPL 状态 ───────────────────────────
 
@@ -276,7 +276,7 @@ function makeIO(): UserIO {
         break;
       case "proposal":
         // 提案正文是给用户读的：整块打印（不缩进、不截断），前后留空行与流式正文分开。
-        // 操作提示不写进提案正文（界面用按钮）；终端里单独给一行，判定仍走 draftVerdict。
+        // 操作提示不写进提案正文（界面用按钮）；终端里单独给一行，判定仍走 planVerdict。
         console.log(`\n${e.text}\n`);
         console.log(`${DIM}   [y] 接受 · [n] 拒绝 · 直接说要改哪里${RESET}`);
         break;

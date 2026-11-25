@@ -16,7 +16,7 @@ import { DEFAULT_CORPUS_ROOT_IDS, projectCorpusRoots, projectPaths } from "../sr
 import { readDoc } from "../src/storage/corpus";
 import { writableCorpusRoots } from "../src/core/roots";
 import { writeFile, type WriteRequest } from "../src/framework/write_ops";
-import { PLAN_KEY, type PendingProposal, type PermissionRequest, type ToolContext } from "../src/core/types";
+import { PLAN_KEY, type FileOp, type PendingProposal, type PermissionRequest, type ToolContext } from "../src/core/types";
 import { dropFileCheckpointsFrom, loadFileCheckpoints } from "../src/storage/file-history";
 
 let HOME: string;
@@ -68,7 +68,6 @@ function makeCtx(): TestCtx {
       pending.delete(k);
     },
     setMode: () => {},
-    exitDraft: () => {},
     exitProse: () => {},
     getMode: () => undefined,
     readDoc: () => Promise.resolve(undefined),
@@ -87,11 +86,7 @@ function makeCtx(): TestCtx {
   return ctx;
 }
 
-const confirm = (op: WriteRequest extends { via: "confirm"; op: infer O } ? O : never, action = "测试写入"): WriteRequest => ({
-  via: "confirm",
-  op,
-  action,
-});
+const confirm = (op: FileOp, action = "测试写入"): WriteRequest => ({ op, action });
 
 describe("write_ops · 直写（二向）", () => {
   test("新建：文件出现，isNew 为真", async () => {
@@ -301,95 +296,12 @@ describe("write_ops · BOM 是文件自己的属性", () => {
   });
 });
 
-describe("write_ops · 落提案（三向）", () => {
-  // 每个用例一个**独立文件名**：提案带 `base` 快照（`null` = "提案时它还不存在"），
-  // 复用同一个名字会让前一个用例写下的字节把后一个判成陈旧——测的就不是它想测的那件事了。
-  const proposal = (name: string, over: Partial<PendingProposal> = {}): PendingProposal => ({
-    // 文档提案的键就是**项目相对路径**（`write_ops` 拿它直接当落盘 op 的 path）——所以这里补上根；
-    // 规划那条登记（`PLAN_KEY`）不是路径，原样留着。
-    name: name === PLAN_KEY ? name : `design/${name}`,
-    content: "提案那一版\n",
-    base: null,
-    approved: true,
-    at: 1,
-    ...over,
-  });
-
-  test("op **只从提案取**——调用方给不了正文（这就是夹带不了的原因）", async () => {
-    const ctx = makeCtx();
-    ctx.setProposal(proposal("prop-a.md"));
-    const r = await writeFile(ctx, { via: "pending", proposalKey: "design/prop-a.md", action: "落盘" });
-    expect(r.ok).toBe(true);
-    expect(await readDoc(pid, "design/prop-a.md")).toBe("提案那一版\n");
-  });
-
-  test("没有提案 → 拒绝，并指路 propose-design", async () => {
-    const ctx = makeCtx();
-    const r = await writeFile(ctx, { via: "pending", proposalKey: "design/没有的.md", action: "落盘" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.reason).toBe("notapproved");
-      expect(r.output).toContain("propose-design");
-    }
-  });
-
-  test("用户还没同意 → 拒绝，什么都不写", async () => {
-    const ctx = makeCtx();
-    ctx.setProposal(proposal("prop-b.md", { approved: false }));
-    const r = await writeFile(ctx, { via: "pending", proposalKey: "design/prop-b.md", action: "落盘" });
-    expect(r.ok).toBe(false);
-    expect(await readDoc(pid, "design/prop-b.md")).toBeUndefined();
-  });
-
-  test("规划那条登记（没有目标文件，也不走这条路）→ 拒绝，并说清它不解锁落盘", async () => {
-    const ctx = makeCtx();
-    ctx.setProposal(proposal(PLAN_KEY, { content: "规划" }));
-    const r = await writeFile(ctx, { via: "pending", proposalKey: PLAN_KEY, action: "落盘" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.output).toContain("不落盘");
-  });
-
-  test("CAS 用**提案时那份快照**：文件在提案之后被改过 → stale", async () => {
-    await writeDoc(pid, "design/prop-c.md", "提案时是这一份\n");
-    const ctx = makeCtx();
-    ctx.setProposal(proposal("prop-c.md", { base: "提案时是这一份\n" }));
-    await writeDoc(pid, "design/prop-c.md", "提案之后被改了\n");
-    const r = await writeFile(ctx, { via: "pending", proposalKey: "design/prop-c.md", action: "落盘" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("stale");
-    expect(await readDoc(pid, "design/prop-c.md")).toBe("提案之后被改了\n");
-  });
-
-  test("落提案**不再弹窗**（用户已在提案那轮看过），但仍然过规则表", async () => {
-    const ctx = makeCtx();
-    ctx.setProposal(proposal("prop-d.md"));
-    let asked = 0;
-    ctx.ask = async () => {
-      asked++;
-      return "allow";
-    };
-    const r = await writeFile(ctx, { via: "pending", proposalKey: "design/prop-d.md", action: "落盘" });
-    expect(r.ok).toBe(true);
-    expect(asked).toBe(0);
-
-    // 规则表说"不许"时不因为问过一次就失效
-    const ctx2 = makeCtx();
-    ctx2.setProposal(proposal("prop-e.md"));
-    ctx2.check = () => "deny";
-    const denied = await writeFile(ctx2, { via: "pending", proposalKey: "design/prop-e.md", action: "落盘" });
-    expect(denied.ok).toBe(false);
-    if (!denied.ok) expect(denied.reason).toBe("denied");
-    expect(await readDoc(pid, "design/prop-e.md")).toBeUndefined();
-  });
-});
-
 describe("write_ops · 给用户的材料", () => {
   test("note（引用检查等）进 confirm，且排在 diff **之前**", async () => {
     // 先看影响面、再看这次具体动什么——顺序反过来，用户得先读完 diff 才知道该拿什么去判断。
     await writeDoc(pid, "design/note-a.md", "# X\n\n## 甲\n内容\n");
     const ctx = makeCtx();
     const r = await writeFile(ctx, {
-      via: "confirm",
       op: { kind: "delete", path: "design/note-a.md" },
       action: "删除 design/note-a.md",
       note: "引用检查「X」：\n别的文档里还有三处提到它",
@@ -404,7 +316,6 @@ describe("write_ops · 给用户的材料", () => {
   test("没有 note 时不留下空段", async () => {
     const ctx = makeCtx();
     await writeFile(ctx, {
-      via: "confirm",
       op: { kind: "write", path: "design/note-b.md", content: "x\n" },
       action: "写入 design/note-b.md",
     });
@@ -416,7 +327,6 @@ describe("write_ops · 给用户的材料", () => {
     // （旧代码给 design 写入传的是裸 `name`，于是文档里 `design/core.md` 那类规则从来没生效过。）
     const ctx = makeCtx();
     await writeFile(ctx, {
-      via: "confirm",
       op: { kind: "write", path: "design/wiki/地理.md", content: "# 地理\n" },
       action: "写入 design/wiki/地理.md",
     });
@@ -424,11 +334,14 @@ describe("write_ops · 给用户的材料", () => {
   });
 
   test("不变量跑在弹窗**之前**——违反它时用户根本不会被问", async () => {
-    // 角色卡整篇写缺必有格：用户不该被问一件注定落不下去的事，所以 lastAsk 应当还是空的。
+    // 重名小节会让按标题寻址失效：用户不该被问一件注定落不下去的事，所以 lastAsk 应当还是空的。
     const ctx = makeCtx();
     const r = await writeFile(ctx, {
-      via: "confirm",
-      op: { kind: "write", path: "design/characters/缺格的卡.md", content: "# 角色：缺格的卡\n" },
+      op: {
+        kind: "write",
+        path: "design/wiki/重名.md",
+        content: "# X\n\n## 甲\n一\n\n## 甲\n二\n",
+      },
       action: "写入",
     });
     expect(r.ok).toBe(false);

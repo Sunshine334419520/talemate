@@ -35,6 +35,12 @@ const RETIRED_TOOLS = [
   "read-design",
   "list-designs",
   "search-designs",
+  "design-spec",
+  "propose-design",
+  "apply-design",
+  "enter-draft",
+  "exit-draft",
+  "confirm",
 ];
 
 async function docNames(): Promise<string[]> {
@@ -115,7 +121,9 @@ describe("文档守卫", () => {
     for (const name of await docNames()) {
       const text = await readFile(join(DOCS, name), "utf8");
       for (const tool of RETIRED_TOOLS) {
-        if (text.includes(tool)) hits.push(`docs/${name} 提到已删除的 ${tool}`);
+        // 只认反引号形式。`confirm` 这类词也当动词用（`io.confirm` 还是活着的接口），
+        // 裸子串会把它判成"文档提到已删工具"——于是守卫只能被删掉，而不是被修对。
+        if (text.includes(`\`${tool}\``)) hits.push(`docs/${name} 提到已删除的 ${tool}`);
       }
     }
     expect(hits).toEqual([]);

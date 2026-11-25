@@ -31,19 +31,13 @@ const DEFAULT_AGENTS: AgentDef[] = [
       "write",
       "edit",
       "delete",
-      "propose-design",
-      "apply-design",
       "propose-plan",
-      "enter-draft",
-      "exit-draft",
       "enter-prose",
       "exit-prose",
       "glob",
       "grep",
       "skill",
       "ask-user",
-      "confirm",
-      "design-spec",
       "webfetch",
       "websearch",
     ],
@@ -67,7 +61,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
       question: "deny",
       delegate: "deny",
       // 只读，而且是类别拒（与 researcher 同款）——`edit` 上的 `"*"` deny 让 write / edit /
-      // delete / apply-design 整个从 schema 里消失。规划者是"读全套材料、回一份工作单"，
+      // delete 整个从 schema 里消失。规划者是"读全套材料、回一份工作单"，
       // 落盘由 mate 做（`propose-plan` 把规划落到 `.talemate/plans/`）。
       edit: "deny",
       // 考据本是研究员的（`notes: "allow"` 在它那边）。这里明写 deny 而不是留空：留空 = 默认
@@ -90,7 +84,7 @@ const DEFAULT_AGENTS: AgentDef[] = [
       // 同 planner：子代理不能提问、不能委派
       question: "deny",
       delegate: "deny",
-      // 同 planner 的类别拒（见上）：`edit` 一拒，write / edit / delete / apply-design 整个从
+      // 同 planner 的类别拒（见上）：`edit` 一拒，write / edit / delete 整个从
       // schema 里消失，作品文档一个字节都动不了——它只提供材料、不决定什么进书，落盘归 mate。
       edit: "deny",
       // 唯一允许它写的是它自己的考据本（引擎工作区，不是作品）——留空 → 默认 `ask` → `ctx.ask`

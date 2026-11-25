@@ -4,7 +4,7 @@
  *
  * 一条输入 → 若干轮「取上下文 → 生成 → 执行工具 → 落盘 → 判断是否续」，直到某轮无 tool-call、
  * 有工具要求 halt、或达 steps 上限。halt 只在工具成功后置位，结束本回合、把控制权交回用户
- * （propose-design 用它保证提案与落盘不同回合）。
+ * （propose-plan 用它保证规划与执行不同回合）。
  */
 import type { AgentDef, AssistantPart, LLMEvent, ToolCall } from "../core/types";
 import type { AssistantTurn, NeutralMsg, ToolSchema } from "../llm/types";

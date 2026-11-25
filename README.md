@@ -54,12 +54,12 @@ talemate new 我的小说 悬疑
 | `src/agent/` | Agent 注册表：mate(primary) / planner / researcher / summarizer(hidden) |
 | `src/session/` | 会话接线、agent 循环、上下文压缩 |
 | `src/tool/` | 工具框架 + 内置工具（按领域分模块，见 `src/tool/index.ts` 的聚合数组） |
-| `src/framework/` | 写作领域层：层规范、写盘唯一实现、提案渲染、markdown 手术、角色卡、引用搜索 |
+| `src/framework/` | 写作领域层：资产读法、写盘唯一实现、markdown 手术、角色卡摘要、不变量后验 |
 | `src/llm/` | provider 抽象（anthropic / openai 兼容 / mock）+ 流式多轮 |
 | `src/storage/` | 文件系统项目 / 会话存储 |
 | `src/skill/` | SKILL.md 发现与解析（仓库内置库 `skills/` / 全局库 / 项目库） |
 | `src/prompts.ts` | 加载 `prompts/*.txt` |
-| `src/probe/` | 消融实验工具（开发用，不属产品路径） |
+| `src/probe/` | 消融 patch 实现（开发用，不属产品路径；eval 变体共用） |
 
 ## 文档
 
@@ -74,7 +74,7 @@ talemate new 我的小说 悬疑
 | 会话事件、投影与导出 | [`docs/telemetry.md`](docs/telemetry.md) |
 | Agent / 工具 / Skill 怎么分类与触发 | [`docs/agents.md`](docs/agents.md) |
 | 这本书有哪些资产、每种资产的文件长什么样 | [`docs/assets.md`](docs/assets.md) |
-| 企划的四层活文档与两段式落盘 | [`docs/design-docs.md`](docs/design-docs.md) |
+| 企划的四层活文档与 diff 落盘 | [`docs/design-docs.md`](docs/design-docs.md) |
 | 角色卡长什么样、怎么维护 | [`docs/characters.md`](docs/characters.md) |
 | 大纲由什么构成、为什么没有整本大纲 | [`docs/outline.md`](docs/outline.md) |
 | 每章都在变的东西（谁在场、伏笔收到哪了） | [`docs/state.md`](docs/state.md) |

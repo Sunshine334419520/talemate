@@ -16,7 +16,7 @@
    ┌─────────────┼──────────────────────────────────────────────┐
    ▼             ▼                                              ▼
 agent/         tool/       内置工具(按 agent 白名单可见)          framework/   领域层
-registry.ts  (define/registry/runner + 6 域模块)             anchor/report/characters/design_spec/summaries/
+registry.ts  (define/registry/runner + 6 域模块)             anchor/report/characters/assetkinds/summaries/
 角色声明                                                      markdown/search/proposal/plan/write_ops/match
    │                                                                │
    ▼                                                                ▼
@@ -123,7 +123,7 @@ sequenceDiagram
 
 - **每轮一条 assistant 消息**落盘（text / reasoning / tool 各一个 part）；工具内嵌 part，走 `pending→running→completed/error`。
 - **循环停 = 本轮无 tool-call / 有工具要求 `halt` / 达 steps**；有 tool-call → 下一轮把结果作为 `role:"tool"` 回放。
-- **`halt`**：工具在**成功**时可要求结束本回合（`ToolDef.halt`，目前 `propose-design` 与 `propose-plan` 用它），把控制权交回用户。同回合剩下的 tool call 不再执行，但**必须补一个带各自 id 的 `error` part**——`assemble` 只回放 `completed`/`error` 的 part，而 assistant 消息登记了全部 `toolCalls`，少一个就是静默的坏请求。**工具失败时不能 halt**，否则循环死在一个本可自愈的错误上。
+- **`halt`**：工具在**成功**时可要求结束本回合（`ToolDef.halt`，目前 `propose-plan` 用它），把控制权交回用户。同回合剩下的 tool call 不再执行，但**必须补一个带各自 id 的 `error` part**——`assemble` 只回放 `completed`/`error` 的 part，而 assistant 消息登记了全部 `toolCalls`，少一个就是静默的坏请求。**工具失败时不能 halt**，否则循环死在一个本可自愈的错误上。
 - **task 委派** = 独立 Session（depth+1），只传 prompt；结果 `<task_result>` 文本回传父会话；深度 ≤1。子会话落盘时带 `depth` / `parentSessionId`：左栏与 `/sessions` 只列用户会话，对话里画成一张 `task` 嵌套卡，轨迹与 `/debug` 能按 id 找回完整过程。步数预算不够时循环停在最后一次工具调用上、没有正文可回填——`task` 对空结果显式回 `state="empty"`，不假装它答了。子代理另有硬预算（planner 20 / researcher 30）：最后三步在 system 注入收尾提示，最后一步撤掉工具，逼它把已有材料写成结论。
 - **单队列**：busy 时新输入排队，不做 steer/queue 多级语义。
 
@@ -144,7 +144,7 @@ messages = [<context-state> 合成消息] + 最近 turn 原文 + 刚读的设定
 
 四条规则：
 
-1. **AGENTS.md = 常驻、每步全量注入**。内容归用户——项目级、用户管理、**默认可空、不预建**；系统只提供"存在就注入"的能力。**产品核心行为不得依赖它**：路径约定归工具，分层工作法归 design-spec，写作与命名纪律归各角色 system。
+1. **AGENTS.md = 常驻、每步全量注入**。内容归用户——项目级、用户管理、**默认可空、不预建**；系统只提供"存在就注入"的能力。**产品核心行为不得依赖它**：路径约定归工具，分层建议归 `assets/kinds/*.json`，写作与命名纪律归各角色 system。
 2. **Skill = 目录化、按需注入**。正文不常驻；system 只给清单，命中后用 `skill` 工具把正文作为 tool-result 带进来。三个库按**扫描顺序**定优先级：仓库内置 < 用户全局 < 项目。
 3. **活文档 = 工具读取、按需切片**。要什么读什么，读到的内容作为 user 侧材料。**没有任何文档常驻**——包括 `core.md` 与 `wiki/world.md`。
 4. **取当前版本**：写作/task 委派时现读，绝不引用缓存。
@@ -228,7 +228,7 @@ chat({ model, system, messages, tools?, signal?, onText?, onReasoning? }): Promi
 | 不做 | 因为 |
 |---|---|
 | bash / 文件编辑 / pty / grep / glob / LSP / MCP | 只需要读写 `design/` 与 `chapters/` 下的文本 |
-| 权限级联（allow/ask/deny 队列） | 简化为"默认放行 + 工具自声明是否需 confirm" |
+| 权限级联（allow/ask/deny 队列） | 简化为"默认放行 + 工具自声明要不要审批" |
 | 通用数据库 / 全仓事件溯源框架 | 文件系统 + jsonl 够用；只做**会话级** append-only 事件日志（`events.jsonl`），不引入通用 DB / 全仓事件溯源（见上节） |
 | 多版本协议栈 / 迁移债 | 自研只有一份实现，不留双栈 |
 | 遥测 / 云同步 / todo 工具 | 与产品无关；本地事件日志与投影是另一条学习线，且**默认不导出**（见 `telemetry.md`） |

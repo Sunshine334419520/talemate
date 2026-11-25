@@ -115,12 +115,6 @@ export function leadLine(content: string, heading: string, max = 60): string | u
   return line ? (line.length > max ? `${line.slice(0, max)}…` : line) : undefined;
 }
 
-/** 文档里有没有 level 2 的标题（`##`，不含 `###`）。角色卡拿它做陷阱检查，见 characters.rejectShallowHeading。 */
-export function matchesLevel2Heading(content: string): string | undefined {
-  const m = content.match(/^##(?!#)\s+(.*)$/m);
-  return m ? m[1].trim() : undefined;
-}
-
 /**
  * 写一个区块（含其 heading）：有就整格换掉，没有就追加到文末。
  *

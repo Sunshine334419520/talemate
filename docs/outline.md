@@ -1,9 +1,9 @@
 # 情节层：卷纲与序列纲
 
 > **职责**：回答"大纲由什么构成、一卷的纲/一个序列的纲各写什么、为什么没有整本大纲"。
-> **读者**：要改 `framework/design_spec.ts` 里卷纲/序列纲那两条规范、或改情节层写入守卫的人。
-> **对齐代码**：2026-10-25 · 规范在 `framework/design_spec.ts` 的 `SPECS`（按路径 glob 登记，具体者胜出）；章规划在 `framework/plan.ts`；规划者读卷/序列契约在 `prompts/planner.system.txt`，提交在 `prompts/tools/propose-plan.txt`
-> 相邻：`design-docs.md`（四层与两段式落盘）· `characters.md`（另一个"主文档是目录"的层）· `state.md`（承诺的实际状态）· `chapter-planning.md`（章生产）· `roadmap.md`
+> **读者**：要改 `assets/kinds/outline.json` / `assets/kinds/beat.json` 的载体定义、或改情节层读写的人。
+> **对齐代码**：2026-11-25 · 载体在 `assets/kinds/outline.json` 与 `assets/kinds/beat.json`，加载在 `framework/assetkinds.ts`；章规划在 `framework/plan.ts`；规划者读卷/序列契约在 `prompts/planner.system.txt`，提交在 `prompts/tools/propose-plan.txt`
+> 相邻：`design-docs.md`（四层活文档与 diff 落盘）· `assets.md`（资产载体）· `characters.md`（另一个"主文档是目录"的层）· `state.md`（承诺的实际状态）· `chapter-planning.md`（章生产）· `roadmap.md`
 
 ## 一句话
 
@@ -66,7 +66,7 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 骨架只做诊断，不是分类考试。
 
 **卷末结算**：一卷写完时，先拿“卷末状态”与 `state/` 的实际状态对账：哪些轴变了、哪些旧债结了、
-哪些新债开了、独立问题有没有回答。对不上就提议改卷末状态（`propose-design`，用户拍板），
+哪些新债开了、独立问题有没有回答。对不上就用 `write` 改卷末状态（用户看 diff），
 不要带着旧计划写下一卷。下一卷的入口从实际卷末状态现算，不缓存全书分卷表。
 
 ## 序列纲
@@ -86,7 +86,7 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 | 写法约束 | 哪几处不能写坏；世界规则/战力上限；哪些事件可以换 |
 | 体量 | 预估字数范围，不写章数 |
 
-`sections` 为空是**故意的**（与角色卡同路：形状全在 `guide` 里）。逼它分格是削足适履，
+**整篇散文是故意的**（与角色卡的自由长尾同路：字段形状只作参考，不逼它切小节）。逼它分格是削足适履，
 而且"必含 A、B、C"式的清单会把事件钉死——**只有功能稳定，事件随时可换**：
 
 > 写功能（“给主角一个进内城的理由”），别写事件（“主角遇到老乞丐”）。
@@ -111,16 +111,16 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 `read`（带 `section`）、单独 `edit`，所以列；序列纲整份读，所以不列。角色卡一人一行是同一个道理。
 
 **事件仍然自由。** 契约只约束"进内城后谁知道什么、失去了什么"，不约束"通过谁进去"。
-如果写作中发现更好的走法，**先改契约、再写正文**——改契约走 `propose-design`，用户拍板；
+如果写作中发现更好的走法，**先改契约、再写正文**——改契约走 `write` / `edit`（用户看 diff）；
 不能让正文静默推翻契约。
 
 **写入一律走 `path`**：`design/outline/vol_<N>.md` / `design/outline/vol_<N>/s<序号>.md`。
 没有第二个词表——`layer:"outline"` 那个参数连同那份层短名表一起删了（见 `design-docs.md`
 的“寻址：只有路径”）。
 
-**规范按路径登记**（`SPECS`），而且**更具体的模式胜出**：`design/outline/vol_*.md` 与
-`design/outline/vol_*/s*.md` 同时命中一份序列纲，靠"模式更长者胜出"定胜负——**不靠表里的先后**。
-取规范：`design-spec` 带 `path: "design/outline/"`（目录路径）拿两份，带某一份文档的路径拿其中一份。
+**载体在 `assets/kinds/`**：卷纲与序列纲都是 `outline` 这一种资产（`design/outline/` 下的 markdown），
+节拍是 `beat`（`design/outline/**/beats/*.md`，frontmatter 的 `outline` 指向所属卷纲）。没有"按路径取规范"
+这回事：`write` 直接写，资产定义只回答这种文件是什么、通常放哪。见 `assets.md`。
 
 ## 章规划不在这里
 
@@ -155,11 +155,11 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 
 | 文件 | 职责 |
 |---|---|
-| `framework/design_spec.ts` | 卷纲六格与序列纲七字段契约的规范（按路径 glob 登记，具体者胜出） |
-| `framework/proposal.ts` | `specFor` 转发给注册表；`reviewable` 对 `sections` 为空的规范落到开放文档那条判据 |
+| `assets/kinds/outline.json` | 卷纲与序列纲的载体（路径模式、初始 frontmatter） |
+| `assets/kinds/beat.json` | 节拍的载体（挂在卷纲下的独立文件） |
 | `framework/report.ts` | 状态卡的“大纲现状”**现算**（最新一卷 + 序列数），不读任何"整本大纲" |
 | `framework/anchor.ts` | `buildIndex`：不分格的文档一行 + 首句 |
 | `storage/corpus.ts` | 枚举/读/扫词——`read` / `glob` / `grep` 的取数都出自这里 |
-| `tool/design_tools.ts` | `resolveDoc` 只拦"必须 `design/` 开头"——大纲本来就是 `design/` 下的路径，没有额外规则 |
+| `framework/plan.ts` | 章规划工件（`.talemate/plans/`，不是作品文档） |
 | `prompts/planner.system.txt` | 规划者读卷契约/序列契约，产出章规划 |
 | `prompts/tools/propose-plan.txt` | 提交章规划；场景简报（依据 / 前情 / 这场戏 / 必须发生 / 不能提前兑现 / 章末问题）+ 产物清单 |

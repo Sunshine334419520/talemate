@@ -127,13 +127,9 @@ const TOOL_WORDS: Record<string, string> = {
   recall: "翻考据本",
   remember: "记录考据",
   "ask-user": "向你提问",
-  confirm: "征求确认",
   "propose-plan": "提交章节规划",
-  "propose-design": "提交设计稿",
-  "apply-design": "落盘设计稿",
-  "enter-draft": "进入草稿模式",
-  "exit-draft": "离开草稿模式",
-  "design-spec": "取结构规范",
+  "enter-prose": "进入正文模式",
+  "exit-prose": "离开正文模式",
   skill: "载入规范",
 };
 

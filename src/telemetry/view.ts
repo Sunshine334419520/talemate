@@ -16,7 +16,7 @@ export type TraceTurnStatus = "open" | "completed" | "error" | "aborted";
 export interface TraceToolView {
   callId: string;
   name: string;
-  /** 发起它的 step；undefined = harness 代模型执行（例如 apply-design） */
+  /** 发起它的 step；undefined = harness 代模型执行（例如文件回退） */
   step?: number;
   state: ToolState;
   at: number;

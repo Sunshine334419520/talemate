@@ -7,7 +7,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { AgentRegistry } from "../agent/registry";
-import { DRAFT_MODE, MODES, PROSE_MODE } from "../agent/modes";
+import { MODES, PROSE_MODE } from "../agent/modes";
 import {
   BASE_PERMISSIONS,
   deriveSubagentPermission,
@@ -61,7 +61,6 @@ import { buildIndex } from "../framework/anchor";
 import { globDocs as findGlobDocs, grepDocs as findGrepDocs } from "../framework/find";
 import { isChapterFile, planRelPath, readPlan } from "../framework/plan";
 import { buildProseBrief } from "../framework/prose";
-import { labelOf } from "../framework/proposal";
 import { renderHits } from "../framework/search";
 import { chat } from "../llm/provider";
 import type { NeutralMsg, ToolSchema } from "../llm/types";
@@ -193,12 +192,12 @@ function traceError(err: unknown): TraceError {
 
 
 /**
- * 用户这轮回话属于三向里的哪一种。
+ * 用户这轮对规划的回复属于哪一种。
  *
- * 核心只认这三种结局，怎么问是交付层的事——今天在 REPL 里用文字问，将来 UI 用三个按钮，
+ * 核心只认这三种结局，怎么问是交付层的事——今天在 REPL 里用文字问，界面用三个按钮，
  * 这一层不动。所以判定留在这里（harness），而不在工具里。
  */
-export type DraftVerdict = "accept" | "reject" | "refine";
+export type PlanVerdict = "accept" | "reject" | "refine";
 
 /**
  * 词表必须整句只由它们构成才算数——这是 fail-closed 的关键：
@@ -219,8 +218,8 @@ export function isRejection(text: string): boolean {
   return REJECT_CHAIN_RE.test(text.trim());
 }
 
-/** 三向判定。认不出的一律算"提意见"——留在模式里多走一轮，绝不误判成接受。 */
-export function draftVerdict(text: string): DraftVerdict {
+/** 规划回复的判定。认不出的一律算"提意见"——绝不错判成接受。 */
+export function planVerdict(text: string): PlanVerdict {
   const t = text.trim();
   if (AGREE_CHAIN_RE.test(t)) return "accept";
   if (REJECT_CHAIN_RE.test(t)) return "reject";
@@ -230,16 +229,13 @@ export function draftVerdict(text: string): DraftVerdict {
 /**
  * 这一种结局对协议状态意味着什么。规则单独拎成纯函数是为了能测——`Session.markPendingApproval`
  * 走 `post()`，一测就要打 LLM；突变留在 Session，规则在这里。
- *
- * `leaveDraft` 是接受或拒绝都退，不是"提案成功就退"：提意见是在模式里打转。
  */
-export function verdictEffect(v: DraftVerdict): {
+export function verdictEffect(v: PlanVerdict): {
   approved: boolean;
-  /** 拒绝了就把提案作废——留着的话 apply-design 还能把它落下去，而那正是用户刚说不的 */
+  /** 拒绝了就把规划作废——留着的话模型还会照着用户刚否掉的那一版去写 */
   dropProposal: boolean;
-  leaveDraft: boolean;
 } {
-  return { approved: v === "accept", dropProposal: v === "reject", leaveDraft: v !== "refine" };
+  return { approved: v === "accept", dropProposal: v === "reject" };
 }
 
 /**
@@ -270,26 +266,16 @@ export function renderPendingNote(pending: Map<string, PendingProposal>): string
   const open: string[] = [];
   const settled: string[] = [];
   for (const p of pending.values()) {
-    // 规划没有要落盘的目标文档：它批准的是"照它去写正文"这个执行，不是一次落盘。
-    // 工件路径要报出来：规划落在 `.talemate/plans/`，那是 `read` / `glob` 看不见的地方，
-    // 压缩之后 mate 仍得知道它存下来了（见 framework/plan.ts 的文件头）。
-    if (p.name === PLAN_KEY) {
-      const what = p.chapter ? `第 ${p.chapter} 章的规划（${planRelPath(p.chapter)}）` : "这一章的规划";
-      // 正文一落盘就不再是待办——不分开的话，此后每一轮都会重复"照它执行"，而它早执行完了。
-      if (p.done) {
-        settled.push(`- ${what}：正文已落盘。用户要改哪一条，照规划里那一条直接改，不必重新提案`);
-        continue;
-      }
-      const state = p.approved
-        ? "用户已表示同意 → 按「产物（按序）」执行：需要的新角色卡/世界事实先走 propose-design 给用户过目；前置都落地后先 enter-prose，再写正文；不要跳过任何前置产物"
-        : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
-      open.push(`- ${what}：${state}${p.stale === true ? "（规划工件与提案时不一致，可能被外部改过；以当前文件为准）" : ""}`);
+    const what = p.chapter ? `第 ${p.chapter} 章的规划（${planRelPath(p.chapter)}）` : "这一章的规划";
+    // 正文一落盘就不再是待办——不分开的话，此后每一轮都会重复"照它执行"，而它早执行完了。
+    if (p.done) {
+      settled.push(`- ${what}：正文已落盘。用户要改哪一条，照规划里那一条直接改，不必重新提案`);
       continue;
     }
     const state = p.approved
-      ? "用户已表示同意 → 立刻调用 apply-design；不要重新提案，不要先解释"
-      : "用户还没同意 → 等他回话；他要改就重新 propose-design";
-    open.push(`- ${p.name}：${state}`);
+      ? "用户已表示同意 → 按「产物（按序）」执行：需要的新角色卡/世界事实用 write 整篇写（用户看 diff 点头）；前置都落地后先 enter-prose，再写正文；不要跳过任何前置产物"
+      : "用户还没同意 → 等他回话；他要改就重新 propose-plan";
+    open.push(`- ${what}：${state}${p.stale === true ? "（规划工件与提案时不一致，可能被外部改过；以当前文件为准）" : ""}`);
   }
   const blocks: string[] = [];
   if (open.length) {
@@ -393,7 +379,7 @@ export class Session {
 
   /**
    * 当前会话模式（见 agent/modes.ts）。只在内存里——和 pending 同生命周期，进程重启即回默认模式。
-   * 硬保证不靠它：三向审阅的前置是模式，但那条链的"停"靠 `propose-design` 自己的 `halt`，丢了也不漏。
+   * 硬保证不靠它：规划那条链的"停"靠 `propose-plan` 自己的 `halt`，丢了也不漏。
    */
   private mode?: string;
   /** 进草稿/正文模式前的那一层（通常是 accept-edits）；退出 overlay 时回到它，不能无条件清空。 */
@@ -534,7 +520,6 @@ export class Session {
     this.pendingAskRecord = undefined;
     this.plannerAwaitingProposal = false;
     this.planChapter = undefined;
-    this.exitDraftMode();
     this.exitProseMode();
     await clearPendingAsk(this.projectId, this.sessionId);
     this.lastInput = undefined; // 上下文变小了；下一次按估算重新量
@@ -559,23 +544,18 @@ export class Session {
   }
 
   /**
-   * 用户这轮说了话 → 判这是三向里的哪一种，并据此决定要不要退出草稿模式。
+   * 用户这轮说了话 → 判这一份规划是接受、拒绝还是提意见。
    *
-   * 出口条件是"用户接受或拒绝"，不是"提案成功"：提意见是在模式里打转，不出——所以一次设计会话
-   * 只进一次模式，里面可以来回提很多版。退出的动作归这里（harness），不归 `propose-*`——只有
-   * harness 知道这轮回话属于哪一种。只认最近提交的那一份：halt 保证一回合只提交一份。
+   * 只认最近提交的那一份：`propose-plan` 的 halt 保证一回合只提交一份。判定归这里（harness），
+   * 不归工具——只有 harness 知道这轮回话属于哪一种。
    */
   private markPendingApproval(input: string): void {
     const latest = this.latestOpenPending();
     if (!latest) return;
-    const verdict = draftVerdict(input);
+    const verdict = planVerdict(input);
     const effect = verdictEffect(verdict);
     latest.approved = effect.approved;
     this.noteDecision(latest, verdict, verdict === "refine" ? input : undefined);
-    if (!effect.leaveDraft) return;
-
-    // 退出草稿要回到进入前的那一层；别的模式（accept-edits）底下不该有待审阅的提案。
-    this.exitDraftMode();
     if (effect.dropProposal) this.pending.delete(latest.name);
   }
 
@@ -617,7 +597,7 @@ export class Session {
    *
    * 不落成用户消息——用户点的是按钮，不是打了“没问题”；这句话不该出现在对话历史里。
    * 接受之后由外壳再跑一轮（`resumeAfterAnswer`），system 里的 `<pending-proposal>` 会告诉
-   * 模型"用户已同意，可以 apply-design / 照它执行"。拒绝没有后续模型回合。
+   * 模型"用户已同意，照它执行"。拒绝没有后续模型回合。
    */
   decideProposal(verdict: "accept" | "reject"): void {
     if (this.running) throw new Error("这一轮还在跑，等它结束再拍板。");
@@ -626,89 +606,28 @@ export class Session {
 
     if (verdict === "accept") {
       latest.approved = true;
-      if (latest.name === PLAN_KEY) this.planChapter = latest.chapter;
+      this.planChapter = latest.chapter;
     } else {
       this.pending.delete(latest.name);
-      if (latest.name === PLAN_KEY) this.planChapter = undefined;
+      this.planChapter = undefined;
     }
     this.noteDecision(latest, verdict);
-    this.exitDraftMode();
   }
 
   /**
-   * 接受一份提案。
-   *
-   * **文档提案由 harness 直接落盘**——用户已经看过这一版字节，接受是确定的动作，不需要再让
-   * 模型猜“现在该调 apply-design 了”。走的是同一个 `apply-design` 工具、同一条 write_ops
-   * 路径，权限/不变量/CAS 一样不少；只是不再多一次模型往返。
-   * 规划提案没法由 harness 执行（正文要模型写），返回 plan 让外壳跑执行回合。
+   * 接受一份规划。规划没法由 harness 执行（正文要模型写），返回章号让外壳跑执行回合。
    */
-  async acceptProposal(): Promise<{ kind: "design" | "plan"; chapter?: number }> {
+  async acceptProposal(): Promise<{ kind: "plan"; chapter?: number }> {
     if (this.running) throw new Error("这一轮还在跑，等它结束再拍板。");
     const latest = this.latestOpenPending();
     if (!latest) throw new Error("没有待拍板的提案。");
 
     this.decideProposal("accept");
-    if (latest.name === PLAN_KEY) {
-      return { kind: "plan", ...(latest.chapter === undefined ? {} : { chapter: latest.chapter }) };
-    }
-
-    // 文档落盘虽然快，也要占住会话：否则用户在这几十毫秒里发话，会和写盘并发。
-    this.running = true;
-    this.io.onEvent({ type: "session.status", status: "busy" });
-    try {
-      await this.applyApprovedDesign(latest.name);
-    } finally {
-      this.running = false;
-      this.io.onEvent({ type: "session.status", status: "idle" });
-    }
-    return { kind: "design" };
-  }
-
-  /** 把已批准的文档提案交给 apply-design 工具落盘；失败时把工具错误原样抛出。 */
-  private async applyApprovedDesign(path: string): Promise<void> {
-    if (!this.tools.has("apply-design")) throw new Error("apply-design 工具没有注册。");
-    const callId = `apply-${randomUUID()}`;
-    const call: ToolCall = { id: callId, name: "apply-design", input: { path } };
-    const t0 = Date.now();
-    this.trace("tool/call", { callId, name: call.name, inputChars: JSON.stringify(call.input).length });
-    this.io.onEvent({ type: "tool-call", id: callId, name: call.name, input: JSON.stringify(call.input) });
-    const part = await executeToolPart(this.agentId, call, this.tools, this.makeContext(this.agent, callId));
-    this.trace("tool/result", {
-      callId,
-      name: call.name,
-      state: part.type === "tool" ? part.state : "error",
-      outputChars: part.type === "tool" ? (part.output ?? part.error ?? "").length : 0,
-      durationMs: Date.now() - t0,
-      ...(part.type === "tool" && part.error !== undefined ? { error: part.error } : {}),
-      ...(part.type === "tool" && part.change !== undefined
-        ? { change: { path: part.change.path, kind: part.change.kind } }
-        : {}),
-    });
-    this.io.onEvent({
-      type: "tool.result",
-      id: callId,
-      name: call.name,
-      output: part.type === "tool" ? (part.output ?? part.error ?? "") : "",
-      change: part.type === "tool" ? part.change : undefined,
-    });
-    // 这是 harness 代模型执行的 apply-design；DeepSeek 思考模式仍要求这条 assistant
-    // 工具消息带 reasoning_content，不能让它成为一条“无 reasoning 的工具调用”。
-    await this.persistAssistant(
-      this.agentId,
-      [{ type: "reasoning", text: "The user approved this proposal; the harness applied it." }, part],
-      "tool_calls",
-    );
-    // apply-design 失败时返回 completed + 错误文案（工具层约定），只有清掉提案才算成功
-    if (this.pending.has(path)) {
-      throw new Error(
-        part.type === "tool" ? (part.output || part.error || "apply-design 失败") : "apply-design 失败",
-      );
-    }
+    return { kind: "plan", ...(latest.chapter === undefined ? {} : { chapter: latest.chapter }) };
   }
 
   /**
-   * 提意见：用户确实写了一段话，照常落成 user 消息；但不再走 `draftVerdict`——
+   * 提意见：用户确实写了一段话，照常落成 user 消息；但不再走 `planVerdict`——
    * 界面已经明确是 refine，一段恰好写成“没问题”的意见不该被误判成接受。
    */
   async refineProposal(note: string): Promise<string> {
@@ -722,11 +641,11 @@ export class Session {
     return this.runTurn(this.agent, note, (text, id) => this.persistUser(text, id));
   }
 
-  /** 提示符用：待落盘提案的展示名（如"核心层"）。没有未决的 → undefined。 */
+  /** 提示符用：待拍板的规划叫什么（"第 3 章 · 规划"）。没有未决的 → undefined。 */
   get pendingLabel(): string | undefined {
     const open = [...this.pending.values()].filter((p) => !p.done);
     if (!open.length) return undefined;
-    return [...new Set(open.map((p) => labelOf(p.name, p.content)))].join("、");
+    return [...new Set(open.map((p) => (p.chapter ? `第 ${p.chapter} 章 · 规划` : "规划")))].join("、");
   }
 
   /**
@@ -1282,8 +1201,8 @@ export class Session {
 
   /** 壳给新会话定默认权限模式（见设置里的「权限」）；运行中切模式仍走 ctx.setMode。 */
   setMode(mode: string | undefined): void {
-    if (mode === DRAFT_MODE || mode === PROSE_MODE) {
-      if (this.mode !== DRAFT_MODE && this.mode !== PROSE_MODE) this.baseMode = this.mode;
+    if (mode === PROSE_MODE) {
+      if (this.mode !== PROSE_MODE) this.baseMode = this.mode;
       this.mode = mode;
       return;
     }
@@ -1295,11 +1214,6 @@ export class Session {
     if (this.mode !== mode) return;
     this.mode = this.baseMode;
     this.baseMode = undefined;
-  }
-
-  /** 退出草稿并恢复进入前的模式（accept-edits / undefined）。 */
-  private exitDraftMode(): void {
-    this.leaveOverlay(DRAFT_MODE);
   }
 
   /** 退出正文模式，恢复进入前的模式。 */
@@ -1454,9 +1368,8 @@ export class Session {
       },
       showProposal: (text, view) =>
         this.io.onEvent({ type: "proposal", text, ...(view === undefined ? {} : { view }) }),
-      // 以方法暴露而非裸 Map：approved / base 这些不变量只能在这里改
+      // 以方法暴露而非裸 Map：approved 这类不变量只能在这里改
       setMode: (m) => this.setMode(m),
-      exitDraft: () => this.exitDraftMode(),
       exitProse: () => this.exitProseMode(),
       getMode: () => this.mode,
       getProposal: (name) => this.pending.get(name),

@@ -645,15 +645,15 @@ function registerHandlers(): void {
         pushSessionState();
         return;
       }
-      // 文档提案由 harness 直接落盘（不再多一轮模型）；规划提案回到模型执行。
+      // 规划提案回到模型执行。
       const result = await session.acceptProposal();
       pushSessionState();
       if (result.kind === "plan") {
         const where = result.chapter === undefined ? "the chapter" : `chapter ${result.chapter}`;
         await session.resumeAfterAnswer(
           `The user accepted the plan for ${where}. Carry it out in the order of 产物（按序）: ` +
-            "if it names a new character card or a world fact, create it first with propose-design " +
-            "and stop for the user's review. Do not write the chapter before those prerequisites " +
+            "if it names a new character card or a world fact, create it first with write " +
+            "(the user reviews the diff). Do not write the chapter before those prerequisites " +
             "are landed, and do not skip a step.",
         );
       } else if (session.planExecutionChapter !== undefined) {

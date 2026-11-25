@@ -2,12 +2,12 @@
 
 > **职责**：桌面端的设计与实施方案——两个界面长什么样（首屏选作品、项目内三栏）、哪些东西上树、技术选型、进程与数据流、要动核心的哪几处、视觉规范、分阶段落地。
 > **读者**：实现桌面端的人；以及要决定"哪些东西给用户看"的人。
-> **对齐代码**：2026-11-24 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/roots.ts` 的根表，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`；右栏编辑的自动保存与离开拦截在 `desktop/src/renderer/SidePane.tsx` / `Workspace.tsx`，CAS 在 `src/storage/atomic.ts`，IPC 在 `desktop/src/main/index.ts` 的 `docs:save`
+> **对齐代码**：2026-11-25 · 设计稿；阶段 0–3 已落地，4 差一张产物进程表，5 打包未做 · 本文引用的都是现有代码：上树范围 `core/roots.ts` 的根表，目录索引 `anchor.ts`，状态卡 `report.ts`，角色行 `characters.ts`，界面接缝 `UserIO` 在 `session.ts`；文风选择器（状态栏一格）在 `framework/prose.ts` 的 `styleCatalog` 与 `desktop/src/main/index.ts` 的 `style:set`；右栏批注的合成在 `desktop/src/renderer/annotations.ts`，界面在 `AnnotatedDoc.tsx`；本轮改动的合成在 `desktop/src/renderer/TurnChanges.tsx`，按轮收集在 `src/session/turn_changes.ts`，历史聚合在 `desktop/src/main/changes.ts`；设置弹窗在 `Settings.tsx`，阅读字号在 `reading.ts`；侧栏材质判定在 `desktop/src/main/material.ts`；提问卡的界面在 `desktop/src/renderer/AskCard.tsx`，审批卡在 `desktop/src/renderer/ConfirmDock.tsx`，提案卡与只读记录在 `desktop/src/renderer/ProposalCard.tsx`，规则在 `src/session/asks.ts`（见 `ask-user.md`）；轨迹视图在 `desktop/src/renderer/Trace.tsx`（数据模型 `desktop/src/shared/trace.ts`），调试命令在 `src/session/debug.ts`，`/trace` 的摘要与导出在 `src/session/trace_view.ts`，改动索引在 `src/storage/change_index.ts` / `src/session/change_history.ts`，联网设置在 `src/core/web.ts` / `src/storage/web_config.ts` 与 `Settings.tsx` 的「联网」段；用户级状态文件（模型清单 / 壳偏好 / 上次打开的书）的读写在 `src/storage/home_state.ts`；右栏编辑的自动保存与离开拦截在 `desktop/src/renderer/SidePane.tsx` / `Workspace.tsx`，CAS 在 `src/storage/atomic.ts`，IPC 在 `desktop/src/main/index.ts` 的 `docs:save`
 > 相邻：`product.md`（主流程与用户的两种身份）· `architecture.md`（模块分层与"server 是另一个薄外壳"）· `ask-user.md`（提问与 pending）· `characters.md` / `outline.md` / `state.md`（三个根各是什么）· `roadmap.md`（UI 阶段）
 
 ## 一句话
 
-**界面不是新的一层，它和 CLI 平级——都是交付层。** 这条缝早就留好了：`session.ts` 的 `UserIO` 只有三个口（推事件、要确认、要提问），而三向裁决的注释里写着"今天在 REPL 里用文字问，**将来 UI 用三个按钮**，这一层不动"。界面要做的，是把同一件事换个问法、换个画法。
+**界面不是新的一层，它和 CLI 平级——都是交付层。** 这条缝早就留好了：`session.ts` 的 `UserIO` 只有三个口（推事件、要确认、要提问），而提案裁决的注释里写着"今天在 REPL 里用文字问，**将来 UI 用三个按钮**，这一层不动"。界面要做的，是把同一件事换个问法、换个画法。
 
 界面只有两屏：**选作品**，然后**进写作台**。
 
@@ -130,7 +130,7 @@
 | 跑过的工具 | **折成一组**："做了 N 步"，展开才见细节 | 工具是过程不是内容。一行行裸奔是最常见的乱 |
 | 要动手的 | **底部弹窗**，动作按钮长在上面 | 提案、提问、审批都是门，占住输入框；拍板/回答后输入框回来 |
 | 提问（`ask-user`） | **底部弹窗**，打开时占住输入框的位置；收起成提示条；答完是只读卡 | 它可能要翻页、写自定义答案，不能塞进对话流里被下一条消息顶走 |
-| 落盘 / 委派审批（`confirm`） | **同一个底部弹窗外壳**，占住输入框；**不能收起** | 审批是道门：收起会让搭档一直卡住；没有回答方时按拒绝处理 |
+| 落盘 / 委派审批 | **同一个底部弹窗外壳**，占住输入框；**不能收起** | 审批是道门：收起会让搭档一直卡住；没有回答方时按拒绝处理 |
 
 **正文不铺在对话里**（用户拍板）。mate 写一章是几千字：它走的是 `write` 的入参，不是正文流；对话里只给
 一张**稿子卡**（第几章 · 多少字），**点它 → 右栏读全文**。写着写着把对话淹掉，是这一类界面第二常见的乱。
@@ -145,17 +145,17 @@
 
 - **内容列居中、有最大宽度**（44rem）：一行拉满整屏是最难读也最像草稿的排版。
 - **输入区是一个大圆角容器**，发送圆钮与停止钮收在里面；不摊成"textarea + 两个按钮"。左侧是 `@` 与权限入口（工作区内修改 / 每次询问），右侧是模型、文风与发送。
-- **三向审阅就是三个按钮**（接受 / 拒绝 / 提意见）。接受 / 拒绝走**结构化 IPC**（`resolveProposal`），
+- **提案审阅就是三个按钮**（接受 / 拒绝 / 提意见）。接受 / 拒绝走**结构化 IPC**（`resolveProposal`），
   不再把“没问题 / 不行”合成一句用户消息塞进对话；提意见才是用户真写的文本，照常落成用户消息。
-  **文档提案接受后由 harness 直接调 `apply-design` 落盘**（不再多一轮模型，用户点完文件就到位）；
-  规划提案才回到模型执行。判定仍在 harness（`decideProposal` / `refineProposal`；CLI 与手打回复仍走
-  `draftVerdict` 那句整句词表，fail-closed）——“问法归交付层、判定归 harness”这条分工不动。
+  现在只有**规划提案**走这条卡：接受后回到模型执行（harness 置 `approved` 并续跑）。
+  判定仍在 harness（`decideProposal` / `refineProposal`；CLI 与手打回复仍走
+  `planVerdict` 那句整句词表，fail-closed）——“问法归交付层、判定归 harness”这条分工不动。
 - **提问卡是输入框的临时替代**：打开时输入框整块让位，卡片贴在中栏底部；一题一页，推荐项预选但不提交，
   跳过是显式空答案；收起只折成一条“搭档在等你回答”的提示，不发送任何内容。超时是 `pending`：
   这一轮先停，问题仍可回答；已答/已跳过以只读卡回看。**回答只出现在只读卡里**，不另造一条
   用户气泡——那会像“我没输入过的东西出现在对话框里”。契约见 `ask-user.md`。
 - **审批卡用同一个外壳，但没有收起**：它占住输入框直到你给答复；三档是「允许一次 / 这一类都允许 / 拒绝」，
-  没有回答方时按拒绝处理。两者共享视觉，不共享契约（见 `ask-user.md` 的「为什么不合 `confirm`」）。
+  没有回答方时按拒绝处理。两者共享视觉，不共享契约（见 `ask-user.md` 的「为什么不合成一次审批」）。
 - 顶部两行：第一行是当前作品 / 会话、模式、待拍板、角色与模型；第二行是**左对齐的「对话 / 轨迹」标签栏**，
   当前页用下划线标出（同 DSH 的视图切换）。标签独占一行，不和标题挤在同一排。
 - **轨迹是「左表 + 右检查器」，不再是卡片堆**：左侧两列（类型 / 一行摘要），`system / user /
@@ -203,7 +203,7 @@
 | 本轮改动 | **这次请求全部结束（含收尾思考和最终总结）后**一张卡：按文件合并的清单，点开去右栏 | 你要的是一整件事的结果，不是每次落盘都报一次 |
 | 推理 | 收起成一行：跑着叫「思考中…」+ 秒数，跑完叫「思考过程」+ 字数 | 过程 |
 | 模型在准备长工具参数（写正文 / 设计稿 / 规划） | 过程里先一行「正在准备写文件…」；对话末尾常驻「处理中… Ns」 | 参数要流很久，这中间没有 text/tool-call 事件，不能静默 |
-| 提案 | **底部弹窗**：占住输入框，无超时、不能收起；标题 + 逐格 markdown + 三向按钮 | 三向审阅要读完整份提案；它是门，不能让人绕过按钮在输入框里回答 |
+| 规划提案 | **底部弹窗**：占住输入框，无超时、不能收起；标题 + 逐格 markdown + 三个按钮 | 审阅要读完整份规划；它是门，不能让人绕过按钮在输入框里回答 |
 | 落盘 / 委派审批 | **底部弹窗**占住输入框，不能收起 | 要你点头，审批不能藏起来 |
 | 提问 | **底部弹窗**占住输入框；收起成提示条；已答是只读卡 | 要你回答，且不能被后续消息顶走 |
 | 落盘确认里的 diff | 卡片上一行"看改动（右栏）" | 要你动手，但 diff 是细节——去右栏 |
@@ -217,7 +217,7 @@
 
 **提案、审批、提问都占住输入框，但形状不同**：提案与审批没有超时、不能收起；提问有倒计时、
 可收起成提示条、超时转 pending。提案拍板后弹窗关闭、输入框回来，对话里留一条可展开的只读记录
-（标题 + 三向结果，点开回看完整提案）；「本轮改动」仍然等这次请求真正结束再出。
+（标题 + 裁决结果，点开回看完整规划）；「本轮改动」仍然等这次请求真正结束再出。
 
 **“处理中”是常驻的，不靠上一条内容判断。** 写正文/设计稿时，整份内容都在工具参数里流，那一段
 没有 `text.delta`，也没有 `tool-call`（它要等参数生成完才发）；所以界面只要这一轮还在跑，就在对话
@@ -257,7 +257,7 @@ flowchart LR
     W[写口 write_ops]
   end
   S -- 事件流 text / tool / proposal --> C
-  C -- 确认 · 提问 · 三向裁决 --> S
+  C -- 审批 · 提问 · 规划裁决 --> S
   R -- 路径 + 内容 --> H
   R --> T
   R --> P
@@ -267,7 +267,7 @@ flowchart LR
 两条纪律：
 
 1. **界面不自己读文件系统。** "什么算一份作品文档"只能有一处（今天在 `core/roots.ts` 的根表与 `corpus.ts`）；界面要是自己 walk 目录，就会长出第二份，两份迟早说两套话。
-2. **裁决喂给同一段判定。** 三向、确认、提问的**问法**归交付层，**判定**归 harness（`session.ts` 已经这么分了）。
+2. **裁决喂给同一段判定。** 规划裁决、落盘审批、提问的**问法**归交付层，**判定**归 harness（`session.ts` 已经这么分了）。
 
 形态是桌面应用：harness 仍然跑在本机的 bun 子进程里，桌面壳只做窗口与前端。这与 `architecture.md` 里已经写下的"模块边界必须让 server 能成为另一个薄外壳"是同一条。
 
@@ -365,10 +365,10 @@ rm -rf node_modules/electron && bun install && ./node_modules/.bin/electron --ve
    模块**（`desktop/src/main/prelude.ts`，它**先读 `.env` 再钉资源根**），并且必须是主进程的**第一条 import**。这条有探针钉着。
 
 1. ~~**恢复会话的历史。**~~ **不用动**（2026-10-01 核对）：`storage/session-store.ts` 的 `loadMessages(projectId, sessionId)` 已经是"按 `seq` 排序的消息数组"，主进程直接调它就能拿到历史投影。原先记的"只有内部读"说的是 `Session` 私有那份，是我看窄了——**盘上那一层本来就是公开的**。
-2. ~~**三向裁决的结构化入口。**~~ **已做**：接受 / 拒绝走 `resolveProposal` / `decideProposal`，不再合成固定短语；提意见走 `refineProposal`，显式标 refine，不经过文本词表。CLI 与手打回复仍保留 `draftVerdict`，判定仍归 harness。
+2. ~~**提案裁决的结构化入口。**~~ **已做**：接受 / 拒绝走 `resolveProposal` / `decideProposal`，不再合成固定短语；提意见走 `refineProposal`，显式标 refine，不经过文本词表。CLI 与手打回复仍保留 `planVerdict`，判定仍归 harness。
 3. ~~**`current.json` 从 `cli.ts` 挪到 `storage/`。**~~ **已做**（2026-10-28）：三份用户级文件（`models.json` / `desktop.json` / `current.json`）的路径与读写在 `storage/home_state.ts` 一处，CLI 与桌面端共用。顺带补上一条踩到的坑：全新机器上 `~/.talemate` 还不存在（它平时是 `createProject` 顺带建的），而在设置里保存模型配置是**裸写** `models.json`——于是第一次保存就 `ENOENT`。现在写口统一走 `writeAtomic`（自带 mkdir），坏文件也不再被当成"还没配"、被下一笔保存整份覆盖。
 
-其余的接口已经就位，不用动：`openSession`（含 `sessionId` 续聊）、`session.post`、`abortCurrent`（停止按钮）、`pendingLabel`（待落盘提案的提示）、`permissionView`（权限面板）、以及 `UserIO` 的三个口。
+其余的接口已经就位，不用动：`openSession`（含 `sessionId` 续聊）、`session.post`、`abortCurrent`（停止按钮）、`pendingLabel`（待批准的规划的提示）、`permissionView`（权限面板）、以及 `UserIO` 的三个口。
 
 ## 十二、视觉规范
 
@@ -436,7 +436,7 @@ desktop/
 | **0** ✅ | 一个最小壳：主进程 `openSession`，界面只有事件流与一个输入框 | 把**风险最大的两件事**先验掉：harness 在 Node 下跑不跑得通、`prompts/` 与 `skills/` 打包后读不读得到。这两件不通，后面全白做 |
 | **1** ✅ | 首屏选作品 + 左栏会话列表 + 历史投影 | 打开就有东西看；"拉投影"这条读模型也从这里立起来 |
 | **2** ✅ | 左栏文件树 + 右栏只读预览 | 目录与预览是这一版的主体价值 |
-| **3** ✅ | 裁决卡片（三向 / 确认）+ 底部提问卡 + 停止按钮 + 模式与待落盘提示 | 到这里才算"能用它写完一章" |
+| **3** ✅ | 裁决卡片（规划 / 落盘审批）+ 底部提问卡 + 停止按钮 + 模式与待批准提示 | 到这里才算"能用它写完一章" |
 | **4** ◐ | 右栏编辑与保存 ✅ + 文件变更自动刷新 ✅ + 「产物按序」进程表 **（卡在一个设计问题上，见下）** | 手改与进度可视化 |
 | **5** | 打包分发（macOS / Windows） | 最后再做（用户已说：不急），前面每一步都能在本机跑 |
 

@@ -7,17 +7,15 @@
  *   2 读当前      不存在 → undefined
  *   3 算结果      FileOp → 新字节（模糊匹配在这一步，见 file_ops.ts）
  *   4 算 diff     给用户看的材料
- *   5 取批准      二向弹窗，或三向提案
+ *   5 取批准      二向弹窗（接受 / 拒绝），diff 就是用户审的那一版
  *   6 CAS + 原子写
  *   7 返回        diff / 统计 / 命中了哪一级
  *
  * 写成功后另记一条写前快照（`seq` + `before`），供"回退对话并还原文件"；记快照失败不影响落盘。
  * 每一笔都带 CAS；"唯一写路径"由 `ToolContext` 上只有一个写口保证，不是约定。
  *
- * 两个批准来源，一条路径：
- * - `via:"confirm"` —— 二向。算完结果、渲染 diff，再弹窗问用户（接受 / 拒绝）。
- * - `via:"pending"` —— 三向。op 不从这里进，只从提案登记里取（`proposalOp`）——
- *   所以"模型夹带用户没看过的字节"在结构上不可能，不是靠检查拦住的。
+ * 只有一条路：算完结果、渲染 diff，再弹窗问用户。整篇写与局部改都走它——没有"提案登记"那一半，
+ * 因为写前 diff 已经把要落的字节摆出来了（`write` 新建时 diff 全是新增行，就是一份整篇预览）。
  *
  * 边界：不认识"层""角色卡""小节"。领域语义在工具层（派生成 op），内容不变量在 invariants.ts。
  * 也不认识根的名单：可写边界是项目根表里 `write` 的那些根，写口与读口从同一张表取数（见 core/roots.ts）。
@@ -37,7 +35,6 @@ import { computeNext, normalizeLineEndings } from "./file_ops";
 import { formatProse } from "./format_prose";
 import { checkInvariants } from "./invariants";
 import type { MatchLevel } from "./match";
-import { proposalOp } from "./proposal";
 
 export type WriteFailure =
   /** 目标文件不存在（replace / delete 用） */
@@ -49,20 +46,19 @@ export type WriteFailure =
   /** 规则表不许（如计划模式的只读） */
   | "denied"
   /** 读之后、写之前文件被改过 */
-  | "stale"
-  /** 提案那条路：没有待落盘提案，或用户还没同意 */
-  | "notapproved";
+  | "stale";
 
-export type WriteRequest =
-  /**
-   * 直写：算结果 → 渲染 diff → 弹窗二向 → 落盘。
-   *
-   * `note` 是给用户做判断用的额外材料（如删小节前的引用检查），排在 diff 之前——光有 diff
-   * 看不出"这个改动会牵连哪些别的文档"。
-   */
-  | { via: "confirm"; op: FileOp; action: string; note?: string }
-  /** 落提案：op 只从提案登记取，不接受正文。 */
-  | { via: "pending"; proposalKey: string; action: string };
+/**
+ * 直写：算结果 → 渲染 diff → 弹窗二向（接受 / 拒绝）→ 落盘。
+ *
+ * `note` 是给用户做判断用的额外材料（如删小节前的引用检查），排在 diff 之前——光有 diff
+ * 看不出"这个改动会牵连哪些别的文档"。
+ */
+export interface WriteRequest {
+  op: FileOp;
+  action: string;
+  note?: string;
+}
 
 export type WriteOutcome =
   | {
@@ -109,55 +105,16 @@ function resolveTarget(projectId: string, path: string): Target | { error: strin
 
 /**
  * 走一遍写盘。校验不过 / 用户拒了 / 陈旧 → `{ ok:false, output }`（回给模型自愈，不抛）。
- *
- * 只有调用方写错才抛（提案那条路上 op 与登记不符），因为那不是模型能修的问题。
  */
 export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<WriteOutcome> {
-  // ─── 5 之前先定 op：pending 那条路只认提案登记里的那一份 ───
-  let op: FileOp;
-  let tryAction: string;
-  let expected: string | null | undefined;
-  let checkDeny: string;
-
-  if (req.via === "confirm") {
-    op = req.op;
-    tryAction = req.action;
-    expected = undefined; // 直写不比快照：CAS 的基准就是"我刚刚读到的那一份"
-  } else {
-    const p = ctx.getProposal(req.proposalKey);
-    if (!p) {
-      return {
-        ok: false,
-        reason: "notapproved",
-        output: `没有 ${req.proposalKey} 的待落盘提案——先用 propose-design 把这一版交给用户过目，等用户回话再来。`,
-      };
-    }
-    if (!p.approved) {
-      return {
-        ok: false,
-        reason: "notapproved",
-        output:
-          "用户还没同意这一版提案，不能落盘。请按用户这几轮说的话重新 propose-design；" +
-          "落盘的永远只能是用户看过并认可的那一版。",
-      };
-    }
-    const derived = proposalOp(p);
-    if (!derived) {
-      return {
-        ok: false,
-        reason: "notapproved",
-        output: `${req.proposalKey} 不是一份待落盘的文档（规划那条登记不落盘到作品里，见 framework/plan.ts）——它解锁的是别的动作，不是写文件。`,
-      };
-    }
-    op = derived;
-    tryAction = req.action;
-    // 提案登记时的那份快照就是 CAS 基准：文件在提案之后被改过 → 拒绝
-    expected = p.base ?? null;
-  }
+  const op = req.op;
+  const tryAction = req.action;
+  // CAS 的基准就是"我刚刚读到的那一份"
+  const expected: string | null | undefined = undefined;
 
   const target = resolveTarget(ctx.projectId, op.path);
   if ("error" in target) return { ok: false, reason: "invalid", output: target.error };
-  checkDeny = target.pattern;
+  const checkDeny = target.pattern;
 
   // 规划已批准、正文还没落盘时，章节写入必须先进入正文模式；否则 mate.system 还在，
   // 声口切换不会发生。这是模式的结构性用途，不是提示词劝告。
@@ -207,32 +164,24 @@ export async function writeFile(ctx: ToolContext, req: WriteRequest): Promise<Wr
   const diff = renderDiff(d);
 
   // ─── 取批准 ───
-  if (req.via === "pending") {
-    // 三向的"同意"已经在提案那一轮拿过了，这里不再弹窗；但仍然过规则表——
-    // "不许"不因为问过一次就失效（如计划模式的只读）。
-    if (ctx.check("edit", checkDeny) === "deny") {
-      return { ok: false, reason: "denied", output: `当前模式不允许改文件。要改就先离开这个模式。` };
-    }
-  } else {
-    const verdict: PermissionVerdict = await ctx.ask({
-      permission: "edit",
-      pattern: checkDeny,
-      always: checkDeny,
-      summary: tryAction,
-      // 材料分两段，空行隔开：先影响面，后这次具体动什么。顺序反过来，用户得先读完 diff
-      // 才知道该拿什么去判断。没有前一段时不留空行（空串会被 filter 掉，不是塞个 "" 占位）。
-      detail: [
-        ...(req.note ? [req.note] : []),
-        ...(next.action === "remove" ? [`将删除 ${checkDeny}。`] : []),
-        diff,
-      ].join("\n\n"),
-    });
-    if (verdict === "deny") {
-      return { ok: false, reason: "denied", output: `当前模式不允许改文件。要改就先离开这个模式。` };
-    }
-    if (verdict === "reject") {
-      return { ok: false, reason: "rejected", output: `用户已拒绝：${tryAction}` };
-    }
+  const verdict: PermissionVerdict = await ctx.ask({
+    permission: "edit",
+    pattern: checkDeny,
+    always: checkDeny,
+    summary: tryAction,
+    // 材料分两段，空行隔开：先影响面，后这次具体动什么。顺序反过来，用户得先读完 diff
+    // 才知道该拿什么去判断。没有前一段时不留空行（空串会被 filter 掉，不是塞个 "" 占位）。
+    detail: [
+      ...(req.note ? [req.note] : []),
+      ...(next.action === "remove" ? [`将删除 ${checkDeny}。`] : []),
+      diff,
+    ].join("\n\n"),
+  });
+  if (verdict === "deny") {
+    return { ok: false, reason: "denied", output: `当前模式不允许改文件。要改就先离开这个模式。` };
+  }
+  if (verdict === "reject") {
+    return { ok: false, reason: "rejected", output: `用户已拒绝：${tryAction}` };
   }
 
   // ─── CAS + 原子写 ───

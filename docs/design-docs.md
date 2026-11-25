@@ -1,9 +1,9 @@
-# 设计文档体系：四层活文档与两段式落盘
+# 设计文档体系：四层活文档，diff 即审阅
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
-> **读者**：要改 `src/framework/`（design_spec / write_ops / proposal / summaries）或 `src/tool/design_tools.ts` 的人。
-> **对齐代码**：2026-11-24 · 结构规范 `framework/design_spec.ts`，语料读写 `storage/corpus.ts`，语料根表 `core/roots.ts`，落盘 `framework/write_ops.ts`；提案的终端视图与结构化卡片视图在 `framework/proposal.ts`（`renderProposal` / `proposalDisplay`）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
-> 相邻：`characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
+> **读者**：要改 `src/framework/`（assets / write_ops / summaries / anchor）或 `src/tool/file_tools.ts` 的人。
+> **对齐代码**：2026-11-25 · 资产四原语 `framework/assets.ts`，语料读写 `storage/corpus.ts`，语料根表 `core/roots.ts`，落盘 `framework/write_ops.ts`（写前 diff + CAS + 原子写）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> 相邻：`assets.md`（每种资产落在哪个文件、什么形状）· `characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
 
@@ -22,73 +22,51 @@
 
 **`state/` 不是第五层。** 它记的是"现在到哪了"（谁在场、谁知道什么、伏笔收到哪了），每章都在变——比变化最快的情节层还快一个数量级。所以它在项目根下与 `design/` **平级**，与设定分开。判据与形状见 `state.md`。
 
-**文档格式**：Markdown，`##` 即一格。**读**按"**项目相对路径** + 小节标题"寻址（`read` 的 `path` 与 `section`）；**写**按**锚点**寻址（`edit` 给一段原文与替换文本，见"两种落盘形态"）。不做条目级 ID 引用。
+**文档格式**：Markdown，`##` 即一格。**读**按"**项目相对路径** + 小节标题"寻址（`read` 的 `path` 与 `section`）；**写**按**锚点**寻址（`edit` 给一段原文与替换文本，见"落盘只有一条路"）。不做条目级 ID 引用。
 
-**全仓只有一种路径口径**：项目相对（`design/core.md` / `chapters/chapter_ch2_v1.md`）——工具入参、`FileOp.path`、权限 pattern、`invariants` 与 `SPECS` 的匹配键，全是它。
+**全仓只有一种路径口径**：项目相对（`design/core.md` / `chapters/chapter_ch2_v1.md`）——工具入参、`FileOp.path`、权限 pattern、`invariants` 的匹配键，全是它。
 
 ## 懒建：文件不预种
 
-`createProject` 只建目录、不种文件——`design/` 初始为空。用户要完善某处时，mate 调 `design-spec` 拿那**份文档**（或那个**目录**）的结构规范（该有哪些小节、每格装什么、成稿做法），据此成稿。
+`createProject` 只建目录、不种文件——`design/` 初始为空。用户要写哪一层就直接 `write`；格式建议在 `assets/kinds/*.json`，只是参考。
 
 **一处例外**：桌面端建书时会把用户在书架上选的频道与题材种进 `core.md` 的“题材 · 频道”那一格（`withShelf`）——值是用户从封闭集合里挑的，没有可生成的东西，与文风选择器同一类。它**只种这一次**：此后那一格归企划管，在书架上改题材不会回头改它。CLI 建的书仍是空的。
 
-**结构与内容分离**：`design_spec.ts` 只定义"长什么样"；文件一旦建立即内容与真相。所以 `design-spec` 是**参考**，不是校验器——文档不按规范组织也能存在，只是模型没拿到引导。规范描述的是**还不存在的文档**，所以它按"将来那个路径"取，不必等文件出现。
+**规范是建议，不是通行证。** 旧的结构规范表与规范查询已删：一份文档该长什么样，模型从用户意图与同类文档里读得出来；而规范表一旦存在就会被当成校验器——用户没要求的小节成了门槛，写得再好也"不合格"。留下的是**可推导**的那部分：`framework/assetkinds.ts` 读 `assets/kinds/*.json`，只回答"这种文件是什么、通常放哪"，不规定每一格必须有什么。载体约定见 `assets.md`。
 
-## 两种落盘形态
+## 落盘只有一条路
 
-> **用户看过的字节 == 落盘的字节。** 两条路各用各的材料来满足它，都走**同一条流水线**
-> （`framework/write_ops.ts`），区别只在**字节从哪来**：
+> **用户看过的字节 == 落盘的字节。** 这件事靠**用户看的是 diff** 保证，不靠另一份登记。
 
-| | 字节从哪来 | 模型可见的工具 | 用户看到什么 |
-|---|---|---|---|
-| **二向** | 模型**当场组合**（它给 `content` 或 `find`/`replace`） | `write` · `edit` | 一段 **diff**，弹窗问 接受 / 拒绝 |
-| **三向** | **从已审阅的提案取**（模型给不了字节） | `apply-design` | 一份**逐格提案**，回话 接受 / 拒绝 / 提意见 |
+`write` / `edit` / `delete` 都不自己落盘——拼出 `FileOp` 交给 `framework/write_ops.ts`：解析目标 → 读 → 算结果 → 算 diff → 取批准 → CAS + 原子写。
 
-落盘那条路上，两者汇进同一个 `writeFile`：解析目标 → 读 → 算结果 → 算 diff → 取批准 → CAS + 原子写。
+- **整篇写** = `write` 的 diff：新建是整篇新增，覆盖是逐行差异。用户点接受才落地。
+- **局部改** = `edit` 的 diff：只给原文片段与替换文本，其余字节原样。
+- **并发保护**：写前重新读目标；若文件在"算 diff"之后被别处改过，整次拒绝（CAS），不覆盖别人的修改。
+- **删除**：`delete` 先做**整个项目**的引用检查（正文里也会提到角色与设定名，走 `corpus.scanDocs`），命中结果列进审批说明——**级联清理由模型自己用 `edit` 逐处做**，工具只负责把影响面摆出来。
+- **不变量后验**：写完与写前预览都跑 `framework/invariants.ts`，拦住会让文档读不懂的改动。
 
-**三向**（`propose-design` → 用户回话 → `apply-design`）。桌面端点「接受」时由 **harness 直接调用
-`apply-design`**（同一条 write_ops、同一套规则；省掉一轮模型往返）；CLI / 文本回复仍由模型调用。规划提案接受后，harness 用一条一次性的内部执行指令起模型回合
-（不落成用户消息），要求它按规划里的「产物（按序）」执行：需要的新卡/世界事实先各自走
-propose-design 给用户过目，再写正文；不能跳过前置产物。规划执行期间接受一个前置文档后，
-harness 会自动续跑该规划，不会停在半路。
-
-- **`propose-design` 的 `halt`**：结束本回合，把控制权交回用户。同回合剩下的 tool call 不再执行——但必须补 `error` part（见 `architecture.md` 的 halt 说明）。
-- **"同意"由 harness 判**：界面按钮走结构化 `decideProposal`（接受 / 拒绝）与 `refineProposal`（提意见），不再把“没问题 / 不行”写进对话；CLI 与用户手打回复仍走 `markPendingApproval` 的 `draftVerdict`（整句词表，fail-closed）。无论哪条路，**模型自述无效**；措辞不常见一律算“提意见”，多走一轮，绝不误判成接受。
-- **出口条件是"接受或拒绝"，不是"提案成功"**：提意见留在草稿模式里接着改，所以一次设计会话只进一次模式。
-- **并发保护**：提案登记 `base` 快照，落盘前若文件已变则拒绝（CAS）。
-- **`apply-design` 不弹窗**——用户已在提案里看过内容；但它**仍然过规则表**，"不许"不因为问过一次就失效。
-
-**为什么三向要这么设计**：一段式（模型当场给字节又自己声称"用户同意了"）等于没有门。三向里
-`apply-design` **拿不到正文**——字节只从提案登记取（`proposal.ProposalOp`）——所以模型**想夹带
-用户没看过的字也夹带不了**，是"写不出来"而不是"会被检查拦住"。
-
-**提案只有整篇一种形态。** 局部修改走二向的 `edit`：用户看 diff 就够，不必再读一遍全文。想让
-用户细看的那一版，哪怕只动了一格，也整篇提出来——渲染里的 `★本版改动` 会指出动过哪几格。
+**两段式提案已经删掉**（提案 → 用户回话 → 落盘）。它原本要解决"模型夹带用户没看过的字节"；但那件事 diff 预览本来就解决了，多出来的一层只买到"再读一遍全文"，还带来一套提案登记、`base` 快照与草稿模式。现在**没有提案、没有草稿模式**：整篇成稿是普通 `write`，用户照样在弹窗上点头。
 
 ## 寻址：只有路径
 
-提案与落盘都只收一个 `path`：**项目相对路径**（`design/core.md`、`design/characters/林晚.md`、`design/outline/vol_1/s2.md`）。没有第二套词表。
+所有工具只收一个 `path`：**项目相对路径**（`design/core.md`、`design/characters/林晚.md`、`design/outline/vol_1/s2.md`）。没有第二套词表。
 
 ```
-propose-design { path: "design/wiki/world.md", content: "…" }   → 用户回话 → apply-design { path: "design/wiki/world.md" }
+write          { path: "design/wiki/world.md", content: "…" }
 edit           { path: "design/characters/林晚.md", find: "…", replace: "…" }
 read           { path: "chapters/chapter_ch2_v1.md" }
 ```
 
-**曾经有一个 `layer` 参数**（`core | world | …`），当的是"少拼一次路径"的糖。它被删掉的理由：糖能表达的路径本来就能表达，而它多带一套词表——于是同一个"世界层在哪"在代码里有两处定义（一份只装四个短名的表，与 `design_spec.ts` 的路径表），模型也见过两种地址形式。路径口径统一之后，那份间接只剩成本。
+**曾经有一个 `layer` 参数**（`core | world | …`），当的是"少拼一次路径"的糖。它被删掉的理由：糖能表达的路径本来就能表达，而它多带一套词表——于是同一个"世界层在哪"在代码里有两处定义（一份只装四个短名的表，与另一份按 glob 匹配的路径表），模型也见过两种地址形式。路径口径统一之后，那份间接只剩成本。
 
-**两条守卫**（都在 `design_tools.resolveDoc`，都回**字面路径**让模型自纠）：
-
-- **提案只写 `design/` 下的文档**：`path: "chapters/…"` 会被拒——章节正文走 `write` / `edit`，那条路不需要"用户先看整篇再接受"。
-- **主文档不许写到别处**：`design/world.md` 会被拒并指回 `design/wiki/world.md`。起因是实测模型把世界层写成前者，而规范、索引与索引条目都只认后者的路径——**写错位置的世界层不会被读到，等于白写且用户看不出来**。判据是注册表里那条规范的 `target`，不另抄一份文件清单。
+**能写哪些目录由项目根表划**（`talemate.json.corpusRoots`），不是由工具名划。写错位置的代价是**读不到**（`read` / `glob` 按根表枚举），没有工具会在落盘时替模型纠正路径——约定的载体见 `assets.md`。
 
 ## 文档级的守卫
 
-- **可审阅性**：判据是"**字节能不能到用户眼前**"，不是"分不分格"。有规范登记的文档，没按该规范的小节组织 → 拒绝提案（否则几格全显示“待定”，整段散文却照样落盘）；**无规范登记的文档放行**——整篇散文会被兜底成"整篇一格"交出来。
-- **不在任何格里的字节也单独放一段**（`proposal.uncoveredText`）：文档标题行、`##` 之前的导语。渲染只认 `items[].body` 的话，这些字节会被整个跳过，而它们照样落盘——"用户看过的字节 == 落盘的字节"就成了假的。
-- **重名小节**：寻址按标题，两个同名 `##` 之后"读第 2 节"永远命中前一个——此后工具读不懂这份文档。`framework/invariants.ts` 的 `design.no-duplicate-heading` 拦"**新造出来**的重名"。
-- **角色卡的 `##` 陷阱**：`proposal.ownItems` 取**最浅**标题层。角色卡上冒出任意一个 `##`，卡里**所有** `###` 都从逐格审阅里消失。`characters.no-shallow-heading` 拦它——**判结果**，所以 `write` / `edit` / `propose-design` 哪条路都绕不过。详见 `characters.md`。
-- **删除**：`delete` 内置引用检查（**整个项目**：正文里也会提到角色与设定名，走 `corpus.scanDocs`），命中结果放进 confirm——**级联清理由模型自己用 `edit` 做**，工具只负责把影响面列出来。
+- **重名小节**：寻址按标题，两个同名 `##` 之后"读第 2 节"永远命中前一个——此后工具读不懂这份文档。`framework/invariants.ts` 的 `design.no-duplicate-heading` 拦"**新造出来**"的重名（新文件里出现两个同名小节也算）。
+- **删除**：见上节——引用清单进审批说明，级联由模型逐处判断。
+- **角色卡没有专用规则**：骨架与常见格都是建议，不拦落盘；名单每次现算，数据源只有卡本身。见 `characters.md`。
 
 ## 章节生产
 
@@ -101,22 +79,22 @@ flowchart TD
     W4 -- 要改 --> W3
     W4 -- 认可 --> W4B{这一章要点的人，卡上都有吗}
     W4B -- 有 --> W5[mate 自己写: harness 注入规范+文风卡 → write 落 chapters/]
-    W4B -- 没有 --> W4C[先立人: propose-design 落卡, 用户拍板 —— 卡约束的是这一章怎么写]
+    W4B -- 没有 --> W4C[先立人: write 落卡, 用户看 diff —— 卡约束的是这一章怎么写]
     W4C --> W5
     W5 --> W6[用户看 diff 后点头 —— 用户看过的字节 == 落盘的字节]
 ```
 
 **一次只规划一章**，因为规划是**卷契约 + 序列契约的投影**：序列契约说"这一小段必须让什么为真"，卷契约给出它的边界（独立问题、旧债/新债、禁揭、本卷上限），规划说"这一章怎么让它为真"。
 
-**新人物的卡排在正文之前**（图里的 `W4B`）。卡的用途是约束"他下一次怎么说话、什么绝不做"，事后从正文反推出来的卡只能是对已写正文的总结——那是墓志铭，不是合同。所以建卡走的是**设计文档那条两段式**（`propose-design` → 用户拍板 → `apply-design`）：建卡是设计动作，不是写作动作，它只是被章节生产**触发**的。判据见 `characters.md` 的“谁需要一张卡”。
+**新人物的卡排在正文之前**（图里的 `W4B`）。卡的用途是约束"他下一次怎么说话、什么绝不做"，事后从正文反推出来的卡只能是对已写正文的总结——那是墓志铭，不是合同。所以建卡排在正文之前，但**它只是一次 `write`**（用户看 diff 点头），不是另一条流程：建卡是设计动作，不是写作动作，它只是被章节生产**触发**的。判据见 `characters.md` 的“谁需要一张卡”。
 
-**同一条测试也管世界事实**：一条规则、一个术语的含义、一条能力边界，同样"约束正文能做什么"，所以同样排在正文之前、同样走两阶段；事后补就只能是对已写正文的总结。**纯起名不算**——一个地方只需要有个称呼，在规划里定下就行。章末另有一次**世界层回看**：正文与“规则与秩序”“术语表”冲突的报给用户裁决（绝不静默改设定），把原本（待定）的钉死或揭开了某条硬事实的则提议改那一格。见 `chapter-planning.md` 的“七”。
+**同一条测试也管世界事实**：一条规则、一个术语的含义、一条能力边界，同样"约束正文能做什么"，所以同样排在正文之前，同样是一次 `write`；事后补就只能是对已写正文的总结。**纯起名不算**——一个地方只需要有个称呼，在规划里定下就行。章末另有一次**世界层回看**：正文与“规则与秩序”“术语表”冲突的报给用户裁决（绝不静默改设定），把原本（待定）的钉死或揭开了某条硬事实的则提议改那一格。见 `chapter-planning.md` 的“七”。
 
-**门只剩一道，挂在 `propose-plan` 上：交出去就停**（`halt`，不靠模型自觉）。它同时把规划登记进会话内存，用户回话后由 harness 置 `approved`——**和 `apply-design` 是同一套**：propose 登记 → harness 判同意 → 模型据它执行。
+**门只剩一道，挂在 `propose-plan` 上：交出去就停**（`halt`，不靠模型自觉）。它同时把规划登记进会话内存，用户回话后由 harness 置 `approved`——登记与判定都在 harness，模型只负责按已批准的规划执行。
 
 **从前还有第二道门**（`task(writer)` 查那份 `approved`，没拍板就不放行）。它随 writer 一起取消了：正文改由 mate 自己写，而"写正文"是普通 `write`——用户照样在 diff 上点头，再挂一道门只是把同一件事问两遍。
 
-**规划落盘**，落在 `<novel>/.talemate/plans/ch_<N>.md`——**引擎的工作区，不是 `design/`**。`design/` + `chapters/` 是作品（用户的、要被审阅的、可进版本控制的），`.talemate/` 是这一次执行的状态：可清理、用户不必看、不参与 `glob` / `grep` / 不变量 / 结构规范。所以它**不走 `write_ops`**（那条路认识的是作品文档：diff、CAS、权限 pattern）——由 `propose-plan` 自己整篇写、整篇渲染出来，用户看过的字节就是落盘的字节。命名与清理策略见 `framework/plan.ts`。
+**规划落盘**，落在 `<novel>/.talemate/plans/ch_<N>.md`——**引擎的工作区，不是 `design/`**。`design/` + `chapters/` 是作品（用户的、要被审阅的、可进版本控制的），`.talemate/` 是这一次执行的状态：可清理、用户不必看、不参与 `glob` / `grep` / 不变量。所以它**不走 `write_ops`**（那条路认识的是作品文档：diff、CAS、权限 pattern）——由 `propose-plan` 自己整篇写、整篇渲染出来，用户看过的字节就是落盘的字节。命名与清理策略见 `framework/plan.ts`。
 
 **mate 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善核心设定"就走企划成型，说"写第 N 章"就走章节生产。
 
@@ -128,18 +106,15 @@ flowchart TD
 
 | 文件 | 职责 |
 |---|---|
-| `storage/corpus.ts` | **语料层**：枚举 / 读 / 扫词的唯一实现（项目相对口径、三个根、一条 walker）。只读，没有任何写口 |
-| `framework/design_spec.ts` | **一张**规范表：按路径 glob 登记（`SPECS`），**更具体的模式胜出**。每份规范 = 该有哪些小节 + 写/别写/写成 + 成稿工作法。`specFor` / `renderSpec`（目录入口会把名下每种文档一并返回） |
+| `storage/corpus.ts` | **语料层**：枚举 / 读 / 扫词的唯一实现（项目相对口径、项目根表、一条 walker）。只读，没有任何写口 |
 | `framework/summaries.ts` | 目录摘要器注册表：**某种文档在目录索引里占哪一行**（角色卡一人一行、不分格的给首句）。形状照抄 `invariants` |
 | `framework/search.ts` | 扫词命中的**渲染**（`renderHits`：按文件分组 + 小节标注）。取数在 `corpus` |
-| `framework/write_ops.ts` | **写盘唯一路径**：解析目标 → 读 → 算结果 → diff → 取批准 → CAS + 原子写。二向与三向都走它 |
+| `framework/write_ops.ts` | **写盘唯一路径**：解析目标 → 读 → 算结果 → diff → 取批准 → CAS + 原子写 |
 | `framework/file_ops.ts` | `FileOp` → 新内容（纯函数）：整篇 / 锚点替换 / 删除**三种**。行尾适配在这一层 |
 | `framework/match.ts` | 锚点匹配的回退阶梯（唯一性、跨度失控兜底） |
-| `framework/invariants.ts` | **对算出来的结果做后验**（角色卡三条 + 重名小节一条）。提案时也跑同一份，所以判据不会两处说两套 |
-| `framework/proposal.ts` | 提案视图（`ownItems` / `itemsOf` / `reviewable` / `renderProposal` 终端视图 + `proposalDisplay` 结构化卡片）＋ `proposalOp`（提案 → 写盘 op）。规范查询转发给 `design_spec.specFor` |
+| `framework/invariants.ts` | **对算出来的结果做后验**（重名小节一条）。写前预览与写后都跑同一份 |
 | `framework/plan.ts` | **章节规划工件**：命名（`.talemate/plans/ch_<N>.md`）、落盘、终端渲染（`renderPlan`）与卡片视图（`planDisplay`）。**不走 `write_ops`**——它不是作品文档，见本文件“章节生产” |
 | `framework/markdown.ts` | 区块**读**手术（`getSection` / `removeSection` / `listHeadings`）。改一格不再走这里——见 `edit` |
 | `framework/anchor.ts` | 目录索引（`buildIndex` / `docTree`，`read` 找不到文档时的清单与左栏的那一份）。**没有常驻注入** |
 | `tool/read_tools.ts` | `read` 一个薄壳（**项目级**，与 design 无关） |
 | `tool/find_tools.ts` | `glob` / `grep` 两个找法，候选集来自语料根表 |
-| `tool/design_tools.ts` | `propose-design` / `apply-design`——上面的工具壳，守卫（`resolveDoc`）都在这里 |

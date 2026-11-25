@@ -293,7 +293,7 @@ state/foreshadowing.md
 3. `tool/find_tools.ts` + prompt 两篇 + 白名单；
 4. 删 `list`/`search` 工具与 prompt；改 `read.txt` / planner / researcher；
 5. 更新 docs/agents、README 工具相关段落与测试；
-6. `bun test` + `typecheck`（没碰 prompts/probe 的替换串，不用 `probe --check`）。
+6. `bun test` + `typecheck`（没碰 eval 变体 patch 的替换串，不用 `eval:check`）。
 
 ## 7. 开放问题
 

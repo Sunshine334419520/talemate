@@ -1,12 +1,12 @@
 /**
- * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / confirm / propose-plan / 模式切换）。
+ * core-tools：委派/知识/人机交互类工具（task / skill / ask-user / propose-plan / 正文模式）。
  * 一工具一职责；description 在 prompts/tools/<id>.txt；execute 只用 ctx 原语。
  *
  * 改作品文档的工具不在这里，它们在 `file_tools.ts`，走 `framework/write_ops.ts` 那条唯一路径。
  * 唯一的例外是 `propose-plan`：它自己落盘规划工件，因为规划不是作品文档（不审 diff、不做 CAS、
- * 不进语料），落点是 `.talemate/plans/` 引擎工作区，而 `write_ops` 只认作品的三个根。
+ * 不进语料），落点是 `.talemate/plans/` 引擎工作区，而 `write_ops` 只认语料根表里的目录。
  */
-import { DRAFT_MODE, PROSE_MODE } from "../agent/modes";
+import { PROSE_MODE } from "../agent/modes";
 import { PLAN_KEY } from "../core/types";
 import type { AskOutcome, AskRecord } from "../core/types";
 import { planDisplay, renderPlan, savePlan } from "../framework/plan";
@@ -46,7 +46,7 @@ export const taskTool: RegisteredTool<{ agent: string; prompt: string }> = defin
       detail: `prompt ${args.prompt.length} 字。`,
     });
     if (verdict === "deny") {
-      return { output: `当前不允许委派子代理（${args.agent}）。若是草稿模式挡住了，先 exit-draft。` };
+      return { output: `当前不允许委派子代理（${args.agent}）。` };
     }
     if (verdict === "reject") return { output: `用户已拒绝委派 ${args.agent}。` };
 
@@ -99,7 +99,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 });
 
 /**
- * ask-user：向用户要创作决策，不是审批——审批走 confirm。
+ * ask-user：向用户要创作决策，不是审批。
  *
  * 一次 1–3 题，可以带选项、多选、自定义答案。`pending` 是这一轮先停、问题仍可回答，
  * 不是跳过更不是同意——所以它必须 halt；交付层负责在超时/稍后/中断时给出这个结局。
@@ -202,40 +202,10 @@ export const askUserTool: RegisteredTool<AskUserArgs> = defineTool<AskUserArgs>(
   },
 });
 
-/** confirm：落盘前显式征求主编确认的动作入口——审批通道，对应用户的"可/否"。 */
-export const confirmTool: RegisteredTool<{ action: string; summary: string }> = defineTool<{
-  action: string;
-  summary: string;
-}>({
-  id: "confirm",
-  description: P("confirm"),
-  input: {
-    type: "object",
-    properties: {
-      action: { type: "string", description: "Action name, e.g. rewrite design/core.md / delete character 林晚" },
-      summary: { type: "string", description: "Impact summary shown to the user" },
-    },
-    required: ["action", "summary"],
-  },
-  permission: "question",
-  async execute(args, ctx) {
-    if (!args.action?.trim() || !args.summary?.trim()) {
-      return { output: `confirm 缺少 action/summary（收到：${JSON.stringify(args).slice(0, 200)}）——请带完整字段重新调用。` };
-    }
-    if (ctx.check("question", "*") === "deny") {
-      return { output: "当前不允许打断用户（子代理不在场，或模式禁了提问）。" };
-    }
-    const reply = await ctx.confirm(args.action.trim(), args.summary.trim());
-    return reply === "no"
-      ? { output: `用户已拒绝：${args.action}` }
-      : { output: `用户已确认：${args.action}` };
-  },
-});
-
 /**
  * propose-plan：把这一章的规划交给用户拍板，并 halt 结束本回合等他回话——不靠模型自觉，
  * 否则它可能拿着没批准的规划直接开写。没有 apply 那一半：批准的是执行（照它写正文），
- * 不是要落盘的文档——所以没有 enter-draft 前置，草稿模式只服务文档提案的三向审阅。
+ * 不是要落盘的文档。
  */
 export const proposePlanTool: RegisteredTool<{ chapter: number; content: string }> = defineTool<{
   chapter: number;
@@ -297,43 +267,6 @@ export const proposePlanTool: RegisteredTool<{ chapter: number; content: string 
   },
 });
 
-/** 「你不在草稿模式里」的自愈文案，给 propose-design 用。 */
-export function notInDraft(what: string): string {
-  return (
-    `还没进草稿模式——三向审阅（接受 / 拒绝 / 提意见）只有那一条通道，不在里面就提不出东西。` +
-    `请先 enter-draft，再${what}；用户接受或拒绝之后模式会自己退出。`
-  );
-}
-
-/**
- * enter-draft / exit-draft：会话模式的进出口（见 `agent/modes.ts`）。进入之后只有两条路：
- * 用户接受或拒绝（模式自己退）、或 exit-draft（用户改主意不做）——没有第三条把 mate 关在里面。
- * 进入不弹 confirm：用户刚说了"写第 1 章"，再问一句"要不要先规划"是噪音。
- */
-export const enterDraftTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
-  id: "enter-draft",
-  description: P("enter-draft"),
-  input: { type: "object", properties: {} },
-  async execute(_args, ctx) {
-    ctx.setMode(DRAFT_MODE);
-    return {
-      output:
-        "已进入草稿模式（落盘与委派都不可用）。把要审的那一版文档准备好，用 propose-design 交给用户；" +
-        "他接受或拒绝之后模式自己退出，他提意见就留在模式里接着改。",
-    };
-  },
-});
-
-export const exitDraftTool: RegisteredTool<Record<string, never>> = defineTool<Record<string, never>>({
-  id: "exit-draft",
-  description: P("exit-draft"),
-  input: { type: "object", properties: {} },
-  async execute(_args, ctx) {
-    ctx.exitDraft();
-    return { output: "已离开草稿模式。" };
-  },
-});
-
 /**
  * enter-prose / exit-prose：正文模式的进出口。进入条件不是“用户说了写”，而是**规划已批准、
  * 前置产物都已落地**——这决定它只能由模型在前置完成后显式调用，不能由 plan accept 自动进入。
@@ -344,9 +277,6 @@ export const enterProseTool: RegisteredTool<Record<string, never>> = defineTool<
   description: P("enter-prose"),
   input: { type: "object", properties: {} },
   async execute(_args, ctx) {
-    if (ctx.getMode() === DRAFT_MODE) {
-      return { output: "还在草稿模式——先 exit-draft，把前置产物落完，再 enter-prose。" };
-    }
     const plan = ctx.getProposal(PLAN_KEY);
     if (!plan || !plan.approved || plan.done || plan.chapter === undefined) {
       return { output: "还没有已批准、未执行的本章规划。先用 propose-plan 让用户拍板，再写正文。" };
@@ -375,10 +305,7 @@ export const CORE_TOOLS: RegisteredTool[] = [
   skillTool,
   taskTool,
   askUserTool,
-  confirmTool,
   proposePlanTool,
-  enterDraftTool,
-  exitDraftTool,
   enterProseTool,
   exitProseTool,
 ];

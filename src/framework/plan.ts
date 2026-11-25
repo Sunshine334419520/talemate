@@ -14,7 +14,15 @@ import { join } from "node:path";
 import type { ProposalDisplay } from "../core/types";
 import { projectPaths, talemateHome } from "../core/config";
 import { readText, writeAtomic } from "../storage/atomic";
-import { indentLines } from "./proposal";
+
+/** 正文按行缩进（3 空格）：终端提案视图用，缩进约定只此一处。 */
+const INDENT = "   ";
+function indentLines(text: string): string[] {
+  return text
+    .trim()
+    .split("\n")
+    .map((l) => `${INDENT}${l}`);
+}
 
 /** 规划工件的项目相对写法——与作品文档同一个口径，只是根不同（它在 `.talemate/` 下）。 */
 export function planRelPath(chapter: number): string {
@@ -79,9 +87,8 @@ export async function readPlan(projectId: string, chapter: number): Promise<stri
 /**
  * 渲染一份规划的**终端视图**（纯函数，无 IO）。
  *
- * 与 `proposal.renderProposal` 的区别：规划不是文档提案——没有逐格编号、没有待定格、没有 apply
- * 那一半，它批准的是执行（照着它去写正文）而不是一次落盘。收尾操作不写进正文：界面用三个按钮，
- * CLI 在提案之后单独打一行提示。
+ * 规划批准的是执行（照着它去写正文），不是一次落盘——所以没有逐格编号、没有 apply 那一半。
+ * 收尾操作不写进正文：界面用按钮，CLI 在提案之后单独打一行提示。
  */
 export function renderPlan(chapter: number, content: string): string {
   return [`──── 第 ${chapter} 章 · 规划 ────`, "", ...indentLines(content)].join("\n");

@@ -87,25 +87,15 @@ try {
   console.log(`[3c2] 项目库同名覆盖内置库：${won ? "✓" : "✗"}`);
   if (!won) throw new Error("项目库没能覆盖内置库的同名 skill");
 
-  // 3d) 草稿模式：task 从 schema 里消失，连 mock 都演不出来（模式唯一的工具效果）
+  // 3d) /permissions 的视图：模式那一层要说得出自己定的是哪一条（accept-edits → edit allow）
   const s3 = await openSession({ projectId: meta.id, model, io });
-  process.env.TALEMATE_MOCK_TOOL = "enter-draft";
-  await s3.post("写第 2 章。");
-  process.env.TALEMATE_MOCK_TOOL = "task"; // 想演 task，但它已经不在工具列表里了
-  await s3.post("继续。");
-  const s3Msgs = await loadMessages(meta.id, s3.sessionId);
-  const s3Tools = s3Msgs.flatMap((m) => m.parts ?? []).filter((p) => p.type === "tool").map((p) => p.name);
-  const hidden = s3Tools.includes("enter-draft") && !s3Tools.includes("task");
-  console.log(`[3d] 草稿模式下 task 不可见（工具序列 ${s3Tools.join(" → ")}）：${hidden ? "✓" : "✗"}`);
-  if (!hidden) throw new Error("草稿模式没有藏掉 task");
-
-  // 3d2) /permissions 的视图：只说"edit 是 deny"没用，得说得出是哪一层（模式）定的
+  s3.setMode("accept-edits");
   const pv = s3.permissionView();
   const verdict = evaluateWithSource("edit", "*", ...pv.layers.map((l) => l.rules), pv.approved);
   const source = pv.layers[verdict.layer]?.label ?? "（未匹配）";
-  const sourced = verdict.rule.action === "deny" && source === pv.modeTitle;
-  console.log(`[3d2] 视图把 edit 的 deny 归到「${source}」（模式：${pv.modeTitle}）：${sourced ? "✓" : "✗"}`);
-  if (!sourced) throw new Error("规则表视图没能说清这条 deny 是哪一层定的");
+  const sourced = verdict.rule.action === "allow" && source === pv.modeTitle;
+  console.log(`[3d] 视图把 edit 的 allow 归到「${source}」（模式：${pv.modeTitle}）：${sourced ? "✓" : "✗"}`);
+  if (!sourced) throw new Error("规则表视图没能说清这条 allow 是哪一层定的");
 
   // 3e) 项目级权限：talemate.json 的 permissions 真的接上了（规则表最后一层）
   const meta3 = await createProject({ title: "冒烟权限书" });
@@ -150,9 +140,9 @@ try {
   console.log(`    子会话：${subMetas.map((m) => `${m.title}(${m.id})`).join(", ")}`);
   if (!childSession) throw new Error("planner 子会话未落盘");
 
-  // 4b) design/ 懒建：初始为空（按需 design-spec 拿形状再成稿）
+  // 4b) design/ 懒建：初始为空（用户或 mate 要写才出现）
   const seeded = await enumerateDocs(meta.id, "design/");
-  console.log(`[5b] design/ 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空，按需 design-spec 成稿）"}`);
+  console.log(`[5b] design/ 懒建：初始 ${seeded.length ? seeded.join(", ") : "（空）"}`);
   if (seeded.length !== 0) throw new Error("design/ 应懒建为空");
 
   // 5) 端到端收到 delta 文本
@@ -166,47 +156,24 @@ try {
   console.log(`[8] AGENTS.md 不预种：${rules === "" ? "✓（不存在 → 不注入）" : `✗ ${rules.slice(0, 40)}`}`);
   if (rules !== "") throw new Error("AGENTS.md 不应预种（是用户自己的文件）");
 
-  // 9) 提案两段式：propose-design 不写盘、结束本回合，用户回话才决定"同意"
-  const meta2 = await createProject({ title: "冒烟提案书" });
+  // 9) 整篇写走 write 的 diff 预览：用户看的就是要落的字节，点头即落盘（没有提案与 apply 两段）
+  const meta2 = await createProject({ title: "冒烟整篇写" });
   const s2 = await openSession({ projectId: meta2.id, model, io });
-  // 三向的前置：先进草稿模式
-  process.env.TALEMATE_MOCK_TOOL = "enter-draft";
+  const confirmDetails: string[] = [];
+  io.confirm = async (_action, summary) => {
+    confirmDetails.push(summary);
+    return "once";
+  };
+  process.env.TALEMATE_MOCK_TOOL = "write";
   await s2.post("把核心设定整理一版出来。");
-  process.env.TALEMATE_MOCK_TOOL = "propose-design";
-  const r2 = await s2.post("把核心设定整理一版出来。");
+  const written = await readFile(join(HOME, "novels", meta2.id, "design", "core.md"), "utf-8").catch(() => "");
+  const landedCore = written.includes("## 一句话简介");
+  console.log(`[9] write 落盘整篇（用户看过 diff）：${landedCore ? "✓" : "✗"}`);
+  if (!landedCore) throw new Error(`design/core.md 没落盘：${truncate(written, 120)}`);
 
-  const notWritten = (await enumerateDocs(meta2.id, "design/")).length === 0;
-  console.log(`[9] propose-design 不写盘：${notWritten ? "✓（design/ 仍为空）" : "✗ 竟然落盘了"}`);
-  if (!notWritten) throw new Error("提案不该落盘");
-
-  const prop = proposals.at(-1) ?? "";
-  const view = proposalViews.at(-1);
-  const rendered =
-    prop.includes("提案 · 核心层") &&
-    prop.includes("1. 题材 · 频道") &&
-    !prop.includes("回复「没问题」") &&
-    view?.kind === "design" &&
-    view.title === "核心层" &&
-    view.sections.some((s) => s.heading === "题材 · 频道");
-  console.log(`[9b] 提案已渲染给用户（终端逐格 + 结构化卡片）：${rendered ? "✓" : "✗"}`);
-  if (!rendered) throw new Error(`提案未按预期渲染：${truncate(prop, 200)}`);
-
-  const halted = r2.includes("等用户回话");
-  console.log(`[9c] 本回合在提案处结束（halt）：${halted ? "✓" : `✗ ${truncate(r2, 80)}`}`);
-
-  const pending = s2.pending.get("design/core.md");
-  console.log(`[9d] 待落盘提案已登记且未获同意：${pending && !pending.approved ? "✓" : "✗"}`);
-
-  // "同意"由 harness 按用户回话判定——模型自述无效
-  await s2.post("没问题");
-  const agreed = s2.pending.get("design/core.md")?.approved === true;
-  console.log(`[10] 用户说「没问题」→ 记为用户已同意：${agreed ? "✓" : "✗"}`);
-  if (!agreed) throw new Error("同意未被 harness 记下");
-
-  await s2.post("等一下，第 3 格我想改成雨夜");
-  const revoked = s2.pending.get("design/core.md")?.approved === false;
-  console.log(`[10b] 用户改口要改内容 → 同意撤销：${revoked ? "✓" : "✗"}`);
-  if (!revoked) throw new Error("带改动要求的回话不该算同意");
+  const diffShown = confirmDetails.some((d) => d.includes("+") && d.includes("一句话简介"));
+  console.log(`[9b] confirm 里带着要落的全部字节（diff）：${diffShown ? "✓" : "✗"}`);
+  if (!diffShown) throw new Error("整篇写没有把 diff 交给用户");
 
   console.log("\n✔ P0 冒烟全链路通过");
 } finally {
