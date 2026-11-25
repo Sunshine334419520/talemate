@@ -41,6 +41,8 @@ export interface TrajectoryRecord {
   model?: string;
   targetSeq?: number;
   requestSeq?: number;
+  /** assistant 消息里这一轮调用的工具名（去重）；只有"只有工具、没有正文/推理"时给界面兜底 */
+  toolNames?: string[];
 }
 
 export type TrajectoryTurnStatus = "open" | "completed" | "error" | "aborted";
@@ -106,6 +108,20 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
     const record: TrajectoryRecord = { id: nextId(kind), kind, ...data };
     attachRequestSeq(record);
     turn.records.push(record);
+    return record;
+  };
+  /**
+   * assistant/message 落盘在工具执行之后（parts 要等工具结果回填），所以它的事件 seq 晚于
+   * tool/call。但这条消息的推理与工具调用是同一刻生成的：表里必须把助手放在它自己的工具前面，
+   * 否则用户会看到"先读了几份文件，后解释为什么读"。
+   */
+  const addAssistant = (data: Omit<TrajectoryRecord, "id" | "kind">): TrajectoryRecord | undefined => {
+    if (turn === undefined) return undefined;
+    const record: TrajectoryRecord = { id: nextId("assistant"), kind: "assistant", ...data };
+    attachRequestSeq(record);
+    const firstTool = turn.records.findIndex((r) => r.kind === "tool" && r.step === data.step);
+    if (firstTool >= 0) turn.records.splice(firstTool, 0, record);
+    else turn.records.push(record);
     return record;
   };
 
@@ -190,11 +206,13 @@ export function buildTrajectory(events: readonly AnyTraceEvent[]): TrajectoryVie
 
       case "assistant/message": {
         const message = event.data.message;
-        const record = add("assistant", {
-          at: event.time,
+        const toolNames = [...new Set((message.parts ?? []).flatMap((part) => (part.type === "tool" ? [part.name] : [])))];
+        const record = addAssistant({
+          at: step === undefined ? event.time : (stepStarts.get(step) ?? event.time),
           step,
           text: textOfMessage(message) || undefined,
           reasoning: reasoningOfMessage(message) || undefined,
+          ...(toolNames.length === 0 ? {} : { toolNames }),
         });
         const result = step === undefined ? undefined : stepResults.get(step);
         if (record !== undefined && result !== undefined) {

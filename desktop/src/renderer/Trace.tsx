@@ -65,6 +65,11 @@ function recordSummary(record: TrajectoryRecord): string {
   if (record.kind === "compaction") return record.text === undefined ? "" : preview(record.text);
   if (record.kind === "attempt") return record.error ?? record.status ?? "";
   if (record.kind === "rewind") return `回退到 seq ${record.targetSeq ?? "?"}`;
+  if (record.kind === "assistant" && record.text === undefined && record.reasoning === undefined) {
+    return record.toolNames === undefined || record.toolNames.length === 0
+      ? "（这一步没有正文或推理）"
+      : `调用工具：${record.toolNames.join("、")}`;
+  }
   return record.text === undefined ? (record.reasoning === undefined ? "" : preview(record.reasoning)) : preview(record.text);
 }
 
@@ -354,6 +359,15 @@ function Preview({ record }: { record: TrajectoryRecord }) {
   }
   if (record.kind === "attempt") {
     return <pre className="trace-code">{record.error ?? record.status ?? "请求失败"}</pre>;
+  }
+  if (record.kind === "assistant" && record.text === undefined && record.reasoning === undefined) {
+    return (
+      <p className="trace-note">
+        {record.toolNames === undefined || record.toolNames.length === 0
+          ? "这一步没有正文或推理。"
+          : `这一步只调用了工具：${record.toolNames.join("、")}；具体入参与输出见下面的工具记录。`}
+      </p>
+    );
   }
   if (record.text === undefined && record.reasoning === undefined) {
     return <p className="trace-note">这条记录没有可预览的正文。</p>;
@@ -651,6 +665,7 @@ export function Trace({
                     <tr className="trace-turn-row">
                       <td colSpan={2}>
                         第 {turn.index + 1} 轮 · {turn.agent} · {turn.status}
+                        {turn.resumed ? " · 续跑（无新用户消息）" : ""}
                         {turn.endedAt === undefined ? "" : ` · ${turn.endedAt - turn.startedAt} ms`}
                       </td>
                     </tr>

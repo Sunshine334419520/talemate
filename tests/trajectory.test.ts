@@ -45,6 +45,7 @@ describe("轨迹记录 · 一张表", () => {
           role: "assistant",
           ts: 2,
           parts: [
+            { type: "reasoning", text: "先看看" },
             { type: "text", text: "看过了" },
             { type: "tool", id: "c1", name: "read", state: "completed", input: "{}", output: "ok" },
           ],
@@ -63,7 +64,7 @@ describe("轨迹记录 · 一张表", () => {
 
     expect(view.turns).toHaveLength(1);
     const turn = view.turns[0]!;
-    expect(turn.records.map((r) => r.kind)).toEqual(["system", "user", "tool", "assistant"]);
+    expect(turn.records.map((r) => r.kind)).toEqual(["system", "user", "assistant", "tool"]);
     const system = turn.records.find((r) => r.kind === "system")!;
     expect(system.text).toBe("你是搭档");
     expect(system.requestSeq).toBe(4);
@@ -71,6 +72,11 @@ describe("轨迹记录 · 一张表", () => {
     expect(tool).toMatchObject({ toolName: "read", toolState: "completed", input: "{}", output: "ok", requestSeq: 4 });
     const assistant = turn.records.find((r) => r.kind === "assistant")!;
     expect(assistant.text).toBe("看过了");
+    expect(assistant.reasoning).toBe("先看看");
+    expect(assistant.toolNames).toEqual(["read"]);
+    expect(turn.records.findIndex((r) => r.kind === "assistant")).toBeLessThan(
+      turn.records.findIndex((r) => r.kind === "tool"),
+    );
     expect(assistant.requestSeq).toBe(4);
     expect(assistant.inputTokens).toBe(100);
     expect(assistant.outputTokens).toBe(10);

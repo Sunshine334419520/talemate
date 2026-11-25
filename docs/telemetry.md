@@ -120,6 +120,9 @@ turn
 `assistant` 记录；原始事件仍在 `/trace`，不在这张表里重复。感知不是一张表里的行：它是某一步请求的
 决策，挂在 `request/header.perceptionHash` 指到的那份 plan 上，在请求详情里展开。
 
+`assistant/message` 的事件 seq 晚于同一步的 `tool/call`（parts 要等工具结果回填），但它的推理与
+工具调用是同一刻生成的；表里把助手记录插在自己那一步的工具前面，否则会读成“先读文件、后解释为什么读”。
+
 ## 请求详情：由日志折叠
 
 `src/telemetry/request_detail.ts` 的 `buildRequestDetail(events, headerSeq)` 返回某一步的：
