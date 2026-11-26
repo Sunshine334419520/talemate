@@ -56,6 +56,16 @@ const SAMPLES: { [K in TraceEventType]: TraceEventData[K] } = {
     dropped: { messages: 4, toolResults: 0, toolChars: 0 },
     degraded: false,
   },
+  "perception/observed": {
+    step: 0,
+    purpose: "chat",
+    mode: "shadow",
+    profile: "none",
+    profiled: false,
+    reason: "no-profile",
+    hash: "o",
+    builtAt: 1,
+  },
   "perception/plan": {
     step: 0,
     purpose: "prose",

@@ -14,13 +14,16 @@ import { PLAN_KEY } from "../src/core/types";
 import { collectProseCandidates } from "../src/context/perception_candidates";
 import {
   perceptionMetrics,
+  perceptionObservation,
   perceptionPlanHash,
+  perceptionProfileFor,
   perceptionTraceOf,
   renderPerceptionBlock,
   triageCandidates,
 } from "../src/context/perception";
 import { createProject, writeDoc } from "../src/storage/project";
 import { eventLogFor, resetEventLogs } from "../src/telemetry/log";
+import { buildRequestDetail } from "../src/telemetry/request_detail";
 import { openSession } from "../src/session/session";
 
 let home: string;
@@ -79,7 +82,7 @@ describe("分诊 · v1 prose Profile", () => {
     expect(byId.get("character.card.沈越")).toMatchObject({ tier: "P1", placement: "system.head", action: "include" });
     expect(byId.get("narrative.progress")).toMatchObject({ tier: "P1", placement: "system.head", action: "include" });
     expect(byId.get("voice.brief")).toMatchObject({ tier: "P1", action: "drop", reason: "already-in-context" });
-    expect(byId.get("author.decision.0")).toMatchObject({ tier: "P2", placement: "system.middle", action: "compress" });
+    expect(byId.get("author.decision.0")).toMatchObject({ tier: "P2", placement: "system.middle", action: "include", reason: "p2-included" });
     expect(byId.get("narrative.chapter.old")).toMatchObject({ tier: "P3", placement: "tool.index", action: "defer" });
     expect(byId.get("character.knowledge")).toMatchObject({ action: "drop", reason: "missing: state/knowledge.md 未建立" });
 
@@ -121,7 +124,7 @@ describe("分诊 · v1 prose Profile", () => {
     expect(perceptionPlanHash(changed)).not.toBe(perceptionPlanHash(plan));
   });
 
-  test("inject 只渲染 include/compress，按 placement 分块，已在上下文的不会重复", () => {
+  test("inject 只渲染 include，按 placement 分块，已在上下文的不会重复", () => {
     const plan = triageCandidates(
       [
         candidate("character.state.沈越", "character", "此刻正文", { source: { kind: "state", path: "state/characters/沈越.md", rev: "r1" } }),
@@ -141,6 +144,37 @@ describe("分诊 · v1 prose Profile", () => {
     expect(tail).toContain("此刻正文");
     expect(tail).toContain('source="state/characters/沈越.md@r1"');
     expect([head, middle, tail].join("\n")).not.toContain("规划正文");
+  });
+test("observation hash 只认感知状态；没有 Profile 的 purpose 不返回假 plan", () => {
+    const base = {
+      purpose: "chat" as const,
+      mode: "shadow" as const,
+      profile: "none",
+      profiled: false,
+      reason: "no-profile" as const,
+    };
+    const a = perceptionObservation(base, 1);
+    const b = perceptionObservation(base, 2);
+    expect(a.hash).toBe(b.hash);
+    expect(perceptionObservation({ ...base, reason: "no-plan" }, 1).hash).not.toBe(a.hash);
+
+    expect(perceptionProfileFor("chat")).toBeUndefined();
+    expect(perceptionProfileFor("prose")?.id).toBe("prose.v1");
+  });
+
+  test("P2 放不下就 defer，不再截断成 compress", () => {
+    const plan = triageCandidates(
+      [
+        candidate("character.state.沈越", "character", "状态", { source: { kind: "state", rev: "s1" } }),
+        candidate("author.decision.0", "author", "很长".repeat(20)),
+      ],
+      "prose",
+      20,
+    );
+    const byId = new Map(plan.decisions.map((d) => [d.candidate.id, d]));
+    expect(byId.get("author.decision.0")?.action).toBe("defer");
+    expect(byId.get("author.decision.0")?.reason).toBe("over-budget");
+    expect(perceptionMetrics(plan).compressionRatio).toBe(1);
   });
 });
 
@@ -192,7 +226,7 @@ describe("shadow · 不改变 system", () => {
     await writeDoc(pid, "design/core.md", "# 核心\n\n## 一句话简介\n一个人。\n");
     await writeDoc(pid, "design/characters/沈越.md", "# 沈越\n\n## 基本档案\n姓名：沈越\n");
 
-    const run = async (mode: "shadow" | "off" | "inject"): Promise<{ system: string; plans: number; hash?: string }> => {
+    const run = async (mode: "shadow" | "off" | "inject"): Promise<{ system: string; plans: number; observed: number; hash?: string }> => {
       const prev = process.env.TALEMATE_PERCEPTION;
       process.env.TALEMATE_PERCEPTION = mode;
       try {
@@ -212,6 +246,7 @@ describe("shadow · 不改变 system", () => {
         return {
           system: system?.type === "system/prompt" ? system.data.text : "",
           plans: events.filter((e) => e.type === "perception/plan").length,
+          observed: events.filter((e) => e.type === "perception/observed").length,
           ...(header?.type === "request/header" && header.data.perceptionHash !== undefined
             ? { hash: header.data.perceptionHash }
             : {}),
@@ -232,8 +267,38 @@ describe("shadow · 不改变 system", () => {
     expect(inject.system).toContain("<perception purpose=\"prose\" placement=\"system.head\">");
     expect(inject.system).toContain("沈越");
     expect(shadow.plans).toBeGreaterThan(0);
+    expect(shadow.observed).toBeGreaterThan(0);
     expect(shadow.hash).toBeDefined();
     expect(off.plans).toBe(0);
-    expect(off.hash).toBeUndefined();
+    expect(off.observed).toBeGreaterThan(0);
+    expect(off.hash).toBeDefined();
+  });
+});
+describe("observed · 无 Profile", () => {
+  test("chat 请求也留 observed；header 的 perceptionHash 能指回来", async () => {
+    const pid = (await createProject({ title: "observed-chat" })).id;
+    const session = await openSession({ projectId: pid, model: MODEL, title: `chat-${++serial}` });
+    try {
+      await session.post("你好");
+      const events = await eventLogFor(pid, session.sessionId).read();
+      const observed = events.find((e) => e.type === "perception/observed");
+      expect(observed?.type).toBe("perception/observed");
+      if (observed?.type !== "perception/observed") return;
+      expect(observed.data).toMatchObject({ purpose: "chat", profiled: false, reason: "no-profile" });
+      expect(events.some((e) => e.type === "perception/plan")).toBe(false);
+
+      const header = events.find((e) => e.type === "request/header");
+      expect(header?.type).toBe("request/header");
+      if (header?.type !== "request/header") return;
+      expect(observed.seq).toBeLessThan(header.seq);
+      expect(header.data.perceptionHash).toBe(observed.data.hash);
+
+      const detail = buildRequestDetail(events, header.seq);
+      expect(detail?.perceptionObservation?.purpose).toBe("chat");
+      expect(detail?.perceptionObservation?.reason).toBe("no-profile");
+      expect(detail?.perception).toBeUndefined();
+    } finally {
+      resetEventLogs();
+    }
   });
 });

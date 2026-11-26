@@ -95,7 +95,7 @@ describe("报告 · pass@k 与判断段", () => {
     };
     const baselineReport = renderBaselineReport([baseline], "2026-11-01");
     expect(baselineReport).toContain("## 感知");
-    expect(baselineReport).toContain("| prose-chapter-basic | 2 | 1.00 | 3 | 4 | 1 | 2 | 1 | 0.50 | 7200/12000 |");
+    expect(baselineReport).toContain("| prose-chapter-basic | 2 | 1.00 | 3 | 4 | 1 | 2 | 1 | 7200/12000 |");
 
     const comparison = renderComparisonReport([baseline, variant], "2026-11-01", "perception-inject", "note", {
       targetFamily: "prose",

@@ -10,6 +10,7 @@
 import type {
   CompactionRecord,
   DecisionEntry,
+  PerceptionObservation,
   PerceptionTrace,
   ProposalPresented,
   StoredMessage,
@@ -96,7 +97,7 @@ export interface TraceEventData {
     toolsHash: string;
     messagesHash: string;
     promptHash: string;
-    /** 这一步生效的 `perception/plan` hash；没有感知（非 prose / off）时缺省 */
+    /** 这一步生效的 `perception/observed` hash；有 plan 时 observation 里带 `planHash` */
     perceptionHash?: string;
     systemChars: number;
     toolsChars: number;
@@ -135,7 +136,13 @@ export interface TraceEventData {
    */
   "context/compaction": CompactionRecord;
   /**
-   * 这一步的上下文决策。只在 plan hash 变化时写；每一步的 `request/header` 带 `perceptionHash`，
+   * 这一步的感知观察：purpose / mode / profile / profiled / reason。每次请求都可以有它，
+   * 包括"没有 Profile、没有 plan"的情况；它是"为什么没分诊"的可解释记录。
+   * 有 plan 时 `planHash` 指向对应的 `perception/plan`。
+   */
+  "perception/observed": PerceptionObservation & { step: number };
+  /**
+   * 这一步的上下文决策。只在 plan hash 变化时写；每一步的 `request/header` 带 `perceptionHash`,
    * 所以"这个请求看到了什么"仍可重建。正文不进这条事件，坐标与规模足够重取。
    */
   "perception/plan": PerceptionTrace & { step: number };
@@ -178,6 +185,7 @@ const EVENT_TYPES: Record<TraceEventType, true> = {
   "compaction/summary": true,
   "compaction/end": true,
   "context/compaction": true,
+  "perception/observed": true,
   "perception/plan": true,
   "proposal/presented": true,
   "proposal/decision": true,

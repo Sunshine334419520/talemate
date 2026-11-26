@@ -6,7 +6,7 @@
  *
  * 边界：消息用 `projectMessages` 的同一份投影，再按最后一次 compaction 截窗（与 loadModelWindow 同义）。
  */
-import type { PerceptionTrace, StoredMessage } from "../core/types";
+import type { PerceptionObservation, PerceptionTrace, StoredMessage } from "../core/types";
 import type { AnyTraceEvent } from "./events";
 import { projectMessages } from "./projection";
 
@@ -27,7 +27,9 @@ export interface RequestDetail {
   context?: { provider: string; model: string; contextWindow?: number };
   /** 该步请求里的消息窗口（不含 system；system 走 ChatOpts.system） */
   messages: StoredMessage[];
-  /** 该步 header 的 `perceptionHash` 指到的那份 plan；没有感知时缺省 */
+  /** 该步 header 的 `perceptionHash` 指到的那份 observation；没有感知时缺省 */
+  perceptionObservation?: PerceptionObservation;
+  /** observation 指到的 plan；旧日志里 header 直接指向 plan 时也在这里 */
   perception?: PerceptionTrace;
 }
 
@@ -50,6 +52,9 @@ export function buildRequestDetail(events: readonly AnyTraceEvent[], headerSeq: 
   let tools: RequestDetail["tools"];
   let context: RequestDetail["context"];
   let perception: PerceptionTrace | undefined;
+  let perceptionObservation: PerceptionObservation | undefined;
+  const observations = new Map<string, PerceptionObservation>();
+  const plans = new Map<string, PerceptionTrace>();
   for (const event of eventsUpTo) {
     if (event.type === "system/prompt") {
       system = { seq: event.seq, text: event.data.text, hash: event.data.hash };
@@ -61,13 +66,20 @@ export function buildRequestDetail(events: readonly AnyTraceEvent[], headerSeq: 
         model: event.data.model,
         ...(event.data.contextWindow === undefined ? {} : { contextWindow: event.data.contextWindow }),
       };
-    } else if (
-      event.type === "perception/plan" &&
-      header.perceptionHash !== undefined &&
-      event.data.hash === header.perceptionHash
-    ) {
-      // 只有 header 明确指到的那份 plan 才是这一步的；不要拿"最近一条"冒充
-      perception = event.data;
+    } else if (event.type === "perception/observed") {
+      observations.set(event.data.hash, event.data);
+    } else if (event.type === "perception/plan") {
+      plans.set(event.data.hash, event.data);
+    }
+  }
+  if (header.perceptionHash !== undefined) {
+    // 新日志：header 指向 observation；旧日志：header 直接指向 plan。
+    const observation = observations.get(header.perceptionHash);
+    if (observation !== undefined) {
+      perceptionObservation = observation;
+      if (observation.planHash !== undefined) perception = plans.get(observation.planHash);
+    } else {
+      perception = plans.get(header.perceptionHash);
     }
   }
 
@@ -84,6 +96,7 @@ export function buildRequestDetail(events: readonly AnyTraceEvent[], headerSeq: 
     ...(tools === undefined ? {} : { tools }),
     ...(system === undefined ? {} : { system }),
     ...(context === undefined ? {} : { context }),
+    ...(perceptionObservation === undefined ? {} : { perceptionObservation }),
     ...(perception === undefined ? {} : { perception }),
     messages: windowMessages(projectMessages(eventsUpTo)),
   };

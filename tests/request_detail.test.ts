@@ -28,6 +28,17 @@ const HEADER = (step: number): TraceEventData["request/header"] => ({
 
 const TOOL = { name: "read", description: "Read", inputSchema: { type: "object" } };
 
+const OBSERVATION: TraceEventData["perception/observed"] = {
+  step: 0,
+  purpose: "chat",
+  mode: "shadow",
+  profile: "none",
+  profiled: false,
+  reason: "no-profile",
+  hash: "oh",
+  builtAt: 1,
+};
+
 const PERCEPTION: TraceEventData["perception/plan"] = {
   step: 0,
   purpose: "prose",
@@ -86,6 +97,23 @@ describe("请求详情 · 折叠", () => {
     expect(matched?.perception?.decisions[0]?.id).toBe("character.state.沈越");
     const unmatched = buildRequestDetail(events, 3);
     expect(unmatched?.perception).toBeUndefined();
+  });
+
+  test("没有 Profile 时也保留 observed；有 planHash 时两份一起回放", () => {
+    const events = [
+      ev(1, "perception/observed", OBSERVATION),
+      ev(2, "request/header", { ...HEADER(0), perceptionHash: "oh" }),
+      ev(3, "perception/observed", { ...OBSERVATION, profiled: true, profile: "prose.v1", planHash: "ph", hash: "oh2" }),
+      ev(4, "perception/plan", PERCEPTION),
+      ev(5, "request/header", { ...HEADER(1), perceptionHash: "oh2" }),
+    ];
+    const noProfile = buildRequestDetail(events, 2);
+    expect(noProfile?.perceptionObservation?.reason).toBe("no-profile");
+    expect(noProfile?.perception).toBeUndefined();
+
+    const profiled = buildRequestDetail(events, 5);
+    expect(profiled?.perceptionObservation?.profile).toBe("prose.v1");
+    expect(profiled?.perception?.decisions[0]?.id).toBe("character.state.沈越");
   });
 
   test("compaction 之后只取窗口，不把整份历史再喂回去", () => {

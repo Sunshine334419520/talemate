@@ -2,7 +2,7 @@
 
 > **职责**：定义 Agent 每一步推理之前，哪些材料有资格进入上下文、以什么层级和位置进入、哪些压缩、哪些留在工具后面、以及如何记录这次感知决策。
 > **读者**：要改 `src/session/`、`src/context/`、`src/framework/`、`prompts/*` 的人；以及要判断"某次输出错在模型，还是错在模型一开始就没看到"的人。
-> **对齐代码**：2026-11-24 · shadow 已落地并默认开启；inject 已接上（`TALEMATE_PERCEPTION=inject`，只给 eval 对照用，默认不开）；发现未做。标【现状】的部分已按当前代码核对；其余是本文的设计。本文不受既有接口约束；旧版以“生产单元/问题登记表”为中心，已废弃。
+> **对齐代码**：2026-11-26 · observed 每次请求都有（hash 变化才写事件）；prose shadow 默认开启；inject 已接上（`TALEMATE_PERCEPTION=inject`，只给 eval 对照用，默认不开）；材料语义压缩暂不做；发现未做。标【现状】的部分已按当前代码核对；其余是本文的设计。本文不受既有接口约束；旧版以“生产单元/问题登记表”为中心，已废弃。
 > **相邻**：`compaction.md`（语义压缩：折叠、证据账）· `architecture.md`（一次交互怎么走）· `state.md`（状态层）· `design-docs.md`（四类活文档）· `chapter-planning.md`（章节生产）· `telemetry.md`（事件与 trace）· `perception-triage.md` / `perception-discovery.md`（分诊与发现的详细设计，待写）
 
 **一句话**：感知不是"把该知道的都放进去"，而是"这一步推理需要的最小高信号材料，按正确的层级和位置进入上下文，其余留在工具后面"。
@@ -41,7 +41,7 @@ Agent 每一步：
 | 模式 | 解决什么 | 文档 | 状态 |
 |---|---|---|---|
 | **上下文分诊** | 哪些材料进这一步的上下文，P0/P1/P2/P3，放哪 | 本文给模型；`perception-triage.md` 补打分与阈值 | 本文 |
-| **语义压缩** | 进来之后怎么变短而不丢关键证据 | `compaction.md` | 已落地 |
+| **语义压缩** | 进来之后怎么变短而不丢关键证据 | 对话折叠见 `compaction.md`；材料压缩待定 | 对话折叠已落地；材料压缩未做 |
 | **渐进发现** | 一开始不知道材料在哪，怎么逐步找 | 本文给契约；`perception-discovery.md` 补策略 | 本文 |
 | **多模态融合** | 图、表、PDF、日志等异类信息怎么进 | 本文留位；需要时单独设计 | 暂缓 |
 
@@ -107,7 +107,7 @@ Profile 是**分诊的起点**，不是硬编码清单：同一步骤的不同�
 
 ```text
 system（头部）  角色、规则（稳定、少变）
-system（中部）  P2 压缩件（越大纲、旧决定、背景）
+system（中部）  P2 可选件（放得下才进；放不下 defer）
 system（尾部）  P0 + 高 P1（紧挨生成；避免 Lost in the Middle）
 messages        最近对话原文；当前用户消息在最后
 工具索引        P3 的路径 + 一行说明；不展开正文
@@ -119,7 +119,7 @@ messages        最近对话原文；当前用户消息在最后
 2. **稳定规则放头部，变化状态放尾部。** 头部每轮变化小，值得缓存；尾部每轮重算。
 3. **P3 不进 prompt 正文。** 只给 `glob` / `grep` / `read` 的入口；模型需要时自己取。
 
-inject 的渲染只取 `include` / `compress` 且**尚未在上下文里**的决定：每块以
+inject 的渲染只取 `include`（旧日志可能还有 `compress`）且**尚未在上下文里**的决定：每块以
 `<perception purpose placement>` 包裹，每个来源一个 `<perception-item tier source>`。
 已在 system/messages 的候选在分诊时就是 `drop`（`already-in-context`），不会重复出现。
 
@@ -152,6 +152,7 @@ export type Placement =
   | "messages.recent"
   | "tool.index";
 
+/** `compress` 保留给旧日志/未来；v1 不产生它 */
 export type Action = "include" | "compress" | "defer" | "drop";
 
 export interface ContextDecision {
@@ -159,7 +160,7 @@ export interface ContextDecision {
   tier: Tier;
   action: Action;
   placement: Placement;
-  /** compress 后的文本；include 时为空（直接用原文） */
+  /** 旧日志的 compress 文本；include 时为空（直接用原文） */
   text?: string;
   /** 给 trace 看的原因：p0-current-instruction / stale / duplicate / over-budget … */
   reason: string;
@@ -176,9 +177,12 @@ export interface ContextPlan {
 
 ---
 
-## 5. 先选择，后压缩
+## 5. 先选择；压缩暂不做
 
 小说项目最容易犯的错，是把 canon 压成摘要。**能选小节就不要压；能引用就不要转述。**
+
+**v1 不做材料压缩**：P2 放得下就 include，放不下就 defer 到工具；不截断、不生成摘要。
+下表是“如果将来要做”的取舍原则，不是当前行为。
 
 | 内容 | 做法 |
 |---|---|
@@ -194,14 +198,14 @@ export interface ContextPlan {
 两条硬规则：
 
 1. **压缩的是材料，不是权威。** 世界规则、用户原话、知识边界这类东西，宁可只取一段，也不要让模型改写成摘要。
-2. **先丢再压。** 不在这一步视野里的，直接 P2/P3 或不进；只有"必须进但太长"的才压缩。
+2. **先丢再压。** 不在这一步视野里的，直接 P2/P3 或不进；只有"必须进但太长"的才考虑压缩。
 
-### 5.1 语义压缩的边界
+### 5.1 压缩与折叠的边界
 
 - **对话折叠**已有完整方案（`compaction.md`）：turn 为单位、累积、证据账、pinned。
-- **材料压缩**是感知层的事：选小节、截取、融合；**不生成第二份 canon**。
+- **材料压缩**如果要做，属于感知层：选小节、原文摘录、带出处融合；**不生成第二份 canon**。v1 暂不做。
 - 单份 P0 超预算 → 不静默截断，报可操作错误："这一场的规划 + 人物知识边界需要 X 字，上限 Y；请拆场/换模型。"
-- P2 超预算 → 压缩或降级为 P3 坐标。
+- P2 超预算 → defer 为 P3 坐标；v1 不截断。
 - P3 永不进正文。
 
 ---
@@ -256,13 +260,13 @@ export interface ContextPlan {
 
 ```text
 purpose=prose.chapter13.scene2
-candidates 34 · entered 6 · compressed 2 · deferred 23 · dropped 3
+candidates 34 · entered 6 · deferred 25 · dropped 3
 P0: plan.beats, scene.cast.knowledge        → system.tail
 P1: reader.state, voice.brief, prev.ending   → system.head
-P2: wiki.night_banquet 1.5k→0.4k, decisions 1.1k→0.3k
+P2: wiki.night_banquet, decisions            → deferred (over-budget)
 P3 behind tools: full world, ch.11, foreshadowing ledger
 dropped: outline.old_section (redundant), core@old_rev (stale)
-budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
+budget 7.2k/12k · stale 1 · duplicate 2
 ```
 
 ### 8.1 指标
@@ -272,7 +276,7 @@ budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
 | `budget_usage` | 这次用了多少预算，离上限多远 |
 | `p0_coverage` | P0 候选是否全部进入 |
 | `dropped_count` | 丢了多少，为什么 |
-| `compression_ratio` | 压缩前后比例 |
+| `compression_ratio` | **deprecated**：v1 不做材料压缩；只有旧日志会带这个数 |
 | `p3_hit_rate` | 留在工具后面的材料，后来真的被取了没有 |
 | `stale_count` | 有多少候选因过期被拒 |
 | `duplicate_count` | 有多少候选因已存在被去重 |
@@ -281,6 +285,18 @@ budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
 ### 8.2 事件
 
 ```ts
+"perception/observed": {
+  step: number;
+  purpose: Purpose;
+  mode: "off" | "shadow" | "inject";
+  profile: string;                 // "prose.v1" / "none"
+  profiled: boolean;
+  reason?: "off" | "no-plan" | "no-profile" | "empty" | "error";
+  planHash?: string;               // 有 plan 时指向下面的 perception/plan
+  hash: string;
+  builtAt: number;
+};
+
 "perception/plan": {
   step: number;
   purpose: Purpose;
@@ -299,14 +315,18 @@ budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
     reason: string;
   }>;
   missing: string[];
-  metrics: { p0Coverage: number; dropped: number; compressionRatio: number; stale: number; duplicate: number; missing: number; deferred: number };
+  metrics: { p0Coverage: number; dropped: number; stale: number; duplicate: number; missing: number; deferred: number; compressionRatio?: number /* deprecated */ };
 };
 ```
 
-只记坐标与规模；正文在 `system/prompt`。**按 hash 变化才写**：每一步的 `request/header` 带
-`perceptionHash`，所以"这个请求看到了什么"仍可从最近一条 plan 重建，而事件账不会每步复制一份。
-`/trace` 加一行感知摘要；感知**不是轨迹表里的一行**——它是某一步请求的决策，桌面端在有
-`requestSeq` 的记录详情里按 `request/header.perceptionHash` 展开，不拿最近一条冒充。
+`perception/observed` 每次请求都可以有，包括没有 Profile、没有 plan 的情况；`reason` 说明为什么没分诊。
+`request/header.perceptionHash` 指向 observation；有 plan 时 observation 的 `planHash` 指向
+`perception/plan`。旧日志的 header 直接指向 plan 时，请求详情仍按 hash 兼容读取。
+
+只记坐标与规模；正文在 `system/prompt`。**按 hash 变化才写**：同一份 observation/plan 跨多步时不重复写，
+"这个请求看到了什么"仍可从 hash 指回来，而事件账不会每步复制一份。
+`/trace` 按 purpose 汇总 observed / plan 与指标；感知**不是轨迹表里的一行**——它是某一步请求的观察，
+桌面端在有 `requestSeq` 的记录详情里按 `request/header.perceptionHash` 展开，不拿最近一条冒充。
 
 `P0` 覆盖只算已存在的 P0 候选；缺载体（`state/reader.md` 未建立这类）进 `missing`，不拉低
 `p0Coverage`——"没有这份材料"和"有却没进去"是两件事，不能混成一个小数。
@@ -319,22 +339,26 @@ budget 7.2k/12k · compression_ratio 0.42 · stale 1 · duplicate 2
 
 ```text
 Session.buildRequest(agent)
-  → collectCandidates(purpose, project, session)
-      plan / state / chapters / decisions / craft / reader / tool results
-  → triage(candidates, purpose, budget)
+  → purpose = purposeOf(agent, session)
+  → observe(purpose) → PerceptionObservation（每次请求都有）
+  → if profile：
+      collectCandidates(purpose, project, session)
+      → triage(candidates, profile, budget)
       → ContextPlan { decisions }
   → assemble(plan)（v1 shadow 不消费；inject 才消费）→ system + messages
   → chat()
 Session.generate
+  → trace("perception/observed", observation)（hash 变化时）
   → trace("perception/plan", plan)（hash 变化时）
   → trace("system/prompt", system)
 ```
 
-感知在**每次请求前**运行，不是"开工前装配一次"。一章有几十次请求，每次的分诊结果可以不同。
+感知在**每次请求前**运行，不是"开工前装配一次"。一章有几十次请求，每次的观察可以不同；
+没有 Profile 的 purpose 也会留下 `observed` + reason，不会静默消失。
 
 ### 9.2 与折叠的关系
 
-- **感知**：这次请求前选什么、放哪、压缩多少。
+- **感知**：这次请求前选什么、放哪、放不下就 defer 到工具。
 - **折叠**：历史对话太长之后，把最老的一段变成上下文记录（`compaction.md`）。
 - 折叠的证据账告诉感知"这些材料已经在窗口里/已被压掉，重读坐标在哪"；感知据此去重、决定 P3。
 - 两者都不生成 canon。感知单不落盘；折叠记录落一条事件。
@@ -370,30 +394,32 @@ Session.generate
 1. **候选模型**：六条信号线 + 三类材料；带 authority/freshness/cost/size/expandable。
 2. **分诊 Profile**：先做 `plan` / `prose` / `revision` 三个；`chat` 用轻量版。
 3. **位置**：system.head / system.tail / system.middle / tool.index；P0 放尾部。
-4. **压缩取舍**：P2 截取/融合；P3 只留坐标；P0 超限报错。
+4. **取舍**：P2 放得下就 include，放不下就 defer；P3 只留坐标；P0 超限报错。**不做材料压缩。**
 5. **发现**：复用 `glob`/`grep`/`read`，最多 3 轮，记录 trace；不新建 agent。
-6. **Perception Trace**：`perception/plan` 事件 + 指标。
-7. **不做的**：多模态、向量库、问题登记表、在感知层做审批门、reader/craft 自动生成。
+6. **Perception Trace**：`perception/observed`（每次请求）+ `perception/plan`（有 Profile 时）+ 指标。
+7. **不做的**：材料语义压缩、多模态、向量库、问题登记表、在感知层做审批门、reader/craft 自动生成。
 
-先跑两三章真实项目，观察 P0/P1 的权重、位置、压缩比是否真的影响输出，再调 Profile 与阈值。
+先跑两三章真实项目，观察 P0/P1 的权重与位置是否真的影响输出，再调 Profile 与阈值。
 
-**当前落地（2026-11-24）**：只做 `prose` 的 shadow。候选来自已批准规划、当前指令、
+**当前落地（2026-11-26）**：`perception/observed` 每次请求都有（hash 变化才写事件），没有 Profile 时带
+`no-profile` / `no-plan` / `off`；`prose` 的 shadow 默认开启，候选来自已批准规划、当前指令、
 角色卡与角色此刻、`progress`、未回收承诺、上一章结尾、上一轮决定、声音简报；`state/reader`、
 `state/craft`、`state/knowledge`、`state/relations` 还没有载体，按 `missing` 记入 trace。
-`/trace` 已显示 plan 次数、P0 覆盖、延迟/丢弃/过期/重复/缺失与最近预算；inject 已可用
-（`TALEMATE_PERCEPTION=inject`，只给 eval 变体对照），发现循环未做。
-默认 shadow：`TALEMATE_PERCEPTION=off` 可关掉，`TALEMATE_PERCEPTION_TOKENS` 覆盖 12k 预算。
+`/trace` 按 purpose 显示 observed / plan 次数、P0 覆盖、延迟/丢弃/过期/重复/缺失与最近预算；
+inject 已可用（`TALEMATE_PERCEPTION=inject`，只给 eval 变体对照），材料压缩与发现循环未做。
+默认 shadow：`TALEMATE_PERCEPTION=off` 可关掉（仍写 observed，reason=off），
+`TALEMATE_PERCEPTION_TOKENS` 覆盖 12k 预算。
 
 ---
 
 ## 11. 验收标准
 
-1. 每一步的 `request/header` 都有 `perceptionHash`；hash 变化时写一条 `perception/plan`，能重建候选、层级、动作、位置与来源 rev。
+1. 每一步的 `request/header` 都有 `perceptionHash`，指向 `perception/observed`；有 plan 时 observation 的 `planHash` 指向 `perception/plan`，能重建候选、层级、动作、位置与来源 rev。
 2. 同一份材料不在上下文出现两次（窗口/证据账去重）。
 3. P0 候选全部进入；P0 超预算时报可操作错误，不静默截断。
 4. P0 位于 system 尾部或最新请求附近，不在长上下文中部。
 5. 过期的候选不进入；要么重取，要么在 trace 里记 `stale`。
-6. P2 有明确的压缩/截取与来源，不生成第二份 canon。
+6. P2 放不下就 defer，不静默截断；不生成第二份 canon。
 7. P3 默认不进正文；模型需要时能按坐标取回。
 8. 发现循环有轮数上限与停止条件；没有"读完全书"的默认路径。
 9. trace 能回答：这次看到了什么、丢了什么、为什么、关键证据落在哪个位置。

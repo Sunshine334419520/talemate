@@ -171,14 +171,14 @@ export function renderBaselineReport(results: readonly RunResult[], clock: strin
       "",
       "## 感知",
       "",
-      "| case | plans | P0 覆盖 | 延迟 | 丢弃 | 过期 | 重复 | 缺失 | 压缩比 | 预算 |",
-      "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+      "| case | plans | P0 覆盖 | 延迟 | 丢弃 | 过期 | 重复 | 缺失 | 预算 |",
+      "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     );
     for (const [caseId, runs] of perceived) {
       const p = perceptionOf(firstRun(runs));
       if (p === undefined) continue;
       lines.push(
-        `| ${caseId} | ${p.plans} | ${pct(p.p0Coverage)} | ${num(p.deferred)} | ${num(p.dropped)} | ${num(p.stale)} | ${num(p.duplicate)} | ${num(p.missing)} | ${pct(p.compressionRatio)} | ${budget(p)} |`,
+        `| ${caseId} | ${p.plans} | ${pct(p.p0Coverage)} | ${num(p.deferred)} | ${num(p.dropped)} | ${num(p.stale)} | ${num(p.duplicate)} | ${num(p.missing)} | ${budget(p)} |`,
       );
     }
   }
@@ -357,8 +357,8 @@ export function renderComparisonReport(
       "",
       "## 感知（baseline → variant）",
       "",
-      "| case | plans | P0 覆盖 | 延迟 | 丢弃 | 过期 | 重复 | 缺失 | 压缩比 | 预算 |",
-      "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+      "| case | plans | P0 覆盖 | 延迟 | 丢弃 | 过期 | 重复 | 缺失 | 预算 |",
+      "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     );
     for (const [caseId, pair] of perceivedPairs) {
       const b = perceptionOf(firstRun(pair.baseline));
@@ -372,7 +372,7 @@ export function renderComparisonReport(
           b,
           v,
           (p) => num(p?.duplicate),
-        )} | ${perceptionCell(b, v, (p) => num(p?.missing))} | ${perceptionCell(b, v, (p) => pct(p?.compressionRatio))} | ${perceptionCell(
+        )} | ${perceptionCell(b, v, (p) => num(p?.missing))} | ${perceptionCell(
           b,
           v,
           budget,

@@ -113,15 +113,22 @@ export function renderTraceSummary(events: AnyTraceEvent[]): string {
   ];
   const context = contextWatermark(events);
   const perception = projectPerception(events);
-  if (perception.plans > 0) {
-    const latest = perception.latest;
-    if (latest !== undefined) {
-      const m = latest.metrics;
-      const budget = `${(latest.budget.used / 1000).toFixed(1)}k/${(latest.budget.ceiling / 1000).toFixed(1)}k`;
-      lines.push(
-        `- 感知：plan ${perception.plans} 次 · P0 覆盖 ${m.p0Coverage.toFixed(2)} · 延迟 ${m.deferred} · 丢弃 ${m.dropped}` +
-          `（过期 ${m.stale} · 重复 ${m.duplicate} · 缺失 ${m.missing}）· 压缩比 ${m.compressionRatio.toFixed(2)} · 最近预算 ${budget}`,
-      );
+  if (perception.requests > 0 || perception.plans > 0 || perception.observations > 0) {
+    lines.push(
+      `- 感知：请求 ${perception.requests} · plan ${perception.plans} · observed ${perception.observations}`,
+    );
+    for (const [purpose, stats] of Object.entries(perception.byPurpose)) {
+      if (stats.latestPlan !== undefined) {
+        const m = stats.latestPlan.metrics;
+        const budget = `${(stats.latestPlan.budget.used / 1000).toFixed(1)}k/${(stats.latestPlan.budget.ceiling / 1000).toFixed(1)}k`;
+        lines.push(
+          `  · ${purpose}：plan ${stats.plans} · observed ${stats.observations} · P0 覆盖 ${m.p0Coverage.toFixed(2)} · 延迟 ${m.deferred} · 丢弃 ${m.dropped}` +
+            `（过期 ${m.stale} · 重复 ${m.duplicate} · 缺失 ${m.missing}）· 最近预算 ${budget}`,
+        );
+      } else if (stats.latestObservation !== undefined) {
+        const reason = stats.latestObservation.reason ?? (stats.latestObservation.profiled ? "profiled" : "unknown");
+        lines.push(`  · ${purpose}：observed ${stats.observations} · ${reason}`);
+      }
     }
   }
   if (context !== undefined) {

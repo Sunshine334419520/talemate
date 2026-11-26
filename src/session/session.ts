@@ -37,6 +37,9 @@ import type {
   ModelConfig,
   PendingAskRecord,
   PendingProposal,
+  PerceptionObservation,
+  PerceptionObservationReason,
+  PerceptionPurpose,
   PerceptionTrace,
   ProjectMeta,
   ProposalPresented,
@@ -50,7 +53,8 @@ import { foldContext } from "../context/fold";
 import { decisionsFrom } from "../context/ledger";
 import {
   perceptionMode,
-  perceptionTokenBudget,
+  perceptionObservation,
+  perceptionProfileFor,
   perceptionTraceOf,
   renderPerceptionBlock,
   triageCandidates,
@@ -323,6 +327,13 @@ export interface SessionDeps {
   tools?: ToolRegistry;
 }
 
+/** buildRequest 算好的感知结果；generate 据此写 observed / plan 并给 header 挂 hash。 */
+interface PerceptionSnapshot {
+  observation: PerceptionObservation;
+  plan?: ContextPlan;
+  trace?: PerceptionTrace;
+}
+
 export class Session {
   readonly projectId: string;
   readonly sessionId: string;
@@ -346,10 +357,12 @@ export class Session {
   private lastSystemHash: string | undefined;
   private lastHeaderKey: string | undefined;
   private lastContextKey: string | undefined;
+  /** 最近一次写进事件的 perception observation hash：同一份观察不重复写。 */
+  private lastPerceptionObservationHash: string | undefined;
   /** 最近一次写进事件的 perception plan hash：同一份 plan 不重复写。 */
-  private lastPerceptionHash: string | undefined;
-  /** 下一次 generate 要落账的 plan；由 buildRequest 写入，generate 消费。 */
-  private pendingPerception?: PerceptionTrace;
+  private lastPerceptionPlanHash: string | undefined;
+  /** 下一次 generate 要落账的感知结果；由 buildRequest 写入，generate 消费。 */
+  private pendingPerception?: PerceptionSnapshot;
   /** 会话拍板缓存：感知的 author 线按它取，不每步重读事件日志。 */
   private decisions?: DecisionEntry[];
   /** 这个 Session 是恢复已有会话（true）还是新建（false） */
@@ -788,10 +801,17 @@ export class Session {
           const messagesHash = hashText(messagesJson);
           this.trace("step/start", { step: current });
 
-          // 感知方案按 hash 才写：每一步仍可从 request/header 的 perceptionHash 指回来。
-          if (perception !== undefined && perception.hash !== this.lastPerceptionHash) {
-            this.trace("perception/plan", { ...perception, step: current });
-            this.lastPerceptionHash = perception.hash;
+          // 感知观察每次都记（无 Profile 也有），按 hash 变化才写；plan 是它的可选载荷。
+          if (perception !== undefined) {
+            const observation = perception.observation;
+            if (observation.hash !== this.lastPerceptionObservationHash) {
+              this.trace("perception/observed", { ...observation, step: current });
+              this.lastPerceptionObservationHash = observation.hash;
+            }
+            if (perception.trace !== undefined && perception.trace.hash !== this.lastPerceptionPlanHash) {
+              this.trace("perception/plan", { ...perception.trace, step: current });
+              this.lastPerceptionPlanHash = perception.trace.hash;
+            }
           }
 
           // system prompt 是模型可见状态，必须能从日志重建；按变化才写，避免每步复制几 KB。
@@ -840,7 +860,7 @@ export class Session {
             toolsHash,
             messagesHash,
             promptHash: hashJson({ systemHash, toolsHash }),
-            ...(perception === undefined ? {} : { perceptionHash: perception.hash }),
+            ...(perception === undefined ? {} : { perceptionHash: perception.observation.hash }),
             systemChars: requestChars.system,
             toolsChars: requestChars.tools,
             messagesChars: requestChars.messages,
@@ -1108,9 +1128,9 @@ export class Session {
       neutral.push({ role: "user", text: this.turnInstruction });
       this.turnInstruction = undefined;
     }
-    // 感知是旁路观测：shadow 只算 plan、写事件；inject 才让 plan 参与下面的 system 组装。
+    // 感知是旁路观测：shadow 只算 observation/plan、写事件；inject 才让 plan 参与下面的 system 组装。
     const perception = options?.perceive === false ? undefined : await this.buildPerception(agent);
-    this.pendingPerception = perception?.trace;
+    this.pendingPerception = perception;
     const system = await this.buildSystem(agent, perceptionMode() === "inject" ? perception?.plan : undefined);
     const tools = this.allowedTools(agent);
     const toolSchemas = this.tools.schemasFor(
@@ -1121,20 +1141,54 @@ export class Session {
   }
 
   /**
-   * prose 这一步的感知方案。v1 只覆盖"已批准、未执行"的规划；其余步骤不写事件，
-   * 免得 trace 里出现一堆没有 Profile 的假决策。
-   *
-   * 失败返回 undefined：观测落不了账不该让这一轮发不出去。真正的分诊错误由测试抓，
-   * 不靠生产路径把请求炸掉。
+   * 这一步属于哪类工作。purpose 是感知的入口：它决定有没有 Profile、用哪套候选与预算。
+   * 仍然可以读 plan 状态，但下游只认 purpose——加 revision/plan/chat 时不再往这里堆分支。
    */
-  private async buildPerception(agent: AgentDef): Promise<{ plan: ContextPlan; trace: PerceptionTrace } | undefined> {
-    if (perceptionMode() === "off") return undefined;
-    if (agent.mode !== "primary" || agent.hidden) return undefined;
+  private perceptionPurposeOf(agent: AgentDef): PerceptionPurpose {
+    if (agent.id === "planner") return "plan";
+    if (agent.id === "researcher") return "research";
+    if (this.mode === PROSE_MODE) return "prose";
     const plan = this.pending.get(PLAN_KEY);
-    if (!plan || !plan.approved || plan.done || plan.chapter === undefined) return undefined;
+    if (plan?.approved === true && plan.done !== true && plan.chapter !== undefined) return "prose";
+    return "chat";
+  }
+
+  /**
+   * 每次请求的感知观察；有 Profile 时再算 plan。
+   *
+   * 没有 Profile / 没有规划不是"什么都不记"：`observed` 会带着 reason 落账，这样 trace 能区分
+   * "不需要"与"还没实现"。分诊失败也不让请求发不出去——只记 `error`。
+   */
+  private async buildPerception(agent: AgentDef): Promise<PerceptionSnapshot | undefined> {
+    // hidden 是内部 summarizer，不对用户说话；它的上下文由 compaction 管，不冒充感知。
+    if (agent.hidden) return undefined;
+    const mode = perceptionMode();
+    const purpose = this.perceptionPurposeOf(agent);
+    const profile = mode === "off" ? undefined : perceptionProfileFor(purpose);
+    const profileId = profile?.id ?? "none";
+    const observed = (
+      reason?: PerceptionObservationReason,
+      profiled = false,
+      planHash?: string,
+    ): PerceptionSnapshot => ({
+      observation: perceptionObservation({
+        purpose,
+        mode,
+        profile: profileId,
+        profiled,
+        ...(reason === undefined ? {} : { reason }),
+        ...(planHash === undefined ? {} : { planHash }),
+      }),
+    });
+
+    if (mode === "off") return observed("off");
+    if (profile === undefined) return observed("no-profile");
+
+    const plan = this.pending.get(PLAN_KEY);
+    if (!plan || !plan.approved || plan.done || plan.chapter === undefined) return observed("no-plan");
     const diskPlan = await readPlan(this.projectId, plan.chapter);
     const planText = diskPlan ?? plan.content;
-    if (planText.trim() === "") return undefined;
+    if (planText.trim() === "") return observed("empty");
     try {
       const candidates = await collectProseCandidates({
         projectId: this.projectId,
@@ -1144,10 +1198,21 @@ export class Session {
         ...(this.lastUserText.trim() === "" ? {} : { instruction: this.lastUserText }),
         decisions: this.decisions ?? [],
       });
-      const perception = triageCandidates(candidates, "prose", perceptionTokenBudget(), plan.chapter);
-      return { plan: perception, trace: perceptionTraceOf(perception, Date.now()) };
+      const contextPlan = triageCandidates(candidates, "prose", profile.budget, plan.chapter);
+      const trace = perceptionTraceOf(contextPlan, Date.now());
+      return {
+        observation: perceptionObservation({
+          purpose,
+          mode,
+          profile: profileId,
+          profiled: true,
+          planHash: trace.hash,
+        }),
+        plan: contextPlan,
+        trace,
+      };
     } catch {
-      return undefined;
+      return observed("error");
     }
   }
 
@@ -1467,8 +1532,10 @@ export class Session {
           this.lastContextKey = `${event.data.provider}\u0000${event.data.model}\u0000${event.data.contextWindow ?? ""}`;
         } else if (event.type === "request/header") {
           this.lastHeaderKey = this.headerKeyOf(event.data);
+        } else if (event.type === "perception/observed") {
+          this.lastPerceptionObservationHash = event.data.hash;
         } else if (event.type === "perception/plan") {
-          this.lastPerceptionHash = event.data.hash;
+          this.lastPerceptionPlanHash = event.data.hash;
         }
       }
     }

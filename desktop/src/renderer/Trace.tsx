@@ -9,6 +9,7 @@ import { Fragment, useMemo, useState } from "react";
 import type {
   AskRecord,
   OpenInfo,
+  PerceptionObservation,
   PerceptionTrace,
   RequestDetail,
   StoredMessage,
@@ -93,8 +94,27 @@ function messageText(message: StoredMessage): string {
   return message.text ?? "";
 }
 
-function PerceptionDetail({ trace }: { trace: PerceptionTrace }) {
-  const m = trace.metrics;
+const PERCEPTION_REASON: Record<NonNullable<PerceptionObservation["reason"]>, string> = {
+  off: "感知已关闭",
+  "no-plan": "没有已批准、未执行的规划",
+  "no-profile": "该 purpose 还没有 Profile",
+  empty: "规划正文为空",
+  error: "感知计算失败",
+};
+
+function perceptionReason(observation: PerceptionObservation): string {
+  if (observation.profiled) return "已分诊";
+  return observation.reason === undefined ? "未分诊" : PERCEPTION_REASON[observation.reason];
+}
+
+function PerceptionDetail({
+  observation,
+  trace,
+}: {
+  observation?: PerceptionObservation;
+  trace?: PerceptionTrace;
+}) {
+  const m = trace?.metrics;
   const source = (decision: PerceptionTrace["decisions"][number]): string => {
     const { path, section, rev, label } = decision.source;
     const parts = [path, section === undefined ? "" : `#${section}`, rev === undefined ? "" : `@${rev}`].filter(
@@ -102,80 +122,108 @@ function PerceptionDetail({ trace }: { trace: PerceptionTrace }) {
     );
     return parts.length > 0 ? parts.join("") : (label ?? "—");
   };
+  const purpose = observation?.purpose ?? trace?.purpose;
+  const hash = observation?.hash ?? trace?.hash;
   return (
     <div className="trace-perception">
       <dl className="trace-overview">
         <div>
           <dt>目的</dt>
           <dd>
-            {trace.purpose}
-            {trace.chapter === undefined ? "" : ` · 第 ${trace.chapter} 章`}
+            {purpose ?? "—"}
+            {trace?.chapter === undefined ? "" : ` · 第 ${trace.chapter} 章`}
           </dd>
         </div>
-        <div>
-          <dt>预算</dt>
-          <dd>
-            {trace.budget.used} / {trace.budget.ceiling} token
-          </dd>
-        </div>
-        <div>
-          <dt>P0 覆盖</dt>
-          <dd>{m.p0Coverage.toFixed(2)}</dd>
-        </div>
-        <div>
-          <dt>取舍</dt>
-          <dd>
-            延迟 {m.deferred} · 丢弃 {m.dropped} · 过期 {m.stale} · 重复 {m.duplicate} · 缺失 {m.missing}
-          </dd>
-        </div>
-        <div>
-          <dt>压缩比</dt>
-          <dd>{m.compressionRatio.toFixed(2)}</dd>
-        </div>
-        <div>
-          <dt>plan hash</dt>
-          <dd>
-            <code>{trace.hash}</code>
-          </dd>
-        </div>
+        {observation !== undefined && (
+          <>
+            <div>
+              <dt>模式</dt>
+              <dd>{observation.mode}</dd>
+            </div>
+            <div>
+              <dt>Profile</dt>
+              <dd>{observation.profile}</dd>
+            </div>
+            <div>
+              <dt>状态</dt>
+              <dd>{perceptionReason(observation)}</dd>
+            </div>
+          </>
+        )}
+        {trace !== undefined && m !== undefined && (
+          <>
+            <div>
+              <dt>预算</dt>
+              <dd>
+                {trace.budget.used} / {trace.budget.ceiling} token
+              </dd>
+            </div>
+            <div>
+              <dt>P0 覆盖</dt>
+              <dd>{m.p0Coverage.toFixed(2)}</dd>
+            </div>
+            <div>
+              <dt>取舍</dt>
+              <dd>
+                延迟 {m.deferred} · 丢弃 {m.dropped} · 过期 {m.stale} · 重复 {m.duplicate} · 缺失 {m.missing}
+              </dd>
+            </div>
+          </>
+        )}
+        {hash !== undefined && (
+          <div>
+            <dt>记录 hash</dt>
+            <dd>
+              <code>{hash}</code>
+            </dd>
+          </div>
+        )}
       </dl>
-      {trace.missing.length > 0 && (
-        <p className="trace-note">缺失载体：{trace.missing.join("、")}</p>
+      {observation !== undefined && !observation.profiled && (
+        <p className="trace-note">未产生 plan：{perceptionReason(observation)}。</p>
       )}
-      <div className="trace-perception-table-wrap">
-        <table className="trace-perception-table">
-          <thead>
-            <tr>
-              <th>层级</th>
-              <th>动作</th>
-              <th>位置</th>
-              <th>来源</th>
-              <th>字符</th>
-              <th>原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trace.decisions.map((decision) => (
-              <tr key={`${decision.id}-${decision.tier}-${decision.action}`}>
-                <td>{decision.tier}</td>
-                <td>{decision.action}</td>
-                <td>{decision.placement}</td>
-                <td>
-                  <b>{decision.id}</b>
-                  <br />
-                  <span className="trace-muted">{source(decision)}</span>
-                </td>
-                <td>
-                  {decision.sourceChars === decision.chars
-                    ? String(decision.chars)
-                    : `${decision.sourceChars}→${decision.chars}`}
-                </td>
-                <td>{decision.reason}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {observation?.profiled === true && trace === undefined && (
+        <p className="trace-note">这一步标记为已分诊，但日志里找不到对应 plan。</p>
+      )}
+      {trace !== undefined && (
+        <>
+          {trace.missing.length > 0 && <p className="trace-note">缺失载体：{trace.missing.join("、")}</p>}
+          <div className="trace-perception-table-wrap">
+            <table className="trace-perception-table">
+              <thead>
+                <tr>
+                  <th>层级</th>
+                  <th>动作</th>
+                  <th>位置</th>
+                  <th>来源</th>
+                  <th>字符</th>
+                  <th>原因</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trace.decisions.map((decision) => (
+                  <tr key={`${decision.id}-${decision.tier}-${decision.action}`}>
+                    <td>{decision.tier}</td>
+                    <td>{decision.action}</td>
+                    <td>{decision.placement}</td>
+                    <td>
+                      <b>{decision.id}</b>
+                      <br />
+                      <span className="trace-muted">{source(decision)}</span>
+                    </td>
+                    <td>
+                      {decision.sourceChars === decision.chars
+                        ? String(decision.chars)
+                        : `${decision.sourceChars}→${decision.chars}`}
+                    </td>
+                    <td>{decision.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -183,6 +231,14 @@ function PerceptionDetail({ trace }: { trace: PerceptionTrace }) {
 function RequestDetailPanel({ detail }: { detail: RequestDetail | null | undefined }) {
   if (detail === undefined) return <p className="trace-note">读取请求详情…</p>;
   if (detail === null) return <p className="trace-note">读不到这一段的请求详情。</p>;
+  const perception = detail.perception;
+  const observation = detail.perceptionObservation;
+  const perceptionSummary =
+    perception !== undefined
+      ? `感知 · ${perception.decisions.length} 条决策`
+      : observation === undefined
+        ? ""
+        : `感知 · ${perceptionReason(observation)}`;
   return (
     <div className="trace-request">
       <div className="trace-kv">
@@ -210,10 +266,10 @@ function RequestDetailPanel({ detail }: { detail: RequestDetail | null | undefin
           <pre>{JSON.stringify(detail.tools, null, 2)}</pre>
         </details>
       )}
-      {detail.perception !== undefined && (
+      {(perception !== undefined || observation !== undefined) && (
         <details open>
-          <summary>感知 · {detail.perception.decisions.length} 条决策</summary>
-          <PerceptionDetail trace={detail.perception} />
+          <summary>{perceptionSummary}</summary>
+          <PerceptionDetail observation={observation} trace={perception} />
         </details>
       )}
       <details>
@@ -412,8 +468,15 @@ function TabBody({
         );
       }
       if (requestDetail === null) return <p className="trace-note">读不到这一步的请求详情。</p>;
-      if (requestDetail.perception === undefined) return <p className="trace-note">这一步没有感知决策。</p>;
-      return <PerceptionDetail trace={requestDetail.perception} />;
+      if (requestDetail.perceptionObservation === undefined && requestDetail.perception === undefined) {
+        return <p className="trace-note">这一步没有感知记录。</p>;
+      }
+      return (
+        <PerceptionDetail
+          observation={requestDetail.perceptionObservation}
+          trace={requestDetail.perception}
+        />
+      );
     case "input":
       return record.input === undefined ? <p className="trace-note">没有记录入参。</p> : <pre className="trace-code">{record.input}</pre>;
     case "output":

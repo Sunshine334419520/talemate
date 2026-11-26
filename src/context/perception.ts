@@ -13,6 +13,9 @@ import type {
   ContextDecision,
   PerceptionAction,
   PerceptionMetrics,
+  PerceptionMode,
+  PerceptionObservation,
+  PerceptionObservationReason,
   PerceptionPlacement,
   ContextPlan,
   PerceptionPurpose,
@@ -29,7 +32,20 @@ export const PERCEPTION_TOKENS_ENV = "TALEMATE_PERCEPTION_TOKENS";
 /** 一次分诊的默认上限。手写 12k：P0 规划 + 人物状态 + 读者/声音足够，余下的留给工具按需取。 */
 export const DEFAULT_PERCEPTION_TOKENS = 12_000;
 
-export type PerceptionMode = "off" | "shadow" | "inject";
+export interface PerceptionProfileSpec {
+  id: string;
+  purpose: PerceptionPurpose;
+  budget: number;
+}
+
+/**
+ * 有 Profile 的 purpose 才有候选采集与分诊。未实现的 purpose 返回 undefined，
+ * 由调用方记 `no-profile`——不返回一份全 P3 的假 plan。
+ */
+export function perceptionProfileFor(purpose: PerceptionPurpose): PerceptionProfileSpec | undefined {
+  if (purpose !== "prose") return undefined;
+  return { id: "prose.v1", purpose, budget: perceptionTokenBudget() };
+}
 
 /**
  * 默认 shadow：真实会话里就能看到决策，但不改变 prompt。`inject` 才让 plan 参与组装；
@@ -78,18 +94,6 @@ function profileFor(purpose: PerceptionPurpose, candidate: ContextCandidate): Pr
   }
   if (candidate.id.startsWith("author.")) return { tier: "P2", placement: "system.middle" };
   return { tier: "P3", placement: "tool.index" };
-}
-
-/** 按 token 上限截取；中文按 1、其余按 0.28 估，和 `budget.ts` 同一套口径。 */
-function sliceToTokens(text: string, maxTokens: number): string {
-  if (maxTokens <= 0) return "";
-  if (estimateTokens(text) <= maxTokens) return text;
-  let out = "";
-  for (const ch of text) {
-    if (estimateTokens(out + ch) > maxTokens) break;
-    out += ch;
-  }
-  return out;
 }
 
 function makeDecision(
@@ -157,18 +161,12 @@ export function triageCandidates(
     }
     if (profile.tier === "P2") {
       const room = ceiling - used;
-      if (room <= 0) {
+      if (room <= 0 || sourceTokens > room) {
         decisions.push(makeDecision(candidate, profile.tier, profile.placement, "defer", "over-budget"));
         continue;
       }
-      const text = sliceToTokens(candidate.text, Math.min(sourceTokens, room));
-      const after = estimateTokens(text);
-      if (after === 0) {
-        decisions.push(makeDecision(candidate, profile.tier, profile.placement, "defer", "over-budget"));
-        continue;
-      }
-      used += after;
-      decisions.push(makeDecision(candidate, profile.tier, profile.placement, "compress", "compressed", text));
+      used += sourceTokens;
+      decisions.push(makeDecision(candidate, profile.tier, profile.placement, "include", "p2-included"));
       continue;
     }
     decisions.push(makeDecision(candidate, profile.tier, profile.placement, "defer", "deferred-p3"));
@@ -248,6 +246,20 @@ export function perceptionTraceOf(plan: ContextPlan, builtAt: number): Perceptio
     missing: plan.missing,
     metrics: perceptionMetrics(plan),
   };
+}
+
+/** 一次观察的输入；`hash`/`builtAt` 由 `perceptionObservation` 补齐。 */
+export type PerceptionObservationInput = Omit<PerceptionObservation, "hash" | "builtAt">;
+
+/**
+ * envelope 的 hash 只认感知状态（purpose/mode/profile/reason/planHash），不认时间与请求尺寸。
+ * 这样同一份 plan 跨多步时 envelope 不变，事件不会每步复制一条。
+ */
+export function perceptionObservation(
+  input: PerceptionObservationInput,
+  builtAt = Date.now(),
+): PerceptionObservation {
+  return { ...input, hash: hashJson(input), builtAt };
 }
 
 function escapeAttr(text: string): string {

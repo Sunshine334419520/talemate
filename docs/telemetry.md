@@ -2,7 +2,7 @@
 
 > **职责**：回答"会话事件是什么形状、谁在什么时候发、messages/span/统计怎么从它折出来、导出时怎么脱敏"。
 > **读者**：要加一类事件、加一个投影、接一个观测消费者（eval reader / OTel）的人。
-> **对齐代码**：2026-11-23 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；压缩记录见 `compaction.md`；感知记录见 `perception.md`
+> **对齐代码**：2026-11-26 · 实现在 `src/telemetry/` 与 `storage/session-store.ts`；压缩记录见 `compaction.md`；感知记录见 `perception.md`
 
 ## 一句话
 
@@ -53,7 +53,8 @@
 | `tool/call` / `tool/result` | 每次工具执行前后（含被 `planGatePart` 拦下的） | `Session` 的 `executeTool` / `applyApprovedDesign` |
 | `compaction/start` / `compaction/end` | 一次折叠的开始/结束（观测用；不在失败时提交记录） | `Session.maybeCompact` |
 | `context/compaction` | 一次折叠的 canonical 记录：摘要 + pinned + 证据账 + 预算。窗口由它投影 | `appendContextRecord` |
-| `perception/plan` | 一次上下文分诊：层级 / 动作 / 位置 / 来源坐标。**按 hash 变化才写**；每步 `request/header` 带 `perceptionHash` | `Session.generate` |
+| `perception/observed` | 每次请求的感知观察：purpose / mode / profile / profiled / reason。**没有 Profile 也写**；按 hash 变化才写，`request/header.perceptionHash` 指向它 | `Session.generate` |
+| `perception/plan` | 一次上下文分诊：层级 / 动作 / 位置 / 来源坐标。按 hash 变化才写；有 plan 时 observation 的 `planHash` 指向它 | `Session.generate` |
 | `proposal/presented` / `proposal/decision` | 提案给用户看过的那一版 / 用户的拍板与原话 | `Session.notePresented` / `noteDecision` |
 
 为什么 `assistant/attempt` 必须存在：上面那三种消息事件只记得成功落盘的消息。一次网络失败、一次用户中止、一次被截断的流，在任何消息投影里都不存在——不单独记，它们就永远查不到。
@@ -71,9 +72,12 @@
 
 ## 感知投影
 
-`projection.ts` 的 `projectPerception(events)` 折出"写过几次 plan + 最近一次的指标"
-（P0 覆盖、延迟、丢弃、过期、重复、缺失、压缩比、预算）。`/trace` 的感知行与 eval 报告共用这一份；
-事件里不存候选正文，只存 `source` 坐标与规模——正文在文件或 `system/prompt` 里。
+`projection.ts` 的 `projectPerception(events)` 折出"观察/plan 各写过几次、多少请求带
+`perceptionHash`、每个 purpose 最近一次"（P0 覆盖、延迟、丢弃、过期、重复、缺失、预算）。
+`plans` / `observations` 是不同 hash 的快照数，不是请求数；请求数看 `requests`。没有 Profile
+的请求也有一条 `perception/observed`，`reason` 写明 `no-profile` / `no-plan` / `off`，不再是空白。
+`/trace` 的感知行与 eval 报告共用这一份；事件里不存候选正文，只存 `source` 坐标与规模——正文在
+文件或 `system/prompt` 里。
 
 ## 改动索引（另一份投影）
 
@@ -118,7 +122,8 @@ turn
 每条记录带内容（text / reasoning / tool input / output / error / change / system prompt）和元数据
 （seq / 时间 / 耗时 / 状态 / step / requestSeq）。消息不再是一种独立模式——它只是 `user` /
 `assistant` 记录；原始事件仍在 `/trace`，不在这张表里重复。感知不是一张表里的行：它是某一步请求的
-决策，挂在 `request/header.perceptionHash` 指到的那份 plan 上，在请求详情里展开。
+观察，挂在 `request/header.perceptionHash` 指到的 `perception/observed` 上；有 plan 时 observation
+的 `planHash` 再指向决策，在请求详情里展开。
 
 `assistant/message` 的事件 seq 晚于同一步的 `tool/call`（parts 要等工具结果回填），但它的推理与
 工具调用是同一刻生成的；表里把助手记录插在自己那一步的工具前面，否则会读成“先读文件、后解释为什么读”。
@@ -132,7 +137,8 @@ turn
 - `system`：最近一次 `system/prompt` 的全文；
 - `context`：最近一次 `request/context`；
 - `messages`：该 header 之前的事件投影，再按最后一次折叠（`context` 记录或旧 compaction）截窗。
-- `perception`：该 header 的 `perceptionHash` 指到的那份 plan（没有就是缺失，不拿最近一条冒充）。
+- `perceptionObservation`：该 header 的 `perceptionHash` 指到的观察（purpose / mode / profile / reason）；
+- `perception`：observation 的 `planHash` 指到的 plan；没有 plan 时缺省。旧日志 header 直接指向 plan 时也在这里。
 
 它**不存请求体**，也不读 cassette；这是 DSH 的“模型可见 ⟺ 已持久引用”：
 请求 = `header.config + deriveMessages() + header.tools`。旧日志缺 `system/prompt` 或 tools 快照时，

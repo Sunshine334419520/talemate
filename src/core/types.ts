@@ -498,6 +498,14 @@ export interface CompactionRecord {
 /** 这一步要完成什么；Profile 按它选候选与默认层级。 */
 export type PerceptionPurpose = "chat" | "plan" | "prose" | "revision" | "research" | "audit";
 
+export type PerceptionMode = "off" | "shadow" | "inject";
+
+/**
+ * 没有 plan 的原因。`observed` 记录必须能回答"为什么这次没分诊"，
+ * 否则"不需要"和"还没实现"在日志里长成同一个空白。
+ */
+export type PerceptionObservationReason = "off" | "no-plan" | "no-profile" | "empty" | "error";
+
 export type PerceptionTier = "P0" | "P1" | "P2" | "P3";
 
 export type PerceptionPlacement =
@@ -562,6 +570,7 @@ export interface PerceptionMetrics {
   /** 已存在的 P0 候选里进了多少；缺载体不算在分母里（另见 missing）。 */
   p0Coverage: number;
   dropped: number;
+  /** @deprecated v1 不做材料压缩；留给旧日志，新的 plan 恒为 1。 */
   compressionRatio: number;
   stale: number;
   duplicate: number;
@@ -593,6 +602,22 @@ export interface PerceptionTrace {
   decisions: PerceptionTraceDecision[];
   missing: string[];
   metrics: PerceptionMetrics;
+}
+
+/**
+ * 每次请求的感知外层记录。没有 Profile 时也有它——`reason` 说明为什么没分诊。
+ * 有 plan 时 `planHash` 指向那份 `perception/plan`；事件只记坐标，不复制正文。
+ */
+export interface PerceptionObservation {
+  purpose: PerceptionPurpose;
+  mode: PerceptionMode;
+  /** Profile id，例如 "prose.v1"；没有就是 "none"。 */
+  profile: string;
+  profiled: boolean;
+  reason?: PerceptionObservationReason;
+  planHash?: string;
+  hash: string;
+  builtAt: number;
 }
 
 /** 提案给用户看过的那一版（界面回看、评测、将来项目级失败账都靠它）。 */

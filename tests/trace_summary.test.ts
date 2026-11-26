@@ -51,9 +51,19 @@ describe("/trace 摘要 · 上下文水位", () => {
     expect(summary).not.toContain("最近 messages");
   });
 
-  test("感知摘要读最近一条 plan 的指标，不从别处另算", () => {
+  test("感知摘要按 purpose 折 observed/plan，不报压缩比", () => {
     const summary = renderTraceSummary([
-      event(1, "perception/plan", {
+      event(1, "perception/observed", {
+        step: 0,
+        purpose: "prose",
+        mode: "shadow",
+        profile: "prose.v1",
+        profiled: true,
+        planHash: "p",
+        hash: "o",
+        builtAt: 1,
+      }),
+      event(2, "perception/plan", {
         step: 0,
         purpose: "prose",
         hash: "p",
@@ -63,11 +73,24 @@ describe("/trace 摘要 · 上下文水位", () => {
         missing: ["state/reader.md 未建立"],
         metrics: { p0Coverage: 1, dropped: 3, compressionRatio: 0.42, stale: 1, duplicate: 2, missing: 1, deferred: 23 },
       }),
+      event(3, "perception/observed", {
+        step: 1,
+        purpose: "chat",
+        mode: "shadow",
+        profile: "none",
+        profiled: false,
+        reason: "no-profile",
+        hash: "o2",
+        builtAt: 2,
+      }),
     ]);
-    expect(summary).toContain("感知：plan 1 次");
+    expect(summary).toContain("感知：请求 0 · plan 1 · observed 2");
+    expect(summary).toContain("prose：plan 1 · observed 1");
     expect(summary).toContain("P0 覆盖 1.00");
     expect(summary).toContain("延迟 23");
     expect(summary).toContain("过期 1 · 重复 2 · 缺失 1");
     expect(summary).toContain("最近预算 7.2k/12.0k");
+    expect(summary).toContain("chat：observed 1 · no-profile");
+    expect(summary).not.toContain("压缩比");
   });
 });

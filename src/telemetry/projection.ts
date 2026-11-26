@@ -9,7 +9,7 @@
  *
  * 边界：纯函数，只吃事件、吐视图；不读文件、不认识 Session。
  */
-import type { CompactionRecord, StoredMessage } from "../core/types";
+import type { CompactionRecord, PerceptionPurpose, StoredMessage } from "../core/types";
 import { isMessageEvent } from "./events";
 import type { AnyTraceEvent } from "./events";
 
@@ -250,24 +250,62 @@ export function projectSpans(events: AnyTraceEvent[]): Span[] {
   return spans.sort((a, b) => a.startMs - b.startMs || a.spanId.localeCompare(b.spanId));
 }
 
-type PerceptionEvent = Extract<AnyTraceEvent, { type: "perception/plan" }>;
+type PerceptionPlanEvent = Extract<AnyTraceEvent, { type: "perception/plan" }>;
+type PerceptionObservedEvent = Extract<AnyTraceEvent, { type: "perception/observed" }>;
+
+export interface PerceptionPurposeStats {
+  plans: number;
+  observations: number;
+  latestPlan?: PerceptionPlanEvent["data"];
+  latestObservation?: PerceptionObservedEvent["data"];
+}
 
 /**
- * 感知投影：一条会话写过几次 plan、最近一次的分诊指标。
+ * 感知投影：观察与决策各写了几次、有多少请求挂着感知记录，以及每个 purpose 的最近一次。
  *
- * 这是 `/trace` 与 eval 报告共用的唯一入口；不要再从 `PerceptionTrace` 里另算一份。
- * 只读事件，不读文件——指标在事件写入时已经由纯函数算过。
+ * `plans` / `observations` 是**不同 hash 的快照数**，不是请求数；请求数看 `requests`
+ * （带 `perceptionHash` 的 `request/header`）。两者分开，避免把"一份 plan 被 10 步共用"
+ * 读成"感知了 10 次"。
  */
 export interface PerceptionStats {
   plans: number;
-  latest?: PerceptionEvent["data"];
+  observations: number;
+  /** 带 perceptionHash 的 request/header 数 */
+  requests: number;
+  byPurpose: Partial<Record<PerceptionPurpose, PerceptionPurposeStats>>;
+  /** 最近一份 plan；保留给旧消费者。 */
+  latest?: PerceptionPlanEvent["data"];
+  latestObservation?: PerceptionObservedEvent["data"];
 }
 
 export function projectPerception(events: AnyTraceEvent[]): PerceptionStats {
-  const plans = events.filter((event): event is PerceptionEvent => event.type === "perception/plan");
+  const plans = events.filter((event): event is PerceptionPlanEvent => event.type === "perception/plan");
+  const observations = events.filter(
+    (event): event is PerceptionObservedEvent => event.type === "perception/observed",
+  );
+  const requests = events.filter(
+    (event) => event.type === "request/header" && event.data.perceptionHash !== undefined,
+  ).length;
+  const byPurpose: PerceptionStats["byPurpose"] = {};
+  const bucket = (purpose: PerceptionPurpose): PerceptionPurposeStats =>
+    (byPurpose[purpose] ??= { plans: 0, observations: 0 });
+  for (const plan of plans) {
+    const entry = bucket(plan.data.purpose);
+    entry.plans += 1;
+    entry.latestPlan = plan.data;
+  }
+  for (const observation of observations) {
+    const entry = bucket(observation.data.purpose);
+    entry.observations += 1;
+    entry.latestObservation = observation.data;
+  }
   return {
     plans: plans.length,
+    observations: observations.length,
+    requests,
+    byPurpose,
     ...(plans.length === 0 ? {} : { latest: plans[plans.length - 1]!.data }),
+    ...(observations.length === 0 ? {} : { latestObservation: observations[observations.length - 1]!.data }),
   };
 }
 
