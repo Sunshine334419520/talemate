@@ -62,6 +62,7 @@ import {
 import { collectProseCandidates } from "../context/perception_candidates";
 import { buildPinned } from "../context/project_state";
 import { buildIndex } from "../framework/anchor";
+import { renderAssetCatalog } from "../framework/assetkinds";
 import { globDocs as findGlobDocs, grepDocs as findGrepDocs } from "../framework/find";
 import { isChapterFile, planRelPath, readPlan } from "../framework/plan";
 import { buildProseBrief } from "../framework/prose";
@@ -1330,6 +1331,7 @@ export class Session {
       projectTitle: this.meta.title,
       agentName: agent.name,
       roleSystem,
+      assets: renderAssetCatalog(),
       rules,
       skills: renderSkillCatalog(skills),
     });

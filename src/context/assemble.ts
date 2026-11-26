@@ -1,5 +1,5 @@
 /**
- * 上下文组装：buildSystemPrompt 拼 env 块 + 角色 system + 项目 AGENTS.md（常驻全量）+ skill 清单；
+ * 上下文组装：buildSystemPrompt 拼 env 块 + 角色 system + 资产目录 + 项目 AGENTS.md（常驻全量）+ skill 清单；
  * toNeutralMessages 把持久化消息窗口（loadModelWindow 之后）转成 provider 无关的 NeutralMsg[]。
  *
  * 作品文档不进 system：模型要靠 `read` / `glob` / `grep` 现取，这样它知道读的是哪一份、哪一节。
@@ -18,6 +18,8 @@ export function buildSystemPrompt(parts: {
   projectTitle: string;
   agentName: string;
   roleSystem: string;
+  /** 资产目录：每种设计文档一行定位；不是正文规范 */
+  assets?: string;
   rules: string; // AGENTS.md 全文（可为空）
   skills: string; // <available_skills>（可为空）
 }): string {
@@ -25,6 +27,7 @@ export function buildSystemPrompt(parts: {
   const env = `${today()} 作品：${parts.projectTitle} 当前角色：${parts.agentName}`;
   blocks.push(env);
   blocks.push(parts.roleSystem);
+  if (parts.assets) blocks.push(parts.assets);
   if (parts.rules) blocks.push(`Instructions from: AGENTS.md\n${parts.rules}`);
   if (parts.skills) {
     blocks.push(

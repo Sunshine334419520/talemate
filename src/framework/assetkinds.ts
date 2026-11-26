@@ -45,6 +45,8 @@ export interface AssetKind {
   id: string;
   /** 中文名，给用户看的 */
   label: string;
+  /** 一段简短定位，给模型看的；不是正文规范，也不做校验 */
+  description?: string;
   /** 目录树的分组名 */
   section: string;
   /** 列表与目录里的排序权重（同 section 内按它，再按标题） */
@@ -90,7 +92,7 @@ export function parseAssetKind(text: string, file: string): AssetKind {
   }
   if (!isRecord(raw)) throw new Error(`${file}：顶层应该是一个对象`);
 
-  const problems = expectKeys(raw, ["id", "label", "section", "order", "match", "create", "fields"], file);
+  const problems = expectKeys(raw, ["id", "label", "description", "section", "order", "match", "create", "fields"], file);
   const readString = (key: string): string => {
     const v = raw[key];
     if (typeof v !== "string" || v.trim() === "") throw new Error(`${file}：${key} 必须是非空字符串`);
@@ -98,6 +100,10 @@ export function parseAssetKind(text: string, file: string): AssetKind {
   };
   const id = readString("id");
   const label = readString("label");
+  const descriptionValue = raw.description;
+  if (descriptionValue !== undefined && (typeof descriptionValue !== "string" || descriptionValue.trim() === "")) {
+    throw new Error(`${file}：description 如果是字符串，必须非空`);
+  }
   const section = readString("section");
 
   const orderValue = raw.order;
@@ -175,6 +181,7 @@ export function parseAssetKind(text: string, file: string): AssetKind {
   const kind: AssetKind = {
     id,
     label,
+    ...(typeof descriptionValue === "string" ? { description: descriptionValue.trim() } : {}),
     section,
     order: orderValue,
     match: matchValue,
@@ -253,4 +260,19 @@ export function clearAssetKindCache(): void {
 
 export function assetKindById(id: string): AssetKind | undefined {
   return assetKinds().find((k) => k.id === id);
+}
+
+/**
+ * 给模型的资产目录：每种文档一段简短定位 + 一个路径模式。
+ * 它不是正文规范，也不进校验；只回答"这个文件是干什么的"。
+ */
+export function renderAssetCatalog(kinds: readonly AssetKind[] = assetKinds()): string {
+  const lines = ["<assets>", "Design document kinds and what each is for:"];
+  for (const kind of kinds) {
+    const path = kind.match[0] ?? "";
+    const what = kind.description === undefined ? "" : `: ${kind.description}`;
+    lines.push(`- ${kind.label} (${path})${what}`);
+  }
+  lines.push("</assets>");
+  return lines.join("\n");
 }

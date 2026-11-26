@@ -262,6 +262,8 @@ describe("shadow · 不改变 system", () => {
     const off = await run("off");
     const inject = await run("inject");
     expect(shadow.system).not.toBe("");
+    expect(shadow.system).toContain("<assets>");
+    expect(shadow.system).toContain("概览 (design/brief.md)");
     expect(shadow.system).toBe(off.system);
     expect(inject.system).not.toBe(off.system);
     expect(inject.system).toContain("<perception purpose=\"prose\" placement=\"system.head\">");

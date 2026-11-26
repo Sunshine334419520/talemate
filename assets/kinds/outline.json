@@ -1,6 +1,7 @@
 {
   "id": "outline",
   "label": "大纲",
+  "description": "Direction for one volume or sequence: what it must advance, what it changes, and what it leaves open. Write causes and exits, not a beat list or chapter numbers.",
   "section": "大纲",
   "order": 50,
   "match": ["design/outline/*.md", "design/outline/**/*.md"],

@@ -1,6 +1,7 @@
 {
   "id": "beat",
   "label": "节拍",
+  "description": "One beat inside an outline: the event or reversal this unit must land, and what it changes. No chapter numbers or camera directions.",
   "section": "大纲",
   "order": 60,
   "match": ["design/outline/**/beats/*.md"],

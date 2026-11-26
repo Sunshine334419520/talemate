@@ -1,6 +1,7 @@
 {
   "id": "character",
   "label": "角色",
+  "description": "One character: who they are, what they want, what they fear, where their line is, and how they speak. Write what will constrain their next action and line; not a biography.",
   "section": "角色",
   "order": 40,
   "match": ["design/characters/*.md"],

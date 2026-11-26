@@ -9,6 +9,7 @@
 {
   "id": "character",
   "label": "角色",
+  "description": "One character: who they are, what they want, what they fear, where their line is, and how they speak. Write what will constrain their next action and line; not a biography.",
   "section": "角色",
   "order": 40,
   "match": ["design/characters/*.md"],
@@ -35,6 +36,7 @@
 |---|---|---|
 | `id` | 是 | 稳定 id，与文件名一致；写进正文文件的 `frontmatter.kind`。**不要改名** |
 | `label` | 是 | 中文名，给人看的 |
+| `description` | 否 | 一段简短定位，给模型看；不是正文规范，也不做校验 |
 | `section` | 是 | 目录树的分组名 |
 | `order` | 是 | 整数；列表与目录里的组序权重 |
 | `match` | 是 | 路径 glob 数组（`*` 跨 `/`）；同一路径命中多个时更长的模式胜出，但**不允许重复登记** |
@@ -60,5 +62,4 @@
 
 ## 说明
 
-定义里只放机器要用的东西。正文怎么写归 `docs/` 里的文档与将来的模板，不在这里重复；
-维护者的备注也写在这里（本文件）或 `docs/assets.md`，不塞进定义。
+定义里除一段简短 `description`（资产定位，给模型看）外，只放机器要用的东西。正文怎么写归 `docs/` 里的文档与将来的模板，不在这里重复；维护者的备注也写在这里（本文件）或 `docs/assets.md`，不塞进定义。

@@ -1,6 +1,7 @@
 {
   "id": "chapter",
   "label": "章节",
+  "description": "One chapter's prose: the actual text the reader will read. Write the scene itself; no notes, outlines, or summaries.",
   "section": "正文",
   "order": 70,
   "match": ["chapters/*.md"],

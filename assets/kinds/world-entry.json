@@ -1,6 +1,7 @@
 {
   "id": "world-entry",
   "label": "世界观条目",
+  "description": "One focused topic inside the world — a place, faction, term or rule. Say what it is and how it changes what characters can do; not a plot summary.",
   "section": "世界观",
   "order": 30,
   "match": ["design/wiki/*.md"],

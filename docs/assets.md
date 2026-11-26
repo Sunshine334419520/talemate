@@ -2,13 +2,17 @@
 
 > **职责**：回答"一本书里有哪些资产、每种资产的文件长什么样、frontmatter 放什么、节拍怎么挂在大纲上、增删改查的语义是什么"。
 > **读者**：要加一种资产、改存储格式、做 UI/CLI 的人；以及要确认"我的书能不能这样组织"的用户。
-> **对齐代码**：2026-11-25 · 种类定义在 `assets/kinds/*.json`（`framework/assetkinds.ts` 加载）；解析与增删改查在 `framework/assets.ts`，CLI 命令在 `cli_assets.ts`（`/assets`、`/asset new|show|set|move|delete`），头部格式在 `framework/frontmatter.ts`；桌面 UI 尚未接入
-> **相邻**：`design-docs.md`（四层活文档与 diff 落盘）· `characters.md` · `outline.md` · `state.md` · `architecture.md`
+> **对齐代码**：2026-11-26 · 种类定义在 `assets/kinds/*.json`（`framework/assetkinds.ts` 加载）；解析与增删改查在 `framework/assets.ts`，CLI 命令在 `cli_assets.ts`（`/assets`、`/asset new|show|set|move|delete`），头部格式在 `framework/frontmatter.ts`；桌面 UI 尚未接入
+> **相邻**：`characters.md` · `outline.md` · `state.md` · `architecture.md`（一次请求与落盘）· `chapter-planning.md`（章节生产）
 
 ## 0. 一句话
 
 **资产 = 作品里一件有身份的东西**。身份是项目相对路径（`design/characters/沈越.md`），头部
 frontmatter 只放机器字段，正文完全自由。种类由**路径**判定，**加一种资产 = 在 `assets/kinds/` 加一个 JSON**。
+
+**四层**：概览（`design/brief.md`）、世界观（`design/wiki/`）、人物（`design/characters/`）、
+情节（`design/outline/`）。`state/` 是每章都在变的平级目录，不是第五层设定——它记“现在到哪了”，
+设定本身仍在 `design/`。
 
 ```
 design/characters/沈越.md          ← 角色
@@ -33,14 +37,19 @@ state/foreshadowing.md             ← 伏笔账
 
 路径口径与代码一致（glob，`*` 跨 `/`，更长的模式胜出）。`kind` 是写进头部的稳定 id，**不要改名**。
 
-**种类本身也是数据**：每种一个 `assets/kinds/<id>.json`，里面写 id、标签、分组、order、路径模式、
-create 模板与字段（中文标签 / 枚举中文名 / 默认值）。代码只加载、校验、消费；改标签或加字段改那个
-JSON 即可，不碰 TypeScript。格式见 `assets/kinds/README.md`。定义里**不放正文约定**——正文怎么写
-归本文与将来的模板，定义只保留机器要用的字段。
+**种类本身也是数据**：每种一个 `assets/kinds/<id>.json`，里面写 id、标签、一段简短 `description`、分组、
+order、路径模式、create 模板与字段（中文标签 / 枚举中文名 / 默认值）。代码只加载、校验、消费；改标签
+或加字段改那个 JSON 即可，不碰 TypeScript。格式见 `assets/kinds/README.md`。定义里除一段简短 `description`
+（资产定位，给模型看）外**不放正文约定**——正文怎么写归本文与将来的模板。
+
+**模型看的资产目录**：`framework/assetkinds.ts` 的 `renderAssetCatalog()` 把每种资产的
+`label + 路径模式 + description` 拼成 `<assets>` 块，由 `Session.buildSystem` 注入 system。
+它只回答“这个文件是干什么的”，不是正文规范、不参与校验。没有它，新项目的第一份文档只能靠模型
+自己发明结构（冷启动没有同类文档可参考）。
 
 | id | 中文名 | 路径 | 机器字段（frontmatter） | 正文 |
 |---|---|---|---|---|
-| `brief` | 概览 | `design/brief.md` | `title` · `channel` · `genre` | 一句话简介、基调、读者承诺，自由；**文风暂在 `## 文风` 小节**（待文风链重构，见 `design-docs.md`） |
+| `brief` | 概览 | `design/brief.md` | `title` · `channel` · `genre` | 故事内核：几句话讲清整本小说是什么 |
 | `world` | 世界观总纲 | `design/wiki/world.md` | `title` | 世界性质、舞台、规则、术语，自由 |
 | `world-entry` | 世界观条目 | `design/wiki/<题>.md` | `title` · `order` · `tags` | 一个专题，自由 |
 | `character` | 角色 | `design/characters/<名>.md` | `title` · `name` · `aliases` · `role` · `status` · `order` | 自由；建议写性格矛盾、想要/最怕、底线、说话方式，不强制 |

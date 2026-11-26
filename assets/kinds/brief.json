@@ -1,6 +1,7 @@
 {
   "id": "brief",
   "label": "概览",
+  "description": "The novel's core: say plainly, in a few paragraphs, what this story really is — its central pressure and what it is ultimately about. It is the reference that keeps later design pointed in one direction.",
   "section": "概览",
   "order": 10,
   "match": ["design/brief.md"],

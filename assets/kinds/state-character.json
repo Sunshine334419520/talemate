@@ -1,6 +1,7 @@
 {
   "id": "state-character",
   "label": "角色现状",
+  "description": "A character's present state: where they are, what they know, what they want now, and how others stand with them. Record only what this chapter changed; do not repeat the character card.",
   "section": "现状",
   "order": 80,
   "match": ["state/characters/*.md"],

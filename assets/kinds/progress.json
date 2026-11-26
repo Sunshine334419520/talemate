@@ -1,6 +1,7 @@
 {
   "id": "progress",
   "label": "章节流水",
+  "description": "The chapter log: one short section per chapter, recording what the chapter moved. It is a moving window, not a summary of the book.",
   "section": "现状",
   "order": 100,
   "match": ["state/progress.md"],

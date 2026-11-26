@@ -1,6 +1,7 @@
 {
   "id": "world",
   "label": "世界观总纲",
+  "description": "The world inside the book: its stage, rules, terms and limits. Write only facts that constrain what later scenes can do; keep plot and character arcs out of it.",
   "section": "世界观",
   "order": 20,
   "match": ["design/wiki/world.md"],

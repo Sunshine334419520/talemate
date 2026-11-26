@@ -30,7 +30,7 @@ import {
   readAsset,
   updateAsset,
 } from "../src/framework/assets";
-import { loadAssetKinds, parseAssetKind } from "../src/framework/assetkinds";
+import { loadAssetKinds, parseAssetKind, renderAssetCatalog } from "../src/framework/assetkinds";
 
 let HOME = "";
 let pid = "";
@@ -133,6 +133,9 @@ describe("种类定义（assets/kinds/*.json）", () => {
       if (kind.label === "" || kind.section === "" || kind.match.length === 0) {
         problems.push(`${kind.id} 缺 label/section/match`);
       }
+      if (kind.description === undefined || kind.description === "") {
+        problems.push(`${kind.id} 缺给模型看的 description`);
+      }
       if (kind.fields.some((f) => f.label === "")) problems.push(`${kind.id} 有字段缺标签`);
       if (kind.id === "beat" && !kind.fields.some((f) => f.key === "outline" && f.required)) {
         problems.push("beat 的 outline 必须是必填字段");
@@ -141,10 +144,19 @@ describe("种类定义（assets/kinds/*.json）", () => {
     expect(problems).toEqual([]);
   });
 
+  test("资产目录给模型简短定位", () => {
+    const catalog = renderAssetCatalog();
+    expect(catalog).toContain("<assets>");
+    expect(catalog).toContain("概览 (design/brief.md): The novel's core");
+    expect(catalog).toContain("角色 (design/characters/*.md): One character:");
+    expect(catalog).toContain("</assets>");
+  });
+
   test("路径数组、枚举中文名、默认值、create 模板都能解析", () => {
     const text = JSON.stringify({
       id: "prop",
       label: "道具",
+      description: "One prop card.",
       section: "图鉴",
       order: 5,
       match: ["design/props/*.md", "design/props/**/*.md"],
@@ -165,6 +177,7 @@ describe("种类定义（assets/kinds/*.json）", () => {
       ],
     });
     const kind = parseAssetKind(text, "prop.json");
+    expect(kind.description).toBe("One prop card.");
     expect(kind.match).toEqual(["design/props/*.md", "design/props/**/*.md"]);
     expect(kind.fields.map((f) => f.key)).toEqual(["title", "rarity", "weight"]);
     expect(kind.fields[1]?.values).toEqual([

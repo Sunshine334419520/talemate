@@ -1,6 +1,7 @@
 {
   "id": "foreshadowing",
   "label": "伏笔账",
+  "description": "The promise ledger: what was planted, where it is meant to pay off, and whether it has. Keep only live promises and recent payoffs.",
   "section": "现状",
   "order": 90,
   "match": ["state/foreshadowing.md"],
