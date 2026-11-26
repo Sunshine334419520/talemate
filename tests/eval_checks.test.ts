@@ -24,7 +24,7 @@ const EVENTS: AnyTraceEvent[] = [
 ];
 
 const MESSAGES: StoredMessage[] = [
-  { seq: 1, role: "user", agent: "mate", ts: 1, text: "把核心设定改一下" },
+  { seq: 1, role: "user", agent: "mate", ts: 1, text: "把概览改一下" },
   {
     seq: 2,
     role: "assistant",
@@ -45,12 +45,12 @@ const CHANGES: ChangeRecord[] = [
     turnSeq: 1,
     messageSeq: 2,
     callId: "c2",
-    path: "design/core.md",
+    path: "design/brief.md",
     kind: "modified",
     additions: 2,
     deletions: 1,
     ts: 2,
-    user: "把核心设定改一下",
+    user: "把概览改一下",
   },
 ];
 
@@ -64,16 +64,16 @@ const CASE: EvalCase = {
   base: true,
   brief: "x",
   checks: [
-    { kind: "file-exists", path: "design/core.md" },
+    { kind: "file-exists", path: "design/brief.md" },
     { kind: "file-absent", path: "chapters/chapter_ch2_v1.md" },
-    { kind: "file-contains", path: "design/core.md", text: "旧书店" },
-    { kind: "file-matches", path: "design/core.md", pattern: "^# 核心设定" },
-    { kind: "file-unchanged", path: "design/core.md", against: "fixture" },
+    { kind: "file-contains", path: "design/brief.md", text: "旧书店" },
+    { kind: "file-matches", path: "design/brief.md", pattern: "^# 概览" },
+    { kind: "file-unchanged", path: "design/brief.md", against: "fixture" },
     { kind: "tool-called", name: "propose-plan" },
     { kind: "tool-not-called", name: "edit" },
     { kind: "tool-order", names: ["write", "propose-plan"] },
     { kind: "turn-halted", afterTool: "propose-plan" },
-    { kind: "change-recorded", path: "design/core.md", changeKind: "modified" },
+    { kind: "change-recorded", path: "design/brief.md", changeKind: "modified" },
     { kind: "max-steps", n: 2 },
     { kind: "max-tokens", n: 180 },
     { kind: "event-exists", type: "step/start" },
@@ -85,7 +85,7 @@ const CASE: EvalCase = {
 beforeAll(async () => {
   fixtureRoot = await mkdtemp(join(tmpdir(), "talemate-eval-checks-"));
   await mkdir(join(fixtureRoot, "design"), { recursive: true });
-  await writeFile(join(fixtureRoot, "design/core.md"), "# 核心设定\n\n旧书店。\n", "utf-8");
+  await writeFile(join(fixtureRoot, "design/brief.md"), "# 概览\n\n旧书店。\n", "utf-8");
 });
 
 afterAll(async () => {
@@ -97,9 +97,9 @@ afterAll(async () => {
 describe("判据执行", () => {
   test("全部命中时每条都 pass，并带证据", async () => {
     const snapshots = [
-      snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" }),
+      snapshot({ "design/brief.md": "# 概览\n\n旧书店。\n" }),
       snapshot({
-        "design/core.md": "# 核心设定\n\n旧书店。\n",
+        "design/brief.md": "# 概览\n\n旧书店。\n",
         "chapters/chapter_ch1_v1.md": "# 第一章\n\n沈越走进来。\n",
       }),
     ];
@@ -111,9 +111,9 @@ describe("判据执行", () => {
 
   test("afterTurn 看的是那一刻的快照，不拿最后一轮冒充", async () => {
     const snapshots = [
-      snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" }),
+      snapshot({ "design/brief.md": "# 概览\n\n旧书店。\n" }),
       snapshot({
-        "design/core.md": "# 核心设定\n\n旧书店。\n",
+        "design/brief.md": "# 概览\n\n旧书店。\n",
         "chapters/chapter_ch1_v1.md": "# 第一章\n\n沈越走进来。\n",
       }),
     ];
@@ -134,13 +134,13 @@ describe("判据执行", () => {
     const broken: EvalCase = {
       ...CASE,
       checks: [
-        { kind: "file-contains", path: "design/core.md", text: "不存在的句子" },
-        { kind: "file-unchanged", path: "design/core.md", against: "fixture" },
+        { kind: "file-contains", path: "design/brief.md", text: "不存在的句子" },
+        { kind: "file-unchanged", path: "design/brief.md", against: "fixture" },
         { kind: "tool-called", name: "edit" },
         { kind: "max-tokens", n: 10 },
       ],
     };
-    const snapshots = [snapshot({ "design/core.md": "# 核心设定\n\n改过了。\n" })];
+    const snapshots = [snapshot({ "design/brief.md": "# 概览\n\n改过了。\n" })];
     const results = await runChecks(broken, snapshots, fixtureRoot);
     expect(results.map((r) => r.ok)).toEqual([false, false, false, false]);
     expect(results[0]?.detail).toContain("不存在的句子");
@@ -150,13 +150,13 @@ describe("判据执行", () => {
   });
 
   test("file-equals 比完整字节，不是 contains", async () => {
-    const snap = snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" });
+    const snap = snapshot({ "design/brief.md": "# 概览\n\n旧书店。\n" });
     const out = await runChecks(
       {
         ...CASE,
         checks: [
-          { kind: "file-equals", path: "design/core.md", text: "# 核心设定\n\n旧书店。\n" },
-          { kind: "file-equals", path: "design/core.md", text: "# 核心设定\n\n旧书店。" },
+          { kind: "file-equals", path: "design/brief.md", text: "# 概览\n\n旧书店。\n" },
+          { kind: "file-equals", path: "design/brief.md", text: "# 概览\n\n旧书店。" },
         ],
       },
       [snap],
@@ -166,13 +166,13 @@ describe("判据执行", () => {
   });
 
   test("file-not-contains 与 assistant-text-contains", async () => {
-    const snap = snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" });
+    const snap = snapshot({ "design/brief.md": "# 概览\n\n旧书店。\n" });
     const out = await runChecks(
       {
         ...CASE,
         checks: [
-          { kind: "file-not-contains", path: "design/core.md", text: "不存在的句子" },
-          { kind: "file-not-contains", path: "design/core.md", text: "旧书店" },
+          { kind: "file-not-contains", path: "design/brief.md", text: "不存在的句子" },
+          { kind: "file-not-contains", path: "design/brief.md", text: "旧书店" },
           { kind: "assistant-text-contains", text: "我先看一下" },
           { kind: "assistant-text-contains", text: "没有这句" },
         ],
@@ -184,9 +184,9 @@ describe("判据执行", () => {
   });
 
   test("afterTurn 超出实际轮数时判失败，不静默取最后一轮", async () => {
-    const snapshots = [snapshot({ "design/core.md": "# 核心设定\n\n旧书店。\n" })];
+    const snapshots = [snapshot({ "design/brief.md": "# 概览\n\n旧书店。\n" })];
     const out = await runChecks(
-      { ...CASE, checks: [{ kind: "file-exists", path: "design/core.md", afterTurn: 3 }] },
+      { ...CASE, checks: [{ kind: "file-exists", path: "design/brief.md", afterTurn: 3 }] },
       snapshots,
       fixtureRoot,
     );

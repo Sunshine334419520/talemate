@@ -475,9 +475,9 @@ describe("投影 · 折叠窗口", () => {
 test("结构化拍板真的写进决定账（按钮不产生用户消息）", async () => {
   const { sessionId } = await seedSession(1);
   const session = await openSession({ projectId, sessionId, model: MODEL });
-  session.pending.set("design/core.md", {
-    name: "design/core.md",
-    content: "# 核心设定\n",
+  session.pending.set("design/brief.md", {
+    name: "design/brief.md",
+    content: "# 概览\n",
     approved: false,
     at: Date.now(),
   });
@@ -488,7 +488,7 @@ test("结构化拍板真的写进决定账（按钮不产生用户消息）", as
   const decisions = decisionsFrom(events);
   expect(decisions).toHaveLength(1);
   expect(decisions[0]?.verdict).toBe("accept");
-  expect(decisions[0]?.proposal).toBe("design/core.md");
+  expect(decisions[0]?.proposal).toBe("design/brief.md");
 });
 
 test("Session 集成：越高水位折一次，折完不再折（迟滞）", async () => {

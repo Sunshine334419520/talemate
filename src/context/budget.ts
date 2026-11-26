@@ -176,7 +176,7 @@ export function preflight(budget: ContextBudget, systemChars: number, toolsChars
       ok: false,
       message:
         `system 约 ${system} token，超过该模型可用预算的 40%（${budget.systemCap}）。` +
-        "请拆分常驻设定（design/core.md / design/wiki/world.md），或换更大窗口的模型。",
+        "请拆分常驻设定（design/brief.md / design/wiki/world.md），或换更大窗口的模型。",
     };
   }
   return { ok: true };

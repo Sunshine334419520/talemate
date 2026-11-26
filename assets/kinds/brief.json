@@ -3,7 +3,7 @@
   "label": "概览",
   "section": "概览",
   "order": 10,
-  "match": ["design/brief.md", "design/core.md"],
+  "match": ["design/brief.md"],
   "create": "design/brief.md",
   "fields": [
     { "key": "title", "label": "标题", "type": "string" },
@@ -18,7 +18,6 @@
         { "value": "不限", "label": "不限" }
       ]
     },
-    { "key": "genre", "label": "题材", "type": "string" },
-    { "key": "style", "label": "文风卡", "type": "string" }
+    { "key": "genre", "label": "题材", "type": "string" }
   ]
 }

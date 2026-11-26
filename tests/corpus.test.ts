@@ -30,20 +30,20 @@ const root = (): string => join(HOME, "novels", pid);
 
 describe("corpus · 枚举", () => {
   test("三个根都收，路径是**项目相对**", async () => {
-    await writeDoc(pid, "design/core.md", "# 核心\n");
+    await writeDoc(pid, "design/brief.md", "# 核心\n");
     await writeDoc(pid, "design/characters/沈越.md", "# 角色：沈越\n");
     await writeDoc(pid, "state/progress.md", "# 章节流水\n\n## 第 1 章\n落地。\n");
     await writeFile(join(root(), "chapters/chapter_ch1_v1.md"), "第一章\n", "utf-8");
     expect(await enumerateDocs(pid)).toEqual([
       "chapters/chapter_ch1_v1.md",
+      "design/brief.md",
       "design/characters/沈越.md",
-      "design/core.md",
       "state/progress.md",
     ]);
   });
 
   test("前缀限定范围", async () => {
-    expect(await enumerateDocs(pid, "design/")).toEqual(["design/characters/沈越.md", "design/core.md"]);
+    expect(await enumerateDocs(pid, "design/")).toEqual(["design/brief.md", "design/characters/沈越.md"]);
     expect(await enumerateDocs(pid, "chapters/")).toEqual(["chapters/chapter_ch1_v1.md"]);
   });
 
@@ -57,13 +57,13 @@ describe("corpus · 枚举", () => {
   test("目录不存在 → 空，不抛", async () => {
     const fresh = (await createProject({ title: "空项目" })).id;
     expect(await enumerateDocs(fresh)).toEqual([]);
-    expect(await readDoc(fresh, "design/core.md")).toBeUndefined();
+    expect(await readDoc(fresh, "design/brief.md")).toBeUndefined();
   });
 });
 
 describe("corpus · 读", () => {
   test("读得到三个根；不存在的给 undefined", async () => {
-    expect(await readDoc(pid, "design/core.md")).toBe("# 核心\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("# 核心\n");
     expect(await readDoc(pid, "chapters/chapter_ch1_v1.md")).toBe("第一章\n");
     expect(await readDoc(pid, "state/progress.md")).toContain("## 第 1 章");
     expect(await readDoc(pid, "design/nope.md")).toBeUndefined();

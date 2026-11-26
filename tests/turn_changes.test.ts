@@ -49,7 +49,7 @@ describe("按轮收集改动", () => {
   });
 
   test("开头没有用户消息时也有一轮落点", () => {
-    const turns = messageTurns([assistant(1, [change("design/core.md", "modified")])]);
+    const turns = messageTurns([assistant(1, [change("design/brief.md", "modified")])]);
     expect(turns).toHaveLength(1);
     expect(turns[0]?.changes).toHaveLength(1);
   });

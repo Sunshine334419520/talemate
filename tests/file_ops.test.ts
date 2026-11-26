@@ -23,7 +23,7 @@ function rejected(op: FileOp, current: string | undefined) {
 
 describe("file_ops · write", () => {
   test("新建：isNew 为真", () => {
-    const r = next({ kind: "write", path: "design/core.md", content: "# core\n" }, undefined);
+    const r = next({ kind: "write", path: "design/brief.md", content: "# core\n" }, undefined);
     expect(r.action).toBe("write");
     if (r.action === "write") {
       expect(r.isNew).toBe(true);
@@ -32,7 +32,7 @@ describe("file_ops · write", () => {
   });
 
   test("覆盖已存在：isNew 为假，内容整篇换掉", () => {
-    const r = next({ kind: "write", path: "design/core.md", content: "新" }, "旧");
+    const r = next({ kind: "write", path: "design/brief.md", content: "新" }, "旧");
     if (r.action === "write") {
       expect(r.isNew).toBe(false);
       expect(r.content).toBe("新");
@@ -43,7 +43,7 @@ describe("file_ops · write", () => {
 describe("file_ops · replace", () => {
   test("命中：只有那一段变，其余字节原样", () => {
     const current = "## 第一节\n旧的\n\n## 第二节\n不动\n";
-    const r = next({ kind: "replace", path: "design/core.md", find: "旧的", replace: "新的" }, current);
+    const r = next({ kind: "replace", path: "design/brief.md", find: "旧的", replace: "新的" }, current);
     if (r.action === "write") {
       expect(r.content).toBe("## 第一节\n新的\n\n## 第二节\n不动\n");
       expect(r.match).toBe("exact");
@@ -52,12 +52,12 @@ describe("file_ops · replace", () => {
   });
 
   test("文件不存在 → 拒绝，并指向 write", () => {
-    const out = rejected({ kind: "replace", path: "design/core.md", find: "a", replace: "b" }, undefined);
+    const out = rejected({ kind: "replace", path: "design/brief.md", find: "a", replace: "b" }, undefined);
     expect(out).toContain("write");
   });
 
   test("找不到 → 拒绝文案来自匹配层（不是这里另编一句）", () => {
-    const out = rejected({ kind: "replace", path: "design/core.md", find: "没有这句", replace: "x" }, "有的别的\n");
+    const out = rejected({ kind: "replace", path: "design/brief.md", find: "没有这句", replace: "x" }, "有的别的\n");
     expect(out).toContain("找不到");
   });
 });

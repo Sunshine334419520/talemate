@@ -91,38 +91,38 @@ const confirm = (op: FileOp, action = "测试写入"): WriteRequest => ({ op, ac
 describe("write_ops · 直写（二向）", () => {
   test("新建：文件出现，isNew 为真", async () => {
     const ctx = makeCtx();
-    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/core.md", content: "# 核心\n" }));
+    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/brief.md", content: "# 核心\n" }));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.isNew).toBe(true);
-    expect(await readDoc(pid, "design/core.md")).toBe("# 核心\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("# 核心\n");
   });
 
   test("覆盖：整篇换掉，isNew 为假", async () => {
-    await writeDoc(pid, "design/core.md", "旧的\n");
+    await writeDoc(pid, "design/brief.md", "旧的\n");
     const ctx = makeCtx();
-    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/core.md", content: "新的\n" }));
+    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/brief.md", content: "新的\n" }));
     expect(r.ok && r.isNew).toBe(false);
-    expect(await readDoc(pid, "design/core.md")).toBe("新的\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("新的\n");
   });
 
   test("用户拒绝 → **盘上一个字节都没动**", async () => {
-    await writeDoc(pid, "design/core.md", "原样\n");
+    await writeDoc(pid, "design/brief.md", "原样\n");
     const ctx = makeCtx();
     ctx.setAsk("reject");
-    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/core.md", content: "不许写\n" }));
+    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/brief.md", content: "不许写\n" }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("rejected");
-    expect(await readDoc(pid, "design/core.md")).toBe("原样\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("原样\n");
   });
 
   test("规则表不许 → 同样一个字节都没动", async () => {
-    await writeDoc(pid, "design/core.md", "原样\n");
+    await writeDoc(pid, "design/brief.md", "原样\n");
     const ctx = makeCtx();
     ctx.setAsk("deny");
-    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/core.md", content: "不许写\n" }));
+    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/brief.md", content: "不许写\n" }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("denied");
-    expect(await readDoc(pid, "design/core.md")).toBe("原样\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("原样\n");
   });
 
   test("chapters/ 与 design/ 都写得进去（同一个根口径）", async () => {
@@ -177,45 +177,45 @@ describe("write_ops · 直写（二向）", () => {
   });
 
   test("replace 找不到锚点 → 拒绝文案来自匹配层，且没写盘", async () => {
-    await writeDoc(pid, "design/core.md", "有的别的\n");
+    await writeDoc(pid, "design/brief.md", "有的别的\n");
     const ctx = makeCtx();
     const r = await writeFile(
       ctx,
-      confirm({ kind: "replace", path: "design/core.md", find: "没有这句", replace: "x" }),
+      confirm({ kind: "replace", path: "design/brief.md", find: "没有这句", replace: "x" }),
     );
     expect(r.ok).toBe(false);
-    expect(await readDoc(pid, "design/core.md")).toBe("有的别的\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("有的别的\n");
   });
 });
 
 describe("write_ops · CAS：读之后被改过就不写", () => {
   test("读取与落盘之间文件变了 → stale，且那次改动没被盖掉", async () => {
-    await writeDoc(pid, "design/core.md", "我读到的是这一份\n");
+    await writeDoc(pid, "design/brief.md", "我读到的是这一份\n");
     const ctx = makeCtx();
     // 用 ask 的时机模拟"弹窗期间用户手改"：writeFile 在问完之后才落盘
     const realAsk = ctx.ask;
     ctx.ask = async (req) => {
-      await writeDoc(pid, "design/core.md", "被人改过了\n");
+      await writeDoc(pid, "design/brief.md", "被人改过了\n");
       return realAsk(req);
     };
-    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/core.md", content: "照着旧内容写\n" }));
+    const r = await writeFile(ctx, confirm({ kind: "write", path: "design/brief.md", content: "照着旧内容写\n" }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("stale");
-    expect(await readDoc(pid, "design/core.md")).toBe("被人改过了\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("被人改过了\n");
   });
 });
 
 describe("write_ops · 行尾适配", () => {
   test("文件是 CRLF、模型给 \\n —— 对得上，且**其余行仍是 CRLF**", async () => {
-    await writeDoc(pid, "design/core.md", "甲\r\n乙\r\n丙\r\n");
+    await writeDoc(pid, "design/brief.md", "甲\r\n乙\r\n丙\r\n");
     const ctx = makeCtx();
     const r = await writeFile(
       ctx,
-      confirm({ kind: "replace", path: "design/core.md", find: "乙\n丙", replace: "乙\n新丙" }),
+      confirm({ kind: "replace", path: "design/brief.md", find: "乙\n丙", replace: "乙\n新丙" }),
     );
     expect(r.ok).toBe(true);
     // 只动了该动的那两行，别处的 CRLF 一个字节没变
-    expect(await readDoc(pid, "design/core.md")).toBe("甲\r\n乙\r\n新丙\r\n");
+    expect(await readDoc(pid, "design/brief.md")).toBe("甲\r\n乙\r\n新丙\r\n");
   });
 
   test("末尾加一节走 edit：替换文本里的换行也适配成文件的写法", async () => {
@@ -240,11 +240,11 @@ describe("write_ops · 行尾适配", () => {
   });
 
   test("diff 不把行尾差异算成改动（CRLF 文件只改一行 → 只报一行）", async () => {
-    await writeDoc(pid, "design/core.md", "甲\r\n乙\r\n丙\r\n");
+    await writeDoc(pid, "design/brief.md", "甲\r\n乙\r\n丙\r\n");
     const ctx = makeCtx();
     const r = await writeFile(
       ctx,
-      confirm({ kind: "replace", path: "design/core.md", find: "乙", replace: "新乙" }),
+      confirm({ kind: "replace", path: "design/brief.md", find: "乙", replace: "新乙" }),
     );
     expect(r.ok).toBe(true);
     if (r.ok) {
@@ -258,22 +258,22 @@ describe("write_ops · BOM 是文件自己的属性", () => {
   const BOM = "﻿";
 
   test("原有 BOM 保住：模型看不出它，也不会把它抹掉", async () => {
-    await writeDoc(pid, "design/core.md", `${BOM}# 核心\n`);
+    await writeDoc(pid, "design/brief.md", `${BOM}# 核心\n`);
     const ctx = makeCtx();
     const r = await writeFile(
       ctx,
-      confirm({ kind: "replace", path: "design/core.md", find: "# 核心", replace: "# 核心（改）" }),
+      confirm({ kind: "replace", path: "design/brief.md", find: "# 核心", replace: "# 核心（改）" }),
     );
     expect(r.ok).toBe(true);
-    expect(await readDoc(pid, "design/core.md")).toBe(`${BOM}# 核心（改）\n`);
+    expect(await readDoc(pid, "design/brief.md")).toBe(`${BOM}# 核心（改）\n`);
   });
 
   test("模型给的 find 里没有那个不可见字符，照样命中", async () => {
-    await writeDoc(pid, "design/core.md", `${BOM}一句话简介\n`);
+    await writeDoc(pid, "design/brief.md", `${BOM}一句话简介\n`);
     const ctx = makeCtx();
     const r = await writeFile(
       ctx,
-      confirm({ kind: "replace", path: "design/core.md", find: "一句话简介", replace: "简介" }),
+      confirm({ kind: "replace", path: "design/brief.md", find: "一句话简介", replace: "简介" }),
     );
     expect(r.ok).toBe(true); // 匹配按"没有 BOM 的正文"算，所以那个字符不会挡路
   });
@@ -324,7 +324,7 @@ describe("write_ops · 给用户的材料", () => {
 
   test("弹窗的 pattern 与工具入参同一口径（项目相对）", async () => {
     // 权限规则写的就是这个串——口径不一致的话，用户配的规则永远不会生效。
-    // （旧代码给 design 写入传的是裸 `name`，于是文档里 `design/core.md` 那类规则从来没生效过。）
+    // （旧代码给 design 写入传的是裸 `name`，于是文档里 `design/brief.md` 那类规则从来没生效过。）
     const ctx = makeCtx();
     await writeFile(ctx, {
       op: { kind: "write", path: "design/wiki/地理.md", content: "# 地理\n" },

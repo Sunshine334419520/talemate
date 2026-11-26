@@ -7,7 +7,7 @@
  * **候选集不写死**：它是项目根表（`projectCorpusRoots`）里 `search && read` 的那些目录，枚举时逐个 walk。
  * 加一个根 = 改 `talemate.json` 的 `roots`（或默认表），本文件与工具层都不需要改。
  *
- * 路径口径：项目相对（`design/core.md` / `chapters/chapter_ch1_v1.md`），与 `FileOp.path`、
+ * 路径口径：项目相对（`design/brief.md` / `chapters/chapter_ch1_v1.md`），与 `FileOp.path`、
  * 与权限 pattern 同一套，全仓只此一种。
  *
  * 边界：零领域知识——不认识层、角色卡、小节，"目录里那一行该写什么"是策略，在

@@ -19,7 +19,7 @@ const P = (id: string) => readPrompt(`tools/${id}`);
 const READ_LIMIT = 12_000;
 
 /**
- * 路径所属的那一段（`design/core.md` → `design/`），"没找到"时用它列出那一段有什么；
+ * 路径所属的那一段（`design/brief.md` → `design/`），"没找到"时用它列出那一段有什么；
  * 认不出根（模型给了个裸文件名）→ 整个项目，反正它更需要看全貌。
  */
 function rootOf(path: string): string {
@@ -69,7 +69,7 @@ export const readTool: RegisteredTool<{ path: string; section?: string; offset?:
       path: {
         type: "string",
         description:
-          "Document path incl. its root and .md — design/core.md, design/characters/林晚.md, chapters/chapter_ch1_v1.md",
+          "Document path incl. its root and .md — design/brief.md, design/characters/林晚.md, chapters/chapter_ch1_v1.md",
       },
       section: { type: "string", description: "Optional: exact section heading to read only that section" },
       offset: {

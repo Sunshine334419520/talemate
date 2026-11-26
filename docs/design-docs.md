@@ -2,7 +2,7 @@
 
 > **职责**：回答"企划由哪些文档构成、怎么写进去、怎么改"。
 > **读者**：要改 `src/framework/`（assets / write_ops / summaries / anchor）或 `src/tool/file_tools.ts` 的人。
-> **对齐代码**：2026-11-25 · 资产四原语 `framework/assets.ts`，语料读写 `storage/corpus.ts`，语料根表 `core/roots.ts`，落盘 `framework/write_ops.ts`（写前 diff + CAS + 原子写）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
+> **对齐代码**：2026-11-26 · 资产四原语 `framework/assets.ts`，语料读写 `storage/corpus.ts`，语料根表 `core/roots.ts`，落盘 `framework/write_ops.ts`（写前 diff + CAS + 原子写）；卷契约/序列契约的读取、世界事实排在正文之前、以及章末的世界层回看由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载
 > 相邻：`assets.md`（每种资产落在哪个文件、什么形状）· `characters.md`（人物层单独一份）· `outline.md`（情节层单独一份）· `state.md`（每章都在变的那一层）· `agents.md`（工具的注册与触发）· `product.md`（产品主流程）
 
 ## 四层
@@ -11,26 +11,36 @@
 
 | 层 | 文档 | 变化特征 | 注入方式 |
 |---|---|---|---|
-| **核心层** | `design/core.md` | 极少变、一改牵全身、用户必须拍板 | 按需 `read`（无文档常驻） |
+| **概览层** | `design/brief.md` | 极少变、一改牵全身、用户必须拍板 | 按需 `read`（无文档常驻） |
 | **世界层** | `design/wiki/world.md` + `design/wiki/<题>.md` | 慢变、追加为主；长尾拆专题页 | 按需 `read`；`glob` / `grep` 找路径 |
 | **人物层** | `design/characters/<名>.md` | 慢变 | 按需读（见 `characters.md`） |
 | **情节层** | `design/outline/vol_<N>.md`（卷纲）+ `design/outline/vol_<N>/s<序号>.md`（序列纲） | 快变、最局部 | 按需读（当前卷 / 序列切片） |
 
-**"层"是产品词汇，不是代码里的一个类型。** 它指的是 `design/` 下的四个目录、以及状态卡与 `mate` 对用户说的那四个名字（核心设定 / 世界观 / 角色 / 大纲）。代码里**没有** `LayerId`、没有按层登记的规范表、也没有 `layer` 参数——文档的归属由**路径**说，别的都不需要。（从前这三样都有，于是"层"这个概念同时当了寻址键、规范匹配键和注入分组；实测下来，只有第一条是多余的。）
+**"层"是产品词汇，不是代码里的一个类型。** 它指的是 `design/` 下的四个目录、以及状态卡与 `mate` 对用户说的那四个名字（概览 / 世界观 / 角色 / 大纲）。代码里**没有** `LayerId`、没有按层登记的规范表、也没有 `layer` 参数——文档的归属由**路径**说，别的都不需要。（从前这三样都有，于是"层"这个概念同时当了寻址键、规范匹配键和注入分组；实测下来，只有第一条是多余的。）
 
-**没有任何文档常驻注入。** `design/core.md` 与 `design/wiki/world.md` 从前每轮进 system，现在和别的文档一样：模型要 `read` 才拿到内容，而读到的就是读它的那一刻的版本。`anchor.RESIDENT_DOCS` 与相关注入已删除——留在 system 里只是一份会过期的副本，还让模型不知道自己没读过它。
+## 概览是什么、不是什么
+
+**概览是作品对读者的名片，也是这本书对外的契约。** 它回答的是"读者为什么拿起这本书"：书名、频道、题材、文风，再加一句话简介、基调、读者承诺。`world.md` 写的是**书里**的世界，`brief.md` 写的是**书外**的那个人凭什么走进来——这是四层里唯一朝外的一份。
+
+**概览不是内容摘要。** 凡是从世界观、人物、大纲能推导出来的东西，都不进概览：情节走向、势力关系、角色结局抄一份过来，第二天那边一改就说两套话。判据很硬——**删掉概览，世界观 / 人物 / 大纲仍然完整；删掉 world，书就写不下去。** 概览回答"这本书是什么"，不回答"书里发生了什么"。
+
+**概览同时是一张配置卡。** 频道、题材、文风有机器消费者（书架、状态栏的文风选择器、正文写作窗口、状态卡），所以它们住在 frontmatter 的 `title` / `channel` / `genre` 字段；正文留给人写。文风暂留在 `## 文风` 小节——文风那条链会整体重构，在那之前它是唯一的地方，别在 frontmatter 里再添一份。
+
+**它是可选的，不是门槛。** 没有 `brief.md` 也能写正文；`createProject` 只在用户建书时选过频道 / 题材时种下 frontmatter（`withShelf`），其余一个字不写。
+
+**没有文档常驻注入。** `design/brief.md` 与 `design/wiki/world.md` 从前每轮进 system，现在和别的文档一样：模型要 `read` 才拿到内容，而读到的就是读它的那一刻的版本。`anchor.RESIDENT_DOCS` 与相关注入已删除——留在 system 里只是一份会过期的副本，还让模型不知道自己没读过它。
 
 **`state/` 不是第五层。** 它记的是"现在到哪了"（谁在场、谁知道什么、伏笔收到哪了），每章都在变——比变化最快的情节层还快一个数量级。所以它在项目根下与 `design/` **平级**，与设定分开。判据与形状见 `state.md`。
 
 **文档格式**：Markdown，`##` 即一格。**读**按"**项目相对路径** + 小节标题"寻址（`read` 的 `path` 与 `section`）；**写**按**锚点**寻址（`edit` 给一段原文与替换文本，见"落盘只有一条路"）。不做条目级 ID 引用。
 
-**全仓只有一种路径口径**：项目相对（`design/core.md` / `chapters/chapter_ch2_v1.md`）——工具入参、`FileOp.path`、权限 pattern、`invariants` 的匹配键，全是它。
+**全仓只有一种路径口径**：项目相对（`design/brief.md` / `chapters/chapter_ch2_v1.md`）——工具入参、`FileOp.path`、权限 pattern、`invariants` 的匹配键，全是它。
 
 ## 懒建：文件不预种
 
 `createProject` 只建目录、不种文件——`design/` 初始为空。用户要写哪一层就直接 `write`；格式建议在 `assets/kinds/*.json`，只是参考。
 
-**一处例外**：桌面端建书时会把用户在书架上选的频道与题材种进 `core.md` 的“题材 · 频道”那一格（`withShelf`）——值是用户从封闭集合里挑的，没有可生成的东西，与文风选择器同一类。它**只种这一次**：此后那一格归企划管，在书架上改题材不会回头改它。CLI 建的书仍是空的。
+**一处例外**：桌面端建书时会把用户在书架上选的频道与题材种进 `design/brief.md` 的 frontmatter（`withShelf`）——值是用户从封闭集合里挑的，没有可生成的东西，与文风选择器同一类。它**只种这一次**：此后那两格归企划管，在书架上改题材不会回头改它。CLI 建的书仍是空的。
 
 **规范是建议，不是通行证。** 旧的结构规范表与规范查询已删：一份文档该长什么样，模型从用户意图与同类文档里读得出来；而规范表一旦存在就会被当成校验器——用户没要求的小节成了门槛，写得再好也"不合格"。留下的是**可推导**的那部分：`framework/assetkinds.ts` 读 `assets/kinds/*.json`，只回答"这种文件是什么、通常放哪"，不规定每一格必须有什么。载体约定见 `assets.md`。
 
@@ -50,7 +60,7 @@
 
 ## 寻址：只有路径
 
-所有工具只收一个 `path`：**项目相对路径**（`design/core.md`、`design/characters/林晚.md`、`design/outline/vol_1/s2.md`）。没有第二套词表。
+所有工具只收一个 `path`：**项目相对路径**（`design/brief.md`、`design/characters/林晚.md`、`design/outline/vol_1/s2.md`）。没有第二套词表。
 
 ```
 write          { path: "design/wiki/world.md", content: "…" }
@@ -96,7 +106,7 @@ flowchart TD
 
 **规划落盘**，落在 `<novel>/.talemate/plans/ch_<N>.md`——**引擎的工作区，不是 `design/`**。`design/` + `chapters/` 是作品（用户的、要被审阅的、可进版本控制的），`.talemate/` 是这一次执行的状态：可清理、用户不必看、不参与 `glob` / `grep` / 不变量。所以它**不走 `write_ops`**（那条路认识的是作品文档：diff、CAS、权限 pattern）——由 `propose-plan` 自己整篇写、整篇渲染出来，用户看过的字节就是落盘的字节。命名与清理策略见 `framework/plan.ts`。
 
-**mate 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善核心设定"就走企划成型，说"写第 N 章"就走章节生产。
+**mate 没有阶段状态机**："设计段/写作段"不是代码里的状态，而是**用户点名驱动**——说"完善概览"就走企划成型，说"写第 N 章"就走章节生产。
 
 ## 写作依赖当前版本
 

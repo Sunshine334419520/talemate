@@ -240,7 +240,6 @@ describe("资产种类（路径判定）", () => {
   test("每一条登记的模式都能判回自己，且更具体的胜出", () => {
     const cases: Array<[string, string]> = [
       ["design/brief.md", "brief"],
-      ["design/core.md", "brief"],
       ["design/wiki/world.md", "world"],
       ["design/wiki/漕运.md", "world-entry"],
       ["design/characters/沈越.md", "character"],
@@ -255,6 +254,8 @@ describe("资产种类（路径判定）", () => {
     const mismatched = cases.filter(([path, id]) => kindOf(path)?.id !== id);
     expect(mismatched).toEqual([]);
     expect(kindOf("design/notes.md")).toBeUndefined();
+    // `design/core.md` 已退场：没有哪种资产认这个路径，写了也不会被当成概览
+    expect(kindOf("design/core.md")).toBeUndefined();
     const ids = assetKinds().map((k) => k.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -448,7 +449,7 @@ describe("清单与一致性", () => {
   });
 
   test("概览只允许一份（legacy core.md 也算）", async () => {
-    await writeDoc(pid, "design/core.md", "# 核心设定\n\n一句话。\n");
+    await writeDoc(pid, "design/brief.md", "# 概览\n\n一句话。\n");
     const second = await createAsset(pid, { kind: "brief", title: "第二份概览" });
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.error).toContain("已经有概览");

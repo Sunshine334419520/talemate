@@ -264,7 +264,7 @@ export interface ToolContext {
    */
   getMode(): string | undefined;
   /**
-   * 读一份文档（项目相对路径：`design/core.md` / `chapters/chapter_ch1_v1.md`），不存在 → undefined。
+   * 读一份文档（项目相对路径：`design/brief.md` / `chapters/chapter_ch1_v1.md`），不存在 → undefined。
    *
    * 读口留着，写口没有：改文件一律走 `framework/write_ops` 那一条路径——留一个裸写方法，任何工具
    * 都能绕开整套变换、CAS 与权限，所以"唯一写路径"要靠类型上只有一个口来保证。
@@ -447,7 +447,7 @@ export interface EvidenceEntry {
  */
 export interface DecisionEntry {
   at: number;
-  /** 提案的键：`design/core.md` 或 `PLAN_KEY` */
+  /** 提案的键：`design/brief.md` 或 `PLAN_KEY` */
   proposal: string;
   verdict: "accept" | "reject" | "refine";
   /** refine / reject 时用户的原话 */
@@ -704,7 +704,7 @@ export interface ProjectMeta {
    * 与 `genre` 分开存而不是拼成一个串：这两个是两个独立的决定，拼起来之后想按其一筛选就得拆串。
    * 它记的是用户在书架上的声明——用来认书、筛选，界面按它画卡片。
    *
-   * `design/core.md` 的「题材 · 频道」是另一件东西：建书那一次拿这两个值当**起点**种进去，此后归企划管
+   * `design/brief.md` 的「题材 · 频道」是另一件东西：建书那一次拿这两个值当**起点**种进去，此后归企划管
    * （模型可以据此展开成更多标签，用户也可以直接改那一格）。所以**在书架上改了它不会跟着变**——
    * 那一格是定位，这个字段是分类。
    */
@@ -714,7 +714,7 @@ export interface ProjectMeta {
   agents?: Record<string, Partial<AgentDef>>;
   /**
    * 这个项目的权限规则（配置形）——规则表的最后一层、最高优先级。
-   * 典型用法是"放宽大部分、收紧一个"：`{ edit: { "*": "allow", "design/core.md": "ask" } }`。
+   * 典型用法是"放宽大部分、收紧一个"：`{ edit: { "*": "allow", "design/brief.md": "ask" } }`。
    * 但 `deny` 单调：模式写的 deny 压得过这里（见 docs/permissions.md）。
    */
   permissions?: PermissionConfig;

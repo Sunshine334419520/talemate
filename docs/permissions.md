@@ -105,14 +105,14 @@ type PermissionConfig = Record<string, Action | Record<string, Action>>;
 写在 `talemate.json`，是这个项目的**长期偏好**（区别于模式的"眼下这一仗"）：
 
 ```json
-{ "permissions": { "edit": { "*": "allow", "design/core.md": "ask" } } }
+{ "permissions": { "edit": { "*": "allow", "design/brief.md": "ask" } } }
 ```
 
 | 场景 | 写法 | 为什么不能用别的表达 |
 |---|---|---|
 | 不想被问落盘 | `{ "edit": "allow" }` | 等价于常驻 `accept-edits`——模式会随会话消失，这个是持久的 |
 | 联网的开关 | `{ "extern": "deny" }` / `"allow"` | `webfetch`/`websearch` 默认每次都要问，而**联网没有对应的模式** |
-| **放宽大部分、收紧一个** | `{ "edit": { "*": "allow", "design/core.md": "ask" } }` | 只有 pattern 能表达。注意用 `ask` 不是 `deny`——默认本来就是 `ask`，用户要的不是"更严"而是"只守这一个" |
+| **放宽大部分、收紧一个** | `{ "edit": { "*": "allow", "design/brief.md": "ask" } }` | 只有 pattern 能表达。注意用 `ask` 不是 `deny`——默认本来就是 `ask`，用户要的不是"更严"而是"只守这一个" |
 
 **`deny` 单调意味着用户配置不能给模式松绑**：模式写 `edit: deny` 时，用户配 `edit: allow` 也进不去。想写就退出模式。
 

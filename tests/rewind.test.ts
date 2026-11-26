@@ -83,7 +83,7 @@ describe("会话回退", () => {
 });
 
 async function coreFile(content: string | null): Promise<string> {
-  const abs = join(projectPaths(home, projectId).root, "design/core.md");
+  const abs = join(projectPaths(home, projectId).root, "design/brief.md");
   if (content === null) {
     await rm(abs, { force: true });
     return abs;
@@ -97,15 +97,15 @@ describe("回退 · 文件还原", () => {
   test("检查点按路径取最早一条，还原写回旧内容", async () => {
     await dropFileCheckpointsFrom(projectId, SESSION, 1);
     const abs = await coreFile("new\n");
-    await recordFileCheckpoint(projectId, SESSION, { seq: 2, path: "design/core.md", before: "old\n" });
+    await recordFileCheckpoint(projectId, SESSION, { seq: 2, path: "design/brief.md", before: "old\n" });
     // 同一轮再写一次：仍只该保留最早的 before
-    await recordFileCheckpoint(projectId, SESSION, { seq: 2, path: "design/core.md", before: "newer\n" });
+    await recordFileCheckpoint(projectId, SESSION, { seq: 2, path: "design/brief.md", before: "newer\n" });
 
     const preview = await previewFileRewind(projectId, SESSION, 2);
-    expect(preview.items).toEqual([{ path: "design/core.md", action: "restore" }]);
+    expect(preview.items).toEqual([{ path: "design/brief.md", action: "restore" }]);
 
     const outcome = await restoreFilesForRewind(projectId, SESSION, 2);
-    expect(outcome.restored).toEqual(["design/core.md"]);
+    expect(outcome.restored).toEqual(["design/brief.md"]);
     expect(await readFile(abs, "utf-8")).toBe("old\n");
     await dropFileCheckpointsFrom(projectId, SESSION, 2);
   });
@@ -126,24 +126,24 @@ describe("回退 · 文件还原", () => {
   test("Session 的两种模式：both 还原文件，chat 保留文件，检查点都清掉", async () => {
     await seed();
     await coreFile("old\n");
-    await recordFileCheckpoint(projectId, SESSION, { seq: 3, path: "design/core.md", before: "old\n" });
+    await recordFileCheckpoint(projectId, SESSION, { seq: 3, path: "design/brief.md", before: "old\n" });
     await coreFile("new\n");
     const session = await openSession({ projectId, sessionId: SESSION });
 
     const both = await session.rewindTo(3, { restoreFiles: true });
-    expect(both.files?.restored).toEqual(["design/core.md"]);
-    expect(await readFile(join(projectPaths(home, projectId).root, "design/core.md"), "utf-8")).toBe("old\n");
+    expect(both.files?.restored).toEqual(["design/brief.md"]);
+    expect(await readFile(join(projectPaths(home, projectId).root, "design/brief.md"), "utf-8")).toBe("old\n");
     expect(await loadFileCheckpoints(projectId, SESSION)).toEqual([]);
 
     // 再来一次，选仅回退对话：文件保持新内容
     await seed();
     await coreFile("old\n");
-    await recordFileCheckpoint(projectId, SESSION, { seq: 3, path: "design/core.md", before: "old\n" });
+    await recordFileCheckpoint(projectId, SESSION, { seq: 3, path: "design/brief.md", before: "old\n" });
     await coreFile("new\n");
     const again = await openSession({ projectId, sessionId: SESSION });
     const chat = await again.rewindTo(3, { restoreFiles: false });
     expect(chat.files).toBeUndefined();
-    expect(await readFile(join(projectPaths(home, projectId).root, "design/core.md"), "utf-8")).toBe("new\n");
+    expect(await readFile(join(projectPaths(home, projectId).root, "design/brief.md"), "utf-8")).toBe("new\n");
     expect(await loadFileCheckpoints(projectId, SESSION)).toEqual([]);
   });
 });

@@ -17,7 +17,7 @@ const MINIMAL = {
   family: "workflow",
   base: true,
   brief: "随便说一句",
-  checks: [{ kind: "file-exists", path: "design/core.md" }],
+  checks: [{ kind: "file-exists", path: "design/brief.md" }],
   budget: { maxTurns: 1, maxSteps: 4, maxTokens: 1000 },
 };
 
@@ -94,7 +94,7 @@ describe("case 契约 · 校验器", () => {
       ...MINIMAL,
       checks: [
         { kind: "no-such-check" },
-        { kind: "file-contains", path: "design/core.md" },
+        { kind: "file-contains", path: "design/brief.md" },
         { kind: "max-steps", n: 0 },
         { kind: "tool-order", names: [] },
         { kind: "file-exists", path: "a.md", afterTurn: -1 },
@@ -126,12 +126,12 @@ describe("case 契约 · 校验器", () => {
     expect(
       validateCase({
         ...MINIMAL,
-        checks: [{ kind: "change-recorded", path: "design/core.md", changeKind: "modified" }],
+        checks: [{ kind: "change-recorded", path: "design/brief.md", changeKind: "modified" }],
       }),
     ).toEqual([]);
     const issues = validateCase({
       ...MINIMAL,
-      checks: [{ kind: "change-recorded", path: "design/core.md", changeKind: "renamed" }],
+      checks: [{ kind: "change-recorded", path: "design/brief.md", changeKind: "renamed" }],
     });
     expect(issues.map((i) => i.message).join("\n")).toContain("changeKind");
   });

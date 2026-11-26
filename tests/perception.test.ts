@@ -181,7 +181,7 @@ test("observation hash 只认感知状态；没有 Profile 的 purpose 不返回
 describe("候选池 · prose", () => {
   test("从现有载体现取；缺读者/知识/关系/工艺时记 gap，而不是静默少一条", async () => {
     const pid = (await createProject({ title: "候选池" })).id;
-    await writeDoc(pid, "design/core.md", "# 核心\n\n## 一句话简介\n一个人。\n");
+    await writeDoc(pid, "design/brief.md", "# 核心\n\n## 一句话简介\n一个人。\n");
     await writeDoc(pid, "design/wiki/world.md", "# 世界\n\n## 空间与舞台\n旧书店。\n");
     await writeDoc(pid, "design/characters/沈越.md", "# 沈越\n\n## 基本档案\n姓名：沈越\n");
     await writeDoc(pid, "state/characters/沈越.md", "# 沈越此刻\n\n## 处境\n缺钱。\n");
@@ -223,7 +223,7 @@ describe("候选池 · prose", () => {
 describe("shadow · 不改变 system", () => {
   test("同一份规划下，shadow 与 off 的 system prompt 逐字相同；inject 才追加感知块", async () => {
     const pid = (await createProject({ title: "shadow 不注入" })).id;
-    await writeDoc(pid, "design/core.md", "# 核心\n\n## 一句话简介\n一个人。\n");
+    await writeDoc(pid, "design/brief.md", "# 核心\n\n## 一句话简介\n一个人。\n");
     await writeDoc(pid, "design/characters/沈越.md", "# 沈越\n\n## 基本档案\n姓名：沈越\n");
 
     const run = async (mode: "shadow" | "off" | "inject"): Promise<{ system: string; plans: number; observed: number; hash?: string }> => {

@@ -71,7 +71,7 @@ export interface ProjectCard {
   chapter: number | null;
   /** 最后动过的时间：最新一条会话的更新时间，没有会话就用建书时间 */
   updatedAt: number;
-  /** 核心设定的「一句话简介」——卡上认得出"这是哪本书"的那行；没填就没有 */
+  /** 概览的「一句话简介」——卡上认得出"这是哪本书"的那行；没填就没有 */
   blurb?: string;
 }
 
@@ -282,7 +282,7 @@ export interface TmApi {
    */
   deleteProject(id: string): Promise<"ok" | "missing">;
   /**
-   * `/status` 的那段文本：四层现状（核心设定 / 世界观 / 角色 / 大纲）+ 一句下一步。
+   * `/status` 的那段文本：四层现状（概览 / 世界观 / 角色 / 大纲）+ 一句下一步。
    *
    * 与 CLI 的 `/status` 调的是同一个 `buildProjectStatus`——同一条命令在两个外壳里说两套话，
    * 是这类界面最典型的烂法。
@@ -344,7 +344,7 @@ export interface TmApi {
   /** 当前这本书用的文风，以及库里可选的文风卡 */
   styleCatalog(projectId: string): Promise<StyleCatalog>;
   /**
-   * 选定一种文风，直接写进 `design/core.md` 的「文风」格——不经模型、不走两阶段。
+   * 选定一种文风，直接写进 `design/brief.md` 的「文风」格——不经模型、不走两阶段。
    *
    * 这里没有可生成的东西：值是库里的一个卡名，来自封闭集合。让模型经手只会多出"它改写了你没看过
    * 的字节"这个风险，而两阶段存在的全部意义就是防后者；用户自己就是那个点头的人（同 `saveDoc`）。

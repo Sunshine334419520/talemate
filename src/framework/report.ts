@@ -9,7 +9,7 @@ import { getSection, isFiller, leadLine, listHeadings } from "./markdown";
 import { nameFromPath } from "./characters";
 
 /** 状态卡上这几格各读哪份文档——路径就是判据；路径是项目相对口径。 */
-const CORE_DOC = "design/core.md";
+const BRIEF_DOC = "design/brief.md";
 const WORLD_DOC = "design/wiki/world.md";
 const PROGRESS_DOC = "state/progress.md";
 
@@ -74,8 +74,8 @@ async function outlineBrief(projectId: string, designPaths: string[]): Promise<s
 /** 生成四层现状文本（给 CLI 进入空间 / 或会话内 /status 复用）。 */
 export async function buildProjectStatus(projectId: string): Promise<string> {
   const meta = await loadProjectMeta(projectId).catch(() => undefined);
-  const [core, world, designPaths] = await Promise.all([
-    readDoc(projectId, CORE_DOC),
+  const [brief, world, designPaths] = await Promise.all([
+    readDoc(projectId, BRIEF_DOC),
     readDoc(projectId, WORLD_DOC),
     enumerateDocs(projectId, "design/"),
   ]);
@@ -88,7 +88,7 @@ export async function buildProjectStatus(projectId: string): Promise<string> {
   const lines: string[] = [];
   lines.push(`作品：${meta?.title ?? projectId}${meta?.genre ? `（${meta.genre}）` : ""}`);
   lines.push("");
-  lines.push(`◇ 核心设定  ${layerBrief(core !== undefined, firstLine(core, "一句话简介"), "（已有一版）")}`);
+  lines.push(`◇ 概览  ${layerBrief(brief !== undefined, firstLine(brief, "一句话简介"), "（已有一版）")}`);
   lines.push(`◇ 世界观    ${layerBrief(world !== undefined, firstLine(world, "空间与舞台"), "（已有一版）")}`);
   lines.push(`◇ 角色现状  ${charBrief}`);
   lines.push(`◇ 大纲现状  ${await outlineBrief(projectId, designPaths)}`);

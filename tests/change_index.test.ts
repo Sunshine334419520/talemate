@@ -65,7 +65,7 @@ beforeEach(() => {
 describe("改动索引 · 追加与墓碑", () => {
   test("一行一条改动，按写入顺序读回", async () => {
     const sessionId = nextSessionId();
-    await appendChanges(projectId, sessionId, [point(1, "design/core.md")], {
+    await appendChanges(projectId, sessionId, [point(1, "design/brief.md")], {
       ts: 100,
       user: "写第一章",
     });
@@ -76,7 +76,7 @@ describe("改动索引 · 追加与墓碑", () => {
 
     const rows = await readChanges(projectId, sessionId);
     expect(rows.map((r) => [r.turnSeq, r.path, r.user])).toEqual([
-      [1, "design/core.md", "写第一章"],
+      [1, "design/brief.md", "写第一章"],
       [3, "chapters/chapter_ch1_v1.md", "写第一章"],
     ]);
   });
@@ -154,7 +154,7 @@ describe("改动索引 · 从消息重建", () => {
 
   test("writeChanges 覆盖写会清掉墓碑（重建后的文件是一份干净快照）", async () => {
     const sessionId = nextSessionId();
-    await appendChanges(projectId, sessionId, [point(2, "design/core.md")], { ts: 2, user: "二" });
+    await appendChanges(projectId, sessionId, [point(2, "design/brief.md")], { ts: 2, user: "二" });
     await appendChangeRewind(projectId, sessionId, 2);
     expect(await readChanges(projectId, sessionId)).toEqual([]);
 
@@ -223,7 +223,7 @@ describe("本书视图 · 只读索引", () => {
             state: "completed",
             input: "{}",
             output: "ok",
-            change: { path: "design/core.md", kind: "modified", diff: "@@", additions: 1, deletions: 1 },
+            change: { path: "design/brief.md", kind: "modified", diff: "@@", additions: 1, deletions: 1 },
           },
         ],
       });
@@ -234,7 +234,7 @@ describe("本书视图 · 只读索引", () => {
     const one = await listTurnChanges(projectId, sessionA);
     expect(one.map((g) => g.sessionId)).toEqual([sessionA]);
     expect(one[0]?.user).toBe("写第一章");
-    expect(one[0]?.changes[0]).toMatchObject({ path: "design/core.md", kind: "modified" });
+    expect(one[0]?.changes[0]).toMatchObject({ path: "design/brief.md", kind: "modified" });
 
     const book = await listTurnChanges(projectId);
     const mine = book.filter((g) => g.sessionId === sessionA || g.sessionId === sessionB);

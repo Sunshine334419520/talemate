@@ -236,11 +236,11 @@ export function Workspace({
     async (name: string): Promise<void> => {
       const verdict = await window.tm.setStyle(project.id, name);
       if (verdict === "unknown") {
-        setError(`文风库里没有「${name}」这张卡，没写进核心设定。`);
+        setError(`文风库里没有「${name}」这张卡，没写进概览。`);
         return;
       }
       if (verdict === "stale") {
-        setError("核心设定刚被别处改过，没敢覆盖——重开一次再换文风。");
+        setError("概览刚被别处改过，没敢覆盖——重开一次再换文风。");
         return;
       }
       await loadStyle();
@@ -1051,7 +1051,7 @@ export function Workspace({
     setDraft("");
     setMenu(null);
     // `@名字` 只是你看的：真正发出去时补一段"指的是哪些文件"，mate 拿的是确切地址。
-    // 我们看到的和模型拿到的不必是同一个东西——而让模型猜"核心设定"是哪个文件，是没必要的风险。
+    // 我们看到的和模型拿到的不必是同一个东西——而让模型猜"概览"是哪个文件，是没必要的风险。
     const hit = flatDocs(tree).filter((d) => text.includes(`@${d.name}`));
     const body =
       hit.length === 0
@@ -1756,7 +1756,7 @@ function ModelEffortChip({
 }
 
 /**
- * 文风：这本书用哪种声音写。选中即写进核心设定的「文风」格——**不经过模型**。
+ * 文风：这本书用哪种声音写。选中即写进概览的「文风」格——**不经过模型**。
  *
  * 触发按钮上显示的是卡的**中文名**（`title`），不是写进 core.md 的那个 id。
  */

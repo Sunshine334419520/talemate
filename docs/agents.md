@@ -2,8 +2,8 @@
 
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
-> **对齐代码**：2026-11-25 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
-> 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计工具背后的领域）
+> **对齐代码**：2026-11-26 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
+> 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计文档与资产载体）
 
 ## 归类判定规则
 
@@ -52,7 +52,7 @@
 
 **`researcher` 不在上面这三个里，边界值得写清楚**：它查的是**外部世界的事实**（一个朝代怎么收税、某个器物当时叫什么），不是稿子**内部的一致性**（金手指的边界有没有被违反）。前者是"去问世界"，后者是"拿自己的文档互相对照"——后者仍然不做。判据落在**主语**上：问的是世界，不是这部小说。
 
-**它的考据本不是「知识库」，也不是 skill。** 判据同样是主语，只是换成了**谁拥有它**：`skills/` 库里那几张卡是**用户的**东西——进 `<available_skills>` 目录、用户按名选（`design/core.md` 的「文风」格就是在选）、三层库还带"同名覆盖"的语义；而考据本是**模型自己的备忘录**，写在引擎工作区、`read` 够不着、用户不必知道也不用拍板。所以它既不该进 skill 库（那是"推"进上下文的、用户可选的知识），也不该有审阅环节（它不是作品）——它是"拉"的：问到才查。
+**它的考据本不是「知识库」，也不是 skill。** 判据同样是主语，只是换成了**谁拥有它**：`skills/` 库里那几张卡是**用户的**东西——进 `<available_skills>` 目录、用户按名选（`design/brief.md` 的 `## 文风` 小节就是在选）、三层库还带"同名覆盖"的语义；而考据本是**模型自己的备忘录**，写在引擎工作区、`read` 够不着、用户不必知道也不用拍板。所以它既不该进 skill 库（那是"推"进上下文的、用户可选的知识），也不该有审阅环节（它不是作品）——它是"拉"的：问到才查。
 
 ### 加角色的固定动作
 
@@ -228,9 +228,9 @@ description: 网文 · 白话爽感文风（第三人称，快、顺、直给）
 （正文 = 完整文风卡：约束层 + 六维声音层 + 反例 + 声音范例）
 ```
 
-**用户切换文风就是写一个卡名**：`design/core.md` 的「文风」格写哪张卡的名字，写作窗口就取哪张（`framework/prose.ts`）；不写这一格用默认那张 `storytelling`。所以**卡名必须是目录名**——对不上，`buildProseBrief` 会报"文风库里没有这个名字"，而那张卡明明躺在库里，看得见却取不到（`tests/skill.test.ts` 守着这一条）。加一张可选卡 = 加一个目录，没有第二处要改。
+**用户切换文风就是写一个卡名**：`design/brief.md` 的 `## 文风` 小节写哪张卡的名字，写作窗口就取哪张（`framework/prose.ts`）；不写这一节用默认那张 `storytelling`。所以**卡名必须是目录名**——对不上，`buildProseBrief` 会报"文风库里没有这个名字"，而那张卡明明躺在库里，看得见却取不到（`tests/skill.test.ts` 守着这一条）。加一张可选卡 = 加一个目录，没有第二处要改。
 
-**文风卡要多标两样：`kind: style` 与中文 `title`。** `kind` 是**状态栏那个文风选择器**把文风卡从普通 skill 里挑出来的唯一判据——库是三处合并的，不筛的话一个"查资料"的 skill 也会进候选，选中它等于把那份工作法当成"一种声音"注进正文窗口。`title` 是界面上给人看的名字；`name` 只作**稳定 id**（写进 `design/core.md`，也是取卡的判据），两者别合并：中文写进 `name` 会同时踩两处（`prose.NAME_LIKE` 只认 ASCII；且中文之后"卡名"与"一句大白话"就分不开了）。`tests/skill.test.ts` 钉着内置库每张都有这两样。
+**文风卡要多标两样：`kind: style` 与中文 `title`。** `kind` 是**状态栏那个文风选择器**把文风卡从普通 skill 里挑出来的唯一判据——库是三处合并的，不筛的话一个"查资料"的 skill 也会进候选，选中它等于把那份工作法当成"一种声音"注进正文窗口。`title` 是界面上给人看的名字；`name` 只作**稳定 id**（写进 `design/brief.md`，也是取卡的判据），两者别合并：中文写进 `name` 会同时踩两处（`prose.NAME_LIKE` 只认 ASCII；且中文之后"卡名"与"一句大白话"就分不开了）。`tests/skill.test.ts` 钉着内置库每张都有这两样。
 
 - **发现**：三个库、一条优先级——**内置库** `<repo>/skills/<name>/`（随产品发布：`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）< **全局库** `~/.talemate/skills/<name>/`（作者级、跨作品）< **项目库** `novels/<id>/skills/<name>/`（本小说专属）。扫描顺序就是优先级，后扫的同名覆盖先扫的，所以内置那几份压不过任何用户自己的 skill。
 - **注入**：system 只放 `<available_skills>`（name + description + location）；`skill` 工具按名把正文载入为一条 tool-result。

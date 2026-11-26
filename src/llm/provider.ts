@@ -360,12 +360,15 @@ function repairJson(s: string): string {
 
 // ─── Mock（离线冒烟：验证 runner / 工具循环，不打网络） ───
 
-/** 冒烟剧本：一份合法的整篇写入（核心设定）。 */
-const MOCK_CORE_DOC = [
-  "# 核心设定",
-  "",
-  "## 题材 · 频道",
-  "男频 · 都市异能",
+/** 冒烟剧本：一份合法的整篇写入（概览）。 */
+const MOCK_BRIEF_DOC = [
+  "---",
+  "kind: brief",
+  "title: 冒烟整篇写",
+  "channel: 男频",
+  "genre: 都市异能",
+  "---",
+  "# 概览",
   "",
   "## 一句话简介",
   "沈越，被逐出家族的前首席，靠一门不能见光的本事往回爬。",
@@ -415,7 +418,7 @@ async function chatMock(opts: ChatOpts): Promise<AssistantTurn> {
       mockTool === "task"
         ? { agent: "planner", prompt: "把第 1 章的规划做出来。" }
         : mockTool === "write"
-          ? { path: "design/core.md", content: MOCK_CORE_DOC }
+          ? { path: "design/brief.md", content: MOCK_BRIEF_DOC }
           : sampleArgs(schema);
     opts.onToolCallStart?.({ id: "mock-call-1", name: mockTool });
     return {

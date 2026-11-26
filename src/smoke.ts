@@ -165,11 +165,11 @@ try {
     return "once";
   };
   process.env.TALEMATE_MOCK_TOOL = "write";
-  await s2.post("把核心设定整理一版出来。");
-  const written = await readFile(join(HOME, "novels", meta2.id, "design", "core.md"), "utf-8").catch(() => "");
+  await s2.post("把概览整理一版出来。");
+  const written = await readFile(join(HOME, "novels", meta2.id, "design", "brief.md"), "utf-8").catch(() => "");
   const landedCore = written.includes("## 一句话简介");
   console.log(`[9] write 落盘整篇（用户看过 diff）：${landedCore ? "✓" : "✗"}`);
-  if (!landedCore) throw new Error(`design/core.md 没落盘：${truncate(written, 120)}`);
+  if (!landedCore) throw new Error(`design/brief.md 没落盘：${truncate(written, 120)}`);
 
   const diffShown = confirmDetails.some((d) => d.includes("+") && d.includes("一句话简介"));
   console.log(`[9b] confirm 里带着要落的全部字节（diff）：${diffShown ? "✓" : "✗"}`);

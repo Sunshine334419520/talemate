@@ -43,7 +43,7 @@ import { AgentRegistry } from "../src/agent/registry";
 import { PLAN_KEY } from "../src/core/types";
 import { renderPendingNote, renderPermissionView, Session, writeSettlesPlan } from "../src/session/session";
 import { isChapterFile } from "../src/framework/plan";
-import { DEFAULT_STYLE, SHELF_HEADING, STYLE_HEADING, buildProseBrief, styleCatalog, styleChoiceFrom, withShelf, withStyle } from "../src/framework/prose";
+import { DEFAULT_STYLE, STYLE_HEADING, buildProseBrief, styleCatalog, styleChoiceFrom, withShelf, withStyle } from "../src/framework/prose";
 import type { ModelConfig } from "../src/core/types";
 import { ToolRegistry } from "../src/tool/registry";
 import { executeToolPart } from "../src/tool/runner";
@@ -121,7 +121,7 @@ describe("markdown 区块手术", () => {
   });
 
   test("upsertSection 命中就换掉那一格，别的格一个字节不动", () => {
-    const core = ["# 核心设定", "", "## 题材 · 频道", "男频", "", "## 文风", "storytelling", ""].join("\n");
+    const core = ["# 概览", "", "## 题材 · 频道", "男频", "", "## 文风", "storytelling", ""].join("\n");
     const next = upsertSection(core, "文风", "网文爽感");
     expect(next).toContain("## 文风\n网文爽感");
     expect(next).not.toContain("storytelling");
@@ -129,14 +129,14 @@ describe("markdown 区块手术", () => {
   });
 
   test("upsertSection 命不中就追加——格还不存在是**正常起点**，不是错误", () => {
-    const core = "# 核心设定\n\n## 题材 · 频道\n男频\n";
+    const core = "# 概览\n\n## 题材 · 频道\n男频\n";
     const next = upsertSection(core, "文风", "storytelling");
     expect(next).toContain("## 文风\nstorytelling");
     expect(next.indexOf("## 题材 · 频道")).toBeLessThan(next.indexOf("## 文风")); // 追加在末尾
-    expect(next.startsWith("# 核心设定")).toBe(true);
+    expect(next.startsWith("# 概览")).toBe(true);
   });
 
-  test("upsertSection 空内容起手也能用（新建项目没有 core.md）", () => {
+  test("upsertSection 空内容起手也能用（新建项目没有 brief.md）", () => {
     expect(upsertSection("", "文风", "storytelling")).toBe("## 文风\nstorytelling");
   });
 
@@ -188,7 +188,7 @@ describe("读口 · read / list / search", () => {
   test("read 读得到 chapters/——从前工具名把管辖范围焊死在 design/ 上", async () => {
     const id = await proj();
     await writeDoc(id, CH, "# 第九章\n\n沈越上了船。\n");
-    await writeDoc(id, "design/core.md", "# 核心\n\n## 一句话简介\n沈越想活着回去。\n");
+    await writeDoc(id, "design/brief.md", "# 概览\n\n## 一句话简介\n沈越想活着回去。\n");
     const r = await readTool.execute({ path: CH }, makeCtx(id) as never);
     expect(r.output).toContain("沈越上了船。");
   });
@@ -198,12 +198,12 @@ describe("读口 · read / list / search", () => {
     const r = await readTool.execute({ path: "chapters/没有这一章.md" }, makeCtx(id) as never);
     expect(r.output).toContain("没有找到");
     expect(r.output).toContain("chapter_ch9_v1.md");
-    expect(r.output).not.toContain("core.md");
+    expect(r.output).not.toContain("brief.md");
   });
 
   test("glob：省略 path = 整个项目；给目录就只搜那一段", async () => {
     const id = await proj();
-    await writeDoc(id, "design/core.md", "# 核心\n");
+    await writeDoc(id, "design/brief.md", "# 概览\n");
     await writeDoc(id, CH, "沈越在这里。\n");
     const all = (await globTool.execute({ pattern: "**/*.md" }, makeCtx(id) as never)).output;
     expect(all).toContain("design/");
@@ -212,12 +212,12 @@ describe("读口 · read / list / search", () => {
 
     const onlyCh = (await globTool.execute({ pattern: "**/*.md", path: "chapters" }, makeCtx(id) as never)).output;
     expect(onlyCh).toContain("chapter_ch9_v1.md");
-    expect(onlyCh).not.toContain("core.md");
+    expect(onlyCh).not.toContain("brief.md");
   });
 
   test("grep：范围是参数。扫得到正文里的引用——删名前的引用检查靠这一条", async () => {
     const id = await proj();
-    await writeDoc(id, "design/core.md", "# 核心\n\n沈越想要回去。\n");
+    await writeDoc(id, "design/brief.md", "# 概览\n\n沈越想要回去。\n");
     await writeDoc(id, CH, "沈越在这里。\n");
     const all = (await grepTool.execute({ pattern: "沈越" }, makeCtx(id) as never)).output;
     expect(all).toContain(CH);
@@ -237,7 +237,7 @@ describe("索引 · 目录次序与未知目录", () => {
 
   test("列整个项目时三个根按作品次序排在前面，且流水只占一行", async () => {
     const id = (await createProject({ title: "索引根次序" })).id;
-    await writeDoc(id, "design/core.md", "# 核心\n");
+    await writeDoc(id, "design/brief.md", "# 概览\n");
     await writeDoc(id, "chapters/chapter_ch1_v1.md", "第一章。\n");
     await writeDoc(id, "state/progress.md", "# 章节流水\n\n## 第 1 章\n他借到了粮。\n");
 
@@ -279,27 +279,27 @@ describe("状态卡 · 大纲现状只报位置，不报剩余", () => {
 describe("项目懒建 / 搜索 / 锚点", () => {
   test("懒建：建项目不种四层；文件被写入才出现", async () => {
     expect(await enumerateDocs(pid, "design/")).toEqual([]);
-    await writeDoc(pid, "design/core.md", "# core\n\n## 一句话简介\n空难后困于荒岛。");
-    expect(await enumerateDocs(pid, "design/")).toEqual(["design/core.md"]);
+    await writeDoc(pid, "design/brief.md", "# 概览\n\n## 一句话简介\n空难后困于荒岛。");
+    expect(await enumerateDocs(pid, "design/")).toEqual(["design/brief.md"]);
   });
 
   test("scanDocs 跨文档命中；renderHits 分组，路径按**项目相对**给出", async () => {
-    await writeDoc(pid, "design/core.md", "## 一句话简介\n沈越 想要活着回去。");
+    await writeDoc(pid, "design/brief.md", "## 一句话简介\n沈越 想要活着回去。");
     await writeDoc(pid, "design/wiki/world.md", "## 势力\n沈越 与林晚结伴求生。");
     const hits = await scanDocs(pid, "沈越", "design/");
     expect(hits.length).toBe(2);
     const text = renderHits(hits, "沈越");
     // 报出来的路径**就是**工具收的那个口径——模型可以直接拿它去 read/edit
-    expect(text).toContain("design/core.md");
+    expect(text).toContain("design/brief.md");
     expect(text).toContain("design/wiki/world.md");
     expect(await scanDocs(pid, "不存在的词", "design/")).toHaveLength(0);
   });
 
-  test("索引把 core 与 world 也当普通文档列出来（没有常驻层）", async () => {
-    await writeDoc(pid, "design/core.md", "# core\n\n## 一句话简介\n沈越 想要活着回去。");
+  test("索引把概览与 world 也当普通文档列出来（没有常驻层）", async () => {
+    await writeDoc(pid, "design/brief.md", "# 概览\n\n## 一句话简介\n沈越 想要活着回去。");
     await writeDoc(pid, "design/wiki/world.md", "## 空间与舞台\n一座荒岛。\n\n## 规则与秩序\n无超自然。");
     const index = await buildIndex(pid);
-    expect(index).toContain("core.md");
+    expect(index).toContain("brief.md");
     expect(index).toContain("world.md");
   });
 });
@@ -746,7 +746,7 @@ describe("propose-plan · 规划工件与拍板", () => {
       ["chapters/chapter_ch2_v1.md", 1, false], // 是章文件，但不是这一章
       ["chapters/chapter_ch1_v1.md", 12, false], // 反过来也一样
       ["chapters/ch1.md", 1, false], // 没按约定命名 → done 不置位，退回"一直开着"（失效，不是误判）
-      ["design/core.md", 1, false],
+      ["design/brief.md", 1, false],
       ["chapters/chapter_ch1_v1.txt", 1, false],
     ];
     const wrong = cases.filter(([p, n, want]) => isChapterFile(p, n) !== want).map(([p]) => p);
@@ -758,47 +758,50 @@ describe("propose-plan · 规划工件与拍板", () => {
 
 // ─── 建书时种下的书架声明 ───
 
-describe("withShelf · 书架声明种进核心设定", () => {
-  test("没有 core.md 时起手一份：先频道、后题材，各一行", () => {
+describe("withShelf · 书架声明种进概览", () => {
+  test("没有 brief.md 时起手一份：频道 / 题材进 frontmatter，正文仍是空的概览", () => {
     const text = withShelf(undefined, "男频", "都市");
-    expect(text).toContain("# 核心设定");
-    expect(text).toContain(`## ${SHELF_HEADING}\n男频\n都市`);
+    expect(text).toContain("kind: brief");
+    expect(text).toContain("channel: 男频");
+    expect(text).toContain("genre: 都市");
+    expect(text).toContain("# 概览");
   });
 
-  test("已经有这一格时只换那一格，别的一格不动", () => {
-    const core = `# 核心设定\n\n## ${SHELF_HEADING}\n女频\n古言\n\n## 一句话简介\n她回了一趟老家。\n`;
-    const text = withShelf(core, "男频", "玄幻");
-    expect(text).toContain(`## ${SHELF_HEADING}\n男频\n玄幻`);
+  test("已经有 frontmatter 时只换那两个键，正文一个字节不动", () => {
+    const brief = "---\nkind: brief\nchannel: 女频\ngenre: 古言\n---\n# 概览\n\n## 一句话简介\n她回了一趟老家。\n";
+    const text = withShelf(brief, "男频", "玄幻");
+    expect(text).toContain("channel: 男频");
+    expect(text).toContain("genre: 玄幻");
     expect(text).toContain("## 一句话简介\n她回了一趟老家。");
     expect(text).not.toContain("古言");
   });
 
   test("只选了频道没选题材，也写得进去", () => {
-    expect(withShelf(undefined, "女频", "")).toContain(`## ${SHELF_HEADING}\n女频`);
+    expect(withShelf(undefined, "女频", "")).toContain("channel: 女频");
   });
 
-  test("两个值都空 → 不写：没有可写的东西就不该凭空造一份 core.md", () => {
+  test("两个值都空 → 不写：没有可写的东西就不该凭空造一份 brief.md", () => {
     expect(withShelf(undefined, undefined, undefined)).toBeUndefined();
     expect(withShelf(undefined, "", "  ")).toBeUndefined();
-    expect(withShelf("# 核心设定\n", "", "")).toBeUndefined();
+    expect(withShelf("# 概览\n", "", "")).toBeUndefined();
   });
 });
 
 describe("文风目录 · 状态栏那个选择器取的两样", () => {
-  test("withStyle：没有核心设定时起手一份，格内容就是卡名", () => {
+  test("withStyle：没有概览时起手一份，格内容就是卡名", () => {
     const text = withStyle(undefined, "style-01-wangwen");
-    expect(text).toContain("# 核心设定");
+    expect(text).toContain("# 概览");
     expect(text).toContain(`## ${STYLE_HEADING}\nstyle-01-wangwen`);
   });
 
-  test("withStyle：已有核心设定时只换那一格", () => {
-    const core = "# 核心设定\n\n## 题材 · 频道\n男频\n\n## 文风\nstorytelling\n";
-    const text = withStyle(core, "style-01-wangwen");
-    expect(text).toContain("## 题材 · 频道\n男频");
+  test("withStyle：已有概览时只换那一格", () => {
+    const brief = "---\nkind: brief\nchannel: 男频\n---\n# 概览\n\n## 文风\nstorytelling\n";
+    const text = withStyle(brief, "style-01-wangwen");
+    expect(text).toContain("channel: 男频");
     expect(text).toContain("## 文风\nstyle-01-wangwen");
   });
 
-  test("当前文风：没有 core.md → 默认卡，没什么可说的", async () => {
+  test("当前文风：没有 brief.md → 默认卡，没什么可说的", async () => {
     const id = (await createProject({ title: "文风 · 空项目" })).id;
     const { current } = await styleCatalog(id);
     expect(current.name).toBe(DEFAULT_STYLE);
@@ -807,7 +810,7 @@ describe("文风目录 · 状态栏那个选择器取的两样", () => {
 
   test("当前文风：格里的字不是卡名 → 照样报出来，不静默换掉用户的声口", async () => {
     const id = (await createProject({ title: "文风 · 大白话" })).id;
-    await writeDoc(id, "design/core.md", "# 核心设定\n\n## 文风\n写得顺一点的那种网文味道\n");
+    await writeDoc(id, "design/brief.md", "# 概览\n\n## 文风\n写得顺一点的那种网文味道\n");
     const { current } = await styleCatalog(id);
     expect(current.name).toBe(DEFAULT_STYLE);
     expect(current.note).toBeDefined();
@@ -825,13 +828,13 @@ describe("文风目录 · 状态栏那个选择器取的两样", () => {
     const names = cards.map((c) => c.name);
     expect(names).not.toContain("lookup");
     expect(names).toContain(DEFAULT_STYLE); // 内置那两张声明过 kind，在
-    // 界面上给人看的是中文 title；写进 core.md 的才是 name
+    // 界面上给人看的是中文 title；写进 brief.md 的才是 name
     expect(cards.find((c) => c.name === DEFAULT_STYLE)?.title).not.toBe(DEFAULT_STYLE);
   });
 });
 
 describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () => {
-  const CORE = (body: string): string => `# 核心\n\n## 文风\n${body}\n`;
+  const BRIEF = (body: string): string => `# 概览\n\n## 文风\n${body}\n`;
 
   test("文风格读不出卡名时用默认，**但带一句说明**——不能静默换掉用户的声口", () => {
     const cases: [string, string, boolean][] = [
@@ -844,23 +847,23 @@ describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () 
     ];
     const wrong = cases
       .filter(([body, want, wantNote]) => {
-        const c = styleChoiceFrom(CORE(body));
+        const c = styleChoiceFrom(BRIEF(body));
         return c.name !== want || (c.note !== undefined) !== wantNote;
       })
       .map(([body]) => body);
     expect(wrong).toEqual([]);
   });
 
-  test("没有核心设定、或没有文风格 → 默认那张", () => {
+  test("没有概览、或没有文风格 → 默认那张", () => {
     const got = [
       styleChoiceFrom(undefined).name,
-      styleChoiceFrom("# 核心\n\n## 一句话简介\n沈越想活着回去。\n").name,
+      styleChoiceFrom("# 概览\n\n## 一句话简介\n沈越想活着回去。\n").name,
     ];
     expect(got).toEqual(["storytelling", "storytelling"]);
   });
 
   test("窗口块：规范 + 卡 + 落盘路径，三样一起给", async () => {
-    await writeDoc(pid, "design/core.md", CORE("storytelling"));
+    await writeDoc(pid, "design/brief.md", BRIEF("storytelling"));
     const brief = await buildProseBrief(pid, 3);
     const missing = [
       `<prose-window chapter="3">`,
@@ -875,18 +878,18 @@ describe("正文写作窗口 · 规范与文风卡什么时候进上下文", () 
     expect(missing).toEqual([]);
   });
 
-  test("换一张卡：核心设定写哪张，交出来的就是哪张的正文——选得到，不是只挂在目录里", async () => {
+  test("换一张卡：概览写哪张，交出来的就是哪张的正文——选得到，不是只挂在目录里", async () => {
     // 这条钉的是"用户能切换文风"的**取用端**：卡名写进「文风」格之后，真的走到写正文那一步。
     // 卡名与正文各取一处（正文用「名字领句」，是该卡最醒目的指纹）——目录里有、正文却取不到，
     // 正是会静默发生的那种失败。
-    await writeDoc(pid, "design/core.md", CORE("style-01-wangwen"));
+    await writeDoc(pid, "design/brief.md", BRIEF("style-01-wangwen"));
     const brief = await buildProseBrief(pid, 1);
     const missing = ["【这本书的文风】style-01-wangwen", "名字领句"].filter((s) => !brief.includes(s));
     expect(missing).toEqual([]);
   });
 
   test("指定的卡在库里不存在 → 明说要问用户，**不静默退回默认**", async () => {
-    await writeDoc(pid, "design/core.md", CORE("style-bucunzai"));
+    await writeDoc(pid, "design/brief.md", BRIEF("style-bucunzai"));
     const brief = await buildProseBrief(pid, 1);
     expect(brief).toContain("style-bucunzai");
     expect(brief).toContain("文风库里没有这个名字");
@@ -947,7 +950,7 @@ describe("权限 · 求值", () => {
   test("pattern 是通配的，`*` 跨 `/`", () => {
     expect(match("design/wiki/world.md", "design/*")).toBe(true);
     expect(match("chapters/ch1.md", "design/*")).toBe(false);
-    expect(match("design/core.md", "design/core.md")).toBe(true);
+    expect(match("design/brief.md", "design/brief.md")).toBe(true);
   });
 
   test("`deny *` 隐藏工具；具体 pattern 的 deny 不隐藏（那是「这一类里有一个例外」）", () => {
@@ -1038,14 +1041,14 @@ describe("权限 · 规则表视图（CLI 的 /permissions）", () => {
   });
 
   test("视图摊开的那几层，求值结果就是会话真正在执行的——显示和执行不会各说各话", async () => {
-    const session = await sessionWith({ edit: { "*": "allow", "design/core.md": "ask" } });
+    const session = await sessionWith({ edit: { "*": "allow", "design/brief.md": "ask" } });
     const view = session.permissionView();
     const sets = [...view.layers.map((l) => l.rules), view.approved];
 
     // 兜底那条 `*→allow` 生效
     expect(evaluateWithSource("edit", "chapters/ch1.md", ...sets).rule.action).toBe("allow");
     // 但被点名的那一个仍然要问，且来源是"项目配置"那一层
-    const guarded = evaluateWithSource("edit", "design/core.md", ...sets);
+    const guarded = evaluateWithSource("edit", "design/brief.md", ...sets);
     expect(guarded.rule.action).toBe("ask");
     expect(view.layers[guarded.layer].label).toBe("项目配置 talemate.json");
   });
@@ -1073,15 +1076,15 @@ describe("权限 · 规则表视图（CLI 的 /permissions）", () => {
 describe("权限 · 会话级行为", () => {
   test("accept-edits：落盘不问，委派与联网照问", async () => {
     const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, MODES["accept-edits"].permission));
-    expect(await ctx.ask({ permission: "edit", pattern: "design/core.md", summary: "" })).toBe("allow");
+    expect(await ctx.ask({ permission: "edit", pattern: "design/brief.md", summary: "" })).toBe("allow");
     expect(ctx.check("delegate", "planner")).toBe("ask");
     expect(ctx.check("extern", "https://x")).toBe("ask");
   });
 
   test("planner / researcher 的类别拒：edit 与 delegate 都是 deny（只读）", async () => {
     const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, { edit: "deny", delegate: "deny" }));
-    expect(ctx.check("edit", "design/core.md")).toBe("deny");
-    expect(await ctx.ask({ permission: "edit", pattern: "design/core.md", summary: "" })).toBe("deny");
+    expect(ctx.check("edit", "design/brief.md")).toBe("deny");
+    expect(await ctx.ask({ permission: "edit", pattern: "design/brief.md", summary: "" })).toBe("deny");
     expect(ctx.check("extern", "https://x")).toBe("ask"); // 查资料仍然可以
   });
 
@@ -1110,7 +1113,7 @@ describe("权限 · 会话级行为", () => {
     const before = "# X\n\n## 甲\n旧的一版。\n";
     await writeDoc(pid, doc, before);
     // pattern 是**项目相对路径**，与工具入参、与 docs/permissions.md 的例子同一口径——
-    // 三者曾经各说各话（写入传的是裸 `name`），于是文档里写的 `design/core.md` 这类规则从来没生效过。
+    // 三者曾经各说各话（写入传的是裸 `name`），于是文档里写的 `design/brief.md` 这类规则从来没生效过。
     const ctx = makeCtx(pid, mergeConfigs(BASE_PERMISSIONS, { edit: { "*": "allow", [doc]: "deny" } }));
 
     const r = await writeTool.execute({ path: doc, content: "# X\n\n## 甲\n新的一版。\n" }, ctx as never);
@@ -1297,18 +1300,18 @@ describe("考据本 · 记一条、翻回来、以及它够不着作品", () => 
 
 describe("文档树 · 显示名与排序都只有一份", () => {
   test("顶层是六段中文名，**目录名一个都不出现**", () => {
-    const tree = docTree(["state/progress.md", "chapters/chapter_ch1_v1.md", "design/core.md"]);
-    expect(tree.map((n) => n.name)).toEqual(["核心设定", "正文", "现状"]);
-    // 六段的固定次序：核心设定 → 世界观 → 角色 → 大纲 → 正文 → 现状
+    const tree = docTree(["state/progress.md", "chapters/chapter_ch1_v1.md", "design/brief.md"]);
+    expect(tree.map((n) => n.name)).toEqual(["概览", "正文", "现状"]);
+    // 六段的固定次序：概览 → 世界观 → 角色 → 大纲 → 正文 → 现状
     const all = docTree([
       "state/progress.md",
       "chapters/chapter_ch1_v1.md",
       "design/outline/vol_1.md",
       "design/characters/沈越.md",
       "design/wiki/world.md",
-      "design/core.md",
+      "design/brief.md",
     ]);
-    expect(all.map((n) => n.name)).toEqual(["核心设定", "世界观", "角色", "大纲", "正文", "现状"]);
+    expect(all.map((n) => n.name)).toEqual(["概览", "世界观", "角色", "大纲", "正文", "现状"]);
   });
 
   test("名字是人话：第 3 章（第 2 稿）、第 1 卷 / 序列 2、伏笔账", () => {
@@ -1348,8 +1351,8 @@ describe("文档树 · 显示名与排序都只有一份", () => {
   });
 
   test("认不出的照原样列进「其他」——加了一类文档忘了配名字，也得看得见", () => {
-    const tree = docTree(["design/没有这一类/怪东西.md", "design/core.md"]);
-    expect(tree.map((n) => n.name)).toEqual(["核心设定", "其他"]);
+    const tree = docTree(["design/没有这一类/怪东西.md", "design/brief.md"]);
+    expect(tree.map((n) => n.name)).toEqual(["概览", "其他"]);
     expect(tree[1].children?.[0]?.path).toBe("design/没有这一类/怪东西.md");
   });
 });

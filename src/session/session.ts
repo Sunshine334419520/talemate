@@ -132,7 +132,7 @@ export interface PermissionView {
   approved: Ruleset;
 }
 
-/** 一份规则集的紧凑写法：`edit: *→ask  design/core.md→allow`。 */
+/** 一份规则集的紧凑写法：`edit: *→ask  design/brief.md→allow`。 */
 function renderRuleset(rules: Ruleset): string {
   if (!rules.length) return "（无）";
   const byPerm = new Map<string, string[]>();

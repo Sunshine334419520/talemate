@@ -85,8 +85,8 @@ describe("summaries · 章节流水（只追加，所以只给一行）", () => 
 });
 
 describe("summaries · 没有一行的情况（交给索引铺小节）", () => {
-  test("有格的核心设定：返回 undefined，索引去铺它的小节标题", () => {
-    expect(at("design/core.md", "# 核心\n\n## 一句话简介\n沈越想活着回去。\n")).toBeUndefined();
+  test("有格的概览：返回 undefined，索引去铺它的小节标题", () => {
+    expect(at("design/brief.md", "# 核心\n\n## 一句话简介\n沈越想活着回去。\n")).toBeUndefined();
     expect(at("design/outline/vol_2.md", "## 本卷在全局的位置\n承接上卷。\n")).toBeUndefined();
     expect(at("design/wiki/岛屿地图.md", "# 岛屿地图\n\n## 北岸\n礁石。\n")).toBeUndefined();
   });
@@ -97,6 +97,6 @@ describe("summaries · 没有一行的情况（交给索引铺小节）", () => 
   });
 
   test("非卡且读不到内容 → undefined（「（缺）」由索引统一写，不在这里各写一套）", () => {
-    expect(at("design/core.md", undefined)).toBeUndefined();
+    expect(at("design/brief.md", undefined)).toBeUndefined();
   });
 });

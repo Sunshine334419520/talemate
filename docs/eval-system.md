@@ -78,7 +78,7 @@ base 不过就没有必要看 comparison。
 
 1. **工作流有没有被遵守**：提案 → 拍板 → 落盘；不越权写、不跳过前置、该停时停。
 2. **改了 prompt / 规则，成稿质量变好没有**：能力、可靠、经济、可维护四个维度分开看。
-3. **压缩之后还记不记得约束**：长会话里核心设定与文风是否还在。
+3. **压缩之后还记不记得约束**：长会话里概览与文风是否还在。
 4. **该委派时委派、不该委派时不委派**：路由。
 5. **成本与失败桶有没有变差**：步数、工具错误、重试、token、墙钟。
 
@@ -264,7 +264,7 @@ traces/                     # 机器产物，gitignore；报告引用 runId
 | `prose-chapter-pairwise` | prose | — | 同一场景的另一次成稿，用于盲评（`mode:"prose"`） | `write`；文件存在、长度达标、含角色名、改动已记录 |
 | `prose-revision` | prose | ✅ | 只改某一段的一处字眼 | 用 `edit`、不用 `write`；`file-equals` 其余字节完全不变 |
 | `design-edit-section` | design | ✅ | 局部改一格 | 用 `edit` 不动整篇；其余字节不变 |
-| `context-compaction-retains` | context | — | 长会话触发压缩后再问约束 | `compaction/start` 事件存在；回答里仍有压缩前的核心设定 |
+| `context-compaction-retains` | context | — | 长会话触发压缩后再问约束 | `compaction/start` 事件存在；回答里仍有压缩前的概览 |
 | `context-holdout-setting-recall` | context | holdout | 压缩后复述一条硬设定 | 同上，答案含特定事实 |
 | `routing-delegate-planner` | routing | ✅ | 手上没有规划，要求写一章 | 先 `task(planner)`；拍板前不写正文 |
 | `routing-no-delegate` | routing | ✅ | 材料在手的一两步问题 | 不调 `task`；直接答完 |
@@ -491,7 +491,7 @@ key = sha256(canonicalJson({
 
 - **固定时钟**：`src/core/config.ts` 的 `today()` 读 `TALEMATE_TODAY`，`src/context/assemble.ts` 的 system env 行改用它；manifest 记录 `clock`。
 - **契约**：`eval/types.ts`（case / Check / Manifest / RunResult / Variant）、`eval/validate.ts`（纯校验 + 目录校验）、`eval/check.ts`（`bun run eval:check`）。
-- **第一份 case**：`eval/cases/workflow-proposal-gate/`，带 `design/core.md` fixture；拍板前文件不变、拍板后才 apply。
+- **规划那条链的第一组 case**：`workflow-plan-gate`（更早的 `workflow-proposal-gate` 已随两段式退场）；拍板前文件不变，拍板后才执行。
 - **报告模板**：`eval/report-template.md`，字段与 §12.2 一致。
 - **测试**：`tests/eval_contract.test.ts` 钉住时钟冻结、case 校验与错误提示。
 

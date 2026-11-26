@@ -2,7 +2,7 @@
  * SKILL.md 解析与 Skill 形状。一个 skill = 一个目录 + SKILL.md；frontmatter 只强校验 name，
  * 多余字段容忍并忽略。
  *
- * `name` 与 `title` 是两件事，别合并：`name` 是写进 `design/core.md`「文风」格的**稳定 id**
+ * `name` 与 `title` 是两件事，别合并：`name` 是写进 `design/brief.md`「文风」格的**稳定 id**
  * （`framework/prose.ts` 按它取卡，界面切换文风也写它），`title` 只是给人看的显示名。
  * id 稳定、显示名可改——把中文写进 `name` 会同时踩两处：`prose.NAME_LIKE` 只认 ASCII，
  * 且中文之后"卡名"与"一句大白话"就分不开了。

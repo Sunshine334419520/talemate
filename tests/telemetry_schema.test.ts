@@ -76,8 +76,8 @@ const SAMPLES: { [K in TraceEventType]: TraceEventData[K] } = {
     missing: [],
     metrics: { p0Coverage: 1, dropped: 0, compressionRatio: 1, stale: 0, duplicate: 0, missing: 0, deferred: 0 },
   },
-  "proposal/presented": { proposal: "design/core.md", hash: "h", at: 1 },
-  "proposal/decision": { at: 1, proposal: "design/core.md", verdict: "accept" },
+  "proposal/presented": { proposal: "design/brief.md", hash: "h", at: 1 },
+  "proposal/decision": { at: 1, proposal: "design/brief.md", verdict: "accept" },
   "tool/call": { callId: "c", name: "read", inputChars: 1 },
   "tool/result": {
     callId: "c",

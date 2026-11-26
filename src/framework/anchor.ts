@@ -1,5 +1,5 @@
 /**
- * 文档索引：左栏那棵树与模型看到的目录清单。路径一律项目相对（`design/core.md`），与工具收的
+ * 文档索引：左栏那棵树与模型看到的目录清单。路径一律项目相对（`design/brief.md`），与工具收的
  * 路径、`FileOp.path`、权限 pattern 同一个口径。
  *
  * 这里只做分组、缩进、铺小节标题这类通用的事——"某种文档在目录里长什么样"是策略，
@@ -37,7 +37,7 @@ export interface DocNode {
  * 左栏那棵树的六段，次序固定——就是 `mate` 对用户说话用的那六个词（见 `mate.system.txt`）。
  * 目录名（`design/` `chapters/` `state/`）一个都不出现：它们是实现，不是这本书的样子。
  */
-const SECTIONS = ["核心设定", "世界观", "角色", "大纲", "正文", "现状"] as const;
+const SECTIONS = ["概览", "世界观", "角色", "大纲", "正文", "现状"] as const;
 
 /** 认不出的东西归这一段：加了一类文档忘了配名字，也得看得见，不能丢。 */
 const OTHER = "其他";
@@ -51,7 +51,7 @@ const base = (path: string): string => path.split("/").pop()?.replace(/\.md$/, "
  * 它只认作品那三个根下的已知形状；`.talemate/` 下的东西到不了这里（`enumerateDocs` 不认它）。
  */
 function displayOf(path: string): { section: string; parts: string[] } {
-  if (path === "design/core.md") return { section: "核心设定", parts: [] };
+  if (path === "design/brief.md") return { section: "概览", parts: [] };
   if (path === "design/wiki/world.md") return { section: "世界观", parts: [] };
   if (path.startsWith("design/wiki/")) return { section: "世界观", parts: [base(path)] };
   if (path.startsWith("design/characters/")) return { section: "角色", parts: [base(path)] };
@@ -85,7 +85,7 @@ function displayOf(path: string): { section: string; parts: string[] } {
  */
 export function docTree(paths: string[]): DocNode[] {
   const children = new Map<string, DocNode[]>();
-  const self = new Map<string, string>(); // 那一段自己的总纲文档（核心设定、世界观总纲）
+  const self = new Map<string, string>(); // 那一段自己的总纲文档（概览、世界观总纲）
 
   for (const path of paths) {
     const { section, parts } = displayOf(path);

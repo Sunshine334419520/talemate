@@ -119,7 +119,7 @@ export function leadLine(content: string, heading: string, max = 60): string | u
  * 写一个区块（含其 heading）：有就整格换掉，没有就追加到文末。
  *
  * 与 `removeSection` 相反的方向，但**不是**它的逆——这里不需要"找不到就报错"，
- * 因为"格还不存在"是正常起点（`design/core.md` 的「文风」格没指定过时就不存在）。
+ * 因为"格还不存在"是正常起点（`design/brief.md` 的「文风」格没指定过时就不存在）。
  * 空 `content` 起手也走得通。
  *
  * 编辑整篇文档走 `edit` 的锚点替换就够了；这里要的是"替换或**新建**"，锚点覆盖不了后者。

@@ -45,7 +45,7 @@
 
 | 对象 | 回答什么 | 真源 | 缓存/派生 | 写者 | 审者 | 半衰期 | 寻址 | 注入建议 |
 |---|---|---|---|---|---|---|---|---|
-| **世界规则/事实** | 世界是什么样、术语/地名 | `design/core.md`、`design/wiki/*`、卷/序列纲 | 目录索引行 | 用户 + mate（提案） | 用户拍板 | 长 | `path#section@rev` | 按需 `read`（无文档常驻）；`glob`/`grep` 找路径 |
+| **世界规则/事实** | 世界是什么样、术语/地名 | `design/brief.md`、`design/wiki/*`、卷/序列纲 | 目录索引行 | 用户 + mate（提案） | 用户拍板 | 长 | `path#section@rev` | 按需 `read`（无文档常驻）；`glob`/`grep` 找路径 |
 | **章节事件** | 发生过什么 | `chapters/chapter_ch<N>_v<M>.md` | `state/progress.md`、场景索引、章摘要 | mate（write） | 用户看 diff | 永久 | 章号/版本、行范围、场景索引 | P2/P3；按场景取 |
 | **角色基线** | 他是谁、要什么/怕什么/绝不做什麼、声音 | `design/characters/<名>.md` | 目录索引一行 | 用户 + mate（提案） | 用户拍板 | 长 | `path`，整篇 | P0/P1；整篇或按需取 |
 | **角色此刻** | 此刻处境、要什么 | `state/characters/<名>.md` | 无 | mate 章末回写 | 用户看 diff | 每章 | `path#section` | P0/P1；按在场人物取 |

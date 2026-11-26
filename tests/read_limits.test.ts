@@ -71,8 +71,8 @@ describe("read 的上限与分页", () => {
   test("设计文档没有常驻特例：core 照常返回全文", async () => {
     // 从前 core / world 每轮注入 system，read 它们只回一个指针；没有常驻层之后这个特例必须消失，
     // 否则模型会被告知"正文在 system 里"，而 system 里根本没有。
-    await writeDoc(projectId, "design/core.md", "# 核心设定\n## 一句话简介\n一个人。\n");
-    const out = (await readTool.execute({ path: "design/core.md" }, ctx())).output;
+    await writeDoc(projectId, "design/brief.md", "# 概览\n## 一句话简介\n一个人。\n");
+    const out = (await readTool.execute({ path: "design/brief.md" }, ctx())).output;
     expect(out).toContain("一个人。");
     expect(out).not.toContain("常驻");
   });

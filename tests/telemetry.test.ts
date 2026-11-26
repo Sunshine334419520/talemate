@@ -318,7 +318,7 @@ describe("会话接线 · 一轮留下什么", () => {
     process.env.TALEMATE_MOCK_TOOL = "read";
     try {
       const session = await openSession({ projectId, model: MODEL, title: "工具观测" });
-      await session.post("读一下核心设定。");
+      await session.post("读一下概览。");
 
       const events = await eventLogFor(projectId, session.sessionId).read();
       expect(events.filter((e) => e.type === "tool/call")).toHaveLength(1);
@@ -374,12 +374,12 @@ describe("轨迹视图 · 摘要与导出", () => {
 
 describe("脱敏 · 只作用于副本", () => {
   test("密钥与家目录都洗掉", () => {
-    const text = redactText(`key=sk-abcdefgh1234 Bearer abcdefgh1234 路径 /Users/x/novel/design/core.md`, {
+    const text = redactText(`key=sk-abcdefgh1234 Bearer abcdefgh1234 路径 /Users/x/novel/design/brief.md`, {
       homeDir: "/Users/x",
     });
     expect(text).not.toContain("sk-abcdefgh1234");
     expect(text).not.toContain("abcdefgh1234");
-    expect(text).toContain("~/novel/design/core.md");
+    expect(text).toContain("~/novel/design/brief.md");
   });
 
   test("redactEvent 返回副本，不改原事件", () => {

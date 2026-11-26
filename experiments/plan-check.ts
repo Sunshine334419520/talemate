@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     `【手上已有的材料】`,
     `企划书：\n${section(raw, "企划书")}`,
     `前 3 章细纲：\n${section(raw, "前 3 章细纲")}`,
-    "当前状态：state/ 还是空的，这是第 1 章；核心设定 / 世界观 / 角色卡也都还没落成文件。",
+    "当前状态：state/ 还是空的，这是第 1 章；概览 / 世界观 / 角色卡也都还没落成文件。",
   ].join("\n\n");
 
   console.log(`[跑] planner persona · ${model.model}\n`);

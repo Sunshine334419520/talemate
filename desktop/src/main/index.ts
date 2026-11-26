@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell } from "electron";
 import type { ConfirmReply, ModelConfig, ProjectMeta } from "../../../src/core/types";
 import { leadLine } from "../../../src/framework/markdown";
-import { CORE_DOC, styleCatalog, withShelf, withStyle } from "../../../src/framework/prose";
+import { BRIEF_DOC, styleCatalog, withShelf, withStyle } from "../../../src/framework/prose";
 import { readDoc } from "../../../src/storage/corpus";
 import { writeProjectMeta } from "../../../src/storage/project";
 import { docTree } from "../../../src/framework/anchor";
@@ -327,8 +327,8 @@ function registerHandlers(): void {
     return Promise.all(
       projects.map(async (p): Promise<ProjectCard> => {
         const sessions = await sessionsOf(p.id);
-        // 卡上那行简介取自核心设定的「一句话简介」——现读、不缓存：用户改了设定，卡上就该跟着变
-        const core = await readDoc(p.id, "design/core.md");
+        // 卡上那行简介取自概览的「一句话简介」——现读、不缓存：用户改了设定，卡上就该跟着变
+        const brief = await readDoc(p.id, BRIEF_DOC);
         return {
           id: p.id,
           title: p.title,
@@ -336,7 +336,7 @@ function registerHandlers(): void {
           channel: p.channel,
           chapter: await latestChapter(p.id),
           updatedAt: sessions[0]?.updatedAt ?? p.createdAt,
-          blurb: core === undefined ? undefined : leadLine(core, "一句话简介", 64),
+          blurb: brief === undefined ? undefined : leadLine(brief, "一句话简介", 64),
         };
       }),
     );
@@ -350,14 +350,14 @@ function registerHandlers(): void {
         channel: p.channel.trim() || undefined,
         genre: p.genre.trim() || undefined,
       });
-      // 建完就把书架声明种进核心设定的「题材 · 频道」格。同 `style:set` 那一类：值是用户在表单里
-      // 从封闭集合挑的，没有可生成的东西，所以不经模型、不走两阶段。mate 每轮常驻注入 core.md，
-      // 于是它第一轮就知道这本书的赛道，不会从零问起（见 docs/ui.md 的「首屏」）。
-      const core = docAbs(meta.id, CORE_DOC);
+      // 建完就把书架声明种进概览的 frontmatter。同 `style:set` 那一类：值是用户在表单里
+      // 从封闭集合挑的，没有可生成的东西，所以不经模型、不走 diff 审批。概览是模型进项目先读的
+      // 那份文件之一，于是它第一轮就知道这本书的赛道，不会从零问起（见 docs/ui.md 的「首屏」）。
+      const brief = docAbs(meta.id, BRIEF_DOC);
       const seeded = withShelf(undefined, meta.channel, meta.genre);
-      if (core !== undefined && seeded !== undefined) {
+      if (brief !== undefined && seeded !== undefined) {
         // 期望"还不存在"：这是刚建出来的项目，这个文件此刻必然没有
-        await writeIfUnchanged({ abs: core, expected: null, content: seeded });
+        await writeIfUnchanged({ abs: brief, expected: null, content: seeded });
       }
       return { id: meta.id };
     },
@@ -500,7 +500,7 @@ function registerHandlers(): void {
   ipcMain.handle("style:list", (_e, projectId: string) => styleCatalog(projectId));
 
   /**
-   * 状态栏选定文风 → 直接写核心设定的「文风」格。
+   * 状态栏选定文风 → 直接写概览的「文风」格。
    *
    * 同 `docs:save` 那一类：**用户自己就是那个点头的人**，所以不走两阶段、不经模型。这里尤其
    * 没有可生成的东西——值是库里一个卡名。库里没有这个名字就**不写**（回 `unknown`），
@@ -513,9 +513,9 @@ function registerHandlers(): void {
     async (_e, p: { projectId: string; name: string }): Promise<"ok" | "stale" | "unknown"> => {
       const { cards } = await styleCatalog(p.projectId);
       if (!cards.some((c) => c.name === p.name)) return "unknown";
-      const abs = docAbs(p.projectId, CORE_DOC);
+      const abs = docAbs(p.projectId, BRIEF_DOC);
       if (abs === undefined) return "stale";
-      const before = await readDoc(p.projectId, CORE_DOC);
+      const before = await readDoc(p.projectId, BRIEF_DOC);
       try {
         await writeIfUnchanged({ abs, expected: before ?? null, content: withStyle(before, p.name) });
         return "ok";
