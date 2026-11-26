@@ -3,7 +3,7 @@
 > **职责**：回答"角色卡长什么样、怎么维护、mate 在角色设计上做什么"。
 > **读者**：要改 `framework/characters.ts`、角色相关守卫，或定角色设计规范的人。
 > **对齐代码**：2026-11-25 · 工具面在 `src/tool/file_tools.ts` 与 `src/framework/characters.ts`；状态不在卡上这件事见 `state.md`；"新人物的卡在正文之前落"这条由 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的产物清单承载；卡的写法（含范例用什么引号）在 `assets/kinds/character.json`，正文那套标点见 `prompts/prose.rules.txt`
-> 相邻：`design-docs.md`（四层活文档与 diff 落盘）· `assets.md`（资产载体）· `roadmap.md`（状态目录还没做）· `product.md`
+> 相邻：`assets.md`（资产载体与 diff 落盘）· `roadmap.md`（状态目录还没做）· `product.md`
 
 ## 一句话
 

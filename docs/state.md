@@ -3,7 +3,7 @@
 > **职责**：回答"哪些东西随写作在变、它们存在哪、什么时候写回去"。
 > **读者**：要改 `state/` 相关行为的人；以及想知道"为什么它不在 `design/` 下面"的人。
 > **对齐代码**：2026-11-24 · 语料根表在 `core/roots.ts`（项目级，`talemate.json` 的 `corpusRoots`；读口写口共用）；`state/progress.md` 的目录行在 `framework/summaries.ts`；第 4 条纪律、承诺账/知识边界与 `progress.md` 的 7 章窗口给模型看的那一份在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt` 的状态回写那一条
-> 相邻：`design-docs.md`（四层活文档）· `characters.md`（卡上不装状态）· `outline.md`（序列进度）· `chapter-planning.md`（章末回写挂在规划里）
+> 相邻：`assets.md`（四层活文档）· `characters.md`（卡上不装状态）· `outline.md`（序列进度）· `chapter-planning.md`（章末回写挂在规划里）
 
 ## 一句话
 

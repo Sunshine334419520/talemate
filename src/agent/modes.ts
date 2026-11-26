@@ -22,7 +22,7 @@ export interface ModeDef {
 
 /**
  * 正文模式：只换 system，不改权限；进出由 enter-prose / exit-prose 与 plan done 管。
- * 没有"草稿模式"：审阅走写前 diff / 整篇预览，不再是一层把落盘藏起来的模式（见 docs/design-docs.md）。
+ * 没有"草稿模式"：审阅走写前 diff / 整篇预览，不再是一层把落盘藏起来的模式（见 docs/assets.md）。
  */
 export const PROSE_MODE = "prose";
 

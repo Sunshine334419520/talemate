@@ -477,7 +477,7 @@ describe("角色卡（常见格 + 自由长尾；建卡改卡走 write / edit）
     expect(card).toContain("身份 · 所属：（待定）"); // 未定的那一项留在卡上
   });
 
-  // 改一格走 `edit`（锚点式）：用户看 diff 点头，其余字节原样（见 design-docs.md）。
+  // 改一格走 `edit`（锚点式）：用户看 diff 点头，其余字节原样（见 assets.md）。
   test("改一格走 edit：只换那一格，其余字节一字不动", async () => {
     const ctx = makeCtx(pid);
     const r = await editTool.execute(

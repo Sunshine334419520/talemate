@@ -2,8 +2,8 @@
 
 > **职责**：回答"大纲由什么构成、一卷的纲/一个序列的纲各写什么、为什么没有整本大纲"。
 > **读者**：要改 `assets/kinds/outline.json` / `assets/kinds/beat.json` 的载体定义、或改情节层读写的人。
-> **对齐代码**：2026-11-25 · 载体在 `assets/kinds/outline.json` 与 `assets/kinds/beat.json`，加载在 `framework/assetkinds.ts`；章规划在 `framework/plan.ts`；规划者读卷/序列契约在 `prompts/planner.system.txt`，提交在 `prompts/tools/propose-plan.txt`
-> 相邻：`design-docs.md`（四层活文档与 diff 落盘）· `assets.md`（资产载体）· `characters.md`（另一个"主文档是目录"的层）· `state.md`（承诺的实际状态）· `chapter-planning.md`（章生产）· `roadmap.md`
+> **对齐代码**：2026-11-26 · 载体在 `assets/kinds/outline.json` 与 `assets/kinds/beat.json`，加载在 `framework/assetkinds.ts`；章规划在 `framework/plan.ts`；规划者读卷/序列契约在 `prompts/planner.system.txt`，提交在 `prompts/tools/propose-plan.txt`
+> 相邻：`assets.md`（资产载体与 diff 落盘）· `characters.md`（另一个"主文档是目录"的层）· `state.md`（承诺的实际状态）· `chapter-planning.md`（章生产）· `roadmap.md`
 
 ## 一句话
 
@@ -26,7 +26,7 @@
 | 结局方向 | core 的可选格——**用户想好了才填**；没想好就不该有这一格 |
 
 判据是仓库一贯那条：**能算出来的东西不要存**（`CLAUDE.md` 的“Never hand-copy a list that can be
-derived”、角色名单现算、`design-docs.md` 的“绝不缓存旧设定”）。全局观 = core 的"主角要什么" +
+derived”、角色名单现算、设定每次现读（见 `architecture.md`））。全局观 = core 的"主角要什么" +
 各卷卷纲"已经走到哪"——**它是每次规划新卷时现算的，不是存下来的。**
 
 顺带一个对的结果：存下来的全本大纲一定会被写作推翻，而**脱节的缓存比没有更糟**——它会误导写手。
@@ -115,8 +115,8 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 不能让正文静默推翻契约。
 
 **写入一律走 `path`**：`design/outline/vol_<N>.md` / `design/outline/vol_<N>/s<序号>.md`。
-没有第二个词表——`layer:"outline"` 那个参数连同那份层短名表一起删了（见 `design-docs.md`
-的“寻址：只有路径”）。
+没有第二个词表——`layer:"outline"` 那个参数连同那份层短名表一起删了（见 `assets.md`
+的路径口径）。
 
 **载体在 `assets/kinds/`**：卷纲与序列纲都是 `outline` 这一种资产（`design/outline/` 下的 markdown），
 节拍是 `beat`（`design/outline/**/beats/*.md`，frontmatter 的 `outline` 指向所属卷纲）。没有"按路径取规范"
@@ -134,7 +134,7 @@ B 地图—副本型（无限流/副本/悬疑/诸天/游戏）、C 关系—阶
 
 **规划不落 `design/`**：它落在 `.talemate/plans/ch_<N>.md`——那是引擎的工作区，不是作品的一份
 文档。`design/` 里没有它，`chapters/` 里也没有。判据、命名与清理策略见 `framework/plan.ts`，
-整条链见 `design-docs.md` 的“章节生产”与 `chapter-planning.md`。
+整条链见 `chapter-planning.md`。
 
 ## 序列进度
 

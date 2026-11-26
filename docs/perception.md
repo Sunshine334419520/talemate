@@ -3,7 +3,7 @@
 > **职责**：定义 Agent 每一步推理之前，哪些材料有资格进入上下文、以什么层级和位置进入、哪些压缩、哪些留在工具后面、以及如何记录这次感知决策。
 > **读者**：要改 `src/session/`、`src/context/`、`src/framework/`、`prompts/*` 的人；以及要判断"某次输出错在模型，还是错在模型一开始就没看到"的人。
 > **对齐代码**：2026-11-26 · observed 每次请求都有（hash 变化才写事件）；prose shadow 默认开启；inject 已接上（`TALEMATE_PERCEPTION=inject`，只给 eval 对照用，默认不开）；材料语义压缩暂不做；发现未做。标【现状】的部分已按当前代码核对；其余是本文的设计。本文不受既有接口约束；旧版以“生产单元/问题登记表”为中心，已废弃。
-> **相邻**：`compaction.md`（语义压缩：折叠、证据账）· `architecture.md`（一次交互怎么走）· `state.md`（状态层）· `design-docs.md`（四类活文档）· `chapter-planning.md`（章节生产）· `telemetry.md`（事件与 trace）· `perception-triage.md` / `perception-discovery.md`（分诊与发现的详细设计，待写）
+> **相邻**：`compaction.md`（语义压缩：折叠、证据账）· `architecture.md`（一次交互怎么走）· `state.md`（状态层）· `assets.md`（四类活文档）· `chapter-planning.md`（章节生产）· `telemetry.md`（事件与 trace）· `perception-triage.md` / `perception-discovery.md`（分诊与发现的详细设计，待写）
 
 **一句话**：感知不是"把该知道的都放进去"，而是"这一步推理需要的最小高信号材料，按正确的层级和位置进入上下文，其余留在工具后面"。
 

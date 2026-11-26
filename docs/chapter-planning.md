@@ -2,8 +2,8 @@
 
 > **职责**：定下"写一章"这条流水线的架构——谁规划、谁批准、谁执行、工件放哪；并记下它推翻了哪些旧断言、为什么。
 > **读者**：要动手改这条流水线的人；以及想知道"为什么不是 writer 子代理了"的人。
-> **对齐代码**：**已落地**（2026-11-25）· 工件在 `framework/plan.ts`，门在 `tool/core_tools.ts` 的 `propose-plan`，角色在 `agent/registry.ts`；章规划是**卷契约 + 序列契约的投影**，场景简报（依据 / 前情 / 这场戏 / 必须发生 / 不能提前兑现 / 章末问题）与按序产物清单的读取在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt`，判据在 `outline.md`、`characters.md` 与 `design-docs.md`。本文与代码冲突时以代码为准。
-> 相邻：`product.md`（为什么这么做）· `design-docs.md`（设计文档体系与章节生产那条链）· `agents.md`（角色与工具）· `outline.md`（序列纲与章规划）· `roadmap.md`（状态层还没做）
+> **对齐代码**：**已落地**（2026-11-26）· 工件在 `framework/plan.ts`，门在 `tool/core_tools.ts` 的 `propose-plan`，角色在 `agent/registry.ts`；章规划是**卷契约 + 序列契约的投影**，场景简报（依据 / 前情 / 这场戏 / 必须发生 / 不能提前兑现 / 章末问题）与按序产物清单的读取在 `prompts/tools/propose-plan.txt` 与 `prompts/planner.system.txt`，判据在 `outline.md`、`characters.md` 与 `assets.md`。本文与代码冲突时以代码为准。
+> 相邻：`product.md`（为什么这么做）· `assets.md`（资产载体与落盘）· `agents.md`（角色与工具）· `outline.md`（序列纲与章规划）· `roadmap.md`（状态层还没做）
 
 ## 一、为什么要改
 
@@ -135,14 +135,13 @@ mate 执行：规划里点到的新人先用 write 落卡（先立人，再写�
 
 | 旧说法 | 位置 | 处置 |
 |---|---|---|
-| 节拍**不落盘** | `design-docs.md` 写作段 | **推翻**——规划落 `.talemate/plans/ch_<N>.md` |
 | 规划要先进一个草稿模式 | `prompts/tools/propose-plan.txt` + `core_tools.ts` 的模式守卫 | **推翻**——规划不需要任何模式前置 |
 | 一次批准 = 一次写作 | `core_tools.ts` 的 `task` 硬门与"用掉即清" | **推翻**——门只剩 `propose-plan` 的 `halt` |
 | 正文由 `task(writer)` 写 | `agents.md` 名册 + `mate.system.txt` + `writer.system.txt` | **推翻**——`writer` 与 `writer.system.txt` 已删，mate 那条禁令随之**取消**（不是翻转）；正文由 mate 自己写；规范在 `prompts/prose.rules.txt`、文风卡在 `skills/`，由 harness 在写作窗口注入 |
 | `product.md` 的"独立上下文分工"用在正文 | `product.md` | **挪到**章节规划阶段 |
 | `roadmap.md` 的“正文由谁落盘”“状态层·章末回写” | `roadmap.md` | **已删**（回写的障碍随 writer 一起消失，理由并进“状态层”那一节） |
 
-**保留不动**：`design-docs.md` 的“mate 没有阶段状态机”。它说的是**对话阶段**（设计段/写作段由用户点名驱动），而规划里的产物顺序是**一份工件的内容**——两者不是一回事。
+**保留不动**：对话阶段**不套模式**——设计段/写作段由用户点名驱动，而规划里的产物顺序是**一份工件的内容**，两者不是一回事。
 
 ## 六、落地动了什么
 

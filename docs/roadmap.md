@@ -3,7 +3,7 @@
 > **职责**：回答"还没做什么、哪些地方是已知的坑、哪些决策还没拍板"。
 > **读者**：要决定下一步做什么的人。
 > **对齐代码**：2026-11-16 · 本文记的都是**当前不存在**的东西；写完就删掉对应条目
-> 相邻：`product.md`（演进方向）· `state.md`（状态层，已落地）· `characters.md` · `design-docs.md` · `chapter-planning.md`
+> 相邻：`product.md`（演进方向）· `state.md`（状态层，已落地）· `characters.md` · `assets.md` · `chapter-planning.md`
 
 ## 已确认的缺口
 

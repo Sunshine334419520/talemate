@@ -121,7 +121,7 @@ export const skillTool: RegisteredTool<{ name: string }> = defineTool<{ name: st
 | How the eval system is designed: cases, families, replay, milestones | `docs/eval-system.md` |
 | Agents, tools, skills — how to classify and add them | `docs/agents.md` |
 | How questions, skipping, timeouts and pending answers work | `docs/ask-user.md` |
-| The four design doc families; two-phase writes; chapter production | `docs/design-docs.md` |
+| Asset kinds, carriers, and the write path | `docs/assets.md` |
 | Who plans a chapter, who approves it, who writes it — and what that retires | `docs/chapter-planning.md` |
 | Character cards | `docs/characters.md` |
 | Volumes and sequences; why there is no whole-book outline | `docs/outline.md` |

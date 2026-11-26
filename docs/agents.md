@@ -3,7 +3,7 @@
 > **职责**：回答"有哪些 Agent / 工具 / Skill，它们怎么归类、怎么触发、怎么加新的"。
 > **读者**：要加或改 Agent、工具、prompt、skill 的人。
 > **对齐代码**：2026-11-26 · 工具面与不变量在 `src/tool/` 与 `src/framework/invariants.ts`；角色表与路由契约在 `agent/registry.ts`；正文写作窗口与文风目录（`styleCatalog`）在 `framework/prose.ts`（`tests/agents.test.ts` 守着 subagent 的路由契约）；内置文风卡在 `skills/`（`storytelling` 默认讲述体 / `style-01-wangwen` 快节奏爽感 / `style-02-guyan` 女频古言 / `style-03-xianyan` 现言快节奏）；考据本（researcher 的笔记本）在 `framework/research.ts`；提问的三态与界面在 `ask-user.md`；章节生产那条链见 `chapter-planning.md`
-> 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `design-docs.md`（设计文档与资产载体）
+> 相邻：`permissions.md`（谁能做什么、什么要问）· `ask-user.md`（提问、跳过、pending）· `architecture.md`（循环与上下文）· `prompts/README.md`（prompt 怎么写）· `assets.md`（设计文档与资产载体）
 
 ## 归类判定规则
 
@@ -134,7 +134,7 @@ Fetch 的 403/404 或空正文退回直连（站点策略/正文提取失败）�
 
 **模式 = 临时叠在 primary agent 上的一层档**，外加一句"这个模式是什么"：可以是一条权限规则（`accept-edits`），也可以是一次 system 替换（`prose`）。它**不装工作流**——"正文该怎么写"归 `prose.system`，"规划批完了没有"归模型自己看产物。
 
-与 agent 的分工：agent 回答"你是谁"（长期），模式回答"眼下在干什么"（一次一仗）。所以模式**必须有界**——进去、做完、出来。开放式的谈话（和用户聊设计）**不套模式**，那会把人关在里面出不来——`design-docs.md` 的「mate 没有阶段状态机」讲的正是这件事。
+与 agent 的分工：agent 回答"你是谁"（长期），模式回答"眼下在干什么"（一次一仗）。所以模式**必须有界**——进去、做完、出来。开放式的谈话（和用户聊设计）**不套模式**，那会把人关在里面出不来。
 
 现在两种，一个管权限、一个管声音：
 

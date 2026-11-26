@@ -3,7 +3,7 @@
 > **职责**：定义会话上下文的生命周期——哪些材料按需、哪些被折叠、哪些绝不进摘要，以及压缩失败时怎么办。
 > **读者**：要改 `src/session/`、`src/context/`、`src/storage/session-store.ts`、`src/telemetry/` 的人。
 > **对齐代码**：2026-11-24 · 标【现状】的段落已按代码核对；常驻注入已删（pinned 不再带 resident）。
-> **相邻**：`architecture.md`（一次交互怎么走）· `state.md`（状态层）· `design-docs.md`（设计文档体系）· `telemetry.md`（事件与投影）
+> **相邻**：`architecture.md`（一次交互怎么走）· `state.md`（状态层）· `assets.md`（设计文档体系）· `telemetry.md`（事件与投影）
 
 **一句话**：压缩不压书，只压对话。书的事实从文件现取；压缩只保留磁盘上没有的意图、决定和未完成任务。
 

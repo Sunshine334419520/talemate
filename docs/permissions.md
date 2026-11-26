@@ -3,7 +3,7 @@
 > **职责**：回答"一次动作要不要问用户、能不能做、由谁决定"。
 > **读者**：要加工具、加 agent、加模式，或改任何"确认"行为的人。
 > **对齐代码**：2026-11-25 · 规则实现在 `src/permission.ts`，规则表在 `agent/registry.ts` 与 `agent/modes.ts`；桌面端与 CLI 的默认模式分别在 `desktop/src/main/index.ts` 与 `src/cli.ts`（默认值 `DEFAULT_PERMISSION_MODE` 在 `desktop/src/shared/api.ts`）
-> 相邻：`agents.md`（角色与工具名册）· `ask-user.md`（提问的三态与回答路由）· `design-docs.md`（diff 即审阅）· `architecture.md`（一次请求怎么走）
+> 相邻：`agents.md`（角色与工具名册）· `ask-user.md`（提问的三态与回答路由）· `assets.md`（diff 即审阅）· `architecture.md`（一次请求怎么走）
 
 ## 一句话
 
